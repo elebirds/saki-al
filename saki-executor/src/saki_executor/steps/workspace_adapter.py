@@ -18,8 +18,8 @@ class WorkspaceAdapter(WorkspaceProtocol):
         return self._workspace
 
     @property
-    def step_id(self) -> str:
-        return self._workspace.step_id
+    def task_id(self) -> str:
+        return self._workspace.task_id
 
     @property
     def root(self) -> Path:
@@ -54,14 +54,14 @@ class WorkspaceAdapter(WorkspaceProtocol):
     def restore_shared_data_cache(self, fingerprint: str) -> bool:
         return self._workspace.restore_shared_data_cache(fingerprint)
 
-    def store_shared_data_cache(self, fingerprint: str, source_step_id: str, step_type: str) -> Path:
-        return self._workspace.store_shared_data_cache(fingerprint, source_step_id, step_type)
+    def store_shared_data_cache(self, fingerprint: str, source_task_id: str, task_type: str) -> Path:
+        return self._workspace.store_shared_data_cache(fingerprint, source_task_id, task_type)
 
     def link_shared_model_to_step(self, artifact_name: str) -> Path | None:
         return self._workspace.link_shared_model_to_step(artifact_name)
 
-    def cache_model_artifact(self, artifact_name: str, source_path: Path, source_step_id: str) -> Path:
-        return self._workspace.cache_model_artifact(artifact_name, source_path, source_step_id)
+    def cache_model_artifact(self, artifact_name: str, source_path: Path, source_task_id: str) -> Path:
+        return self._workspace.cache_model_artifact(artifact_name, source_path, source_task_id)
 
     def __getattr__(self, item: str) -> Any:
         return getattr(self._workspace, item)

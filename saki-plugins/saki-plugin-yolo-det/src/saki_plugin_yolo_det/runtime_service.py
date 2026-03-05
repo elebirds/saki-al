@@ -256,8 +256,8 @@ class YoloRuntimeService:
             context=context,
         )
 
-    async def stop(self, step_id: str) -> None:
-        del step_id
+    async def stop(self, task_id: str) -> None:
+        del task_id
         self._stop_flag.set()
 
     def _load_yolo(self):

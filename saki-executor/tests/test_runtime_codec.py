@@ -7,7 +7,7 @@ def test_build_ack_message():
         request_id="r1",
         ack_for="r0",
         ok=True,
-        ack_type="assign_step",
+        ack_type="assign_task",
         ack_reason="accepted",
         detail="accepted",
     )
@@ -20,7 +20,7 @@ def test_build_ack_message():
     assert message.ack.detail == "accepted"
 
 
-def test_parse_assign_step_payload():
+def test_parse_assign_task_payload():
     runtime_message = pb.RuntimeMessage(
         assign_task=pb.AssignTask(
             request_id="req1",
@@ -30,7 +30,7 @@ def test_parse_assign_step_payload():
                 project_id="project1",
                 loop_id="loop1",
                 input_commit_id="commit1",
-                step_type=pb.TRAIN,
+                task_type=pb.TRAIN,
                 dispatch_kind=pb.ORCHESTRATOR,
                 plugin_id="demo_det_v1",
                 mode=pb.ACTIVE_LEARNING,
@@ -41,18 +41,18 @@ def test_parse_assign_step_payload():
             ),
         )
     )
-    payload = codec.parse_assign_step(runtime_message.assign_task)
-    assert payload["step_id"] == "task1"
+    payload = codec.parse_assign_task(runtime_message.assign_task)
+    assert payload["task_id"] == "task1"
     assert payload["task_id"] == "task1"
     assert payload["round_id"] == "job1"
     assert payload["resolved_params"]["epochs"] == 5
-    assert payload["step_type"] == "train"
+    assert payload["task_type"] == "train"
     assert payload["dispatch_kind"] == "orchestrator"
     assert payload["mode"] == "active_learning"
     assert payload["round_index"] == 3
 
 
-def test_parse_assign_step_unknown_runtime_enums_keep_empty_fields():
+def test_parse_assign_task_unknown_runtime_enums_keep_empty_fields():
     runtime_message = pb.RuntimeMessage(
         assign_task=pb.AssignTask(
             request_id="req1",
@@ -62,8 +62,8 @@ def test_parse_assign_step_unknown_runtime_enums_keep_empty_fields():
                 project_id="project1",
                 loop_id="loop1",
                 input_commit_id="commit1",
-                step_type=pb.RUNTIME_STEP_TYPE_UNSPECIFIED,
-                dispatch_kind=pb.RUNTIME_STEP_DISPATCH_KIND_UNSPECIFIED,
+                task_type=pb.RUNTIME_TASK_TYPE_UNSPECIFIED,
+                dispatch_kind=pb.RUNTIME_TASK_DISPATCH_KIND_UNSPECIFIED,
                 plugin_id="demo_det_v1",
                 mode=pb.RUNTIME_LOOP_MODE_UNSPECIFIED,
                 query_strategy="uncertainty_1_minus_max_conf",
@@ -72,13 +72,13 @@ def test_parse_assign_step_unknown_runtime_enums_keep_empty_fields():
             ),
         )
     )
-    payload = codec.parse_assign_step(runtime_message.assign_task)
-    assert payload["step_type"] == ""
+    payload = codec.parse_assign_task(runtime_message.assign_task)
+    assert payload["task_type"] == ""
     assert payload["dispatch_kind"] == ""
     assert payload["mode"] == ""
 
 
-def test_parse_assign_step_unsupported_step_type_is_not_mapped():
+def test_parse_assign_task_unsupported_task_type_is_not_mapped():
     runtime_message = pb.RuntimeMessage(
         assign_task=pb.AssignTask(
             request_id="req-unsupported-step",
@@ -88,7 +88,7 @@ def test_parse_assign_step_unsupported_step_type_is_not_mapped():
                 project_id="project1",
                 loop_id="loop1",
                 input_commit_id="commit1",
-                step_type=pb.RUNTIME_STEP_TYPE_UNSPECIFIED,
+                task_type=pb.RUNTIME_TASK_TYPE_UNSPECIFIED,
                 dispatch_kind=pb.ORCHESTRATOR,
                 plugin_id="demo_det_v1",
                 mode=pb.MANUAL,
@@ -98,8 +98,8 @@ def test_parse_assign_step_unsupported_step_type_is_not_mapped():
             ),
         )
     )
-    payload = codec.parse_assign_step(runtime_message.assign_task)
-    assert payload["step_type"] == ""
+    payload = codec.parse_assign_task(runtime_message.assign_task)
+    assert payload["task_type"] == ""
     assert payload["dispatch_kind"] == "orchestrator"
     assert payload["mode"] == "manual"
 
@@ -107,7 +107,7 @@ def test_parse_assign_step_unsupported_step_type_is_not_mapped():
 def test_build_data_request_query_type_mapping():
     message = codec.build_data_request_message(
         request_id="r1",
-        step_id="task1",
+        task_id="task1",
         query_type="annotations",
         project_id="project1",
         commit_id="commit1",
@@ -130,7 +130,7 @@ def test_parse_error_message_includes_reply_to_and_error():
     )
     parsed = codec.parse_error(error_payload)
     assert parsed["reply_to"] == "req-1"
-    assert parsed["step_id"] == "task-1"
+    assert parsed["task_id"] == "task-1"
     assert parsed["error"] == "boom"
     assert parsed["query_type"] == "labels"
 
@@ -145,7 +145,7 @@ def test_build_register_message_with_accelerators():
                 "plugin_id": "demo_det_v1",
                 "version": "0.1.0",
                 "display_name": "Demo",
-                "supported_step_types": ["train"],
+                "supported_task_types": ["train"],
                 "supported_strategies": ["random_baseline"],
                 "supported_accelerators": ["cpu", "cuda"],
                 "supports_auto_fallback": True,
@@ -169,9 +169,9 @@ def test_build_register_message_with_accelerators():
 
 
 def test_task_status_codec_mapping():
-    message = codec.build_step_result_message(
+    message = codec.build_task_result_message(
         request_id="result-1",
-        step_id="task-1",
+        task_id="task-1",
         status="failed",
         metrics={},
         artifacts={},
@@ -188,10 +188,10 @@ def test_task_status_codec_mapping():
     assert codec.status_enum_to_text(pb.BINDING_DEVICE) == "binding_device"
 
 
-def test_build_step_event_message_log_supports_structured_fields():
-    message = codec.build_step_event_message(
+def test_build_task_event_message_log_supports_structured_fields():
+    message = codec.build_task_event_message(
         request_id="req-log-1",
-        step_id="step-log-1",
+        task_id="step-log-1",
         seq=10,
         ts=123456,
         event_type="log",

@@ -9,7 +9,7 @@ from typing import Any, Awaitable, Callable, Mapping
 
 from saki_plugin_sdk.capability_types import RuntimeCapabilitySnapshot
 from saki_plugin_sdk.execution_binding_context import ExecutionBindingContext
-from saki_plugin_sdk.types import StepRuntimeContext
+from saki_plugin_sdk.types import TaskRuntimeContext
 from saki_plugin_sdk.workspace_protocol import WorkspaceProtocol
 
 
@@ -128,9 +128,9 @@ class ExecutorPlugin(ABC):
     """
 
     def __init__(self) -> None:
-        """Initialize the plugin with logger and step_id tracking."""
+        """Initialize the plugin with logger and task_id tracking."""
         self._logger: Any | None = None
-        self._step_id: str | None = None
+        self._task_id: str | None = None
         self._manifest: Any | None = None
 
     def _load_manifest(self) -> Any:
@@ -315,25 +315,25 @@ class ExecutorPlugin(ABC):
         """
         pass
 
-    async def on_start(self, step_id: str, workspace: WorkspaceProtocol) -> None:
+    async def on_start(self, task_id: str, workspace: WorkspaceProtocol) -> None:
         """Called before step execution begins.
 
         Override to initialize step-specific resources.
-        The default implementation updates step_id tracking.
+        The default implementation updates task_id tracking.
 
         Parameters
         ----------
-        step_id : str
+        task_id : str
             The step identifier.
         workspace : WorkspaceProtocol
             The step workspace directory.
         """
-        setattr(self, "_step_id", step_id)
+        setattr(self, "_task_id", task_id)
         logger = getattr(self, "_logger", None)
-        if logger and hasattr(logger, "step_id"):
-            logger.step_id = step_id
+        if logger and hasattr(logger, "task_id"):
+            logger.task_id = task_id
 
-    async def on_stop(self, step_id: str, workspace: WorkspaceProtocol) -> None:
+    async def on_stop(self, task_id: str, workspace: WorkspaceProtocol) -> None:
         """Called after step execution completes (success or failure).
 
         Override to cleanup step-specific resources.
@@ -341,7 +341,7 @@ class ExecutorPlugin(ABC):
 
         Parameters
         ----------
-        step_id : str
+        task_id : str
             The step identifier.
         workspace : WorkspaceProtocol
             The step workspace directory.
@@ -365,14 +365,14 @@ class ExecutorPlugin(ABC):
         """Get or create the plugin logger.
 
         Returns a :class:`PluginLogger` instance with the plugin's
-        ``plugin_id`` and current ``step_id`` as context prefix.
+        ``plugin_id`` and current ``task_id`` as context prefix.
         """
         logger = getattr(self, "_logger", None)
         if logger is None:
             from saki_plugin_sdk.logger import PluginLogger
             logger = PluginLogger(
                 plugin_id=self.plugin_id,
-                step_id=getattr(self, "_step_id", None),
+                task_id=getattr(self, "_task_id", None),
             )
             setattr(self, "_logger", logger)
         return logger
@@ -446,7 +446,7 @@ class ExecutorPlugin(ABC):
         self,
         params: dict[str, Any],
         *,
-        context: StepRuntimeContext | ExecutionBindingContext | None = None,
+        context: TaskRuntimeContext | ExecutionBindingContext | None = None,
     ) -> None:
         context_payload = context.to_dict() if hasattr(context, "to_dict") and context else None
         self.resolve_config(
@@ -459,7 +459,7 @@ class ExecutorPlugin(ABC):
     async def probe_runtime_capability(
         self,
         *,
-        context: StepRuntimeContext,
+        context: TaskRuntimeContext,
     ) -> RuntimeCapabilitySnapshot:
         del context
         return RuntimeCapabilitySnapshot.empty(framework="")
@@ -534,9 +534,9 @@ class ExecutorPlugin(ABC):
         del workspace, params, emit, context
         raise NotImplementedError("predict step is not implemented by this plugin")
 
-    async def stop(self, step_id: str) -> None:
+    async def stop(self, task_id: str) -> None:
         """Request graceful stop (optional override).
 
         The default implementation does nothing.
         """
-        del step_id
+        del task_id

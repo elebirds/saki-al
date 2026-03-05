@@ -4,22 +4,22 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
-from saki_executor.steps.contracts import StepExecutionRequest
+from saki_executor.steps.contracts import TaskExecutionRequest
 from saki_plugin_sdk import (
     ExecutionBindingContext,
     HostCapabilitySnapshot,
     RuntimeCapabilitySnapshot,
     RuntimeProfileSpec,
-    StepRuntimeContext,
+    TaskRuntimeContext,
 )
 
 
 @dataclass(frozen=True, slots=True)
 class StepExecutionPlan:
-    request: StepExecutionRequest
+    request: TaskExecutionRequest
     metadata_plugin: Any
     host_capability: HostCapabilitySnapshot
-    runtime_context: StepRuntimeContext
+    runtime_context: TaskRuntimeContext
     effective_plugin_params: dict[str, Any]
     selected_profile: RuntimeProfileSpec
     worker_python: str | Path | None = None
@@ -40,7 +40,7 @@ class StepExecutionPlan:
             extra_env=dict(extra_env or {}),
         )
 
-    def with_runtime_context(self, runtime_context: StepRuntimeContext) -> StepExecutionPlan:
+    def with_runtime_context(self, runtime_context: TaskRuntimeContext) -> StepExecutionPlan:
         return replace(self, runtime_context=runtime_context)
 
 

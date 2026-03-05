@@ -5,7 +5,7 @@ import pytest
 
 from saki_executor.cache.asset_cache import AssetCache
 from saki_executor.grpc_gen import runtime_control_pb2 as pb
-from saki_executor.steps.contracts import ArtifactUploadTicket, FetchedPage, StepExecutionRequest
+from saki_executor.steps.contracts import ArtifactUploadTicket, FetchedPage, TaskExecutionRequest
 from saki_executor.steps.manager import StepManager
 from saki_executor.plugins.registry import PluginRegistry
 from runtime_data_test_helper import build_data_response_message
@@ -18,14 +18,14 @@ def _build_manager(tmp_path: Path) -> StepManager:
 
 
 def test_job_execution_request_from_payload_requires_explicit_fields():
-    request = StepExecutionRequest.from_payload(
+    request = TaskExecutionRequest.from_payload(
         {
-            "step_id": "step-1",
+            "task_id": "step-1",
             "round_id": "round-1",
             "plugin_id": "demo_det_v1",
             "round_index": "2",
             "mode": "simulation",
-            "step_type": "train",
+            "task_type": "train",
             "dispatch_kind": "dispatchable",
             "query_strategy": "random_baseline",
             "resolved_params": {"topk": 10},
@@ -38,11 +38,11 @@ def test_job_execution_request_from_payload_requires_explicit_fields():
     assert request.query_strategy == "random_baseline"
 
 
-def test_job_execution_request_requires_step_type_and_dispatch_kind():
-    with pytest.raises(ValueError, match="step_type is required"):
-        StepExecutionRequest.from_payload(
+def test_job_execution_request_requires_task_type_and_dispatch_kind():
+    with pytest.raises(ValueError, match="task_type is required"):
+        TaskExecutionRequest.from_payload(
             {
-                "step_id": "step-1",
+                "task_id": "step-1",
                 "round_id": "round-1",
                 "plugin_id": "demo_det_v1",
                 "round_index": 1,
@@ -53,14 +53,14 @@ def test_job_execution_request_requires_step_type_and_dispatch_kind():
         )
 
     with pytest.raises(ValueError, match="dispatch_kind is required"):
-        StepExecutionRequest.from_payload(
+        TaskExecutionRequest.from_payload(
             {
-                "step_id": "step-1",
+                "task_id": "step-1",
                 "round_id": "round-1",
                 "plugin_id": "demo_det_v1",
                 "round_index": 1,
                 "mode": "simulation",
-                "step_type": "train",
+                "task_type": "train",
                 "query_strategy": "random_baseline",
             }
         )
@@ -68,45 +68,45 @@ def test_job_execution_request_requires_step_type_and_dispatch_kind():
 
 def test_sampling_params_required_only_for_sampling_steps():
     # train step in AL mode should not require sampling.strategy/topk
-    train_request = StepExecutionRequest.from_payload(
+    train_request = TaskExecutionRequest.from_payload(
         {
-            "step_id": "step-train-1",
+            "task_id": "step-train-1",
             "round_id": "round-1",
             "plugin_id": "demo_det_v1",
             "round_index": 1,
             "mode": "active_learning",
-            "step_type": "train",
+            "task_type": "train",
             "dispatch_kind": "dispatchable",
             "resolved_params": {},
         }
     )
-    assert train_request.step_type == "train"
+    assert train_request.task_type == "train"
 
     # eval step in AL mode should not require sampling.strategy/topk
-    eval_request = StepExecutionRequest.from_payload(
+    eval_request = TaskExecutionRequest.from_payload(
         {
-            "step_id": "step-eval-1",
+            "task_id": "step-eval-1",
             "round_id": "round-1",
             "plugin_id": "demo_det_v1",
             "round_index": 1,
             "mode": "active_learning",
-            "step_type": "eval",
+            "task_type": "eval",
             "dispatch_kind": "dispatchable",
             "resolved_params": {},
         }
     )
-    assert eval_request.step_type == "eval"
+    assert eval_request.task_type == "eval"
 
     # score step in AL mode must still provide sampling.strategy/topk
     with pytest.raises(ValueError, match="sampling.strategy is required for active_learning/simulation"):
-        StepExecutionRequest.from_payload(
+        TaskExecutionRequest.from_payload(
             {
-                "step_id": "step-score-1",
+                "task_id": "step-score-1",
                 "round_id": "round-1",
                 "plugin_id": "demo_det_v1",
                 "round_index": 1,
                 "mode": "active_learning",
-                "step_type": "score",
+                "task_type": "score",
                 "dispatch_kind": "dispatchable",
                 "resolved_params": {},
             }
@@ -114,24 +114,24 @@ def test_sampling_params_required_only_for_sampling_steps():
 
 
 @pytest.mark.anyio
-async def test_assign_step_passes_typed_request_to_run_step(tmp_path: Path):
+async def test_assign_task_passes_typed_request_to_run_step(tmp_path: Path):
     manager = _build_manager(tmp_path)
-    captured: list[StepExecutionRequest] = []
+    captured: list[TaskExecutionRequest] = []
 
-    async def fake_run_step(request: StepExecutionRequest) -> None:
+    async def fake_run_step(request: TaskExecutionRequest) -> None:
         captured.append(request)
 
     manager._run_task = fake_run_step  # type: ignore[method-assign]  # noqa: SLF001
-    accepted = await manager.assign_step(
+    accepted = await manager.assign_task(
         "req-1",
         {
-            "step_id": "step-typed-1",
+            "task_id": "step-typed-1",
             "round_id": "round-typed-1",
             "project_id": "project-1",
             "input_commit_id": "commit-1",
             "plugin_id": "demo_det_v1",
             "mode": "active_learning",
-            "step_type": "train",
+            "task_type": "train",
             "dispatch_kind": "dispatchable",
             "query_strategy": "uncertainty_1_minus_max_conf",
             "round_index": 1,
@@ -142,8 +142,8 @@ async def test_assign_step_passes_typed_request_to_run_step(tmp_path: Path):
     assert manager._task is not None  # noqa: SLF001
     await asyncio.wait_for(manager._task, timeout=1)  # noqa: SLF001
     assert len(captured) == 1
-    assert isinstance(captured[0], StepExecutionRequest)
-    assert captured[0].step_id == "step-typed-1"
+    assert isinstance(captured[0], TaskExecutionRequest)
+    assert captured[0].task_id == "step-typed-1"
     assert captured[0].round_id == "round-typed-1"
 
 
@@ -158,7 +158,7 @@ async def test_fetch_page_and_upload_ticket_are_typed_contracts(tmp_path: Path):
             return build_data_response_message(
                 request_id=f"resp-{req.request_id}",
                 reply_to=req.request_id,
-                step_id=req.task_id,
+                task_id=req.task_id,
                 query_type=req.query_type,
                 items=[pb.DataItem(sample_item=pb.SampleItem(id="sample-1"))],
             )
@@ -182,7 +182,7 @@ async def test_fetch_page_and_upload_ticket_are_typed_contracts(tmp_path: Path):
 
     manager.set_transport(fake_send, fake_request)
     page = await manager._fetch_page(  # noqa: SLF001
-        step_id="step-1",
+        task_id="step-1",
         query_type="samples",
         project_id="project-1",
         commit_id="commit-1",
@@ -193,7 +193,7 @@ async def test_fetch_page_and_upload_ticket_are_typed_contracts(tmp_path: Path):
     assert page.items and page.items[0]["id"] == "sample-1"
 
     ticket = await manager._request_upload_ticket(  # noqa: SLF001
-        step_id="step-1",
+        task_id="step-1",
         artifact_name="test.bin",
         content_type="application/octet-stream",
     )

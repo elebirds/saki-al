@@ -12,7 +12,7 @@ def build_data_response_message(
     *,
     request_id: str,
     reply_to: str,
-    step_id: str,
+    task_id: str,
     query_type: int,
     items: list[pb.DataItem],
     next_cursor: str = "",
@@ -27,7 +27,7 @@ def build_data_response_message(
         data_response=pb.DataResponse(
             request_id=request_id,
             reply_to=reply_to,
-            task_id=step_id,
+            task_id=task_id,
             query_type=query_type,
             payload_id=chunk["payload_id"],
             chunk_index=chunk["chunk_index"],

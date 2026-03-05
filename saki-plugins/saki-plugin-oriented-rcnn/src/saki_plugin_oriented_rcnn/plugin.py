@@ -9,7 +9,7 @@ from saki_plugin_sdk import (
     EventCallback,
     ExecutorPlugin,
     RuntimeCapabilitySnapshot,
-    StepRuntimeContext,
+    TaskRuntimeContext,
     TrainOutput,
     WorkspaceProtocol,
 )
@@ -29,14 +29,14 @@ class OrientedRCNNPlugin(ExecutorPlugin):
             f"Oriented R-CNN 插件 v{self.version} 已加载，支持策略：{self.supported_strategies}"
         )
 
-    async def on_start(self, step_id: str, workspace: WorkspaceProtocol) -> None:
-        await super().on_start(step_id, workspace)
+    async def on_start(self, task_id: str, workspace: WorkspaceProtocol) -> None:
+        await super().on_start(task_id, workspace)
         workspace.ensure()
-        self.logger.debug(f"step {step_id} 工作目录已准备：{workspace.root}")
+        self.logger.debug(f"step {task_id} 工作目录已准备：{workspace.root}")
 
-    async def on_stop(self, step_id: str, workspace: WorkspaceProtocol) -> None:
+    async def on_stop(self, task_id: str, workspace: WorkspaceProtocol) -> None:
         del workspace
-        self.logger.debug(f"step {step_id} 已结束")
+        self.logger.debug(f"step {task_id} 已结束")
 
     async def on_unload(self) -> None:
         self.logger.info("Oriented R-CNN 插件正在卸载")
@@ -45,7 +45,7 @@ class OrientedRCNNPlugin(ExecutorPlugin):
         self,
         params: dict[str, Any],
         *,
-        context: StepRuntimeContext | ExecutionBindingContext | None = None,
+        context: TaskRuntimeContext | ExecutionBindingContext | None = None,
     ) -> None:
         del context
         self._runtime.validate_params(params)
@@ -53,7 +53,7 @@ class OrientedRCNNPlugin(ExecutorPlugin):
     async def probe_runtime_capability(
         self,
         *,
-        context: StepRuntimeContext,
+        context: TaskRuntimeContext,
     ) -> RuntimeCapabilitySnapshot:
         del context
         return self._runtime.probe_runtime_capability()
@@ -150,9 +150,9 @@ class OrientedRCNNPlugin(ExecutorPlugin):
             context=context,
         )
 
-    async def stop(self, step_id: str) -> None:
-        self.logger.info(f"收到 step {step_id} 停止请求")
-        await self._runtime.stop(step_id)
+    async def stop(self, task_id: str) -> None:
+        self.logger.info(f"收到 step {task_id} 停止请求")
+        await self._runtime.stop(task_id)
 
 
 __all__ = ["OrientedRCNNPlugin"]

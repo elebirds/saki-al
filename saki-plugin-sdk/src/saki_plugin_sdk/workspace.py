@@ -4,11 +4,11 @@ from typing import Any
 
 
 class Workspace:
-    """Manages a step's working directory layout under ``runs/{step_id}``."""
+    """Manages a step's working directory layout under ``runs/{task_id}``."""
 
-    def __init__(self, runs_dir: str, step_id: str):
-        self.step_id = step_id
-        self.root = Path(runs_dir) / step_id
+    def __init__(self, runs_dir: str, task_id: str):
+        self.task_id = task_id
+        self.root = Path(runs_dir) / task_id
 
     @property
     def config_path(self) -> Path:

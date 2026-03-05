@@ -28,7 +28,7 @@ from saki_plugin_sdk.execution_binding_context import ExecutionBindingContext
 from saki_plugin_sdk.ipc import protocol
 from saki_plugin_sdk.logger import reset_log_bridge, set_log_bridge
 from saki_plugin_sdk.metric_contract import validate_final_metrics, validate_metric_event
-from saki_plugin_sdk.types import StepRuntimeContext
+from saki_plugin_sdk.types import TaskRuntimeContext
 from saki_plugin_sdk.workspace import Workspace
 
 try:
@@ -45,7 +45,7 @@ except Exception as exc:  # pragma: no cover
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="saki plugin worker")
     parser.add_argument("--plugin-id", required=True)
-    parser.add_argument("--step-id", required=True)
+    parser.add_argument("--task-id", required=True)
     parser.add_argument("--command-endpoint", required=True)
     parser.add_argument("--event-endpoint", required=True)
     return parser.parse_args()
@@ -55,13 +55,13 @@ def _publish_event(
     *,
     pub_socket,
     event_type: str,
-    step_id: str,
+    task_id: str,
     payload: dict[str, Any],
     request_id: str = "",
 ) -> None:
     envelope = protocol.WorkerEventEnvelope(
         event_type=event_type,
-        step_id=step_id,
+        task_id=task_id,
         ts=protocol.now_ts(),
         request_id=request_id,
     )
@@ -86,7 +86,7 @@ def _build_workspace(workspace_root: str) -> Workspace:
 def _bind_plugin_log_bridge(
     *,
     pub_socket,
-    step_id: str,
+    task_id: str,
     plugin_id: str,
     request_id: str = "",
 ):
@@ -96,13 +96,13 @@ def _bind_plugin_log_bridge(
         meta = dict(meta_raw) if isinstance(meta_raw, dict) else {}
         meta.setdefault("source", "plugin_logger")
         meta.setdefault("plugin_id", plugin_id)
-        if step_id:
-            meta.setdefault("step_id", step_id)
+        if task_id:
+            meta.setdefault("task_id", task_id)
         row["meta"] = meta
         _publish_event(
             pub_socket=pub_socket,
             event_type="log",
-            step_id=step_id,
+            task_id=task_id,
             payload=row,
             request_id=request_id,
         )
@@ -162,7 +162,7 @@ async def _run_train_like(
     *,
     plugin: ExecutorPlugin,
     payload: dict[str, Any],
-    step_id: str,
+    task_id: str,
     request_id: str,
     pub_socket,
     method_name: str,
@@ -178,14 +178,14 @@ async def _run_train_like(
         payload = dict(event_payload or {})
         if event_type == "metric" and action in {"train", "eval"}:
             payload["metrics"] = validate_metric_event(
-                step_type=action,
+                task_type=action,
                 metrics=payload.get("metrics"),
                 is_final=action == "eval",
             )
         _publish_event(
             pub_socket=pub_socket,
             event_type=event_type,
-            step_id=step_id,
+            task_id=task_id,
             payload=payload,
             request_id=request_id,
         )
@@ -201,7 +201,7 @@ async def _run_train_like(
     )
     if action in {"train", "eval"}:
         output.metrics = validate_final_metrics(
-            step_type=action,
+            task_type=action,
             metrics=output.metrics,
         )
     result_path = Path(str(payload.get("result_path") or ""))
@@ -253,7 +253,7 @@ def _run_loop(plugin: ExecutorPlugin, args: argparse.Namespace) -> int:
         # Build context for on_load
         load_context = {
             "plugin_id": args.plugin_id,
-            "step_id": args.step_id,
+            "task_id": args.task_id,
             "command_endpoint": args.command_endpoint,
             "event_endpoint": args.event_endpoint,
         }
@@ -261,7 +261,7 @@ def _run_loop(plugin: ExecutorPlugin, args: argparse.Namespace) -> int:
         # Call on_load lifecycle hook
         with _bind_plugin_log_bridge(
             pub_socket=pub_socket,
-            step_id=args.step_id,
+            task_id=args.task_id,
             plugin_id=args.plugin_id,
             request_id="",
         ):
@@ -270,7 +270,7 @@ def _run_loop(plugin: ExecutorPlugin, args: argparse.Namespace) -> int:
         _publish_event(
             pub_socket=pub_socket,
             event_type="worker",
-            step_id=args.step_id,
+            task_id=args.task_id,
             payload={
                 "level": "INFO",
                 "message": (
@@ -312,7 +312,7 @@ def _run_loop(plugin: ExecutorPlugin, args: argparse.Namespace) -> int:
                     result_path = Path(str(payload.get("result_path") or ""))
                     with _bind_plugin_log_bridge(
                         pub_socket=pub_socket,
-                        step_id=args.step_id,
+                        task_id=args.task_id,
                         plugin_id=args.plugin_id,
                         request_id=cmd.request_id,
                     ):
@@ -344,11 +344,11 @@ def _run_loop(plugin: ExecutorPlugin, args: argparse.Namespace) -> int:
                     workspace = _build_workspace(str(payload.get("workspace_root") or ""))
                     with _bind_plugin_log_bridge(
                         pub_socket=pub_socket,
-                        step_id=args.step_id,
+                        task_id=args.task_id,
                         plugin_id=args.plugin_id,
                         request_id=cmd.request_id,
                     ):
-                        _await(plugin.on_start(args.step_id, workspace))
+                        _await(plugin.on_start(args.task_id, workspace))
                         try:
                             _await(
                                 _run_prepare_data(
@@ -358,7 +358,7 @@ def _run_loop(plugin: ExecutorPlugin, args: argparse.Namespace) -> int:
                                 )
                             )
                         finally:
-                            _await(plugin.on_stop(args.step_id, workspace))
+                            _await(plugin.on_stop(args.task_id, workspace))
                     rep_socket.send_json(envelope.to_dict())
                     continue
 
@@ -366,17 +366,17 @@ def _run_loop(plugin: ExecutorPlugin, args: argparse.Namespace) -> int:
                     workspace = _build_workspace(str(payload.get("workspace_root") or ""))
                     with _bind_plugin_log_bridge(
                         pub_socket=pub_socket,
-                        step_id=args.step_id,
+                        task_id=args.task_id,
                         plugin_id=args.plugin_id,
                         request_id=cmd.request_id,
                     ):
-                        _await(plugin.on_start(args.step_id, workspace))
+                        _await(plugin.on_start(args.task_id, workspace))
                         try:
                             result_path = _await(
                                 _run_train_like(
                                     plugin=plugin,
                                     payload=payload,
-                                    step_id=args.step_id,
+                                    task_id=args.task_id,
                                     request_id=cmd.request_id,
                                     pub_socket=pub_socket,
                                     method_name=action,
@@ -393,18 +393,18 @@ def _run_loop(plugin: ExecutorPlugin, args: argparse.Namespace) -> int:
                                 ).to_dict()
                             )
                         finally:
-                            _await(plugin.on_stop(args.step_id, workspace))
+                            _await(plugin.on_stop(args.task_id, workspace))
                     continue
 
                 if action == "predict_unlabeled_batch":
                     workspace = _build_workspace(str(payload.get("workspace_root") or ""))
                     with _bind_plugin_log_bridge(
                         pub_socket=pub_socket,
-                        step_id=args.step_id,
+                        task_id=args.task_id,
                         plugin_id=args.plugin_id,
                         request_id=cmd.request_id,
                     ):
-                        _await(plugin.on_start(args.step_id, workspace))
+                        _await(plugin.on_start(args.task_id, workspace))
                         try:
                             result_path = _await(
                                 _run_predict(
@@ -423,7 +423,7 @@ def _run_loop(plugin: ExecutorPlugin, args: argparse.Namespace) -> int:
                                 ).to_dict()
                             )
                         finally:
-                            _await(plugin.on_stop(args.step_id, workspace))
+                            _await(plugin.on_stop(args.task_id, workspace))
                     continue
 
                 if action == "shutdown":
@@ -436,11 +436,11 @@ def _run_loop(plugin: ExecutorPlugin, args: argparse.Namespace) -> int:
                 issue = exc.issues[0] if exc.issues else None
                 error_code = str(issue.code if issue else "IR_VALIDATION_ERROR")
                 error_message = exc.to_message()
-                logger.exception("worker command failed step_id={} error={}", args.step_id, error_message)
+                logger.exception("worker command failed task_id={} error={}", args.task_id, error_message)
                 _publish_event(
                     pub_socket=pub_socket,
                     event_type="worker",
-                    step_id=args.step_id,
+                    task_id=args.task_id,
                     payload={"level": "ERROR", "message": error_message},
                     request_id=envelope.request_id,
                 )
@@ -454,12 +454,12 @@ def _run_loop(plugin: ExecutorPlugin, args: argparse.Namespace) -> int:
                     ).to_dict()
                 )
             except Exception as exc:
-                logger.exception("worker command failed step_id={} error={}", args.step_id, exc)
+                logger.exception("worker command failed task_id={} error={}", args.task_id, exc)
                 error_message = str(exc)
                 _publish_event(
                     pub_socket=pub_socket,
                     event_type="worker",
-                    step_id=args.step_id,
+                    task_id=args.task_id,
                     payload={"level": "ERROR", "message": error_message},
                     request_id=envelope.request_id,
                 )
@@ -477,13 +477,13 @@ def _run_loop(plugin: ExecutorPlugin, args: argparse.Namespace) -> int:
         try:
             with _bind_plugin_log_bridge(
                 pub_socket=pub_socket,
-                step_id=args.step_id,
+                task_id=args.task_id,
                 plugin_id=args.plugin_id,
                 request_id="",
             ):
                 _await(plugin.on_unload())
         except Exception:
-            logger.exception("worker on_unload failed step_id={}", args.step_id)
+            logger.exception("worker on_unload failed task_id={}", args.task_id)
         finally:
             loop.close()
             asyncio.set_event_loop(None)
@@ -497,7 +497,7 @@ def _run_loop(plugin: ExecutorPlugin, args: argparse.Namespace) -> int:
 def run_worker(plugin: ExecutorPlugin) -> None:
     """Entry point called by each plugin's ``worker.py`` / ``__main__.py``.
 
-    Parses CLI arguments (``--plugin-id``, ``--step-id``, ``--command-endpoint``,
+    Parses CLI arguments (``--plugin-id``, ``--task-id``, ``--command-endpoint``,
     ``--event-endpoint``) and starts the ZMQ command loop.
     """
     args = _parse_args()

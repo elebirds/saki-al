@@ -9,7 +9,7 @@ from saki_plugin_sdk.ipc import protocol
 def test_event_frames_roundtrip_json_payload():
     envelope = protocol.WorkerEventEnvelope(
         event_type="progress",
-        step_id="step-1",
+        task_id="step-1",
         ts=123,
         request_id="req-1",
     )
@@ -21,14 +21,14 @@ def test_event_frames_roundtrip_json_payload():
     topic, parsed_envelope, payload = protocol.parse_event_frames(frames)
     assert topic == "progress"
     assert parsed_envelope.event_type == "progress"
-    assert parsed_envelope.step_id == "step-1"
+    assert parsed_envelope.task_id == "step-1"
     assert payload == {"epoch": 1, "step": 1}
 
 
 def test_event_frames_roundtrip_binary_payload():
     envelope = protocol.WorkerEventEnvelope(
         event_type="worker",
-        step_id="step-2",
+        task_id="step-2",
         ts=456,
         request_id="req-2",
     )

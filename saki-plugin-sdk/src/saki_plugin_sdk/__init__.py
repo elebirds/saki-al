@@ -9,7 +9,7 @@ from saki_plugin_sdk.base import (
     default_step_runtime_requirements,
     resolve_step_runtime_requirements,
 )
-from saki_plugin_sdk.types import StepRuntimeContext
+from saki_plugin_sdk.types import TaskRuntimeContext
 from saki_plugin_sdk.capability_types import HostCapabilitySnapshot, RuntimeCapabilitySnapshot, GpuDeviceCapability
 from saki_plugin_sdk.profile_spec import RuntimeProfileSpec, parse_runtime_profiles
 from saki_plugin_sdk.device_binding import DeviceBinding
@@ -58,7 +58,7 @@ __all__ = [
     "StepRuntimeRequirements",
     "default_step_runtime_requirements",
     "resolve_step_runtime_requirements",
-    "StepRuntimeContext",
+    "TaskRuntimeContext",
     "HostCapabilitySnapshot",
     "RuntimeCapabilitySnapshot",
     "GpuDeviceCapability",

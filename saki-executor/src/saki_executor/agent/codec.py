@@ -37,7 +37,7 @@ _ENUM_TO_STATUS: dict[int, str] = {
     pb.SKIPPED: StepStatus.SKIPPED.value,
 }
 
-_STEP_TYPE_TO_TEXT: dict[int, str] = {
+_TASK_TYPE_TO_TEXT: dict[int, str] = {
     pb.TRAIN: "train",
     pb.EVAL: "eval",
     pb.SCORE: "score",
@@ -83,9 +83,7 @@ _ACK_TYPE_TO_TEXT: dict[int, str] = {
 _TEXT_TO_ACK_TYPE: dict[str, int] = {
     "register": pb.ACK_TYPE_REGISTER,
     "assign_task": pb.ACK_TYPE_ASSIGN_TASK,
-    "assign_step": pb.ACK_TYPE_ASSIGN_TASK,
     "stop_task": pb.ACK_TYPE_STOP_TASK,
-    "stop_step": pb.ACK_TYPE_STOP_TASK,
     "request": pb.ACK_TYPE_REQUEST,
 }
 
@@ -103,13 +101,12 @@ _TEXT_TO_ACK_REASON: dict[str, int] = {
     "executor_busy": pb.ACK_REASON_EXECUTOR_BUSY,
     "stopping": pb.ACK_REASON_STOPPING,
     "task_not_running": pb.ACK_REASON_TASK_NOT_RUNNING,
-    "step_not_running": pb.ACK_REASON_TASK_NOT_RUNNING,
     "rejected": pb.ACK_REASON_REJECTED,
 }
 
 
-def _resolve_step_id(step_id: str | None) -> str:
-    value = str(step_id or "").strip()
+def _resolve_task_id(task_id: str | None) -> str:
+    value = str(task_id or "").strip()
     return value
 
 
@@ -318,10 +315,9 @@ def build_heartbeat_message(
     executor_id: str,
     busy: bool,
     current_task_id: str | None = None,
-    current_step_id: str | None = None,
     resources: Mapping[str, Any],
 ) -> pb.RuntimeMessage:
-    task_id = str(current_task_id or current_step_id or "")
+    task_id = str(current_task_id or "")
     return pb.RuntimeMessage(
         heartbeat=pb.Heartbeat(
             request_id=request_id,
@@ -358,7 +354,6 @@ def build_data_request_message(
     *,
     request_id: str,
     task_id: str | None = None,
-    step_id: str | None = None,
     query_type: str,
     project_id: str,
     commit_id: str,
@@ -367,7 +362,7 @@ def build_data_request_message(
     preferred_chunk_bytes: int = 0,
     max_uncompressed_bytes: int = 0,
 ) -> pb.RuntimeMessage:
-    task_id_value = str(task_id or step_id or "")
+    task_id_value = str(task_id or "")
     return pb.RuntimeMessage(
         data_request=pb.DataRequest(
             request_id=request_id,
@@ -387,11 +382,10 @@ def build_upload_ticket_request_message(
     *,
     request_id: str,
     task_id: str | None = None,
-    step_id: str | None = None,
     artifact_name: str,
     content_type: str,
 ) -> pb.RuntimeMessage:
-    task_id_value = str(task_id or step_id or "")
+    task_id_value = str(task_id or "")
     return pb.RuntimeMessage(
         upload_ticket_request=pb.UploadTicketRequest(
             request_id=request_id,
@@ -402,16 +396,16 @@ def build_upload_ticket_request_message(
     )
 
 
-def build_step_event_message(
+def build_task_event_message(
     *,
     request_id: str,
-    step_id: str,
+    task_id: str,
     seq: int,
     ts: int,
     event_type: str,
     payload: Mapping[str, Any],
 ) -> pb.RuntimeMessage:
-    task_id = str(step_id)
+    task_id = str(task_id)
     task_event = pb.TaskEvent(
         request_id=request_id,
         task_id=task_id,
@@ -465,17 +459,17 @@ def build_step_event_message(
     return pb.RuntimeMessage(task_event=task_event)
 
 
-def build_step_result_message(
+def build_task_result_message(
     *,
     request_id: str,
-    step_id: str,
+    task_id: str,
     status: str | StepStatus,
     metrics: Mapping[str, Any],
     artifacts: Mapping[str, Any],
     candidates: list[dict[str, Any]],
     error_message: str = "",
 ) -> pb.RuntimeMessage:
-    task_id = str(step_id)
+    task_id = str(task_id)
     task_result = pb.TaskResult(
         request_id=request_id,
         task_id=task_id,
@@ -529,38 +523,36 @@ def set_message_request_id(message: pb.RuntimeMessage, request_id: str) -> None:
         setattr(payload, "request_id", request_id)
 
 
-def parse_assign_step(assign_step: pb.AssignTask) -> dict[str, Any]:
-    step_payload = assign_step.task
-    task_id = _resolve_step_id(step_payload.task_id)
-    round_id = str(step_payload.round_id or "")
-    depends_on_task_ids = list(step_payload.depends_on_task_ids or [])
+def parse_assign_task(assign_task: pb.AssignTask) -> dict[str, Any]:
+    task_payload = assign_task.task
+    task_id = _resolve_task_id(task_payload.task_id)
+    round_id = str(task_payload.round_id or "")
+    depends_on_task_ids = list(task_payload.depends_on_task_ids or [])
+    task_type = _TASK_TYPE_TO_TEXT.get(int(task_payload.task_type), "")
     return {
-        "step_id": task_id,
         "task_id": task_id,
         "round_id": round_id,
-        "loop_id": step_payload.loop_id,
-        "project_id": step_payload.project_id,
-        "input_commit_id": step_payload.input_commit_id,
-        "step_type": _STEP_TYPE_TO_TEXT.get(int(step_payload.step_type), ""),
-        "dispatch_kind": _DISPATCH_KIND_TO_TEXT.get(int(step_payload.dispatch_kind), ""),
-        "plugin_id": step_payload.plugin_id,
-        "mode": _LOOP_MODE_TO_TEXT.get(int(step_payload.mode), ""),
-        "query_strategy": step_payload.query_strategy,
-        "resolved_params": struct_to_dict(step_payload.resolved_params),
-        "resources": _resource_summary_to_dict(step_payload.resources),
-        "round_index": int(step_payload.round_index or 0),
-        "attempt": int(step_payload.attempt or 1),
-        "depends_on_step_ids": [str(v) for v in depends_on_task_ids],
+        "loop_id": task_payload.loop_id,
+        "project_id": task_payload.project_id,
+        "input_commit_id": task_payload.input_commit_id,
+        "task_type": task_type,
+        "dispatch_kind": _DISPATCH_KIND_TO_TEXT.get(int(task_payload.dispatch_kind), ""),
+        "plugin_id": task_payload.plugin_id,
+        "mode": _LOOP_MODE_TO_TEXT.get(int(task_payload.mode), ""),
+        "query_strategy": task_payload.query_strategy,
+        "resolved_params": struct_to_dict(task_payload.resolved_params),
+        "resources": _resource_summary_to_dict(task_payload.resources),
+        "round_index": int(task_payload.round_index or 0),
+        "attempt": int(task_payload.attempt or 1),
         "depends_on_task_ids": [str(v) for v in depends_on_task_ids],
     }
 
 
 def parse_data_response(data_response: pb.DataResponse) -> dict[str, Any]:
-    task_id = _resolve_step_id(data_response.task_id)
+    task_id = _resolve_task_id(data_response.task_id)
     return {
         "request_id": data_response.request_id,
         "reply_to": data_response.reply_to,
-        "step_id": task_id,
         "task_id": task_id,
         "query_type": query_type_to_text(data_response.query_type),
         "payload_id": data_response.payload_id,
@@ -577,11 +569,10 @@ def parse_data_response(data_response: pb.DataResponse) -> dict[str, Any]:
 
 
 def parse_upload_ticket_response(upload_ticket: pb.UploadTicketResponse) -> dict[str, Any]:
-    task_id = _resolve_step_id(upload_ticket.task_id)
+    task_id = _resolve_task_id(upload_ticket.task_id)
     return {
         "request_id": upload_ticket.request_id,
         "reply_to": upload_ticket.reply_to,
-        "step_id": task_id,
         "task_id": task_id,
         "upload_url": upload_ticket.upload_url,
         "storage_uri": upload_ticket.storage_uri,
@@ -590,7 +581,7 @@ def parse_upload_ticket_response(upload_ticket: pb.UploadTicketResponse) -> dict
 
 
 def parse_error(error_payload: pb.Error) -> dict[str, Any]:
-    task_id = _resolve_step_id(error_payload.task_id)
+    task_id = _resolve_task_id(error_payload.task_id)
     query_type = ""
     if int(error_payload.query_type) != pb.RUNTIME_QUERY_TYPE_UNSPECIFIED:
         query_type = query_type_to_text(error_payload.query_type)
@@ -600,7 +591,6 @@ def parse_error(error_payload: pb.Error) -> dict[str, Any]:
         "message": error_payload.message,
         "reply_to": error_payload.reply_to,
         "ack_for": error_payload.ack_for,
-        "step_id": task_id,
         "task_id": task_id,
         "query_type": query_type,
         "reason": error_payload.reason,

@@ -14,15 +14,15 @@ from saki_plugin_sdk import (
     ExecutionBindingContext,
     HostCapabilitySnapshot,
     RuntimeCapabilitySnapshot,
-    StepRuntimeContext,
+    TaskRuntimeContext,
 )
 from saki_plugin_sdk.ipc import protocol
 
 
 @pytest.mark.anyio
 async def test_plugin_worker_lifecycle_demo_plugin(tmp_path: Path):
-    step_id = "worker-step-1"
-    workspace = Workspace(str(tmp_path / "runs"), step_id)
+    task_id = "worker-step-1"
+    workspace = Workspace(str(tmp_path / "runs"), task_id)
     workspace.ensure()
 
     event_rows: list[tuple[str, dict[str, Any]]] = []
@@ -46,7 +46,7 @@ async def test_plugin_worker_lifecycle_demo_plugin(tmp_path: Path):
 
     client = PluginWorkerClient(
         plugin_id="demo_det_v1",
-        step_id=step_id,
+        task_id=task_id,
         event_handler=on_event,
         python_executable=worker_python,
         entrypoint_module=handle.entrypoint,
@@ -73,12 +73,12 @@ async def test_plugin_worker_lifecycle_demo_plugin(tmp_path: Path):
     protocol.write_json(predict_params_path, {"topk": 1})
     dataset_ir = irpb.DataBatchIR()
     dataset_ir_path.write_bytes(dataset_ir.SerializeToString())
-    runtime_context = StepRuntimeContext(
-        step_id=step_id,
+    runtime_context = TaskRuntimeContext(
+        task_id=task_id,
         round_id="round-1",
         round_index=1,
         attempt=1,
-        step_type="train",
+        task_type="train",
         mode="simulation",
         split_seed=1,
         train_seed=2,
@@ -173,7 +173,7 @@ async def test_plugin_worker_lifecycle_demo_plugin(tmp_path: Path):
         report_path = Path(str(report_artifact.get("path") or ""))
         assert report_path.exists()
         report_payload = protocol.read_json(report_path)
-        assert report_payload.get("meta", {}).get("context_step_type") == "train"
+        assert report_payload.get("meta", {}).get("context_task_type") == "train"
         assert report_payload.get("meta", {}).get("context_mode") == "simulation"
         assert float(report_payload.get("meta", {}).get("context_train_seed") or 0) == 2.0
 

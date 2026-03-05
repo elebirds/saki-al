@@ -13,7 +13,7 @@ from saki_plugin_sdk import (
     PluginManifest,
     PluginValidationError,
     RuntimeCapabilitySnapshot,
-    StepRuntimeContext,
+    TaskRuntimeContext,
     TrainOutput,
     WorkspaceProtocol,
 )
@@ -83,13 +83,13 @@ class _DummyPlugin(ExecutorPlugin):
         return []
 
 
-def _context() -> StepRuntimeContext:
-    return StepRuntimeContext(
-        step_id="step-1",
+def _context() -> TaskRuntimeContext:
+    return TaskRuntimeContext(
+        task_id="step-1",
         round_id="round-1",
         round_index=1,
         attempt=1,
-        step_type="train",
+        task_type="train",
         mode="active_learning",
         split_seed=11,
         train_seed=22,

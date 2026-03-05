@@ -103,7 +103,7 @@ class CommandServer:
             return
 
         if command == "stop":
-            await self._stop_step(args)
+            await self._stop_task(args)
             return
 
         if command in {"loglevel", "ll"}:
@@ -126,7 +126,7 @@ class CommandServer:
             "  refresh-hw           手动刷新宿主硬件探测缓存\n"
             "  connect              启用并发起连接\n"
             "  disconnect [--force] 断开并暂停连接（任务运行中默认拒绝，--force 会先 stop）\n"
-            "  stop [step_id]       停止当前任务或指定 step_id\n"
+            "  stop [task_id]       停止当前任务或指定 task_id\n"
             "  loglevel <LEVEL>     调整日志级别（DEBUG/INFO/WARNING/ERROR）\n"
             "  loglevel             查看当前日志级别\n"
             "  quit | exit          退出执行器进程"
@@ -139,8 +139,8 @@ class CommandServer:
             "执行器状态:\n"
             "  executor_state={}\n"
             "  busy={}\n"
-            "  current_step_id={}\n"
-            "  last_step_id={}\n"
+            "  current_task_id={}\n"
+            "  last_task_id={}\n"
             "  last_step_status={}\n"
             "  running={}\n"
             "  connected={}\n"
@@ -152,8 +152,8 @@ class CommandServer:
             "  log_level={}",
             runtime_status["executor_state"],
             runtime_status["busy"],
-            runtime_status["current_step_id"],
-            runtime_status["last_step_id"],
+            runtime_status["current_task_id"],
+            runtime_status["last_task_id"],
             runtime_status["last_step_status"],
             transport_status["running"],
             transport_status["connected"],
@@ -191,16 +191,16 @@ class CommandServer:
         ]
         logger.info("已加载插件:\n{}", "\n".join(plugin_lines))
 
-    async def _stop_step(self, args: list[str]) -> None:
-        step_id = args[0] if args else self.step_manager.current_step_id
-        if not step_id:
-            logger.warning("当前没有可停止的任务，请提供 step_id。")
+    async def _stop_task(self, args: list[str]) -> None:
+        task_id = args[0] if args else self.step_manager.current_task_id
+        if not task_id:
+            logger.warning("当前没有可停止的任务，请提供 task_id。")
             return
-        stopped = await self.step_manager.stop_step(str(step_id))
+        stopped = await self.step_manager.stop_task(str(task_id))
         if stopped:
-            logger.info("已发送停止请求，step_id={}", step_id)
+            logger.info("已发送停止请求，task_id={}", task_id)
         else:
-            logger.warning("停止失败，step_id={} 未在运行或不可停止。", step_id)
+            logger.warning("停止失败，task_id={} 未在运行或不可停止。", task_id)
 
     def _set_log_level(self, args: list[str]) -> None:
         if not args:

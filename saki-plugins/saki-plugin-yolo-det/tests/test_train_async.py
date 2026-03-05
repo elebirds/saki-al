@@ -13,7 +13,7 @@ class _WorkspaceStub:
     def __init__(self, root: Path) -> None:
         self.root = root
         self.data_dir = root / "data"
-        self.step_id = "step-train-async"
+        self.task_id = "step-train-async"
         self.data_dir.mkdir(parents=True, exist_ok=True)
 
 

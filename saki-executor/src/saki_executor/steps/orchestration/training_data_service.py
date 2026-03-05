@@ -5,9 +5,9 @@ from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
 from saki_executor.cache.asset_cache import AssetCache
-from saki_executor.steps.contracts import StepExecutionRequest
+from saki_executor.steps.contracts import TaskExecutionRequest
 from saki_executor.steps.services import IRDatasetBuildReport, build_training_batch_ir
-from saki_plugin_sdk import StepRuntimeContext, resolve_train_val_split
+from saki_plugin_sdk import TaskRuntimeContext, resolve_train_val_split
 from saki_ir.proto.saki.ir.v1 import annotation_ir_pb2 as irpb
 
 FetchAllFn = Callable[[str, str, str, str], Awaitable[list[dict[str, Any]]]]
@@ -40,25 +40,25 @@ class TrainingDataService:
     async def prepare(
         self,
         *,
-        request: StepExecutionRequest,
+        request: TaskExecutionRequest,
         plugin_params: dict[str, Any],
-        runtime_context: StepRuntimeContext,
+        runtime_context: TaskRuntimeContext,
         emit: EmitFn,
     ) -> TrainingDataBundle:
         labels = await self._fetch_all(
-            request.step_id,
+            request.task_id,
             "labels",
             request.project_id,
             request.input_commit_id,
         )
         samples = await self._fetch_all(
-            request.step_id,
+            request.task_id,
             "samples",
             request.project_id,
             request.input_commit_id,
         )
         annotations = await self._fetch_all(
-            request.step_id,
+            request.task_id,
             "annotations",
             request.project_id,
             request.input_commit_id,
@@ -151,7 +151,7 @@ class TrainingDataService:
                 str(asset_hash),
                 str(download_url),
                 protected=protected,
-                pin_step_id=request.step_id,
+                pin_task_id=request.task_id,
             )
             item["local_path"] = str(cached_path)
             protected.add(str(asset_hash))

@@ -31,16 +31,16 @@ async def test_unregistered_plugin_fails(tmp_path: Path):
 
     manager.set_transport(fake_send, fake_request)
 
-    accepted = await manager.assign_step(
+    accepted = await manager.assign_task(
         "assign-unknown-1",
         {
-            "step_id": "task-unknown-1",
+            "task_id": "task-unknown-1",
             "round_id": "job-unknown-1",
             "project_id": "project-1",
             "input_commit_id": "commit-1",
             "plugin_id": "non_existent_plugin",
             "mode": "simulation",
-            "step_type": "train",
+            "task_type": "train",
             "dispatch_kind": "dispatchable",
             "round_index": 1,
             "query_strategy": "random_baseline",

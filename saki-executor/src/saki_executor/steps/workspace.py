@@ -12,12 +12,12 @@ class Workspace:
     def __init__(
         self,
         runs_dir: str,
-        step_id: str,
+        task_id: str,
         *,
         round_id: str = "",
         attempt: int = 1,
     ):
-        self.step_id = str(step_id or "").strip()
+        self.task_id = str(task_id or "").strip()
         self.runs_root = Path(runs_dir)
         self.round_id = str(round_id or "").strip()
         self.attempt = max(1, int(attempt or 1))
@@ -25,11 +25,11 @@ class Workspace:
         if self.round_id:
             self.round_root = self.runs_root / "rounds" / self.round_id / f"attempt_{self.attempt}"
             self.steps_root = self.round_root / "steps"
-            self.root = self.steps_root / self.step_id
+            self.root = self.steps_root / self.task_id
         else:
             self.round_root = None
             self.steps_root = None
-            self.root = self.runs_root / self.step_id
+            self.root = self.runs_root / self.task_id
 
     @property
     def config_path(self) -> Path:
@@ -105,7 +105,7 @@ class Workspace:
             shutil.copy2(source, target)
         return target
 
-    def cache_model_artifact(self, artifact_name: str, source_path: Path, source_step_id: str) -> Path:
+    def cache_model_artifact(self, artifact_name: str, source_path: Path, source_task_id: str) -> Path:
         name = str(artifact_name or "").strip()
         if not name:
             raise ValueError("artifact_name is required")
@@ -120,7 +120,7 @@ class Workspace:
         if not isinstance(models, dict):
             models = {}
         models[name] = {
-            "source_step_id": str(source_step_id or self.step_id),
+            "source_task_id": str(source_task_id or self.task_id),
             "path": str(target),
             "updated_at": datetime.now(UTC).isoformat(),
         }
@@ -137,12 +137,12 @@ class Workspace:
         shutil.copytree(cache_path, self.data_dir)
         return True
 
-    def store_shared_data_cache(self, fingerprint: str, source_step_id: str, step_type: str) -> Path:
+    def store_shared_data_cache(self, fingerprint: str, source_task_id: str, task_type: str) -> Path:
         key = str(fingerprint or "").strip()
         if not key:
             raise ValueError("fingerprint is required")
         if not self.data_dir.exists():
-            raise FileNotFoundError(f"step data dir not found: {self.data_dir}")
+            raise FileNotFoundError(f"task data dir not found: {self.data_dir}")
 
         self.shared_data_cache_dir.mkdir(parents=True, exist_ok=True)
         target = self.shared_data_cache_dir / key
@@ -159,8 +159,8 @@ class Workspace:
         if not isinstance(data_cache, dict):
             data_cache = {}
         data_cache[key] = {
-            "source_step_id": str(source_step_id or self.step_id),
-            "step_type": str(step_type or ""),
+            "source_task_id": str(source_task_id or self.task_id),
+            "task_type": str(task_type or ""),
             "path": str(target),
             "updated_at": datetime.now(UTC).isoformat(),
         }

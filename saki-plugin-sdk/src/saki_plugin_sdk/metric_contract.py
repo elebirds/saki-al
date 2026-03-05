@@ -15,8 +15,8 @@ _TRAIN_ALLOWED = frozenset(TRAIN_REQUIRED_KEYS)
 _EVAL_ALLOWED = frozenset(EVAL_REQUIRED_KEYS)
 
 
-def _normalize_step_type(step_type: str | None) -> str:
-    return str(step_type or "").strip().lower()
+def _normalize_task_type(task_type: str | None) -> str:
+    return str(task_type or "").strip().lower()
 
 
 def _normalize_metrics(metrics: Mapping[str, object]) -> dict[str, float]:
@@ -52,19 +52,19 @@ def _validate_allowed_and_ordered(
     metrics: dict[str, float],
     ordered_keys: tuple[str, ...],
     allowed_keys: frozenset[str],
-    step_type: str,
+    task_type: str,
 ) -> dict[str, float]:
     extra = sorted(key for key in metrics.keys() if key not in allowed_keys)
     if extra:
         raise PluginMetricContractError(
-            f"{METRIC_CONTRACT_ERROR_PREFIX}: step_type={step_type} has non-canonical metrics: {extra}"
+            f"{METRIC_CONTRACT_ERROR_PREFIX}: task_type={task_type} has non-canonical metrics: {extra}"
         )
     return {key: metrics[key] for key in ordered_keys if key in metrics}
 
 
-def validate_final_metrics(*, step_type: str, metrics: object) -> dict[str, float]:
-    normalized_step_type = _normalize_step_type(step_type)
-    if normalized_step_type not in {"train", "eval"}:
+def validate_final_metrics(*, task_type: str, metrics: object) -> dict[str, float]:
+    normalized_task_type = _normalize_task_type(task_type)
+    if normalized_task_type not in {"train", "eval"}:
         if metrics is None:
             return {}
         source = _ensure_mapping(metrics, allow_empty=True)
@@ -76,29 +76,29 @@ def validate_final_metrics(*, step_type: str, metrics: object) -> dict[str, floa
     if not source:
         return {}
     normalized = _normalize_metrics(source)
-    if normalized_step_type == "train":
+    if normalized_task_type == "train":
         return _validate_allowed_and_ordered(
             metrics=normalized,
             ordered_keys=TRAIN_REQUIRED_KEYS,
             allowed_keys=_TRAIN_ALLOWED,
-            step_type=normalized_step_type,
+            task_type=normalized_task_type,
         )
     return _validate_allowed_and_ordered(
         metrics=normalized,
         ordered_keys=EVAL_REQUIRED_KEYS,
         allowed_keys=_EVAL_ALLOWED,
-        step_type=normalized_step_type,
+        task_type=normalized_task_type,
     )
 
 
 def validate_metric_event(
     *,
-    step_type: str,
+    task_type: str,
     metrics: object,
     is_final: bool,
 ) -> dict[str, Any]:
-    normalized_step_type = _normalize_step_type(step_type)
-    if normalized_step_type not in {"train", "eval"}:
+    normalized_task_type = _normalize_task_type(task_type)
+    if normalized_task_type not in {"train", "eval"}:
         if not isinstance(metrics, Mapping):
             return {}
         return {str(key): value for key, value in metrics.items()}
@@ -108,16 +108,16 @@ def validate_metric_event(
     if not source:
         return {}
     normalized = _normalize_metrics(source)
-    if normalized_step_type == "train":
+    if normalized_task_type == "train":
         return _validate_allowed_and_ordered(
             metrics=normalized,
             ordered_keys=TRAIN_REQUIRED_KEYS,
             allowed_keys=_TRAIN_ALLOWED,
-            step_type="train",
+            task_type="train",
         )
     return _validate_allowed_and_ordered(
         metrics=normalized,
         ordered_keys=EVAL_REQUIRED_KEYS,
         allowed_keys=_EVAL_ALLOWED,
-        step_type="eval",
+        task_type="eval",
     )

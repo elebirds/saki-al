@@ -5,12 +5,12 @@ from typing import Any
 
 from saki_plugin_sdk.capability_types import HostCapabilitySnapshot, RuntimeCapabilitySnapshot
 from saki_plugin_sdk.device_binding import DeviceBinding
-from saki_plugin_sdk.types import StepRuntimeContext
+from saki_plugin_sdk.types import TaskRuntimeContext
 
 
 @dataclass(frozen=True)
 class ExecutionBindingContext:
-    step_context: StepRuntimeContext
+    step_context: TaskRuntimeContext
     host_capability: HostCapabilitySnapshot
     runtime_capability: RuntimeCapabilitySnapshot
     device_binding: DeviceBinding
@@ -43,7 +43,7 @@ class ExecutionBindingContext:
         if not isinstance(binding_raw, dict):
             raise ValueError("execution binding context missing device_binding")
         return cls(
-            step_context=StepRuntimeContext.from_dict(step_context_raw),
+            step_context=TaskRuntimeContext.from_dict(step_context_raw),
             host_capability=HostCapabilitySnapshot.from_dict(host_raw),
             runtime_capability=RuntimeCapabilitySnapshot.from_dict(runtime_raw),
             device_binding=DeviceBinding.from_dict(binding_raw),

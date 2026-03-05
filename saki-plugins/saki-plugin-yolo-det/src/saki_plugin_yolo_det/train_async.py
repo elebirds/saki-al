@@ -139,7 +139,7 @@ async def run_train_with_epoch_stream(
 
     train_thread = threading.Thread(
         target=_run_train,
-        name=f"yolo-train-{workspace.step_id}",
+        name=f"yolo-train-{workspace.task_id}",
         daemon=True,
     )
     train_thread.start()

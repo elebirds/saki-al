@@ -8,8 +8,8 @@ from typing import Any
 class StepReporter:
     """Serializes step events to a local ``events.jsonl`` file."""
 
-    def __init__(self, step_id: str, events_path: Path):
-        self.step_id = step_id
+    def __init__(self, task_id: str, events_path: Path):
+        self.task_id = task_id
         self.events_path = events_path
         self._lock = threading.Lock()
         self._seq = self._init_seq()
@@ -34,7 +34,7 @@ class StepReporter:
         with self._lock:
             self._seq += 1
             event = {
-                "step_id": self.step_id,
+                "task_id": self.task_id,
                 "seq": self._seq,
                 "ts": int(time.time()),
                 "event_type": event_type,

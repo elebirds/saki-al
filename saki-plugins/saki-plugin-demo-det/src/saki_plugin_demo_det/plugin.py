@@ -7,7 +7,7 @@ from saki_plugin_sdk import (
     EventCallback,
     ExecutorPlugin,
     RuntimeCapabilitySnapshot,
-    StepRuntimeContext,
+    TaskRuntimeContext,
     TrainOutput,
     WorkspaceProtocol,
 )
@@ -23,7 +23,7 @@ class DemoDetectionPlugin(ExecutorPlugin):
     async def probe_runtime_capability(
         self,
         *,
-        context: StepRuntimeContext,
+        context: TaskRuntimeContext,
     ) -> RuntimeCapabilitySnapshot:
         del context
         return RuntimeCapabilitySnapshot(
@@ -92,5 +92,5 @@ class DemoDetectionPlugin(ExecutorPlugin):
     ) -> TrainOutput:
         return await self._internal.eval(workspace, params, emit, context=context)
 
-    async def stop(self, step_id: str) -> None:
-        await self._internal.stop(step_id)
+    async def stop(self, task_id: str) -> None:
+        await self._internal.stop(task_id)

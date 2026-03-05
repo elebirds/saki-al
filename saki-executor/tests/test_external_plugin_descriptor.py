@@ -4,7 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from saki_executor.plugins.external_handle import ExternalPluginDescriptor
-from saki_executor.steps.contracts import StepExecutionRequest
+from saki_executor.steps.contracts import TaskExecutionRequest
 from saki_executor.steps.orchestration.plugin_resolution_service import PluginResolutionService
 from saki_plugin_sdk import HostCapabilitySnapshot, PluginManifest
 
@@ -15,7 +15,7 @@ def test_external_plugin_descriptor_is_metadata_only(tmp_path: Path):
             "plugin_id": "descriptor_only_plugin",
             "version": "3.1.0",
             "display_name": "Descriptor Only Plugin",
-            "supported_step_types": ["train"],
+            "supported_task_types": ["train"],
             "supported_strategies": ["uncertainty_1_minus_max_conf"],
             "runtime_profiles": [
                 {
@@ -55,7 +55,7 @@ def test_plugin_resolution_accepts_descriptor_runtime_profile_specs(tmp_path: Pa
             "plugin_id": "descriptor_profile_plugin",
             "version": "3.1.0",
             "display_name": "Descriptor Profile Plugin",
-            "supported_step_types": ["train"],
+            "supported_task_types": ["train"],
             "supported_strategies": ["uncertainty_1_minus_max_conf"],
             "runtime_profiles": [
                 {
@@ -86,7 +86,7 @@ def test_plugin_resolution_passes_deterministic_level_and_strong_flag(tmp_path: 
             "plugin_id": "descriptor_resolve_plugin",
             "version": "3.1.0",
             "display_name": "Descriptor Resolve Plugin",
-            "supported_step_types": ["train"],
+            "supported_task_types": ["train"],
             "supported_strategies": ["random_baseline"],
             "runtime_profiles": [
                 {
@@ -139,10 +139,10 @@ def test_plugin_resolution_passes_deterministic_level_and_strong_flag(tmp_path: 
             }
         ),
     )
-    request = StepExecutionRequest(
-        step_id="step-1",
+    request = TaskExecutionRequest(
+        task_id="step-1",
         round_id="round-1",
-        step_type="train",
+        task_type="train",
         dispatch_kind="dispatchable",
         plugin_id=descriptor.plugin_id,
         resolved_params={
@@ -157,7 +157,7 @@ def test_plugin_resolution_passes_deterministic_level_and_strong_flag(tmp_path: 
         mode="active_learning",
         round_index=1,
         attempt=1,
-        depends_on_step_ids=[],
+        depends_on_task_ids=[],
         raw_payload={},
     )
 

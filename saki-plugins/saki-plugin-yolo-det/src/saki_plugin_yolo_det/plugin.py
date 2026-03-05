@@ -9,7 +9,7 @@ from saki_plugin_sdk import (
     EventCallback,
     ExecutorPlugin,
     RuntimeCapabilitySnapshot,
-    StepRuntimeContext,
+    TaskRuntimeContext,
     TrainOutput,
     WorkspaceProtocol,
 )
@@ -31,14 +31,14 @@ class YoloDetectionPlugin(ExecutorPlugin):
             f"支持的策略：{self.supported_strategies}"
         )
 
-    async def on_start(self, step_id: str, workspace: WorkspaceProtocol) -> None:
-        await super().on_start(step_id, workspace)
+    async def on_start(self, task_id: str, workspace: WorkspaceProtocol) -> None:
+        await super().on_start(task_id, workspace)
         workspace.ensure()
-        self.logger.debug(f"step {step_id} 的工作目录已准备完成：{workspace.root}")
+        self.logger.debug(f"step {task_id} 的工作目录已准备完成：{workspace.root}")
 
-    async def on_stop(self, step_id: str, workspace: WorkspaceProtocol) -> None:
+    async def on_stop(self, task_id: str, workspace: WorkspaceProtocol) -> None:
         del workspace
-        self.logger.debug(f"step {step_id} 已完成")
+        self.logger.debug(f"step {task_id} 已完成")
 
     async def on_unload(self) -> None:
         self.logger.info("YOLO 检测插件正在卸载")
@@ -47,7 +47,7 @@ class YoloDetectionPlugin(ExecutorPlugin):
         self,
         params: dict[str, Any],
         *,
-        context: StepRuntimeContext | ExecutionBindingContext | None = None,
+        context: TaskRuntimeContext | ExecutionBindingContext | None = None,
     ) -> None:
         del context
         self._runtime.validate_params(params)
@@ -55,7 +55,7 @@ class YoloDetectionPlugin(ExecutorPlugin):
     async def probe_runtime_capability(
         self,
         *,
-        context: StepRuntimeContext,
+        context: TaskRuntimeContext,
     ) -> RuntimeCapabilitySnapshot:
         del context
         return self._runtime.probe_runtime_capability()
@@ -152,9 +152,9 @@ class YoloDetectionPlugin(ExecutorPlugin):
             context=context,
         )
 
-    async def stop(self, step_id: str) -> None:
-        self.logger.info(f"收到 step {step_id} 的停止请求")
-        await self._runtime.stop(step_id)
+    async def stop(self, task_id: str) -> None:
+        self.logger.info(f"收到 step {task_id} 的停止请求")
+        await self._runtime.stop(task_id)
 
 
 __all__ = ["YoloDetectionPlugin"]

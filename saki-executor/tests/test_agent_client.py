@@ -46,7 +46,7 @@ async def test_disconnect_rejects_when_busy_without_force(tmp_path):
     client = _build_client(tmp_path)
     busy_task = asyncio.create_task(asyncio.sleep(60))
     client.step_manager._task = busy_task  # noqa: SLF001
-    client.step_manager.current_step_id = "task-1"
+    client.step_manager.current_task_id = "task-1"
     try:
         disconnected = await client.disconnect(force=False)
         assert disconnected is False
@@ -54,7 +54,7 @@ async def test_disconnect_rejects_when_busy_without_force(tmp_path):
     finally:
         busy_task.cancel()
         client.step_manager._task = None  # noqa: SLF001
-        client.step_manager.current_step_id = None
+        client.step_manager.current_task_id = None
 
 
 @pytest.mark.anyio
@@ -79,17 +79,17 @@ async def test_disconnect_force_waits_for_stop_before_disconnect(tmp_path, monke
 
     busy_task = asyncio.create_task(asyncio.sleep(60))
     client.step_manager._task = busy_task  # noqa: SLF001
-    client.step_manager.current_step_id = "task-force-1"
+    client.step_manager.current_task_id = "task-force-1"
     stop_called: list[str] = []
 
     async def fake_stop(task_id: str) -> bool:
         stop_called.append(task_id)
         client.step_manager._task = None  # noqa: SLF001
-        client.step_manager.current_step_id = None
+        client.step_manager.current_task_id = None
         busy_task.cancel()
         return True
 
-    client.step_manager.stop_step = fake_stop  # type: ignore[method-assign]
+    client.step_manager.stop_task = fake_stop  # type: ignore[method-assign]
 
     disconnected = await client.disconnect(force=True)
     assert disconnected is True
@@ -98,19 +98,19 @@ async def test_disconnect_force_waits_for_stop_before_disconnect(tmp_path, monke
 
 
 @pytest.mark.anyio
-async def test_duplicate_assign_step_returns_cached_ack_without_reassign(tmp_path):
+async def test_duplicate_assign_task_returns_cached_ack_without_reassign(tmp_path):
     client = _build_client(tmp_path)
     assign_calls: list[str] = []
     sent_messages: list[pb.RuntimeMessage] = []
 
-    async def fake_assign_step(request_id: str, payload: dict):  # noqa: ARG001
+    async def fake_assign_task(request_id: str, payload: dict):  # noqa: ARG001
         assign_calls.append(request_id)
         return True
 
     async def fake_send_message(message: pb.RuntimeMessage):
         sent_messages.append(message)
 
-    client.step_manager.assign_step = fake_assign_step  # type: ignore[method-assign]
+    client.step_manager.assign_task = fake_assign_task  # type: ignore[method-assign]
     client.send_message = fake_send_message  # type: ignore[method-assign]
 
     incoming = pb.RuntimeMessage(
@@ -122,7 +122,7 @@ async def test_duplicate_assign_step_returns_cached_ack_without_reassign(tmp_pat
                 project_id="22222222-2222-2222-2222-222222222222",
                 loop_id="33333333-3333-3333-3333-333333333333",
                 input_commit_id="44444444-4444-4444-4444-444444444444",
-                step_type=pb.TRAIN,
+                task_type=pb.TRAIN,
                 plugin_id="demo_det_v1",
                 mode=pb.ACTIVE_LEARNING,
             ),
@@ -140,7 +140,7 @@ async def test_duplicate_assign_step_returns_cached_ack_without_reassign(tmp_pat
 
 
 @pytest.mark.anyio
-async def test_invalid_assign_step_returns_rejected_ack(tmp_path):
+async def test_invalid_assign_task_returns_rejected_ack(tmp_path):
     client = _build_client(tmp_path)
     sent_messages: list[pb.RuntimeMessage] = []
 
@@ -158,7 +158,7 @@ async def test_invalid_assign_step_returns_rejected_ack(tmp_path):
                 project_id="22222222-2222-2222-2222-222222222222",
                 loop_id="33333333-3333-3333-3333-333333333333",
                 input_commit_id="44444444-4444-4444-4444-444444444444",
-                step_type=pb.RUNTIME_STEP_TYPE_UNSPECIFIED,
+                task_type=pb.RUNTIME_TASK_TYPE_UNSPECIFIED,
                 plugin_id="demo_det_v1",
                 mode=pb.MANUAL,
                 query_strategy="random_baseline",
@@ -175,23 +175,23 @@ async def test_invalid_assign_step_returns_rejected_ack(tmp_path):
     assert ack.ack_for == "assign-invalid-1"
     assert ack.status == pb.ERROR
     assert ack.reason == pb.ACK_REASON_REJECTED
-    assert "step_type is required" in ack.detail
+    assert "task_type is required" in ack.detail
 
 
 @pytest.mark.anyio
-async def test_duplicate_stop_step_returns_cached_ack_without_restop(tmp_path):
+async def test_duplicate_stop_task_returns_cached_ack_without_restop(tmp_path):
     client = _build_client(tmp_path)
     stop_calls: list[str] = []
     sent_messages: list[pb.RuntimeMessage] = []
 
-    async def fake_stop_step(step_id: str):
-        stop_calls.append(step_id)
+    async def fake_stop_task(task_id: str):
+        stop_calls.append(task_id)
         return True
 
     async def fake_send_message(message: pb.RuntimeMessage):
         sent_messages.append(message)
 
-    client.step_manager.stop_step = fake_stop_step  # type: ignore[method-assign]
+    client.step_manager.stop_task = fake_stop_task  # type: ignore[method-assign]
     client.send_message = fake_send_message  # type: ignore[method-assign]
 
     incoming = pb.RuntimeMessage(

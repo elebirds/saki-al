@@ -11,7 +11,7 @@ from saki_plugin_sdk import (
     ExecutorPlugin,
     HostCapabilitySnapshot,
     RuntimeCapabilitySnapshot,
-    StepRuntimeContext,
+    TaskRuntimeContext,
     TrainOutput,
 )
 from saki_plugin_sdk.exceptions import PluginMetricContractError
@@ -29,12 +29,12 @@ class _FakePubSocket:
 
 def _execution_context(step_type: str) -> ExecutionBindingContext:
     return ExecutionBindingContext(
-        step_context=StepRuntimeContext(
-            step_id="step-contract",
+        step_context=TaskRuntimeContext(
+            task_id="step-contract",
             round_id="round-contract",
             round_index=1,
             attempt=1,
-            step_type=step_type,
+            task_type=step_type,
             mode="active_learning",
             split_seed=1,
             train_seed=2,
@@ -104,7 +104,7 @@ def test_run_train_like_fails_when_final_metrics_have_non_canonical_key(tmp_path
                     "params_path": str(params_path),
                     "result_path": str(result_path),
                 },
-                step_id="step-contract",
+                task_id="step-contract",
                 request_id="req-contract",
                 pub_socket=_FakePubSocket(),
                 method_name="train",
@@ -157,7 +157,7 @@ def test_run_train_like_fails_when_metric_event_violate_contract(tmp_path: Path)
                     "params_path": str(params_path),
                     "result_path": str(result_path),
                 },
-                step_id="step-contract",
+                task_id="step-contract",
                 request_id="req-contract",
                 pub_socket=_FakePubSocket(),
                 method_name="eval",
@@ -198,7 +198,7 @@ def test_run_train_like_allows_empty_final_metrics(tmp_path: Path):
                 "params_path": str(params_path),
                 "result_path": str(result_path),
             },
-            step_id="step-contract",
+            task_id="step-contract",
             request_id="req-contract",
             pub_socket=_FakePubSocket(),
             method_name="train",

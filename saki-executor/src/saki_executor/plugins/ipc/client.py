@@ -13,7 +13,7 @@ from loguru import logger
 from saki_executor.core.config import settings
 from saki_executor.plugins.ipc.log_coalescer import LogCoalescer
 from saki_executor.plugins.ipc.log_normalizer import normalize_log_payload, normalize_stdio_log_line
-from saki_plugin_sdk import ExecutionBindingContext, StepRuntimeContext
+from saki_plugin_sdk import ExecutionBindingContext, TaskRuntimeContext
 from saki_plugin_sdk.ipc import protocol
 
 try:
@@ -37,14 +37,14 @@ class PluginWorkerClient:
         self,
         *,
         plugin_id: str,
-        step_id: str,
+        task_id: str,
         event_handler: EventHandler,
         python_executable: str | Path | None = None,
         entrypoint_module: str | None = None,
         extra_env: dict[str, str] | None = None,
     ) -> None:
         self._plugin_id = plugin_id
-        self._step_id = step_id
+        self._task_id = task_id
         self._event_handler = event_handler
         self._python_executable = str(python_executable) if python_executable else sys.executable
         self._entrypoint_module = entrypoint_module
@@ -91,7 +91,7 @@ class PluginWorkerClient:
         *,
         action: str,
         payload: dict[str, Any],
-        runtime_context: StepRuntimeContext | dict[str, Any] | None = None,
+        runtime_context: TaskRuntimeContext | dict[str, Any] | None = None,
         execution_binding_context: ExecutionBindingContext | dict[str, Any] | None = None,
         timeout_sec: int | None = None,
     ) -> protocol.WorkerReplyEnvelope:
@@ -107,7 +107,7 @@ class PluginWorkerClient:
             cmd = protocol.WorkerCommandEnvelope(
                 request_id=request_id,
                 action=action,
-                step_id=self._step_id,
+                task_id=self._task_id,
             )
             command_payload = protocol.build_command_payload(
                 envelope=cmd,
@@ -159,7 +159,7 @@ class PluginWorkerClient:
     def _prepare_endpoints(self) -> None:
         raw_dir = Path(settings.PLUGIN_WORKER_IPC_DIR)
         raw_dir.mkdir(parents=True, exist_ok=True)
-        short_id = hashlib.md5(self._step_id.encode("utf-8")).hexdigest()[:8]
+        short_id = hashlib.md5(self._task_id.encode("utf-8")).hexdigest()[:8]
         cmd_path = raw_dir / f"s_{short_id}_c.sock"
         evt_path = raw_dir / f"s_{short_id}_e.sock"
         self._socket_paths = [cmd_path, evt_path]
@@ -167,8 +167,8 @@ class PluginWorkerClient:
         self._command_endpoint = f"ipc://{cmd_path}"
         self._event_endpoint = f"ipc://{evt_path}"
         logger.debug(
-            "IPC 端点已准备完成，step_id={} 命令端点={} 事件端点={}",
-            self._step_id,
+            "IPC 端点已准备完成，task_id={} 命令端点={} 事件端点={}",
+            self._task_id,
             self._command_endpoint,
             self._event_endpoint,
         )
@@ -196,8 +196,8 @@ class PluginWorkerClient:
             module,
             "--plugin-id",
             self._plugin_id,
-            "--step-id",
-            self._step_id,
+            "--task-id",
+            self._task_id,
             "--command-endpoint",
             self._command_endpoint,
             "--event-endpoint",
@@ -225,18 +225,18 @@ class PluginWorkerClient:
         }
         self._event_task = asyncio.create_task(
             self._event_loop(),
-            name=f"worker-events-{self._step_id}",
+            name=f"worker-events-{self._task_id}",
         )
         process = self._process
         if process and process.stdout:
             self._stdout_task = asyncio.create_task(
                 self._stream_log_loop(process.stdout, "stdout"),
-                name=f"worker-stdout-{self._step_id}",
+                name=f"worker-stdout-{self._task_id}",
             )
         if process and process.stderr:
             self._stderr_task = asyncio.create_task(
                 self._stream_log_loop(process.stderr, "stderr"),
-                name=f"worker-stderr-{self._step_id}",
+                name=f"worker-stderr-{self._task_id}",
             )
 
     async def _wait_ready(self) -> None:
@@ -248,7 +248,7 @@ class PluginWorkerClient:
             if self._process and self._process.returncode is not None:
                 raise RuntimeError(
                     f"worker exited before ready plugin_id={self._plugin_id} "
-                    f"step_id={self._step_id} return_code={self._process.returncode}"
+                    f"task_id={self._task_id} return_code={self._process.returncode}"
                 )
             try:
                 await self.request(action="ping", payload={}, timeout_sec=1)
@@ -334,7 +334,7 @@ class PluginWorkerClient:
             while True:
                 frames = await self._sub_socket.recv_multipart()
                 topic, envelope, payload = protocol.parse_event_frames(frames)
-                if envelope.step_id and envelope.step_id != self._step_id:
+                if envelope.task_id and envelope.task_id != self._task_id:
                     continue
                 if not isinstance(payload, dict):
                     continue
@@ -350,11 +350,11 @@ class PluginWorkerClient:
                 except asyncio.CancelledError:
                     raise
                 except Exception:
-                    logger.exception("工作进程事件处理失败，step_id={} 事件类型={}", self._step_id, event_type)
+                    logger.exception("工作进程事件处理失败，task_id={} 事件类型={}", self._task_id, event_type)
         except asyncio.CancelledError:
             raise
         except Exception:
-            logger.exception("工作进程事件循环失败，step_id={}", self._step_id)
+            logger.exception("工作进程事件循环失败，task_id={}", self._task_id)
 
     async def _stream_log_loop(self, stream: asyncio.StreamReader, stream_name: str) -> None:
         coalescer = self._stream_coalescers.get(stream_name)
@@ -379,19 +379,19 @@ class PluginWorkerClient:
                 except asyncio.CancelledError:
                     raise
                 except Exception:
-                    logger.exception("工作进程流日志转发失败，step_id={}", self._step_id)
+                    logger.exception("工作进程流日志转发失败，task_id={}", self._task_id)
         except asyncio.CancelledError:
             raise
         except Exception:
-            logger.exception("工作进程流读取失败，step_id={} 流={}", self._step_id, stream_name)
+            logger.exception("工作进程流读取失败，task_id={} 流={}", self._task_id, stream_name)
         finally:
             if coalescer is not None:
                 try:
                     await coalescer.flush()
                 except Exception:
                     logger.exception(
-                        "工作进程流日志合并器刷新失败，step_id={} 流={}",
-                        self._step_id,
+                        "工作进程流日志合并器刷新失败，task_id={} 流={}",
+                        self._task_id,
                         stream_name,
                     )
 
@@ -410,7 +410,7 @@ class PluginWorkerClient:
             try:
                 await coalescer.close()
             except Exception:
-                logger.exception("工作进程流日志合并器关闭失败，step_id={}", self._step_id)
+                logger.exception("工作进程流日志合并器关闭失败，task_id={}", self._task_id)
         self._stream_coalescers = {}
 
         self._event_task = None

@@ -10,10 +10,10 @@ SAMPLING_REQUIRED_STEP_TYPES = {"score", "custom"}
 
 
 @dataclass(frozen=True)
-class StepExecutionRequest:
-    step_id: str
+class TaskExecutionRequest:
+    task_id: str
     round_id: str
-    step_type: str
+    task_type: str
     dispatch_kind: str
     plugin_id: str
     resolved_params: dict[str, Any]
@@ -23,11 +23,11 @@ class StepExecutionRequest:
     mode: str
     round_index: int
     attempt: int
-    depends_on_step_ids: list[str]
+    depends_on_task_ids: list[str]
     raw_payload: dict[str, Any]
 
     @classmethod
-    def from_payload(cls, payload: dict[str, Any]) -> "StepExecutionRequest":
+    def from_payload(cls, payload: dict[str, Any]) -> "TaskExecutionRequest":
         raw_round_index = payload.get("round_index")
         try:
             round_index = int(raw_round_index)
@@ -38,9 +38,9 @@ class StepExecutionRequest:
 
         query_strategy = str(payload.get("query_strategy") or "").strip() or None
 
-        step_type = str(payload.get("step_type") or "").strip().lower()
-        if not step_type:
-            raise ValueError("step_type is required")
+        task_type = str(payload.get("task_type") or "").strip().lower()
+        if not task_type:
+            raise ValueError("task_type is required")
 
         dispatch_kind = str(payload.get("dispatch_kind") or "").strip().lower()
         if not dispatch_kind:
@@ -58,9 +58,9 @@ class StepExecutionRequest:
         has_sampling = bool(sampling_cfg) or any(
             key in resolved_params for key in ("topk", "query_strategy", "sampling_topk")
         )
-        if mode == "manual" and has_sampling and step_type != "predict":
+        if mode == "manual" and has_sampling and task_type != "predict":
             raise ValueError("manual mode does not allow sampling params")
-        if mode in {"active_learning", "simulation"} and step_type in SAMPLING_REQUIRED_STEP_TYPES:
+        if mode in {"active_learning", "simulation"} and task_type in SAMPLING_REQUIRED_STEP_TYPES:
             strategy = str(sampling_cfg.get("strategy") or query_strategy or "").strip()
             fallback_topk = 200 if strategy else 0
             topk_raw = sampling_cfg.get("topk", resolved_params.get("topk", fallback_topk))
@@ -73,14 +73,14 @@ class StepExecutionRequest:
             if topk <= 0:
                 raise ValueError("sampling.topk must be > 0 for active_learning/simulation")
 
-        step_id = str(payload.get("step_id") or "").strip()
-        if not step_id:
-            raise ValueError("step_id is required")
+        task_id = str(payload.get("task_id") or "").strip()
+        if not task_id:
+            raise ValueError("task_id is required")
 
         return cls(
-            step_id=step_id,
+            task_id=task_id,
             round_id=str(payload.get("round_id") or ""),
-            step_type=step_type,
+            task_type=task_type,
             dispatch_kind=dispatch_kind,
             plugin_id=str(payload.get("plugin_id") or ""),
             resolved_params=resolved_params,
@@ -90,7 +90,7 @@ class StepExecutionRequest:
             mode=mode,
             round_index=round_index,
             attempt=max(1, int(payload.get("attempt") or 1)),
-            depends_on_step_ids=[str(v) for v in (payload.get("depends_on_step_ids") or [])],
+            depends_on_task_ids=[str(v) for v in (payload.get("depends_on_task_ids") or [])],
             raw_payload=dict(payload),
         )
 
@@ -99,7 +99,7 @@ class StepExecutionRequest:
 class FetchedPage:
     request_id: str
     reply_to: str
-    step_id: str
+    task_id: str
     query_type: str
     items: list[dict[str, Any]]
     next_cursor: str | None
@@ -109,7 +109,7 @@ class FetchedPage:
         return cls(
             request_id=str(payload.get("request_id") or ""),
             reply_to=str(payload.get("reply_to") or ""),
-            step_id=str(payload.get("step_id") or ""),
+            task_id=str(payload.get("task_id") or ""),
             query_type=str(payload.get("query_type") or ""),
             items=list(payload.get("items") or []),
             next_cursor=str(payload["next_cursor"]) if payload.get("next_cursor") else None,
@@ -119,7 +119,7 @@ class FetchedPage:
         return {
             "request_id": self.request_id,
             "reply_to": self.reply_to,
-            "step_id": self.step_id,
+            "task_id": self.task_id,
             "query_type": self.query_type,
             "items": self.items,
             "next_cursor": self.next_cursor,
@@ -130,7 +130,7 @@ class FetchedPage:
 class ArtifactUploadTicket:
     request_id: str
     reply_to: str
-    step_id: str
+    task_id: str
     upload_url: str
     storage_uri: str
     headers: dict[str, str]
@@ -140,7 +140,7 @@ class ArtifactUploadTicket:
         return cls(
             request_id=str(payload.get("request_id") or ""),
             reply_to=str(payload.get("reply_to") or ""),
-            step_id=str(payload.get("step_id") or ""),
+            task_id=str(payload.get("task_id") or ""),
             upload_url=str(payload.get("upload_url") or ""),
             storage_uri=str(payload.get("storage_uri") or ""),
             headers={str(k): str(v) for k, v in (payload.get("headers") or {}).items()},
@@ -150,7 +150,7 @@ class ArtifactUploadTicket:
         return {
             "request_id": self.request_id,
             "reply_to": self.reply_to,
-            "step_id": self.step_id,
+            "task_id": self.task_id,
             "upload_url": self.upload_url,
             "storage_uri": self.storage_uri,
             "headers": self.headers,
@@ -158,8 +158,8 @@ class ArtifactUploadTicket:
 
 
 @dataclass(frozen=True)
-class StepFinalResult:
-    step_id: str
+class TaskFinalResult:
+    task_id: str
     status: StepStatus
     metrics: dict[str, Any]
     artifacts: dict[str, Any]

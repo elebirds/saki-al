@@ -12,12 +12,12 @@ from saki_executor.steps.services.artifact_uploader import ArtifactUploader
 import saki_executor.steps.services.artifact_uploader as uploader_module
 from saki_executor.plugins.registry import PluginRegistry
 from runtime_data_test_helper import build_data_response_message
-from saki_plugin_sdk import ExecutorPlugin, StepRuntimeContext, TrainArtifact, TrainOutput
+from saki_plugin_sdk import ExecutorPlugin, TaskRuntimeContext, TrainArtifact, TrainOutput
 
 
 class _InProcessProxy(ExecutorPlugin):
-    def __init__(self, *, metadata_plugin: ExecutorPlugin, step_id: str, emit, **_kwargs):
-        del step_id
+    def __init__(self, *, metadata_plugin: ExecutorPlugin, task_id: str, emit, **_kwargs):
+        del task_id
         self._plugin = metadata_plugin
         self._emit = emit
 
@@ -30,8 +30,8 @@ class _InProcessProxy(ExecutorPlugin):
         return self._plugin.version
 
     @property
-    def supported_step_types(self) -> list[str]:
-        return self._plugin.supported_step_types
+    def supported_task_types(self) -> list[str]:
+        return self._plugin.supported_task_types
 
     @property
     def supported_strategies(self) -> list[str]:
@@ -41,7 +41,7 @@ class _InProcessProxy(ExecutorPlugin):
         self,
         params: dict[str, Any],
         *,
-        context: StepRuntimeContext | None = None,
+        context: TaskRuntimeContext | None = None,
     ) -> None:
         self._plugin.validate_params(params, context=context)
 
@@ -54,7 +54,7 @@ class _InProcessProxy(ExecutorPlugin):
             dataset_ir,
             splits: dict[str, list[dict[str, Any]]] | None = None,
             *,
-            context: StepRuntimeContext,
+            context: TaskRuntimeContext,
     ) -> None:
         await self._plugin.prepare_data(
             workspace,
@@ -66,7 +66,7 @@ class _InProcessProxy(ExecutorPlugin):
             context=context,
         )
 
-    async def train(self, workspace, params: dict[str, Any], emit, *, context: StepRuntimeContext) -> TrainOutput:
+    async def train(self, workspace, params: dict[str, Any], emit, *, context: TaskRuntimeContext) -> TrainOutput:
         del emit
         return await self._plugin.train(workspace, params, self._emit, context=context)
 
@@ -77,7 +77,7 @@ class _InProcessProxy(ExecutorPlugin):
             strategy: str,
             params: dict[str, Any],
             *,
-            context: StepRuntimeContext,
+            context: TaskRuntimeContext,
     ) -> list[dict[str, Any]]:
         return await self._plugin.predict_unlabeled(
             workspace,
@@ -94,7 +94,7 @@ class _InProcessProxy(ExecutorPlugin):
             strategy: str,
             params: dict[str, Any],
             *,
-            context: StepRuntimeContext,
+            context: TaskRuntimeContext,
     ) -> list[dict[str, Any]]:
         return await self._plugin.predict_unlabeled_batch(
             workspace,
@@ -104,8 +104,8 @@ class _InProcessProxy(ExecutorPlugin):
             context=context,
         )
 
-    async def stop(self, step_id: str) -> None:
-        await self._plugin.stop(step_id)
+    async def stop(self, task_id: str) -> None:
+        await self._plugin.stop(task_id)
 
     async def shutdown(self) -> None:
         return
@@ -126,14 +126,14 @@ class _ArtifactPlugin(ExecutorPlugin):
         return "0.1.0"
 
     @property
-    def supported_step_types(self) -> list[str]:
+    def supported_task_types(self) -> list[str]:
         return ["train"]
 
     @property
     def supported_strategies(self) -> list[str]:
         return ["uncertainty_1_minus_max_conf"]
 
-    def validate_params(self, params: dict[str, Any], *, context: StepRuntimeContext | None = None) -> None:
+    def validate_params(self, params: dict[str, Any], *, context: TaskRuntimeContext | None = None) -> None:
         del params, context
 
     async def prepare_data(
@@ -145,7 +145,7 @@ class _ArtifactPlugin(ExecutorPlugin):
             dataset_ir,
             splits: dict[str, list[dict[str, Any]]] | None = None,
             *,
-            context: StepRuntimeContext,
+            context: TaskRuntimeContext,
     ) -> None:
         del workspace, labels, samples, annotations, dataset_ir, splits, context
 
@@ -155,7 +155,7 @@ class _ArtifactPlugin(ExecutorPlugin):
         params: dict[str, Any],
         emit,
         *,
-        context: StepRuntimeContext,
+        context: TaskRuntimeContext,
     ) -> TrainOutput:
         del params, context
         best_path = workspace.artifacts_dir / "best.pt"
@@ -210,13 +210,13 @@ class _ArtifactPlugin(ExecutorPlugin):
             strategy: str,
             params: dict[str, Any],
             *,
-            context: StepRuntimeContext,
+            context: TaskRuntimeContext,
     ) -> list[dict[str, Any]]:
         del workspace, unlabeled_samples, strategy, params, context
         return []
 
-    async def stop(self, step_id: str) -> None:
-        del step_id
+    async def stop(self, task_id: str) -> None:
+        del task_id
 
 
 def _build_manager(tmp_path: Path) -> StepManager:
@@ -246,7 +246,7 @@ def _make_fake_request(upload_headers: dict[str, dict[str, str]] | None = None):
             return build_data_response_message(
                 request_id=f"resp-{request.request_id}",
                 reply_to=request.request_id,
-                step_id=request.task_id,
+                task_id=request.task_id,
                 query_type=request.query_type,
                 items=_mock_data_items(request.query_type),
             )
@@ -343,16 +343,16 @@ async def test_artifact_upload_retries_and_uses_storage_uri(tmp_path: Path, monk
         _make_fake_request({"confusion_matrix.png": {"x-fail-attempts": "2"}}),
     )
 
-    accepted = await manager.assign_step(
+    accepted = await manager.assign_task(
         "assign-artifact-1",
         {
-            "step_id": "task-artifact-1",
+            "task_id": "task-artifact-1",
             "round_id": "job-artifact-1",
             "project_id": "project-1",
             "input_commit_id": "commit-1",
             "plugin_id": "artifact_plugin",
             "mode": "simulation",
-            "step_type": "train",
+            "task_type": "train",
             "dispatch_kind": "dispatchable",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
@@ -405,16 +405,16 @@ async def test_optional_artifact_failure_marks_partial_failed(tmp_path: Path, mo
         _make_fake_request({"confusion_matrix.png": {"x-fail-attempts": "3"}}),
     )
 
-    accepted = await manager.assign_step(
+    accepted = await manager.assign_task(
         "assign-artifact-2",
         {
-            "step_id": "task-artifact-2",
+            "task_id": "task-artifact-2",
             "round_id": "job-artifact-2",
             "project_id": "project-1",
             "input_commit_id": "commit-1",
             "plugin_id": "artifact_plugin",
             "mode": "simulation",
-            "step_type": "train",
+            "task_type": "train",
             "dispatch_kind": "dispatchable",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
@@ -448,16 +448,16 @@ async def test_required_artifact_failure_marks_failed(tmp_path: Path, monkeypatc
     monkeypatch.setattr(uploader_module.asyncio, "sleep", fake_sleep)
     manager.set_transport(fake_send, _make_fake_request({"best.pt": {"x-fail-attempts": "3"}}))
 
-    accepted = await manager.assign_step(
+    accepted = await manager.assign_task(
         "assign-artifact-3",
         {
-            "step_id": "task-artifact-3",
+            "task_id": "task-artifact-3",
             "round_id": "job-artifact-3",
             "project_id": "project-1",
             "input_commit_id": "commit-1",
             "plugin_id": "artifact_plugin",
             "mode": "simulation",
-            "step_type": "train",
+            "task_type": "train",
             "dispatch_kind": "dispatchable",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
@@ -491,16 +491,16 @@ async def test_read_error_retries_then_succeeds(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(uploader_module.asyncio, "sleep", fake_sleep)
     manager.set_transport(fake_send, _make_fake_request({"best.pt": {"x-read-error-attempts": "2"}}))
 
-    accepted = await manager.assign_step(
+    accepted = await manager.assign_task(
         "assign-artifact-4",
         {
-            "step_id": "task-artifact-4",
+            "task_id": "task-artifact-4",
             "round_id": "job-artifact-4",
             "project_id": "project-1",
             "input_commit_id": "commit-1",
             "plugin_id": "artifact_plugin",
             "mode": "simulation",
-            "step_type": "train",
+            "task_type": "train",
             "dispatch_kind": "dispatchable",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
@@ -535,16 +535,16 @@ async def test_http_4xx_not_retried_and_fails_fast(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(uploader_module.asyncio, "sleep", fake_sleep)
     manager.set_transport(fake_send, _make_fake_request({"best.pt": {"x-force-status": "403"}}))
 
-    accepted = await manager.assign_step(
+    accepted = await manager.assign_task(
         "assign-artifact-5",
         {
-            "step_id": "task-artifact-5",
+            "task_id": "task-artifact-5",
             "round_id": "job-artifact-5",
             "project_id": "project-1",
             "input_commit_id": "commit-1",
             "plugin_id": "artifact_plugin",
             "mode": "simulation",
-            "step_type": "train",
+            "task_type": "train",
             "dispatch_kind": "dispatchable",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",

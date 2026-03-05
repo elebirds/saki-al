@@ -8,7 +8,7 @@ from loguru import logger
 from saki_executor.agent import codec as runtime_codec
 from saki_executor.core.config import settings
 from saki_executor.plugins.ipc.proxy_plugin import SubprocessPluginProxy
-from saki_executor.steps.contracts import SUPPORTED_LOOP_MODES, StepExecutionRequest, StepFinalResult
+from saki_executor.steps.contracts import SUPPORTED_LOOP_MODES, TaskExecutionRequest, TaskFinalResult
 from saki_executor.steps.orchestration.error_codes import StepErrorCode, StepPipelineError, StepStage, wrap_stage_error
 from saki_executor.steps.orchestration.event_emitter import StepEventEmitter
 from saki_executor.steps.orchestration.models import BoundExecutionPlan, StepExecutionPlan
@@ -29,15 +29,15 @@ class StepPipelineRunner:
     _ORCHESTRATOR_ONLY_STEP_TYPES = {"select"}
     _TRAINING_PIPELINE_STEP_TYPES = {"train", "score", "eval", "predict", "custom"}
 
-    def __init__(self, *, manager: StepManager, request: StepExecutionRequest) -> None:
+    def __init__(self, *, manager: StepManager, request: TaskExecutionRequest) -> None:
         self._manager = manager
         self._request = request
-        self._task_id = request.step_id
+        self._task_id = request.task_id
         self._plugin_resolution_service = PluginResolutionService()
         self._runtime_binding_service = RuntimeBindingService()
         self._pipeline_stage_service = PipelineStageService(manager=manager, request=request)
 
-    async def run(self) -> StepFinalResult:
+    async def run(self) -> TaskFinalResult:
         self._validate_request()
         workspace, reporter, emitter = self._prepare_workspace()
         await self._emit_dispatching_status(emitter)
@@ -50,7 +50,7 @@ class StepPipelineRunner:
             bound_plan = await self._prepare_execution_binding(plan=plan, plugin=plugin, emitter=emitter)
             await self._emit_running_status(emitter)
 
-            runtime_requirements = plugin.get_step_runtime_requirements(self._request.step_type)
+            runtime_requirements = plugin.get_step_runtime_requirements(self._request.task_type)
             await self._pipeline_stage_service.prepare_trained_model_if_needed(
                 workspace=workspace,
                 emitter=emitter,
@@ -81,19 +81,19 @@ class StepPipelineRunner:
             if self._request.mode not in self._SUPPORTED_MODES:
                 raise RuntimeError(f"unsupported mode: {self._request.mode}")
             if self._request.dispatch_kind == "orchestrator":
-                raise RuntimeError(f"orchestrator step should not be dispatched to executor: {self._request.step_id}")
-            if self._request.step_type in self._ORCHESTRATOR_ONLY_STEP_TYPES:
+                raise RuntimeError(f"orchestrator task should not be dispatched to executor: {self._request.task_id}")
+            if self._request.task_type in self._ORCHESTRATOR_ONLY_STEP_TYPES:
                 raise RuntimeError(
-                    f"step_type '{self._request.step_type}' must be handled by dispatcher orchestrator"
+                    f"task_type '{self._request.task_type}' must be handled by dispatcher orchestrator"
                 )
-            if self._request.step_type not in self._TRAINING_PIPELINE_STEP_TYPES:
-                raise RuntimeError(f"unsupported step_type for executor pipeline: {self._request.step_type}")
+            if self._request.task_type not in self._TRAINING_PIPELINE_STEP_TYPES:
+                raise RuntimeError(f"unsupported task_type for executor pipeline: {self._request.task_type}")
         except Exception as exc:
             raise wrap_stage_error(
                 stage=StepStage.REQUEST_VALIDATION,
                 default_code=StepErrorCode.REQUEST_INVALID,
                 exc=exc,
-                message=f"request validation failed step_id={self._request.step_id}: {exc}",
+                message=f"request validation failed task_id={self._request.task_id}: {exc}",
             ) from exc
 
     async def _resolve_execution_plan(self, emitter: StepEventEmitter) -> StepExecutionPlan:
@@ -115,7 +115,7 @@ class StepPipelineRunner:
                 stage=StepStage.PLUGIN_RESOLUTION,
                 default_code=StepErrorCode.INTERNAL_ERROR,
                 exc=exc,
-                message=f"plugin resolution failed step_id={self._request.step_id}: {exc}",
+                message=f"plugin resolution failed task_id={self._request.task_id}: {exc}",
             )
             await emitter.emit_stage_fail(
                 stage=wrapped.stage.value,
@@ -128,7 +128,7 @@ class StepPipelineRunner:
             stage=StepStage.PLUGIN_RESOLUTION.value,
             message=(
                 f"runtime plan resolved profile={plan.selected_profile.id} "
-                f"step_id={self._request.step_id}"
+                f"task_id={self._request.task_id}"
             ),
         )
         return plan
@@ -161,7 +161,7 @@ class StepPipelineRunner:
                 stage=StepStage.SYNCING_ENV,
                 default_code=StepErrorCode.ENV_SYNC_FAILED,
                 exc=exc,
-                message=f"runtime environment sync failed step_id={self._request.step_id}: {exc}",
+                message=f"runtime environment sync failed task_id={self._request.task_id}: {exc}",
             )
             await emitter.emit_stage_fail(
                 stage=wrapped.stage.value,
@@ -179,7 +179,7 @@ class StepPipelineRunner:
     def _build_execution_plugin(self, *, plan: StepExecutionPlan, emitter: StepEventEmitter):
         plugin = SubprocessPluginProxy(
             metadata_plugin=plan.metadata_plugin,
-            step_id=self._request.step_id,
+            task_id=self._request.task_id,
             emit=emitter.emit,
             python_executable=plan.worker_python or getattr(plan.metadata_plugin, "python_path", None),
             entrypoint_module=plan.entrypoint_module or getattr(plan.metadata_plugin, "entrypoint", None),
@@ -276,7 +276,7 @@ class StepPipelineRunner:
         reporter = StepReporter(self._task_id, workspace.events_path)
 
         async def _push_event(event: dict[str, Any]) -> None:
-            await self._manager.push_step_event(self._task_id, event)
+            await self._manager.push_task_event(self._task_id, event)
 
         emitter = StepEventEmitter(
             reporter=reporter,
@@ -300,11 +300,11 @@ class StepPipelineRunner:
         artifacts: dict[str, Any],
         candidates: list[dict[str, Any]],
         optional_upload_failures: list[str],
-    ) -> StepFinalResult:
+    ) -> TaskFinalResult:
         self._manager.executor_state = ExecutorState.FINALIZING
         if optional_upload_failures:
             reason = "optional artifact upload failed: " + "; ".join(optional_upload_failures)
-            await self._manager.push_step_event(self._task_id, reporter.status(StepStatus.FAILED.value, reason))
+            await self._manager.push_task_event(self._task_id, reporter.status(StepStatus.FAILED.value, reason))
             await self._send_result(
                 status=StepStatus.FAILED,
                 metrics=metrics,
@@ -312,25 +312,25 @@ class StepPipelineRunner:
                 candidates=candidates,
                 error_message=reason,
             )
-            logger.warning("任务部分成功（制品上传失败） step_id={} reason={}", self._task_id, reason)
-            return StepFinalResult(
-                step_id=self._task_id,
+            logger.warning("任务部分成功（制品上传失败） task_id={} reason={}", self._task_id, reason)
+            return TaskFinalResult(
+                task_id=self._task_id,
                 status=StepStatus.FAILED,
                 metrics=metrics,
                 artifacts=artifacts,
                 candidates=candidates,
                 error_message=reason,
             )
-        await self._manager.push_step_event(self._task_id, reporter.status(StepStatus.SUCCEEDED.value, "step succeeded"))
+        await self._manager.push_task_event(self._task_id, reporter.status(StepStatus.SUCCEEDED.value, "step succeeded"))
         await self._send_result(
             status=StepStatus.SUCCEEDED,
             metrics=metrics,
             artifacts=artifacts,
             candidates=candidates,
         )
-        logger.info("任务执行成功 step_id={}", self._task_id)
-        return StepFinalResult(
-            step_id=self._task_id,
+        logger.info("任务执行成功 task_id={}", self._task_id)
+        return TaskFinalResult(
+            task_id=self._task_id,
             status=StepStatus.SUCCEEDED,
             metrics=metrics,
             artifacts=artifacts,
@@ -348,9 +348,9 @@ class StepPipelineRunner:
         error_message: str = "",
     ) -> None:
         await self._manager.send_runtime_message(
-            runtime_codec.build_step_result_message(
+            runtime_codec.build_task_result_message(
                 request_id=str(uuid.uuid4()),
-                step_id=self._task_id,
+                task_id=self._task_id,
                 status=status.value,
                 metrics=metrics,
                 artifacts=artifacts,

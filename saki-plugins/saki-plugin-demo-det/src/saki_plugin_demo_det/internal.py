@@ -69,7 +69,7 @@ class DemoDetectionInternal:
                 "level": "INFO",
                 "message": (
                     "training started "
-                    f"step_type={step_context.step_type} mode={step_context.mode} "
+                    f"task_type={step_context.task_type} mode={step_context.mode} "
                     f"split_seed={step_context.split_seed} train_seed={step_context.train_seed} "
                     f"sampling_seed={step_context.sampling_seed}"
                 ),
@@ -94,7 +94,7 @@ class DemoDetectionInternal:
             await emit("metric", {"step": epoch, "epoch": epoch, "metrics": metrics})
 
         report_meta = {
-            "context_step_type": step_context.step_type,
+            "context_task_type": step_context.task_type,
             "context_mode": step_context.mode,
             "context_split_seed": float(step_context.split_seed),
             "context_train_seed": float(step_context.train_seed),
@@ -239,5 +239,5 @@ class DemoDetectionInternal:
         topk = int(params.get("topk", 200))
         return candidates[:topk]
 
-    async def stop(self, step_id: str) -> None:
+    async def stop(self, task_id: str) -> None:
         return

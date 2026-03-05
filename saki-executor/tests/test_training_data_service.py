@@ -5,15 +5,15 @@ import asyncio
 import pytest
 
 from saki_executor.cache.asset_cache import AssetCache
-from saki_executor.steps.contracts import StepExecutionRequest
+from saki_executor.steps.contracts import TaskExecutionRequest
 from saki_executor.steps.orchestration.training_data_service import TrainingDataService
-from saki_plugin_sdk import StepRuntimeContext
+from saki_plugin_sdk import TaskRuntimeContext
 
 
 @pytest.mark.anyio
 async def test_prepare_filters_unconfirmed_model_annotations(tmp_path):
-    async def fetch_all(step_id: str, query_type: str, project_id: str, commit_id: str):
-        del step_id, project_id, commit_id
+    async def fetch_all(task_id: str, query_type: str, project_id: str, commit_id: str):
+        del task_id, project_id, commit_id
         if query_type == "labels":
             return [{"id": "label-1", "name": "ship"}]
         if query_type == "samples":
@@ -37,10 +37,10 @@ async def test_prepare_filters_unconfirmed_model_annotations(tmp_path):
             ]
         return []
 
-    request = StepExecutionRequest(
-        step_id="step-1",
+    request = TaskExecutionRequest(
+        task_id="step-1",
         round_id="round-1",
-        step_type="train",
+        task_type="train",
         dispatch_kind="orchestrator",
         plugin_id="plugin-a",
         resolved_params={"split_seed": 99, "plugin": {"val_split_ratio": 0.49}},
@@ -50,7 +50,7 @@ async def test_prepare_filters_unconfirmed_model_annotations(tmp_path):
         mode="manual",
         round_index=1,
         attempt=1,
-        depends_on_step_ids=[],
+        depends_on_task_ids=[],
         raw_payload={},
     )
 
@@ -64,12 +64,12 @@ async def test_prepare_filters_unconfirmed_model_annotations(tmp_path):
     async def emit(event_type: str, payload: dict):
         del event_type, payload
 
-    runtime_context = StepRuntimeContext(
-        step_id="step-1",
+    runtime_context = TaskRuntimeContext(
+        task_id="step-1",
         round_id="round-1",
         round_index=1,
         attempt=1,
-        step_type="train",
+        task_type="train",
         mode="manual",
         split_seed=3,
         train_seed=4,
@@ -95,8 +95,8 @@ async def test_prepare_filters_unconfirmed_model_annotations(tmp_path):
 
 @pytest.mark.anyio
 async def test_prepare_requires_snapshot_split_hints_for_active_learning(tmp_path):
-    async def fetch_all(step_id: str, query_type: str, project_id: str, commit_id: str):
-        del step_id, project_id, commit_id
+    async def fetch_all(task_id: str, query_type: str, project_id: str, commit_id: str):
+        del task_id, project_id, commit_id
         if query_type == "labels":
             return [{"id": "label-1", "name": "ship"}]
         if query_type == "samples":
@@ -113,10 +113,10 @@ async def test_prepare_requires_snapshot_split_hints_for_active_learning(tmp_pat
             ]
         return []
 
-    request = StepExecutionRequest(
-        step_id="step-1",
+    request = TaskExecutionRequest(
+        task_id="step-1",
         round_id="round-1",
-        step_type="train",
+        task_type="train",
         dispatch_kind="orchestrator",
         plugin_id="plugin-a",
         resolved_params={"split_seed": 99, "plugin": {"val_split_ratio": 0.49}},
@@ -126,7 +126,7 @@ async def test_prepare_requires_snapshot_split_hints_for_active_learning(tmp_pat
         mode="active_learning",
         round_index=1,
         attempt=1,
-        depends_on_step_ids=[],
+        depends_on_task_ids=[],
         raw_payload={},
     )
     cache = AssetCache(root_dir=str(tmp_path / "cache"), max_bytes=10 * 1024 * 1024)
@@ -139,12 +139,12 @@ async def test_prepare_requires_snapshot_split_hints_for_active_learning(tmp_pat
     async def emit(event_type: str, payload: dict):
         del event_type, payload
 
-    runtime_context = StepRuntimeContext(
-        step_id="step-1",
+    runtime_context = TaskRuntimeContext(
+        task_id="step-1",
         round_id="round-1",
         round_index=1,
         attempt=1,
-        step_type="train",
+        task_type="train",
         mode="active_learning",
         split_seed=3,
         train_seed=4,

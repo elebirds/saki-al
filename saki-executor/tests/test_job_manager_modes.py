@@ -10,12 +10,12 @@ from saki_executor.plugins.external_handle import ExternalPluginDescriptor
 from saki_executor.steps.manager import StepManager
 from saki_executor.plugins.registry import PluginRegistry
 from runtime_data_test_helper import build_data_response_message
-from saki_plugin_sdk import ExecutionBindingContext, ExecutorPlugin, PluginManifest, StepRuntimeContext, TrainOutput
+from saki_plugin_sdk import ExecutionBindingContext, ExecutorPlugin, PluginManifest, TaskRuntimeContext, TrainOutput
 
 
 class _InProcessProxy(ExecutorPlugin):
-    def __init__(self, *, metadata_plugin: ExecutorPlugin, step_id: str, emit, **_kwargs):
-        del step_id
+    def __init__(self, *, metadata_plugin: ExecutorPlugin, task_id: str, emit, **_kwargs):
+        del task_id
         self._plugin = metadata_plugin
         self._emit = emit
 
@@ -28,8 +28,8 @@ class _InProcessProxy(ExecutorPlugin):
         return self._plugin.version
 
     @property
-    def supported_step_types(self) -> list[str]:
-        return self._plugin.supported_step_types
+    def supported_task_types(self) -> list[str]:
+        return self._plugin.supported_task_types
 
     @property
     def supported_strategies(self) -> list[str]:
@@ -39,7 +39,7 @@ class _InProcessProxy(ExecutorPlugin):
         self,
         params: dict[str, Any],
         *,
-        context: StepRuntimeContext | None = None,
+        context: TaskRuntimeContext | None = None,
     ) -> None:
         self._plugin.validate_params(params, context=context)
 
@@ -52,7 +52,7 @@ class _InProcessProxy(ExecutorPlugin):
             dataset_ir,
             splits: dict[str, list[dict[str, Any]]] | None = None,
             *,
-            context: StepRuntimeContext,
+            context: TaskRuntimeContext,
     ) -> None:
         await self._plugin.prepare_data(
             workspace,
@@ -70,7 +70,7 @@ class _InProcessProxy(ExecutorPlugin):
             params: dict[str, Any],
             emit,
             *,
-            context: StepRuntimeContext,
+            context: TaskRuntimeContext,
     ) -> TrainOutput:
         del emit
         return await self._plugin.train(workspace, params, self._emit, context=context)
@@ -81,7 +81,7 @@ class _InProcessProxy(ExecutorPlugin):
             params: dict[str, Any],
             emit,
             *,
-            context: StepRuntimeContext,
+            context: TaskRuntimeContext,
     ) -> TrainOutput:
         del emit
         return await self._plugin.eval(workspace, params, self._emit, context=context)
@@ -93,7 +93,7 @@ class _InProcessProxy(ExecutorPlugin):
             strategy: str,
             params: dict[str, Any],
             *,
-            context: StepRuntimeContext,
+            context: TaskRuntimeContext,
     ) -> list[dict[str, Any]]:
         return await self._plugin.predict_unlabeled(
             workspace,
@@ -110,7 +110,7 @@ class _InProcessProxy(ExecutorPlugin):
             strategy: str,
             params: dict[str, Any],
             *,
-            context: StepRuntimeContext,
+            context: TaskRuntimeContext,
     ) -> list[dict[str, Any]]:
         return await self._plugin.predict_unlabeled_batch(
             workspace,
@@ -120,8 +120,8 @@ class _InProcessProxy(ExecutorPlugin):
             context=context,
         )
 
-    async def stop(self, step_id: str) -> None:
-        await self._plugin.stop(step_id)
+    async def stop(self, task_id: str) -> None:
+        await self._plugin.stop(task_id)
 
     async def shutdown(self) -> None:
         return
@@ -149,14 +149,14 @@ class _ModeAwarePlugin(ExecutorPlugin):
         return "0.1.0"
 
     @property
-    def supported_step_types(self) -> list[str]:
+    def supported_task_types(self) -> list[str]:
         return ["train", "score", "predict", "eval", "custom"]
 
     @property
     def supported_strategies(self) -> list[str]:
         return ["uncertainty_1_minus_max_conf"]
 
-    def validate_params(self, params: dict[str, Any], *, context: StepRuntimeContext | None = None) -> None:
+    def validate_params(self, params: dict[str, Any], *, context: TaskRuntimeContext | None = None) -> None:
         del params, context
         return
 
@@ -169,7 +169,7 @@ class _ModeAwarePlugin(ExecutorPlugin):
             dataset_ir,
             splits: dict[str, list[dict[str, Any]]] | None = None,
             *,
-            context: StepRuntimeContext,
+            context: TaskRuntimeContext,
     ) -> None:
         del workspace, labels, dataset_ir, splits, context
         self.prepare_samples_count = len(samples)
@@ -181,7 +181,7 @@ class _ModeAwarePlugin(ExecutorPlugin):
             params: dict[str, Any],
             emit,
             *,
-            context: StepRuntimeContext,
+            context: TaskRuntimeContext,
     ) -> TrainOutput:
         del workspace, params, context
         self.train_calls += 1
@@ -194,7 +194,7 @@ class _ModeAwarePlugin(ExecutorPlugin):
             params: dict[str, Any],
             emit,
             *,
-            context: StepRuntimeContext,
+            context: TaskRuntimeContext,
     ) -> TrainOutput:
         del workspace, params, context
         self.eval_calls += 1
@@ -208,7 +208,7 @@ class _ModeAwarePlugin(ExecutorPlugin):
             strategy: str,
             params: dict[str, Any],
             *,
-            context: StepRuntimeContext,
+            context: TaskRuntimeContext,
     ) -> list[dict[str, Any]]:
         del workspace, strategy, params, context
         self.predict_calls += 1
@@ -222,8 +222,8 @@ class _ModeAwarePlugin(ExecutorPlugin):
             if item.get("id")
         ]
 
-    async def stop(self, step_id: str) -> None:
-        del step_id
+    async def stop(self, task_id: str) -> None:
+        del task_id
         return
 
 
@@ -239,7 +239,7 @@ class _BatchScoringPlugin(_ModeAwarePlugin):
             strategy: str,
             params: dict[str, Any],
             *,
-            context: StepRuntimeContext,
+            context: TaskRuntimeContext,
     ) -> list[dict[str, Any]]:
         del workspace, strategy, params, context
         self.batch_calls += 1
@@ -266,7 +266,7 @@ class _BatchTopKStrictPlugin(_BatchScoringPlugin):
             strategy: str,
             params: dict[str, Any],
             *,
-            context: StepRuntimeContext,
+            context: TaskRuntimeContext,
     ) -> list[dict[str, Any]]:
         candidates = await super().predict_unlabeled_batch(
             workspace,
@@ -294,7 +294,7 @@ class _InvalidPredictionSnapshotPlugin(_BatchScoringPlugin):
             strategy: str,
             params: dict[str, Any],
             *,
-            context: StepRuntimeContext,
+            context: TaskRuntimeContext,
     ) -> list[dict[str, Any]]:
         candidates = await super().predict_unlabeled_batch(
             workspace,
@@ -322,7 +322,7 @@ class _CaptureModelParamsPlugin(_ModeAwarePlugin):
             strategy: str,
             params: dict[str, Any],
             *,
-            context: StepRuntimeContext,
+            context: TaskRuntimeContext,
     ) -> list[dict[str, Any]]:
         self.last_predict_params = dict(params)
         return await super().predict_unlabeled(
@@ -348,7 +348,7 @@ class _MinimalPlugin(ExecutorPlugin):
         return "0.1.0"
 
     @property
-    def supported_step_types(self) -> list[str]:
+    def supported_task_types(self) -> list[str]:
         return ["train"]
 
     @property
@@ -361,7 +361,7 @@ class _MinimalPlugin(ExecutorPlugin):
             params: dict[str, Any],
             emit,
             *,
-            context: StepRuntimeContext,
+            context: TaskRuntimeContext,
     ) -> TrainOutput:
         del workspace, params, context
         self.train_calls += 1
@@ -375,7 +375,7 @@ class _MinimalPlugin(ExecutorPlugin):
             strategy: str,
             params: dict[str, Any],
             *,
-            context: StepRuntimeContext,
+            context: TaskRuntimeContext,
     ) -> list[dict[str, Any]]:
         del workspace, strategy, params, context
         self.predict_calls += 1
@@ -396,7 +396,7 @@ class _ContextProbePlugin(_MinimalPlugin):
         self.context_ids: list[int] = []
         self.context_snapshots: list[dict[str, Any]] = []
 
-    def _capture_context(self, context: StepRuntimeContext | ExecutionBindingContext | None) -> None:
+    def _capture_context(self, context: TaskRuntimeContext | ExecutionBindingContext | None) -> None:
         if context is None:
             return
         step_context = context.step_context if isinstance(context, ExecutionBindingContext) else context
@@ -407,7 +407,7 @@ class _ContextProbePlugin(_MinimalPlugin):
         self,
         params: dict[str, Any],
         *,
-        context: StepRuntimeContext | ExecutionBindingContext | None = None,
+        context: TaskRuntimeContext | ExecutionBindingContext | None = None,
     ) -> None:
         del params
         self._capture_context(context)
@@ -453,7 +453,7 @@ class _SlowTrainPlugin(ExecutorPlugin):
         return "0.1.0"
 
     @property
-    def supported_step_types(self) -> list[str]:
+    def supported_task_types(self) -> list[str]:
         return ["train", "eval"]
 
     @property
@@ -466,7 +466,7 @@ class _SlowTrainPlugin(ExecutorPlugin):
             params: dict[str, Any],
             emit,
             *,
-            context: StepRuntimeContext,
+            context: TaskRuntimeContext,
     ) -> TrainOutput:
         del workspace, params, context
         for index in range(1, 200):
@@ -480,7 +480,7 @@ class _SlowTrainPlugin(ExecutorPlugin):
             params: dict[str, Any],
             emit,
             *,
-            context: StepRuntimeContext,
+            context: TaskRuntimeContext,
     ) -> TrainOutput:
         return await self.train(workspace, params, emit, context=context)
 
@@ -491,13 +491,13 @@ class _SlowTrainPlugin(ExecutorPlugin):
             strategy: str,
             params: dict[str, Any],
             *,
-            context: StepRuntimeContext,
+            context: TaskRuntimeContext,
     ) -> list[dict[str, Any]]:
         del workspace, unlabeled_samples, strategy, params, context
         return []
 
-    async def stop(self, step_id: str) -> None:
-        del step_id
+    async def stop(self, task_id: str) -> None:
+        del task_id
         return
 
 
@@ -556,23 +556,23 @@ async def test_simulation_mode_keeps_topk_sampling_and_uses_labeled_subset(tmp_p
         return build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            step_id=request.task_id,
+            task_id=request.task_id,
             query_type=request.query_type,
             items=_mock_data_items(request.query_type),
         )
 
     manager.set_transport(fake_send, fake_request)
 
-    accepted = await manager.assign_step(
+    accepted = await manager.assign_task(
         "assign-simulation-1",
         {
-            "step_id": "task-sim-1",
+            "task_id": "task-sim-1",
             "round_id": "job-sim-1",
             "project_id": "project-1",
             "input_commit_id": "commit-1",
             "plugin_id": plugin.plugin_id,
             "mode": "simulation",
-            "step_type": "train",
+            "task_type": "train",
             "dispatch_kind": "dispatchable",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
@@ -609,23 +609,23 @@ async def test_active_learning_mode_keeps_topk_sampling(tmp_path: Path):
         return build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            step_id=request.task_id,
+            task_id=request.task_id,
             query_type=request.query_type,
             items=_mock_data_items(request.query_type),
         )
 
     manager.set_transport(fake_send, fake_request)
 
-    accepted = await manager.assign_step(
+    accepted = await manager.assign_task(
         "assign-al-1",
         {
-            "step_id": "task-al-1",
+            "task_id": "task-al-1",
             "round_id": "job-al-1",
             "project_id": "project-1",
             "input_commit_id": "commit-1",
             "plugin_id": plugin.plugin_id,
             "mode": "active_learning",
-            "step_type": "train",
+            "task_type": "train",
             "dispatch_kind": "dispatchable",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
@@ -662,22 +662,22 @@ async def test_runtime_context_built_once_and_reused_across_step_pipeline(tmp_pa
         return build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            step_id=request.task_id,
+            task_id=request.task_id,
             query_type=request.query_type,
             items=_mock_data_items(request.query_type),
         )
 
     manager.set_transport(fake_send, fake_request)
-    accepted = await manager.assign_step(
+    accepted = await manager.assign_task(
         "assign-context-once-1",
         {
-            "step_id": "task-context-once-1",
+            "task_id": "task-context-once-1",
             "round_id": "job-context-once-1",
             "project_id": "project-1",
             "input_commit_id": "commit-1",
             "plugin_id": plugin.plugin_id,
             "mode": "simulation",
-            "step_type": "train",
+            "task_type": "train",
             "dispatch_kind": "dispatchable",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
@@ -704,7 +704,7 @@ async def test_runtime_context_built_once_and_reused_across_step_pipeline(tmp_pa
     assert int(first.get("split_seed") or 0) == 17
     assert int(first.get("train_seed") or 0) == 27
     assert int(first.get("sampling_seed") or 0) == 37
-    assert str(first.get("step_type") or "") == "train"
+    assert str(first.get("task_type") or "") == "train"
     assert str(first.get("mode") or "") == "simulation"
 
 
@@ -725,7 +725,7 @@ async def test_external_handle_validation_fails_before_proxy_start(tmp_path: Pat
             "plugin_id": "strict_external_plugin",
             "version": "2.0.0",
             "display_name": "Strict External Plugin",
-            "supported_step_types": ["train"],
+            "supported_task_types": ["train"],
             "supported_strategies": ["uncertainty_1_minus_max_conf"],
             "runtime_profiles": [
                 {
@@ -772,16 +772,16 @@ async def test_external_handle_validation_fails_before_proxy_start(tmp_path: Pat
         raise AssertionError(f"request path should not run, payload={message.WhichOneof('payload')}")
 
     manager.set_transport(fake_send, fake_request)
-    accepted = await manager.assign_step(
+    accepted = await manager.assign_task(
         "assign-strict-external-1",
         {
-            "step_id": "task-strict-external-1",
+            "task_id": "task-strict-external-1",
             "round_id": "job-strict-external-1",
             "project_id": "project-1",
             "input_commit_id": "commit-1",
             "plugin_id": "strict_external_plugin",
             "mode": "simulation",
-            "step_type": "train",
+            "task_type": "train",
             "dispatch_kind": "dispatchable",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
@@ -797,7 +797,7 @@ async def test_external_handle_validation_fails_before_proxy_start(tmp_path: Pat
     result = result_messages[0].task_result
     assert result.status == pb.FAILED
     error_message = str(result.error_message or "")
-    assert "plugin_id=strict_external_plugin step_id=task-strict-external-1" in error_message
+    assert "plugin_id=strict_external_plugin task_id=task-strict-external-1" in error_message
     assert "required" in error_message
     assert proxy_started is False
     assert request_called is False
@@ -819,23 +819,23 @@ async def test_startup_status_events_skip_pending(tmp_path: Path):
         return build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            step_id=request.task_id,
+            task_id=request.task_id,
             query_type=request.query_type,
             items=_mock_data_items(request.query_type),
         )
 
     manager.set_transport(fake_send, fake_request)
 
-    accepted = await manager.assign_step(
+    accepted = await manager.assign_task(
         "assign-status-seq-1",
         {
-            "step_id": "task-status-seq-1",
+            "task_id": "task-status-seq-1",
             "round_id": "job-status-seq-1",
             "project_id": "project-1",
             "input_commit_id": "commit-1",
             "plugin_id": plugin.plugin_id,
             "mode": "active_learning",
-            "step_type": "train",
+            "task_type": "train",
             "dispatch_kind": "dispatchable",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
@@ -885,22 +885,22 @@ async def test_syncing_env_failure_stops_before_runtime_probe(tmp_path: Path, mo
         return build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            step_id=request.task_id,
+            task_id=request.task_id,
             query_type=request.query_type,
             items=_mock_data_items(request.query_type),
         )
 
     manager.set_transport(fake_send, fake_request)
-    accepted = await manager.assign_step(
+    accepted = await manager.assign_task(
         "assign-sync-failed-1",
         {
-            "step_id": "task-sync-failed-1",
+            "task_id": "task-sync-failed-1",
             "round_id": "job-sync-failed-1",
             "project_id": "project-1",
             "input_commit_id": "commit-1",
             "plugin_id": plugin.plugin_id,
             "mode": "active_learning",
-            "step_type": "train",
+            "task_type": "train",
             "dispatch_kind": "dispatchable",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
@@ -944,22 +944,22 @@ async def test_runtime_probe_failure_stops_before_binding(tmp_path: Path, monkey
         return build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            step_id=request.task_id,
+            task_id=request.task_id,
             query_type=request.query_type,
             items=_mock_data_items(request.query_type),
         )
 
     manager.set_transport(fake_send, fake_request)
-    accepted = await manager.assign_step(
+    accepted = await manager.assign_task(
         "assign-probe-failed-1",
         {
-            "step_id": "task-probe-failed-1",
+            "task_id": "task-probe-failed-1",
             "round_id": "job-probe-failed-1",
             "project_id": "project-1",
             "input_commit_id": "commit-1",
             "plugin_id": plugin.plugin_id,
             "mode": "active_learning",
-            "step_type": "train",
+            "task_type": "train",
             "dispatch_kind": "dispatchable",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
@@ -999,23 +999,23 @@ async def test_score_step_skips_training_and_only_runs_sampling(tmp_path: Path):
         return build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            step_id=request.task_id,
+            task_id=request.task_id,
             query_type=request.query_type,
             items=_mock_data_items(request.query_type),
         )
 
     manager.set_transport(fake_send, fake_request)
 
-    accepted = await manager.assign_step(
+    accepted = await manager.assign_task(
         "assign-score-1",
         {
-            "step_id": "task-score-1",
+            "task_id": "task-score-1",
             "round_id": "job-score-1",
             "project_id": "project-1",
             "input_commit_id": "commit-1",
             "plugin_id": plugin.plugin_id,
             "mode": "active_learning",
-            "step_type": "score",
+            "task_type": "score",
             "dispatch_kind": "dispatchable",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
@@ -1059,23 +1059,23 @@ async def test_score_step_strict_model_handoff_fails_without_model_ref(tmp_path:
         return build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            step_id=request.task_id,
+            task_id=request.task_id,
             query_type=request.query_type,
             items=_mock_data_items(request.query_type),
         )
 
     manager.set_transport(fake_send, fake_request)
 
-    accepted = await manager.assign_step(
+    accepted = await manager.assign_task(
         "assign-score-strict-1",
         {
-            "step_id": "task-score-strict-1",
+            "task_id": "task-score-strict-1",
             "round_id": "job-score-strict-1",
             "project_id": "project-1",
             "input_commit_id": "commit-1",
             "plugin_id": plugin.plugin_id,
             "mode": "active_learning",
-            "step_type": "score",
+            "task_type": "score",
             "dispatch_kind": "dispatchable",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
@@ -1099,7 +1099,7 @@ async def test_score_step_shared_model_sets_local_model_ref(tmp_path: Path):
     manager = _build_manager(tmp_path, plugin)
     sent_messages: list[pb.RuntimeMessage] = []
 
-    step_id = "task-score-shared-model-1"
+    task_id = "task-score-shared-model-1"
     round_id = "job-score-shared-model-1"
     shared_model_path = (
         tmp_path
@@ -1124,23 +1124,23 @@ async def test_score_step_shared_model_sets_local_model_ref(tmp_path: Path):
         return build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            step_id=request.task_id,
+            task_id=request.task_id,
             query_type=request.query_type,
             items=_mock_data_items(request.query_type),
         )
 
     manager.set_transport(fake_send, fake_request)
 
-    accepted = await manager.assign_step(
+    accepted = await manager.assign_task(
         "assign-score-shared-model-1",
         {
-            "step_id": step_id,
+            "task_id": task_id,
             "round_id": round_id,
             "project_id": "project-1",
             "input_commit_id": "commit-1",
             "plugin_id": plugin.plugin_id,
             "mode": "active_learning",
-            "step_type": "score",
+            "task_type": "score",
             "dispatch_kind": "dispatchable",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
@@ -1179,23 +1179,23 @@ async def test_eval_step_trains_without_sampling(tmp_path: Path):
         return build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            step_id=request.task_id,
+            task_id=request.task_id,
             query_type=request.query_type,
             items=_mock_data_items(request.query_type),
         )
 
     manager.set_transport(fake_send, fake_request)
 
-    accepted = await manager.assign_step(
+    accepted = await manager.assign_task(
         "assign-eval-1",
         {
-            "step_id": "task-eval-1",
+            "task_id": "task-eval-1",
             "round_id": "job-eval-1",
             "project_id": "project-1",
             "input_commit_id": "commit-1",
             "plugin_id": plugin.plugin_id,
             "mode": "active_learning",
-            "step_type": "eval",
+            "task_type": "eval",
             "dispatch_kind": "dispatchable",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
@@ -1250,7 +1250,7 @@ async def test_active_learning_streaming_topk_across_pages(tmp_path: Path):
                 data_response=build_data_response_message(
                     request_id=f"resp-{request.request_id}",
                     reply_to=request.request_id,
-                    step_id=request.task_id,
+                    task_id=request.task_id,
                     query_type=request.query_type,
                     items=items,
                     next_cursor=next_cursor,
@@ -1260,23 +1260,23 @@ async def test_active_learning_streaming_topk_across_pages(tmp_path: Path):
         return build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            step_id=request.task_id,
+            task_id=request.task_id,
             query_type=request.query_type,
             items=_mock_data_items(request.query_type),
         )
 
     manager.set_transport(fake_send, fake_request)
 
-    accepted = await manager.assign_step(
+    accepted = await manager.assign_task(
         "assign-al-stream-1",
         {
-            "step_id": "task-al-stream-1",
+            "task_id": "task-al-stream-1",
             "round_id": "job-al-stream-1",
             "project_id": "project-1",
             "input_commit_id": "commit-1",
             "plugin_id": plugin.plugin_id,
             "mode": "active_learning",
-            "step_type": "train",
+            "task_type": "train",
             "dispatch_kind": "dispatchable",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
@@ -1313,23 +1313,23 @@ async def test_predict_step_uses_samples_query_and_keeps_all_candidates(tmp_path
         return build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            step_id=request.task_id,
+            task_id=request.task_id,
             query_type=request.query_type,
             items=_mock_data_items(request.query_type),
         )
 
     manager.set_transport(fake_send, fake_request)
 
-    accepted = await manager.assign_step(
+    accepted = await manager.assign_task(
         "assign-predict-1",
         {
-            "step_id": "task-predict-1",
+            "task_id": "task-predict-1",
             "round_id": "job-predict-1",
             "project_id": "project-1",
             "input_commit_id": "commit-1",
             "plugin_id": plugin.plugin_id,
             "mode": "active_learning",
-            "step_type": "predict",
+            "task_type": "predict",
             "dispatch_kind": "dispatchable",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
@@ -1366,23 +1366,23 @@ async def test_predict_step_rejects_invalid_prediction_snapshot_format(tmp_path:
         return build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            step_id=request.task_id,
+            task_id=request.task_id,
             query_type=request.query_type,
             items=_mock_data_items(request.query_type),
         )
 
     manager.set_transport(fake_send, fake_request)
 
-    accepted = await manager.assign_step(
+    accepted = await manager.assign_task(
         "assign-predict-invalid-snapshot-1",
         {
-            "step_id": "task-predict-invalid-snapshot-1",
+            "task_id": "task-predict-invalid-snapshot-1",
             "round_id": "job-predict-invalid-snapshot-1",
             "project_id": "project-1",
             "input_commit_id": "commit-1",
             "plugin_id": plugin.plugin_id,
             "mode": "active_learning",
-            "step_type": "predict",
+            "task_type": "predict",
             "dispatch_kind": "dispatchable",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
@@ -1428,7 +1428,7 @@ async def test_predict_step_keep_all_overrides_topk_for_strict_plugins(tmp_path:
             return build_data_response_message(
                 request_id=f"resp-{request.request_id}",
                 reply_to=request.request_id,
-                step_id=request.task_id,
+                task_id=request.task_id,
                 query_type=request.query_type,
                 items=page,
                 next_cursor=next_cursor,
@@ -1436,23 +1436,23 @@ async def test_predict_step_keep_all_overrides_topk_for_strict_plugins(tmp_path:
         return build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            step_id=request.task_id,
+            task_id=request.task_id,
             query_type=request.query_type,
             items=[],
         )
 
     manager.set_transport(fake_send, fake_request)
 
-    accepted = await manager.assign_step(
+    accepted = await manager.assign_task(
         "assign-predict-topk-strict-1",
         {
-            "step_id": "task-predict-topk-strict-1",
+            "task_id": "task-predict-topk-strict-1",
             "round_id": "job-predict-topk-strict-1",
             "project_id": "project-1",
             "input_commit_id": "commit-1",
             "plugin_id": plugin.plugin_id,
             "mode": "active_learning",
-            "step_type": "predict",
+            "task_type": "predict",
             "dispatch_kind": "dispatchable",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
@@ -1492,23 +1492,23 @@ async def test_predict_step_in_manual_mode_is_not_short_circuited(tmp_path: Path
         return build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            step_id=request.task_id,
+            task_id=request.task_id,
             query_type=request.query_type,
             items=_mock_data_items(request.query_type),
         )
 
     manager.set_transport(fake_send, fake_request)
 
-    accepted = await manager.assign_step(
+    accepted = await manager.assign_task(
         "assign-manual-predict-1",
         {
-            "step_id": "task-manual-predict-1",
+            "task_id": "task-manual-predict-1",
             "round_id": "job-manual-predict-1",
             "project_id": "project-1",
             "input_commit_id": "commit-1",
             "plugin_id": plugin.plugin_id,
             "mode": "manual",
-            "step_type": "predict",
+            "task_type": "predict",
             "dispatch_kind": "dispatchable",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
@@ -1548,16 +1548,16 @@ async def test_orchestrator_dispatch_kind_is_rejected(tmp_path: Path):
 
     manager.set_transport(fake_send, fake_request)
 
-    accepted = await manager.assign_step(
+    accepted = await manager.assign_task(
         "assign-orchestrator-1",
         {
-            "step_id": "task-orchestrator-1",
+            "task_id": "task-orchestrator-1",
             "round_id": "job-orchestrator-1",
             "project_id": "project-1",
             "input_commit_id": "commit-1",
             "plugin_id": plugin.plugin_id,
             "mode": "active_learning",
-            "step_type": "train",
+            "task_type": "train",
             "dispatch_kind": "orchestrator",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
@@ -1572,12 +1572,12 @@ async def test_orchestrator_dispatch_kind_is_rejected(tmp_path: Path):
     assert len(result_messages) == 1
     result = result_messages[0].task_result
     assert result.status == pb.FAILED
-    assert "orchestrator step should not be dispatched" in result.error_message
+    assert "orchestrator task should not be dispatched" in result.error_message
     assert request_calls == 0
 
 
 @pytest.mark.anyio
-async def test_legacy_step_type_is_rejected_on_executor(tmp_path: Path):
+async def test_legacy_task_type_is_rejected_on_executor(tmp_path: Path):
     plugin = _ModeAwarePlugin()
     manager = _build_manager(tmp_path, plugin)
     sent_messages: list[pb.RuntimeMessage] = []
@@ -1593,16 +1593,16 @@ async def test_legacy_step_type_is_rejected_on_executor(tmp_path: Path):
 
     manager.set_transport(fake_send, fake_request)
 
-    accepted = await manager.assign_step(
+    accepted = await manager.assign_task(
         "assign-legacy-step-1",
         {
-            "step_id": "task-legacy-step-1",
+            "task_id": "task-legacy-step-1",
             "round_id": "job-legacy-step-1",
             "project_id": "project-1",
             "input_commit_id": "commit-1",
             "plugin_id": plugin.plugin_id,
             "mode": "manual",
-            "step_type": "legacy_review_step",
+            "task_type": "legacy_review_step",
             "dispatch_kind": "dispatchable",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
@@ -1617,12 +1617,12 @@ async def test_legacy_step_type_is_rejected_on_executor(tmp_path: Path):
     assert len(result_messages) == 1
     result = result_messages[0].task_result
     assert result.status == pb.FAILED
-    assert "unsupported step_type for executor pipeline" in result.error_message
+    assert "unsupported task_type for executor pipeline" in result.error_message
     assert request_calls == 0
 
 
 @pytest.mark.anyio
-async def test_custom_step_type_uses_train_and_sampling_pipeline(tmp_path: Path):
+async def test_custom_task_type_uses_train_and_sampling_pipeline(tmp_path: Path):
     plugin = _ModeAwarePlugin()
     manager = _build_manager(tmp_path, plugin)
     sent_messages: list[pb.RuntimeMessage] = []
@@ -1637,23 +1637,23 @@ async def test_custom_step_type_uses_train_and_sampling_pipeline(tmp_path: Path)
         return build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            step_id=request.task_id,
+            task_id=request.task_id,
             query_type=request.query_type,
             items=_mock_data_items(request.query_type),
         )
 
     manager.set_transport(fake_send, fake_request)
 
-    accepted = await manager.assign_step(
+    accepted = await manager.assign_task(
         "assign-custom-1",
         {
-            "step_id": "task-custom-1",
+            "task_id": "task-custom-1",
             "round_id": "job-custom-1",
             "project_id": "project-1",
             "input_commit_id": "commit-1",
             "plugin_id": plugin.plugin_id,
             "mode": "active_learning",
-            "step_type": "custom",
+            "task_type": "custom",
             "dispatch_kind": "dispatchable",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
@@ -1689,23 +1689,23 @@ async def test_plugin_default_hooks_reduce_boilerplate(tmp_path: Path):
         return build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            step_id=request.task_id,
+            task_id=request.task_id,
             query_type=request.query_type,
             items=_mock_data_items(request.query_type),
         )
 
     manager.set_transport(fake_send, fake_request)
 
-    accepted = await manager.assign_step(
+    accepted = await manager.assign_task(
         "assign-minimal-plugin-1",
         {
-            "step_id": "task-minimal-plugin-1",
+            "task_id": "task-minimal-plugin-1",
             "round_id": "job-minimal-plugin-1",
             "project_id": "project-1",
             "input_commit_id": "commit-1",
             "plugin_id": plugin.plugin_id,
             "mode": "active_learning",
-            "step_type": "train",
+            "task_type": "train",
             "dispatch_kind": "dispatchable",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
@@ -1744,7 +1744,7 @@ async def test_unknown_mode_fails_with_controlled_error(tmp_path: Path):
         return build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            step_id=request.task_id,
+            task_id=request.task_id,
             query_type=request.query_type,
             items=_mock_data_items(request.query_type),
         )
@@ -1752,16 +1752,16 @@ async def test_unknown_mode_fails_with_controlled_error(tmp_path: Path):
     manager.set_transport(fake_send, fake_request)
 
     with pytest.raises(ValueError, match="unsupported mode"):
-        await manager.assign_step(
+        await manager.assign_task(
             "assign-unknown-mode-1",
             {
-                "step_id": "task-unknown-mode-1",
+                "task_id": "task-unknown-mode-1",
                 "round_id": "job-unknown-mode-1",
                 "project_id": "project-1",
                 "input_commit_id": "commit-1",
                 "plugin_id": plugin.plugin_id,
                 "mode": "unexpected_mode",
-                "step_type": "train",
+                "task_type": "train",
                 "dispatch_kind": "dispatchable",
                 "round_index": 1,
                 "query_strategy": "uncertainty_1_minus_max_conf",
@@ -1777,7 +1777,7 @@ async def test_unknown_mode_fails_with_controlled_error(tmp_path: Path):
 
 
 @pytest.mark.anyio
-async def test_stop_step_forces_cancelled_result(tmp_path: Path):
+async def test_stop_task_forces_cancelled_result(tmp_path: Path):
     plugin = _SlowTrainPlugin()
     manager = _build_manager(tmp_path, plugin)
     sent_messages: list[pb.RuntimeMessage] = []
@@ -1792,23 +1792,23 @@ async def test_stop_step_forces_cancelled_result(tmp_path: Path):
         return build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            step_id=request.task_id,
+            task_id=request.task_id,
             query_type=request.query_type,
             items=_mock_data_items(request.query_type),
         )
 
     manager.set_transport(fake_send, fake_request)
 
-    accepted = await manager.assign_step(
+    accepted = await manager.assign_task(
         "assign-stop-1",
         {
-            "step_id": "task-stop-1",
+            "task_id": "task-stop-1",
             "round_id": "job-stop-1",
             "project_id": "project-1",
             "input_commit_id": "commit-1",
             "plugin_id": plugin.plugin_id,
             "mode": "simulation",
-            "step_type": "eval",
+            "task_type": "eval",
             "dispatch_kind": "dispatchable",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
@@ -1817,7 +1817,7 @@ async def test_stop_step_forces_cancelled_result(tmp_path: Path):
     )
     assert accepted is True
     await asyncio.sleep(0.1)
-    stopped = await manager.stop_step("task-stop-1")
+    stopped = await manager.stop_task("task-stop-1")
     assert stopped is True
     assert manager._task is not None  # noqa: SLF001
     await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001

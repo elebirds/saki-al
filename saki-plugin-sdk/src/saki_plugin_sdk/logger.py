@@ -53,8 +53,8 @@ class PluginLogger:
     ----------
     plugin_id : str
         插件标识符，用作日志前缀。
-    step_id : str | None
-        可选的 step_id，用于区分不同的执行步骤。
+    task_id : str | None
+        可选的 task_id，用于区分不同的执行步骤。
     log_file : Path | None
         可选的日志文件路径（保留用于未来扩展）。
     level : str
@@ -64,20 +64,20 @@ class PluginLogger:
     def __init__(
         self,
         plugin_id: str,
-        step_id: str | None = None,
+        task_id: str | None = None,
         log_file: Path | None = None,
         level: str = "INFO",
     ) -> None:
         self.plugin_id = plugin_id
-        self.step_id = step_id
+        self.task_id = task_id
         self._log_file = log_file
         self._level = _normalize_level(level)
 
     def _format_msg(self, message: str) -> str:
         """格式化消息，添加插件上下文前缀。"""
         prefix = f"[{self.plugin_id}"
-        if self.step_id:
-            prefix += f"|{self.step_id}"
+        if self.task_id:
+            prefix += f"|{self.task_id}"
         prefix += "]"
         return f"{prefix} {message}"
 
@@ -120,8 +120,8 @@ class PluginLogger:
         meta_payload = self._normalize_args(kwargs.pop("meta", {}))
         meta_payload.setdefault("source", "plugin_logger")
         meta_payload.setdefault("plugin_id", self.plugin_id)
-        if self.step_id:
-            meta_payload.setdefault("step_id", self.step_id)
+        if self.task_id:
+            meta_payload.setdefault("task_id", self.task_id)
 
         payload: dict[str, Any] = {
             "level": normalized_level,

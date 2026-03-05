@@ -51,7 +51,7 @@ class RuntimeBindingService:
                 exc=exc,
                 message=(
                     f"profile environment sync failed plugin_id={plan.request.plugin_id} "
-                    f"step_id={plan.request.step_id}: {exc}"
+                    f"task_id={plan.request.task_id}: {exc}"
                 ),
             ) from exc
 
@@ -73,7 +73,7 @@ class RuntimeBindingService:
                 exc=exc,
                 message=(
                     f"runtime capability probe failed plugin_id={plan.request.plugin_id} "
-                    f"step_id={plan.request.step_id}: {exc}"
+                    f"task_id={plan.request.task_id}: {exc}"
                 ),
             ) from exc
 
@@ -100,7 +100,7 @@ class RuntimeBindingService:
                 exc=exc,
                 message=(
                     f"device binding failed plugin_id={plan.request.plugin_id} "
-                    f"step_id={plan.request.step_id}: {exc}"
+                    f"task_id={plan.request.task_id}: {exc}"
                 ),
             ) from exc
 
@@ -125,7 +125,7 @@ class RuntimeBindingService:
                     exc=exc,
                     message=(
                         f"bind execution context failed plugin_id={plan.request.plugin_id} "
-                        f"step_id={plan.request.step_id}: {exc}"
+                        f"task_id={plan.request.task_id}: {exc}"
                     ),
                 ) from exc
 
@@ -138,7 +138,7 @@ class RuntimeBindingService:
                 exc=exc,
                 message=(
                     f"plugin params validate failed after binding plugin_id={plan.request.plugin_id} "
-                    f"step_id={plan.request.step_id}: {exc}"
+                    f"task_id={plan.request.task_id}: {exc}"
                 ),
             ) from exc
 

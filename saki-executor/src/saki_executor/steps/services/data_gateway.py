@@ -27,7 +27,7 @@ class DataGateway:
     async def request_upload_ticket(
         self,
         *,
-        step_id: str,
+        task_id: str,
         artifact_name: str,
         content_type: str,
     ) -> ArtifactUploadTicket:
@@ -35,7 +35,7 @@ class DataGateway:
         ticket_response = await request_message(
             runtime_codec.build_upload_ticket_request_message(
                 request_id=str(uuid.uuid4()),
-                step_id=step_id,
+                task_id=task_id,
                 artifact_name=artifact_name,
                 content_type=content_type,
             )
@@ -57,7 +57,7 @@ class DataGateway:
     async def fetch_all(
         self,
         *,
-        step_id: str,
+        task_id: str,
         query_type: str,
         project_id: str,
         commit_id: str,
@@ -68,7 +68,7 @@ class DataGateway:
         cursor: str | None = None
         while True:
             response = await self.fetch_page(
-                step_id=step_id,
+                task_id=task_id,
                 query_type=query_type,
                 project_id=project_id,
                 commit_id=commit_id,
@@ -86,7 +86,7 @@ class DataGateway:
     async def fetch_page(
         self,
         *,
-        step_id: str,
+        task_id: str,
         query_type: str,
         project_id: str,
         commit_id: str,
@@ -97,7 +97,7 @@ class DataGateway:
         response = await request_message(
             runtime_codec.build_data_request_message(
                 request_id=str(uuid.uuid4()),
-                step_id=step_id,
+                task_id=task_id,
                 query_type=query_type,
                 project_id=project_id,
                 commit_id=commit_id,
@@ -164,7 +164,7 @@ class DataGateway:
         return FetchedPage(
             request_id=str(messages[0].data_response.request_id or ""),
             reply_to=reply_to,
-            step_id=str(messages[0].data_response.task_id or ""),
+            task_id=str(messages[0].data_response.task_id or ""),
             query_type=query_type_text,
             items=items,
             next_cursor=next_cursor,

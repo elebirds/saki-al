@@ -71,7 +71,7 @@ class PipelineStageService:
 
         message = (
             f"trained model is required but unavailable: "
-            f"artifact={artifact_name} step_type={self._request.step_type}"
+            f"artifact={artifact_name} step_type={self._request.task_type}"
         )
         if self._manager.strict_train_model_handoff:
             raise wrap_stage_error(
@@ -99,8 +99,8 @@ class PipelineStageService:
         bound_plan: BoundExecutionPlan,
     ) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], list[str]]:
         try:
-            if self._request.step_type in {"score", "predict"}:
-                profile = self._inference_profile_for_step(self._request.step_type)
+            if self._request.task_type in {"score", "predict"}:
+                profile = self._inference_profile_for_step(self._request.task_type)
                 return await self._run_inference_pipeline(
                     plugin=plugin,
                     workspace=workspace,
@@ -110,7 +110,7 @@ class PipelineStageService:
                     bound_plan=bound_plan,
                 )
 
-            if self._request.step_type == "eval":
+            if self._request.task_type == "eval":
                 return await self._run_eval_pipeline(
                     plugin=plugin,
                     workspace=workspace,
@@ -120,7 +120,7 @@ class PipelineStageService:
                     bound_plan=bound_plan,
                 )
 
-            if self._request.step_type == "train":
+            if self._request.task_type == "train":
                 return await self._run_train_pipeline(
                     plugin=plugin,
                     workspace=workspace,
@@ -130,7 +130,7 @@ class PipelineStageService:
                     bound_plan=bound_plan,
                 )
 
-            if self._request.step_type == "custom":
+            if self._request.task_type == "custom":
                 return await self._run_train_and_sample_pipeline(
                     plugin=plugin,
                     workspace=workspace,
@@ -140,13 +140,13 @@ class PipelineStageService:
                     bound_plan=bound_plan,
                 )
 
-            raise RuntimeError(f"step_type routing is not implemented: {self._request.step_type}")
+            raise RuntimeError(f"step_type routing is not implemented: {self._request.task_type}")
         except Exception as exc:
             raise wrap_stage_error(
                 stage=StepStage.EXECUTE,
                 default_code=StepErrorCode.EXECUTION_FAILED,
                 exc=exc,
-                message=f"step execution failed step_id={self._request.step_id}: {exc}",
+                message=f"step execution failed task_id={self._request.task_id}: {exc}",
             ) from exc
 
     async def _run_training_pipeline(
@@ -208,9 +208,9 @@ class PipelineStageService:
                     self._request.resolved_params.get("strong_deterministic", False)
                 ),
                 "mode": runtime_context.mode,
-                "step_type": runtime_context.step_type,
+                "task_type": runtime_context.task_type,
                 "round_index": runtime_context.round_index,
-                "step_id": runtime_context.step_id,
+                "task_id": runtime_context.task_id,
                 "plugin_params": plugin_params_snapshot,
             }
             await emitter.emit("log", {"level": "INFO", "message": f"effective training params: {params_snapshot}"})
@@ -240,7 +240,7 @@ class PipelineStageService:
                 stage=StepStage.PREPARE_DATA,
                 default_code=StepErrorCode.PREPARE_DATA_FAILED,
                 exc=exc,
-                message=f"prepare_data failed step_id={self._request.step_id}: {exc}",
+                message=f"prepare_data failed task_id={self._request.task_id}: {exc}",
             ) from exc
 
     async def _prepare_data_for_step(
@@ -258,7 +258,7 @@ class PipelineStageService:
                 {
                     "level": "INFO",
                     "message": (
-                        f"prepare_data skipped by runtime requirements step_type={self._request.step_type}"
+                        f"prepare_data skipped by runtime requirements task_type={self._request.task_type}"
                     ),
                 },
             )
@@ -268,7 +268,7 @@ class PipelineStageService:
         can_use_shared_cache = (
             self._manager.round_shared_cache_enabled
             and self._request.round_id
-            and self._request.step_type != "train"
+            and self._request.task_type != "train"
         )
         if can_use_shared_cache:
             try:
@@ -300,8 +300,8 @@ class PipelineStageService:
             try:
                 cached_path = workspace.store_shared_data_cache(
                     fingerprint=fingerprint,
-                    source_step_id=self._request.step_id,
-                    step_type=self._request.step_type,
+                    source_task_id=self._request.task_id,
+                    task_type=self._request.task_type,
                 )
                 await emitter.emit(
                     "log",
@@ -381,7 +381,7 @@ class PipelineStageService:
         cached_path = workspace.cache_model_artifact(
             artifact_name=artifact_name,
             source_path=source_path,
-            source_step_id=self._request.step_id,
+            source_task_id=self._request.task_id,
         )
         await emitter.emit(
             "log",
@@ -593,7 +593,7 @@ class PipelineStageService:
         return await self._manager.collect_topk_candidates_streaming(
             plugin=plugin,
             workspace=workspace,
-            step_id=self._request.step_id,
+            task_id=self._request.task_id,
             project_id=self._request.project_id,
             commit_id=self._request.input_commit_id,
             strategy=strategy,
@@ -617,7 +617,7 @@ class PipelineStageService:
             required = bool(getattr(artifact, "required", False))
             try:
                 ticket = await self._manager.request_upload_ticket(
-                    step_id=self._request.step_id,
+                    task_id=self._request.task_id,
                     artifact_name=artifact.name,
                     content_type=artifact.content_type,
                 )
@@ -647,8 +647,8 @@ class PipelineStageService:
                 "uri": storage_uri,
                 "meta": artifact.meta or {"size": size},
             }
-            await self._manager.push_step_event(
-                self._request.step_id,
+            await self._manager.push_task_event(
+                self._request.task_id,
                 reporter.artifact(
                     kind=artifact.kind,
                     name=artifact.name,

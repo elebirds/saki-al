@@ -12,7 +12,7 @@ from saki_plugin_sdk import (
     EventCallback,
     ExecutorPlugin,
     RuntimeCapabilitySnapshot,
-    StepRuntimeContext,
+    TaskRuntimeContext,
     StepRuntimeRequirements,
     TrainOutput,
     WorkspaceProtocol,
@@ -25,18 +25,18 @@ class SubprocessPluginProxy(ExecutorPlugin):
         self,
         *,
         metadata_plugin: Any,
-        step_id: str,
+        task_id: str,
         emit: EventCallback,
         python_executable: str | Path | None = None,
         entrypoint_module: str | None = None,
         extra_env: dict[str, str] | None = None,
     ) -> None:
         self._metadata = metadata_plugin
-        self._step_id = step_id
+        self._task_id = task_id
         self._emit = emit
         self._worker = PluginWorkerClient(
             plugin_id=self._metadata.plugin_id,
-            step_id=self._step_id,
+            task_id=self._task_id,
             event_handler=self._on_worker_event,
             python_executable=python_executable,
             entrypoint_module=entrypoint_module,
@@ -84,7 +84,7 @@ class SubprocessPluginProxy(ExecutorPlugin):
         self,
         params: dict[str, Any],
         *,
-        context: StepRuntimeContext | ExecutionBindingContext | None = None,
+        context: TaskRuntimeContext | ExecutionBindingContext | None = None,
     ) -> None:
         self._metadata.validate_params(params, context=context)
 
@@ -94,7 +94,7 @@ class SubprocessPluginProxy(ExecutorPlugin):
     async def probe_runtime_capability(
         self,
         *,
-        context: StepRuntimeContext,
+        context: TaskRuntimeContext,
     ) -> RuntimeCapabilitySnapshot:
         await self._worker.start()
         payload_dir = self._payload_dir_for_step_cache()
@@ -294,8 +294,8 @@ class SubprocessPluginProxy(ExecutorPlugin):
             return []
         return [item for item in rows if isinstance(item, dict)]
 
-    async def stop(self, step_id: str) -> None:
-        del step_id
+    async def stop(self, task_id: str) -> None:
+        del task_id
         await self._worker.terminate()
         self._cleanup_step_payload_dir()
 
@@ -329,10 +329,10 @@ class SubprocessPluginProxy(ExecutorPlugin):
         return path
 
     def _payload_dir_for_step_cache(self) -> Path:
-        path = Path(settings.PLUGIN_WORKER_IPC_DIR) / "payloads" / self._step_id
+        path = Path(settings.PLUGIN_WORKER_IPC_DIR) / "payloads" / self._task_id
         path.mkdir(parents=True, exist_ok=True)
         return path
 
     def _cleanup_step_payload_dir(self) -> None:
-        path = Path(settings.PLUGIN_WORKER_IPC_DIR) / "payloads" / self._step_id
+        path = Path(settings.PLUGIN_WORKER_IPC_DIR) / "payloads" / self._task_id
         shutil.rmtree(path, ignore_errors=True)

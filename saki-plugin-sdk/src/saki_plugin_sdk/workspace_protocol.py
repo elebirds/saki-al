@@ -6,7 +6,7 @@ from typing import Protocol, runtime_checkable
 
 @runtime_checkable
 class WorkspaceProtocol(Protocol):
-    step_id: str
+    task_id: str
     root: Path
     config_path: Path
     events_path: Path

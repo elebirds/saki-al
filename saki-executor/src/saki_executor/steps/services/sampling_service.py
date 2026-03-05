@@ -28,7 +28,7 @@ class SamplingService:
         *,
         plugin: ExecutorPlugin,
         workspace: WorkspaceProtocol,
-        step_id: str,
+        task_id: str,
         project_id: str,
         commit_id: str,
         strategy: str,
@@ -51,7 +51,7 @@ class SamplingService:
                 raise asyncio.CancelledError("step stop requested")
 
             response = await self._fetch_page(
-                step_id=step_id,
+                task_id=task_id,
                 query_type=query_type,
                 project_id=project_id,
                 commit_id=commit_id,
@@ -71,7 +71,7 @@ class SamplingService:
                     str(asset_hash),
                     str(download_url),
                     protected=protected,
-                    pin_step_id=step_id,
+                    pin_task_id=task_id,
                 )
                 item["local_path"] = str(cached_path)
                 protected.add(str(asset_hash))

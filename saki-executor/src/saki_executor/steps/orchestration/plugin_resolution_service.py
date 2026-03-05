@@ -4,17 +4,17 @@ from collections.abc import Mapping
 from typing import Any
 
 from saki_executor.runtime.profile.profile_selector import ProfileSelectorStrategy
-from saki_executor.steps.contracts import StepExecutionRequest
+from saki_executor.steps.contracts import TaskExecutionRequest
 from saki_executor.steps.orchestration.error_codes import StepErrorCode, StepPipelineError, StepStage, wrap_stage_error
 from saki_executor.steps.orchestration.models import StepExecutionPlan
-from saki_plugin_sdk import RuntimeProfileSpec, StepRuntimeContext, parse_runtime_profiles
+from saki_plugin_sdk import RuntimeProfileSpec, TaskRuntimeContext, parse_runtime_profiles
 
 
 class PluginResolutionService:
     def __init__(self) -> None:
         self._profile_selector = ProfileSelectorStrategy()
 
-    def resolve(self, *, manager: Any, request: StepExecutionRequest) -> StepExecutionPlan:
+    def resolve(self, *, manager: Any, request: TaskExecutionRequest) -> StepExecutionPlan:
         metadata_plugin = manager.plugin_registry.get(request.plugin_id)
         if metadata_plugin is None:
             raise StepPipelineError(
@@ -29,12 +29,12 @@ class PluginResolutionService:
             for item in (getattr(metadata_plugin, "supported_step_types", []) or [])
             if str(item).strip()
         }
-        if supported_step_types and request.step_type not in supported_step_types:
+        if supported_step_types and request.task_type not in supported_step_types:
             raise StepPipelineError(
                 code=StepErrorCode.PLUGIN_UNSUPPORTED_STEP_TYPE,
                 stage=StepStage.PLUGIN_RESOLUTION,
                 message=(
-                    f"plugin {request.plugin_id} does not support step_type={request.step_type}; "
+                    f"plugin {request.plugin_id} does not support task_type={request.task_type}; "
                     f"supported={sorted(supported_step_types)}"
                 ),
             )
@@ -59,7 +59,7 @@ class PluginResolutionService:
                 exc=exc,
                 message=(
                     f"plugin config resolve failed plugin_id={request.plugin_id} "
-                    f"step_id={request.step_id}: {exc}"
+                    f"task_id={request.task_id}: {exc}"
                 ),
             ) from exc
 
@@ -75,7 +75,7 @@ class PluginResolutionService:
         ):
             if key in request.resolved_params and key not in effective_plugin_params:
                 effective_plugin_params[key] = request.resolved_params.get(key)
-        effective_plugin_params["step_type"] = request.step_type
+        effective_plugin_params["task_type"] = request.task_type
         effective_plugin_params["mode"] = request.mode
 
         try:
@@ -87,7 +87,7 @@ class PluginResolutionService:
                 exc=exc,
                 message=(
                     f"plugin params validate failed plugin_id={request.plugin_id} "
-                    f"step_id={request.step_id}: {exc}"
+                    f"task_id={request.task_id}: {exc}"
                 ),
             ) from exc
 
@@ -106,7 +106,7 @@ class PluginResolutionService:
                 exc=exc,
                 message=(
                     f"runtime profile select failed plugin_id={request.plugin_id} "
-                    f"step_id={request.step_id}: {exc}"
+                    f"task_id={request.task_id}: {exc}"
                 ),
             ) from exc
 
@@ -144,19 +144,19 @@ class PluginResolutionService:
         return parse_runtime_profiles(rows)
 
     @staticmethod
-    def _build_runtime_context(request: StepExecutionRequest) -> StepRuntimeContext:
+    def _build_runtime_context(request: TaskExecutionRequest) -> TaskRuntimeContext:
         def _safe_int(value: Any, default: int) -> int:
             try:
                 return int(value)
             except Exception:
                 return default
 
-        return StepRuntimeContext(
-            step_id=request.step_id,
+        return TaskRuntimeContext(
+            task_id=request.task_id,
             round_id=request.round_id,
             round_index=max(0, _safe_int(request.round_index, 0)),
             attempt=max(1, _safe_int(request.attempt, 1)),
-            step_type=request.step_type,
+            task_type=request.task_type,
             mode=request.mode,
             split_seed=max(0, _safe_int(request.resolved_params.get("split_seed"), 0)),
             train_seed=max(0, _safe_int(request.resolved_params.get("train_seed"), 0)),

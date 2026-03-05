@@ -133,7 +133,7 @@ class OrientedRCNNTrainService:
             "runtime": {
                 "device": device,
                 "profile_id": context.profile_id,
-                "step_id": context.step_context.step_id,
+                "task_id": context.step_context.task_id,
                 "round_index": context.step_context.round_index,
                 "train_seed": context.step_context.train_seed,
                 "split_seed": context.step_context.split_seed,

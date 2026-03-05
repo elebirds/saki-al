@@ -11,7 +11,7 @@ from saki_plugin_sdk import (
     HostCapabilitySnapshot,
     PluginManifest,
     RuntimeCapabilitySnapshot,
-    StepRuntimeContext,
+    TaskRuntimeContext,
     TrainOutput,
     Workspace,
     WorkspaceProtocol,
@@ -91,8 +91,8 @@ class _RuntimeStub:
             errors=[],
         )
 
-    async def stop(self, step_id: str) -> None:
-        del step_id
+    async def stop(self, task_id: str) -> None:
+        del task_id
 
 
 @pytest.mark.anyio
@@ -103,12 +103,12 @@ async def test_plugin_facade_forwards_context_to_runtime(tmp_path):
 
     workspace = Workspace(str(tmp_path / "runs"), "step-ctx-1")
     workspace.ensure()
-    step_context = StepRuntimeContext(
-        step_id="step-ctx-1",
+    step_context = TaskRuntimeContext(
+        task_id="step-ctx-1",
         round_id="round-ctx-1",
         round_index=4,
         attempt=2,
-        step_type="train",
+        task_type="train",
         mode="simulation",
         split_seed=11,
         train_seed=22,
@@ -157,7 +157,7 @@ async def test_plugin_facade_forwards_context_to_runtime(tmp_path):
     )
     assert runtime_stub.last_train_context is not None
     forwarded_step_context = runtime_stub.last_train_context.step_context
-    assert forwarded_step_context.step_type == "train"
+    assert forwarded_step_context.task_type == "train"
     assert forwarded_step_context.mode == "simulation"
     assert forwarded_step_context.split_seed == 11
     assert forwarded_step_context.train_seed == 22
@@ -265,12 +265,12 @@ async def test_runtime_prepare_data_ignores_yolo_task_split_hint(tmp_path: Path,
         _fake_prepare_yolo_dataset,
     )
 
-    step_context = StepRuntimeContext(
-        step_id="step-prepare-1",
+    step_context = TaskRuntimeContext(
+        task_id="step-prepare-1",
         round_id="round-prepare-1",
         round_index=0,
         attempt=1,
-        step_type="train",
+        task_type="train",
         mode="manual",
         split_seed=1,
         train_seed=2,
@@ -363,12 +363,12 @@ async def test_runtime_train_reads_split_seed_from_plugin_config_attrs(tmp_path:
         lambda *, metrics, prepare_stats, to_int, to_bool: dict(metrics),
     )
 
-    step_context = StepRuntimeContext(
-        step_id="step-train-1",
+    step_context = TaskRuntimeContext(
+        task_id="step-train-1",
         round_id="round-train-1",
         round_index=1,
         attempt=1,
-        step_type="train",
+        task_type="train",
         mode="active_learning",
         split_seed=11,
         train_seed=22,

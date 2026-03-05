@@ -7,18 +7,18 @@ from saki_plugin_sdk import (
     ExecutionBindingContext,
     HostCapabilitySnapshot,
     RuntimeCapabilitySnapshot,
-    StepRuntimeContext,
+    TaskRuntimeContext,
 )
 from saki_plugin_sdk.ipc import protocol
 
 
-def _context() -> StepRuntimeContext:
-    return StepRuntimeContext(
-        step_id="step-ipc",
+def _context() -> TaskRuntimeContext:
+    return TaskRuntimeContext(
+        task_id="step-ipc",
         round_id="round-ipc",
         round_index=1,
         attempt=1,
-        step_type="train",
+        task_type="train",
         mode="active_learning",
         split_seed=1,
         train_seed=2,
@@ -64,7 +64,7 @@ def test_parse_command_payload_accepts_v3_and_parses_context():
     envelope = protocol.WorkerCommandEnvelope(
         request_id="req-1",
         action="train",
-        step_id="step-ipc",
+        task_id="step-ipc",
     )
     raw = protocol.build_command_payload(
         envelope=envelope,
@@ -75,7 +75,7 @@ def test_parse_command_payload_accepts_v3_and_parses_context():
     parsed_envelope, payload = protocol.parse_command_payload(raw)
     assert parsed_envelope.protocol_version == protocol.WORKER_PROTOCOL_VERSION
     context = protocol.parse_runtime_context(payload)
-    assert context.step_id == "step-ipc"
+    assert context.task_id == "step-ipc"
     assert context.train_seed == 2
     execution_context = protocol.parse_execution_binding_context(payload)
     assert execution_context.device_binding.backend == "cpu"
@@ -86,7 +86,7 @@ def test_parse_command_payload_rejects_non_v3():
         "envelope": {
             "request_id": "req-2",
             "action": "train",
-            "step_id": "step-ipc",
+            "task_id": "step-ipc",
             "protocol_version": 1,
         },
         "payload": {},
@@ -100,7 +100,7 @@ def test_parse_command_payload_requires_protocol_version():
         "envelope": {
             "request_id": "req-3",
             "action": "train",
-            "step_id": "step-ipc",
+            "task_id": "step-ipc",
         },
         "payload": {},
     }

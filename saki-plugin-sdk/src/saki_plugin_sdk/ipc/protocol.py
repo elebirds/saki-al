@@ -9,7 +9,7 @@ from typing import Any
 from saki_plugin_sdk.base import TrainArtifact, TrainOutput
 from saki_plugin_sdk.capability_types import RuntimeCapabilitySnapshot
 from saki_plugin_sdk.execution_binding_context import ExecutionBindingContext
-from saki_plugin_sdk.types import StepRuntimeContext
+from saki_plugin_sdk.types import TaskRuntimeContext
 
 WORKER_EVENT_TOPICS = ("progress", "log", "metric", "status", "artifact", "worker")
 WORKER_PROTOCOL_VERSION = 3
@@ -19,14 +19,14 @@ WORKER_PROTOCOL_VERSION = 3
 class WorkerCommandEnvelope:
     request_id: str
     action: str
-    step_id: str
+    task_id: str
     protocol_version: int = WORKER_PROTOCOL_VERSION
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "request_id": self.request_id,
             "action": self.action,
-            "step_id": self.step_id,
+            "task_id": self.task_id,
             "protocol_version": self.protocol_version,
         }
 
@@ -38,7 +38,7 @@ class WorkerCommandEnvelope:
         return cls(
             request_id=str(payload.get("request_id") or ""),
             action=str(payload.get("action") or ""),
-            step_id=str(payload.get("step_id") or ""),
+            task_id=str(payload.get("task_id") or ""),
             protocol_version=int(protocol_version_raw),
         )
 
@@ -46,14 +46,14 @@ class WorkerCommandEnvelope:
 @dataclass(frozen=True)
 class WorkerEventEnvelope:
     event_type: str
-    step_id: str
+    task_id: str
     ts: int
     request_id: str
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "event_type": self.event_type,
-            "step_id": self.step_id,
+            "task_id": self.task_id,
             "ts": self.ts,
             "request_id": self.request_id,
         }
@@ -62,7 +62,7 @@ class WorkerEventEnvelope:
     def from_dict(cls, payload: dict[str, Any]) -> "WorkerEventEnvelope":
         return cls(
             event_type=str(payload.get("event_type") or ""),
-            step_id=str(payload.get("step_id") or ""),
+            task_id=str(payload.get("task_id") or ""),
             ts=int(payload.get("ts") or 0),
             request_id=str(payload.get("request_id") or ""),
         )
@@ -100,14 +100,14 @@ def build_command_payload(
     *,
     envelope: WorkerCommandEnvelope,
     payload: dict[str, Any] | None = None,
-    runtime_context: StepRuntimeContext | dict[str, Any] | None = None,
+    runtime_context: TaskRuntimeContext | dict[str, Any] | None = None,
     execution_binding_context: ExecutionBindingContext | dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     body = dict(payload or {})
     if runtime_context is not None:
         body["runtime_context"] = (
             runtime_context.to_dict()
-            if isinstance(runtime_context, StepRuntimeContext)
+            if isinstance(runtime_context, TaskRuntimeContext)
             else dict(runtime_context)
         )
     if execution_binding_context is not None:
@@ -137,11 +137,11 @@ def parse_command_payload(raw: dict[str, Any]) -> tuple[WorkerCommandEnvelope, d
     return envelope, payload
 
 
-def parse_runtime_context(payload: dict[str, Any]) -> StepRuntimeContext:
+def parse_runtime_context(payload: dict[str, Any]) -> TaskRuntimeContext:
     context_raw = payload.get("runtime_context")
     if not isinstance(context_raw, dict):
         raise ValueError("missing runtime_context")
-    return StepRuntimeContext.from_dict(context_raw)
+    return TaskRuntimeContext.from_dict(context_raw)
 
 
 def parse_execution_binding_context(payload: dict[str, Any]) -> ExecutionBindingContext:

@@ -105,9 +105,9 @@ class AgentClient:
             return False
 
         if self.step_manager.busy and force:
-            if self.step_manager.current_step_id:
-                logger.warning("收到强制断连请求，先尝试停止任务 step_id={}。", self.step_manager.current_step_id)
-                await self.step_manager.stop_step(self.step_manager.current_step_id)
+            if self.step_manager.current_task_id:
+                logger.warning("收到强制断连请求，先尝试停止任务 task_id={}。", self.step_manager.current_task_id)
+                await self.step_manager.stop_task(self.step_manager.current_task_id)
             wait_sec = max(0, int(settings.DISCONNECT_FORCE_WAIT_SEC))
             if wait_sec > 0:
                 deadline = time.monotonic() + wait_sec
@@ -163,7 +163,7 @@ class AgentClient:
             request_id=str(uuid.uuid4()),
             executor_id=settings.EXECUTOR_ID,
             busy=self.step_manager.busy,
-            current_task_id=self.step_manager.current_step_id,
+            current_task_id=self.step_manager.current_task_id,
             resources=self._resource_payload(),
         )
 
@@ -172,7 +172,7 @@ class AgentClient:
             await asyncio.sleep(settings.HEARTBEAT_INTERVAL_SEC)
             self._last_heartbeat_ts = int(time.time())
             await self.send_message(self._heartbeat_message())
-            logger.debug("已发送心跳 current_task_id={}", self.step_manager.current_step_id)
+            logger.debug("已发送心跳 current_task_id={}", self.step_manager.current_task_id)
 
     async def _request_iterator(self):
         while self._running:
@@ -284,13 +284,13 @@ class AgentClient:
                 logger.info("重复任务派发 request_id={}，已返回缓存 ack。", request_id)
                 return
 
-            task_payload = runtime_codec.parse_assign_step(assign)
+            task_payload = runtime_codec.parse_assign_task(assign)
             logger.info("收到任务派发 request_id={} task_id={}", request_id, task_payload.get("task_id"))
             ack_reason = "executor_busy"
             ack_detail = "executor busy"
             accepted = False
             try:
-                accepted = await self.step_manager.assign_step(request_id, task_payload)
+                accepted = await self.step_manager.assign_task(request_id, task_payload)
                 if accepted:
                     ack_reason = "accepted"
                     ack_detail = "accepted"
@@ -321,7 +321,7 @@ class AgentClient:
 
             task_id = str(stop.task_id or "")
             logger.info("收到任务停止请求 request_id={} task_id={}", request_id, task_id)
-            stopped = await self.step_manager.stop_step(task_id)
+            stopped = await self.step_manager.stop_task(task_id)
             ack_message = runtime_codec.build_ack_message(
                 request_id=str(uuid.uuid4()),
                 ack_for=request_id,

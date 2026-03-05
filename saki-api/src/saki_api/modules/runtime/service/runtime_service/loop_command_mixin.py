@@ -107,18 +107,13 @@ class LoopCommandMixin:
             name=payload.name,
             mode=payload.mode,
             phase=phase_for_mode(payload.mode),
-            phase_meta={},
             model_arch=payload.model_arch,
             config=normalized_config,
             current_iteration=0,
             lifecycle=payload.lifecycle,
             max_rounds=max_rounds,
             query_batch_size=query_batch_size,
-            min_seed_labeled=100,
             min_new_labels_per_round=120,
-            stop_patience_rounds=2,
-            stop_min_gain=0.002,
-            auto_register_model=True,
             active_snapshot_version_id=None,
         )
         return await self.loop_repo.create(create_data.model_dump(exclude_none=True))

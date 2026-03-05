@@ -109,7 +109,6 @@ export interface Loop {
     mode: LoopMode;
     phase: LoopPhase;
     gate?: LoopGate;
-    phaseMeta: Record<string, any>;
     gateMeta?: Record<string, any>;
     modelArch: string;
     config: LoopRuntimeConfig;
@@ -118,11 +117,7 @@ export interface Loop {
     lifecycle: LoopLifecycle;
     maxRounds: number;
     queryBatchSize: number;
-    minSeedLabeled: number;
     minNewLabelsPerRound: number;
-    stopPatienceRounds: number;
-    stopMinGain: number;
-    autoRegisterModel: boolean;
     lastRoundId?: string | null;
     latestModelId?: string | null;
     lastError?: string | null;
@@ -142,18 +137,14 @@ export interface RuntimeRound {
     state: RuntimeRoundState;
     awaitingConfirm?: boolean;
     stepCounts: Record<string, number>;
-    roundType: string;
     pluginId: string;
     inputCommitId?: string | null;
-    outputCommitId?: string | null;
     retryOfRoundId?: string | null;
     retryReason?: string | null;
     assignedExecutorId?: string | null;
     startedAt?: string | null;
     endedAt?: string | null;
-    retryCount: number;
     confirmedAt?: string | null;
-    confirmedCommitId?: string | null;
     confirmedRevealedCount?: number;
     confirmedSelectedCount?: number;
     confirmedEffectiveMinRequired?: number;
@@ -165,7 +156,6 @@ export interface RuntimeRound {
     finalArtifacts: Record<string, any>;
     resolvedParams: Record<string, any>;
     resources: Record<string, any>;
-    strategyParams: Record<string, any>;
     modelId?: string | null;
     createdAt: string;
     updatedAt: string;
@@ -208,7 +198,6 @@ export interface RuntimeStep {
     metrics: Record<string, any>;
     artifacts: Record<string, any>;
     inputCommitId?: string | null;
-    outputCommitId?: string | null;
     assignedExecutorId?: string | null;
     attempt: number;
     maxAttempts: number;

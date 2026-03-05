@@ -15,10 +15,11 @@ import (
 type Annotationsource string
 
 const (
-	AnnotationsourceMANUAL   Annotationsource = "MANUAL"
-	AnnotationsourceMODEL    Annotationsource = "MODEL"
-	AnnotationsourceSYSTEM   Annotationsource = "SYSTEM"
-	AnnotationsourceIMPORTED Annotationsource = "IMPORTED"
+	AnnotationsourceMANUAL         Annotationsource = "MANUAL"
+	AnnotationsourceMODEL          Annotationsource = "MODEL"
+	AnnotationsourceSYSTEM         Annotationsource = "SYSTEM"
+	AnnotationsourceIMPORTED       Annotationsource = "IMPORTED"
+	AnnotationsourceCONFIRMEDMODEL Annotationsource = "CONFIRMED_MODEL"
 )
 
 func (e *Annotationsource) Scan(src interface{}) error {
@@ -553,12 +554,53 @@ func (ns NullRoletype) Value() (driver.Value, error) {
 	return string(ns.Roletype), nil
 }
 
+type Roundselectionoverrideop string
+
+const (
+	RoundselectionoverrideopINCLUDE Roundselectionoverrideop = "INCLUDE"
+	RoundselectionoverrideopEXCLUDE Roundselectionoverrideop = "EXCLUDE"
+)
+
+func (e *Roundselectionoverrideop) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = Roundselectionoverrideop(s)
+	case string:
+		*e = Roundselectionoverrideop(s)
+	default:
+		return fmt.Errorf("unsupported scan type for Roundselectionoverrideop: %T", src)
+	}
+	return nil
+}
+
+type NullRoundselectionoverrideop struct {
+	Roundselectionoverrideop Roundselectionoverrideop
+	Valid                    bool // Valid is true if Roundselectionoverrideop is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullRoundselectionoverrideop) Scan(value interface{}) error {
+	if value == nil {
+		ns.Roundselectionoverrideop, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.Roundselectionoverrideop.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullRoundselectionoverrideop) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.Roundselectionoverrideop), nil
+}
+
 type Roundstatus string
 
 const (
 	RoundstatusPENDING   Roundstatus = "PENDING"
 	RoundstatusRUNNING   Roundstatus = "RUNNING"
-	RoundstatusWAITUSER  Roundstatus = "WAIT_USER"
 	RoundstatusCOMPLETED Roundstatus = "COMPLETED"
 	RoundstatusCANCELLED Roundstatus = "CANCELLED"
 	RoundstatusFAILED    Roundstatus = "FAILED"
@@ -597,6 +639,137 @@ func (ns NullRoundstatus) Value() (driver.Value, error) {
 		return nil, nil
 	}
 	return string(ns.Roundstatus), nil
+}
+
+type Snapshotpartition string
+
+const (
+	SnapshotpartitionTRAINSEED  Snapshotpartition = "TRAIN_SEED"
+	SnapshotpartitionTRAINPOOL  Snapshotpartition = "TRAIN_POOL"
+	SnapshotpartitionVALANCHOR  Snapshotpartition = "VAL_ANCHOR"
+	SnapshotpartitionVALBATCH   Snapshotpartition = "VAL_BATCH"
+	SnapshotpartitionTESTANCHOR Snapshotpartition = "TEST_ANCHOR"
+	SnapshotpartitionTESTBATCH  Snapshotpartition = "TEST_BATCH"
+)
+
+func (e *Snapshotpartition) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = Snapshotpartition(s)
+	case string:
+		*e = Snapshotpartition(s)
+	default:
+		return fmt.Errorf("unsupported scan type for Snapshotpartition: %T", src)
+	}
+	return nil
+}
+
+type NullSnapshotpartition struct {
+	Snapshotpartition Snapshotpartition
+	Valid             bool // Valid is true if Snapshotpartition is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullSnapshotpartition) Scan(value interface{}) error {
+	if value == nil {
+		ns.Snapshotpartition, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.Snapshotpartition.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullSnapshotpartition) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.Snapshotpartition), nil
+}
+
+type Snapshotupdatemode string
+
+const (
+	SnapshotupdatemodeINIT            Snapshotupdatemode = "INIT"
+	SnapshotupdatemodeAPPENDALLTOPOOL Snapshotupdatemode = "APPEND_ALL_TO_POOL"
+	SnapshotupdatemodeAPPENDSPLIT     Snapshotupdatemode = "APPEND_SPLIT"
+)
+
+func (e *Snapshotupdatemode) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = Snapshotupdatemode(s)
+	case string:
+		*e = Snapshotupdatemode(s)
+	default:
+		return fmt.Errorf("unsupported scan type for Snapshotupdatemode: %T", src)
+	}
+	return nil
+}
+
+type NullSnapshotupdatemode struct {
+	Snapshotupdatemode Snapshotupdatemode
+	Valid              bool // Valid is true if Snapshotupdatemode is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullSnapshotupdatemode) Scan(value interface{}) error {
+	if value == nil {
+		ns.Snapshotupdatemode, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.Snapshotupdatemode.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullSnapshotupdatemode) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.Snapshotupdatemode), nil
+}
+
+type Snapshotvalpolicy string
+
+const (
+	SnapshotvalpolicyANCHORONLY         Snapshotvalpolicy = "ANCHOR_ONLY"
+	SnapshotvalpolicyEXPANDWITHBATCHVAL Snapshotvalpolicy = "EXPAND_WITH_BATCH_VAL"
+)
+
+func (e *Snapshotvalpolicy) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = Snapshotvalpolicy(s)
+	case string:
+		*e = Snapshotvalpolicy(s)
+	default:
+		return fmt.Errorf("unsupported scan type for Snapshotvalpolicy: %T", src)
+	}
+	return nil
+}
+
+type NullSnapshotvalpolicy struct {
+	Snapshotvalpolicy Snapshotvalpolicy
+	Valid             bool // Valid is true if Snapshotvalpolicy is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullSnapshotvalpolicy) Scan(value interface{}) error {
+	if value == nil {
+		ns.Snapshotvalpolicy, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.Snapshotvalpolicy.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullSnapshotvalpolicy) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.Snapshotvalpolicy), nil
 }
 
 type Stepdispatchkind string
@@ -824,14 +997,58 @@ func (ns NullTasktype) Value() (driver.Value, error) {
 	return string(ns.Tasktype), nil
 }
 
+type Visibilitysource string
+
+const (
+	VisibilitysourceSNAPSHOTINIT Visibilitysource = "SNAPSHOT_INIT"
+	VisibilitysourceSEEDINIT     Visibilitysource = "SEED_INIT"
+	VisibilitysourceROUNDREVEAL  Visibilitysource = "ROUND_REVEAL"
+	VisibilitysourceFORCEREVEAL  Visibilitysource = "FORCE_REVEAL"
+)
+
+func (e *Visibilitysource) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = Visibilitysource(s)
+	case string:
+		*e = Visibilitysource(s)
+	default:
+		return fmt.Errorf("unsupported scan type for Visibilitysource: %T", src)
+	}
+	return nil
+}
+
+type NullVisibilitysource struct {
+	Visibilitysource Visibilitysource
+	Valid            bool // Valid is true if Visibilitysource is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullVisibilitysource) Scan(value interface{}) error {
+	if value == nil {
+		ns.Visibilitysource, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.Visibilitysource.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullVisibilitysource) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.Visibilitysource), nil
+}
+
 type AlembicVersion struct {
 	VersionNum string
 }
 
 type Annotation struct {
 	ID          uuid.UUID
-	CreatedAt   pgtype.Timestamp
-	UpdatedAt   pgtype.Timestamp
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
 	SampleID    uuid.UUID
 	LabelID     uuid.UUID
 	ProjectID   uuid.UUID
@@ -849,8 +1066,8 @@ type Annotation struct {
 
 type AnnotationDraft struct {
 	ID         uuid.UUID
-	CreatedAt  pgtype.Timestamp
-	UpdatedAt  pgtype.Timestamp
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
 	ProjectID  uuid.UUID
 	SampleID   uuid.UUID
 	UserID     uuid.UUID
@@ -859,8 +1076,8 @@ type AnnotationDraft struct {
 }
 
 type Asset struct {
-	CreatedAt        pgtype.Timestamp
-	UpdatedAt        pgtype.Timestamp
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
 	ID               uuid.UUID
 	Hash             string
 	StorageType      Storagetype
@@ -876,8 +1093,8 @@ type Asset struct {
 type AuditLog struct {
 	CreatedBy  *uuid.UUID
 	UpdatedBy  *uuid.UUID
-	CreatedAt  pgtype.Timestamp
-	UpdatedAt  pgtype.Timestamp
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
 	ID         uuid.UUID
 	Action     Auditaction
 	TargetType string
@@ -890,8 +1107,8 @@ type AuditLog struct {
 
 type Branch struct {
 	ID           uuid.UUID
-	CreatedAt    pgtype.Timestamp
-	UpdatedAt    pgtype.Timestamp
+	CreatedAt    pgtype.Timestamptz
+	UpdatedAt    pgtype.Timestamptz
 	Name         string
 	ProjectID    uuid.UUID
 	HeadCommitID uuid.UUID
@@ -901,8 +1118,8 @@ type Branch struct {
 
 type Commit struct {
 	ID         uuid.UUID
-	CreatedAt  pgtype.Timestamp
-	UpdatedAt  pgtype.Timestamp
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
 	ProjectID  uuid.UUID
 	ParentID   *uuid.UUID
 	Message    string
@@ -929,8 +1146,8 @@ type CommitSampleState struct {
 
 type Dataset struct {
 	ID                        uuid.UUID
-	CreatedAt                 pgtype.Timestamp
-	UpdatedAt                 pgtype.Timestamp
+	CreatedAt                 pgtype.Timestamptz
+	UpdatedAt                 pgtype.Timestamptz
 	Name                      string
 	Description               pgtype.Text
 	Type                      Datasettype
@@ -940,8 +1157,8 @@ type Dataset struct {
 }
 
 type DispatchOutbox struct {
-	CreatedAt     pgtype.Timestamp
-	UpdatedAt     pgtype.Timestamp
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
 	ID            uuid.UUID
 	StepID        uuid.UUID
 	ExecutorID    string
@@ -949,15 +1166,15 @@ type DispatchOutbox struct {
 	Payload       []byte
 	Status        string
 	AttemptCount  int32
-	NextAttemptAt pgtype.Timestamp
-	LockedAt      pgtype.Timestamp
-	SentAt        pgtype.Timestamp
+	NextAttemptAt pgtype.Timestamptz
+	LockedAt      pgtype.Timestamptz
+	SentAt        pgtype.Timestamptz
 	LastError     pgtype.Text
 }
 
 type ImportTask struct {
-	CreatedAt       pgtype.Timestamp
-	UpdatedAt       pgtype.Timestamp
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
 	ID              uuid.UUID
 	Mode            string
 	ResourceType    string
@@ -970,15 +1187,15 @@ type ImportTask struct {
 	Payload         []byte
 	Summary         []byte
 	Error           pgtype.Text
-	StartedAt       pgtype.Timestamp
-	FinishedAt      pgtype.Timestamp
+	StartedAt       pgtype.Timestamptz
+	FinishedAt      pgtype.Timestamptz
 }
 
 type ImportTaskEvent struct {
 	ID           uuid.UUID
 	TaskID       uuid.UUID
 	Seq          int32
-	Ts           pgtype.Timestamp
+	Ts           pgtype.Timestamptz
 	EventType    string
 	EventSubtype pgtype.Text
 	Phase        pgtype.Text
@@ -992,8 +1209,8 @@ type ImportTaskEvent struct {
 
 type Label struct {
 	ID          uuid.UUID
-	CreatedAt   pgtype.Timestamp
-	UpdatedAt   pgtype.Timestamp
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
 	Name        string
 	Color       string
 	Description pgtype.Text
@@ -1003,33 +1220,64 @@ type Label struct {
 }
 
 type Loop struct {
-	CreatedAt             pgtype.Timestamp
-	UpdatedAt             pgtype.Timestamp
-	ID                    uuid.UUID
-	ProjectID             uuid.UUID
-	BranchID              uuid.UUID
-	Name                  string
-	Mode                  Loopmode
-	Phase                 Loopphase
-	PhaseMeta             []byte
-	ModelArch             string
-	Config                []byte
-	CurrentIteration      int32
-	Lifecycle             Looplifecycle
-	MaxRounds             int32
-	QueryBatchSize        int32
-	MinSeedLabeled        int32
-	MinNewLabelsPerRound  int32
-	StopPatienceRounds    int32
-	StopMinGain           float64
-	AutoRegisterModel     bool
-	LastConfirmedCommitID *uuid.UUID
-	TerminalReason        pgtype.Text
+	CreatedAt               pgtype.Timestamptz
+	UpdatedAt               pgtype.Timestamptz
+	ID                      uuid.UUID
+	ProjectID               uuid.UUID
+	BranchID                uuid.UUID
+	Name                    string
+	Mode                    Loopmode
+	Phase                   Loopphase
+	ModelArch               string
+	Config                  []byte
+	CurrentIteration        int32
+	Lifecycle               Looplifecycle
+	MaxRounds               int32
+	QueryBatchSize          int32
+	MinNewLabelsPerRound    int32
+	ActiveSnapshotVersionID *uuid.UUID
+	LastConfirmedCommitID   *uuid.UUID
+	TerminalReason          pgtype.Text
+}
+
+type LoopSampleState struct {
+	CreatedAt          pgtype.Timestamptz
+	UpdatedAt          pgtype.Timestamptz
+	LoopID             uuid.UUID
+	SampleID           uuid.UUID
+	VisibleInTrain     bool
+	Source             Visibilitysource
+	RevealedRoundIndex pgtype.Int4
+	RevealCommitID     *uuid.UUID
+}
+
+type LoopSnapshotSample struct {
+	SnapshotVersionID uuid.UUID
+	SampleID          uuid.UUID
+	Partition         Snapshotpartition
+	CohortIndex       int32
+	Locked            bool
+}
+
+type LoopSnapshotVersion struct {
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
+	ID              uuid.UUID
+	LoopID          uuid.UUID
+	VersionIndex    int32
+	ParentVersionID *uuid.UUID
+	UpdateMode      Snapshotupdatemode
+	ValPolicy       Snapshotvalpolicy
+	Seed            string
+	RuleJson        []byte
+	ManifestHash    string
+	SampleCount     int32
+	CreatedBy       *uuid.UUID
 }
 
 type Model struct {
-	CreatedAt           pgtype.Timestamp
-	UpdatedAt           pgtype.Timestamp
+	CreatedAt           pgtype.Timestamptz
+	UpdatedAt           pgtype.Timestamptz
 	ID                  uuid.UUID
 	ProjectID           uuid.UUID
 	SourceCommitID      *uuid.UUID
@@ -1046,13 +1294,13 @@ type Model struct {
 	Metrics             []byte
 	Artifacts           []byte
 	PublishManifest     []byte
-	PromotedAt          pgtype.Timestamp
+	PromotedAt          pgtype.Timestamptz
 	CreatedBy           *uuid.UUID
 }
 
 type ModelClassSchema struct {
-	CreatedAt     pgtype.Timestamp
-	UpdatedAt     pgtype.Timestamp
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
 	ID            uuid.UUID
 	ModelID       uuid.UUID
 	LabelID       uuid.UUID
@@ -1063,8 +1311,8 @@ type ModelClassSchema struct {
 }
 
 type PredictionItem struct {
-	CreatedAt       pgtype.Timestamp
-	UpdatedAt       pgtype.Timestamp
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
 	PredictionSetID uuid.UUID
 	SampleID        uuid.UUID
 	Rank            int32
@@ -1077,8 +1325,8 @@ type PredictionItem struct {
 }
 
 type PredictionSet struct {
-	CreatedAt     pgtype.Timestamp
-	UpdatedAt     pgtype.Timestamp
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
 	ID            uuid.UUID
 	ProjectID     uuid.UUID
 	LoopID        *uuid.UUID
@@ -1097,8 +1345,8 @@ type PredictionSet struct {
 }
 
 type PredictionSetBinding struct {
-	CreatedAt       pgtype.Timestamp
-	UpdatedAt       pgtype.Timestamp
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
 	ID              uuid.UUID
 	PredictionSetID uuid.UUID
 	ModelID         uuid.UUID
@@ -1109,8 +1357,8 @@ type PredictionSetBinding struct {
 
 type Project struct {
 	ID                     uuid.UUID
-	CreatedAt              pgtype.Timestamp
-	UpdatedAt              pgtype.Timestamp
+	CreatedAt              pgtype.Timestamptz
+	UpdatedAt              pgtype.Timestamptz
 	Name                   string
 	Description            pgtype.Text
 	TaskType               Tasktype
@@ -1128,8 +1376,8 @@ type ProjectDataset struct {
 type ResourceMember struct {
 	CreatedBy    *uuid.UUID
 	UpdatedBy    *uuid.UUID
-	CreatedAt    pgtype.Timestamp
-	UpdatedAt    pgtype.Timestamp
+	CreatedAt    pgtype.Timestamptz
+	UpdatedAt    pgtype.Timestamptz
 	ID           uuid.UUID
 	ResourceType Resourcetype
 	ResourceID   uuid.UUID
@@ -1138,8 +1386,8 @@ type ResourceMember struct {
 }
 
 type Role struct {
-	CreatedAt    pgtype.Timestamp
-	UpdatedAt    pgtype.Timestamp
+	CreatedAt    pgtype.Timestamptz
+	UpdatedAt    pgtype.Timestamptz
 	ID           uuid.UUID
 	IsSystem     bool
 	IsDefault    bool
@@ -1155,8 +1403,8 @@ type Role struct {
 }
 
 type RolePermission struct {
-	CreatedAt  pgtype.Timestamp
-	UpdatedAt  pgtype.Timestamp
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
 	ID         uuid.UUID
 	Permission string
 	RoleID     uuid.UUID
@@ -1164,8 +1412,8 @@ type RolePermission struct {
 
 type Round struct {
 	ID                            uuid.UUID
-	CreatedAt                     pgtype.Timestamp
-	UpdatedAt                     pgtype.Timestamp
+	CreatedAt                     pgtype.Timestamptz
+	UpdatedAt                     pgtype.Timestamptz
 	ProjectID                     uuid.UUID
 	LoopID                        uuid.UUID
 	RoundIndex                    int32
@@ -1173,43 +1421,47 @@ type Round struct {
 	Mode                          Loopmode
 	State                         Roundstatus
 	StepCounts                    []byte
-	RoundType                     string
 	PluginID                      string
 	ResolvedParams                []byte
 	Resources                     []byte
 	InputCommitID                 *uuid.UUID
-	OutputCommitID                *uuid.UUID
 	RetryOfRoundID                *uuid.UUID
 	RetryReason                   pgtype.Text
 	AssignedExecutorID            pgtype.Text
-	StartedAt                     pgtype.Timestamp
-	EndedAt                       pgtype.Timestamp
-	RetryCount                    int32
+	StartedAt                     pgtype.Timestamptz
+	EndedAt                       pgtype.Timestamptz
 	TerminalReason                pgtype.Text
-	ConfirmedAt                   pgtype.Timestamp
-	ConfirmedCommitID             *uuid.UUID
+	ConfirmedAt                   pgtype.Timestamptz
 	ConfirmedRevealedCount        int32
 	ConfirmedSelectedCount        int32
 	ConfirmedEffectiveMinRequired int32
 	FinalMetrics                  []byte
 	FinalArtifacts                []byte
-	StrategyParams                []byte
+}
+
+type RoundSelectionOverride struct {
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	ID        uuid.UUID
+	RoundID   uuid.UUID
+	SampleID  uuid.UUID
+	Op        Roundselectionoverrideop
+	CreatedBy *uuid.UUID
+	Reason    pgtype.Text
 }
 
 type RuntimeCommandLog struct {
-	CreatedAt   pgtype.Timestamp
-	UpdatedAt   pgtype.Timestamp
-	ID          uuid.UUID
-	CommandID   string
-	CommandType string
-	ResourceID  string
-	Status      string
-	Detail      string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	ID        uuid.UUID
+	CommandID string
+	Status    string
+	Detail    string
 }
 
 type RuntimeExecutor struct {
-	CreatedAt     pgtype.Timestamp
-	UpdatedAt     pgtype.Timestamp
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
 	ID            uuid.UUID
 	ExecutorID    string
 	Version       string
@@ -1218,15 +1470,15 @@ type RuntimeExecutor struct {
 	CurrentStepID pgtype.Text
 	PluginIds     []byte
 	Resources     []byte
-	LastSeenAt    pgtype.Timestamp
+	LastSeenAt    pgtype.Timestamptz
 	LastError     pgtype.Text
 }
 
 type RuntimeExecutorStat struct {
-	CreatedAt          pgtype.Timestamp
-	UpdatedAt          pgtype.Timestamp
+	CreatedAt          pgtype.Timestamptz
+	UpdatedAt          pgtype.Timestamptz
 	ID                 uuid.UUID
-	Ts                 pgtype.Timestamp
+	Ts                 pgtype.Timestamptz
 	TotalCount         int32
 	OnlineCount        int32
 	BusyCount          int32
@@ -1238,8 +1490,8 @@ type RuntimeExecutorStat struct {
 
 type Sample struct {
 	ID             uuid.UUID
-	CreatedAt      pgtype.Timestamp
-	UpdatedAt      pgtype.Timestamp
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
 	DatasetID      uuid.UUID
 	Name           string
 	AssetGroup     []byte
@@ -1249,8 +1501,8 @@ type Sample struct {
 }
 
 type Step struct {
-	CreatedAt          pgtype.Timestamp
-	UpdatedAt          pgtype.Timestamp
+	CreatedAt          pgtype.Timestamptz
+	UpdatedAt          pgtype.Timestamptz
 	ID                 uuid.UUID
 	RoundID            uuid.UUID
 	StepType           Steptype
@@ -1263,20 +1515,18 @@ type Step struct {
 	Metrics            []byte
 	Artifacts          []byte
 	InputCommitID      *uuid.UUID
-	OutputCommitID     *uuid.UUID
 	AssignedExecutorID pgtype.Text
-	DispatchRequestID  pgtype.Text
 	StateVersion       int32
 	Attempt            int32
 	MaxAttempts        int32
-	StartedAt          pgtype.Timestamp
-	EndedAt            pgtype.Timestamp
+	StartedAt          pgtype.Timestamptz
+	EndedAt            pgtype.Timestamptz
 	LastError          pgtype.Text
 }
 
 type StepCandidateItem struct {
-	CreatedAt          pgtype.Timestamp
-	UpdatedAt          pgtype.Timestamp
+	CreatedAt          pgtype.Timestamptz
+	UpdatedAt          pgtype.Timestamptz
 	ID                 uuid.UUID
 	StepID             uuid.UUID
 	SampleID           uuid.UUID
@@ -1287,32 +1537,31 @@ type StepCandidateItem struct {
 }
 
 type StepEvent struct {
-	CreatedAt pgtype.Timestamp
-	UpdatedAt pgtype.Timestamp
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
 	ID        uuid.UUID
 	StepID    uuid.UUID
 	Seq       int32
-	Ts        pgtype.Timestamp
+	Ts        pgtype.Timestamptz
 	EventType string
 	Payload   []byte
-	RequestID pgtype.Text
 }
 
 type StepMetricPoint struct {
-	CreatedAt   pgtype.Timestamp
-	UpdatedAt   pgtype.Timestamp
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
 	ID          uuid.UUID
 	StepID      uuid.UUID
 	Step        int32
 	Epoch       pgtype.Int4
 	MetricName  string
 	MetricValue float64
-	Ts          pgtype.Timestamp
+	Ts          pgtype.Timestamptz
 }
 
 type SystemSetting struct {
-	CreatedAt pgtype.Timestamp
-	UpdatedAt pgtype.Timestamp
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
 	Key       string
 	ValueJson []byte
 	UpdatedBy *uuid.UUID
@@ -1320,8 +1569,8 @@ type SystemSetting struct {
 
 type User struct {
 	ID                 uuid.UUID
-	CreatedAt          pgtype.Timestamp
-	UpdatedAt          pgtype.Timestamp
+	CreatedAt          pgtype.Timestamptz
+	UpdatedAt          pgtype.Timestamptz
 	Email              string
 	FullName           pgtype.Text
 	IsActive           bool
@@ -1333,10 +1582,10 @@ type User struct {
 type UserSystemRole struct {
 	CreatedBy *uuid.UUID
 	UpdatedBy *uuid.UUID
-	CreatedAt pgtype.Timestamp
-	UpdatedAt pgtype.Timestamp
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
 	ID        uuid.UUID
 	UserID    uuid.UUID
 	RoleID    uuid.UUID
-	ExpiresAt pgtype.Timestamp
+	ExpiresAt pgtype.Timestamptz
 }

@@ -242,7 +242,6 @@ SELECT
   state AS summary_status,
   ended_at,
   confirmed_at,
-  confirmed_commit_id,
   confirmed_revealed_count,
   confirmed_selected_count,
   confirmed_effective_min_required
@@ -257,9 +256,8 @@ type GetLatestRoundByLoopRow struct {
 	RoundIndex                    int32
 	AttemptIndex                  int32
 	SummaryStatus                 Roundstatus
-	EndedAt                       pgtype.Timestamp
-	ConfirmedAt                   pgtype.Timestamp
-	ConfirmedCommitID             *uuid.UUID
+	EndedAt                       pgtype.Timestamptz
+	ConfirmedAt                   pgtype.Timestamptz
 	ConfirmedRevealedCount        int32
 	ConfirmedSelectedCount        int32
 	ConfirmedEffectiveMinRequired int32
@@ -275,7 +273,6 @@ func (q *Queries) GetLatestRoundByLoop(ctx context.Context, loopID uuid.UUID) (G
 		&i.SummaryStatus,
 		&i.EndedAt,
 		&i.ConfirmedAt,
-		&i.ConfirmedCommitID,
 		&i.ConfirmedRevealedCount,
 		&i.ConfirmedSelectedCount,
 		&i.ConfirmedEffectiveMinRequired,
@@ -502,12 +499,10 @@ func (q *Queries) GetStepState(ctx context.Context, stepID uuid.UUID) (Stepstatu
 
 const insertCommandLog = `-- name: InsertCommandLog :execrows
 INSERT INTO runtime_command_log(
-  id, command_id, command_type, resource_id, status, detail, created_at, updated_at
+  id, command_id, status, detail, created_at, updated_at
 ) VALUES(
   $1::uuid,
   $2,
-  $3,
-  $4,
   'accepted',
   'accepted',
   now(),
@@ -517,19 +512,12 @@ ON CONFLICT (command_id) DO NOTHING
 `
 
 type InsertCommandLogParams struct {
-	RequestID   uuid.UUID
-	CommandID   string
-	CommandType string
-	ResourceID  string
+	RequestID uuid.UUID
+	CommandID string
 }
 
 func (q *Queries) InsertCommandLog(ctx context.Context, arg InsertCommandLogParams) (int64, error) {
-	result, err := q.db.Exec(ctx, insertCommandLog,
-		arg.RequestID,
-		arg.CommandID,
-		arg.CommandType,
-		arg.ResourceID,
-	)
+	result, err := q.db.Exec(ctx, insertCommandLog, arg.RequestID, arg.CommandID)
 	if err != nil {
 		return 0, err
 	}
@@ -538,10 +526,10 @@ func (q *Queries) InsertCommandLog(ctx context.Context, arg InsertCommandLogPara
 
 const insertRound = `-- name: InsertRound :exec
 INSERT INTO round(
-  id, project_id, loop_id, round_index, attempt_index, mode, state, step_counts, round_type, plugin_id,
-  resolved_params, resources, input_commit_id, retry_of_round_id, retry_reason, retry_count, terminal_reason,
+  id, project_id, loop_id, round_index, attempt_index, mode, state, step_counts, plugin_id,
+  resolved_params, resources, input_commit_id, retry_of_round_id, retry_reason, terminal_reason,
   confirmed_revealed_count, confirmed_selected_count, confirmed_effective_min_required,
-  final_metrics, final_artifacts, strategy_params,
+  final_metrics, final_artifacts,
   created_at, updated_at
 ) VALUES (
   $1::uuid,
@@ -552,19 +540,16 @@ INSERT INTO round(
   $6::loopmode,
   $7::roundstatus,
   $8::jsonb,
-  'loop_round',
   $9,
   $10::jsonb,
   $11::jsonb,
   $12::uuid,
   $13::uuid,
   $14::text,
-  0,
   NULL,
   0,
   0,
   0,
-  '{}'::jsonb,
   '{}'::jsonb,
   '{}'::jsonb,
   now(),
@@ -612,7 +597,7 @@ func (q *Queries) InsertRound(ctx context.Context, arg InsertRoundParams) error 
 const insertStep = `-- name: InsertStep :exec
 INSERT INTO step(
   id, round_id, step_type, dispatch_kind, state, round_index, step_index, depends_on_step_ids, resolved_params, metrics, artifacts,
-  input_commit_id, attempt, max_attempts, state_version, dispatch_request_id, created_at, updated_at
+  input_commit_id, attempt, max_attempts, state_version, created_at, updated_at
 ) VALUES (
   $1::uuid,
   $2::uuid,
@@ -629,7 +614,6 @@ INSERT INTO step(
   1,
   3,
   0,
-  NULL,
   now(),
   now()
 )
@@ -689,7 +673,7 @@ type ListLoopStoppableStepsRow struct {
 	ID        uuid.UUID
 	State     Stepstatus
 	Attempt   int32
-	UpdatedAt pgtype.Timestamp
+	UpdatedAt pgtype.Timestamptz
 }
 
 func (q *Queries) ListLoopStoppableSteps(ctx context.Context, loopID uuid.UUID) ([]ListLoopStoppableStepsRow, error) {
@@ -785,18 +769,16 @@ func (q *Queries) ListTickLoopIDs(ctx context.Context, limitCount int32) ([]uuid
 const markRoundConfirmed = `-- name: MarkRoundConfirmed :execrows
 UPDATE round
 SET confirmed_at = now(),
-    confirmed_commit_id = $1::uuid,
-    confirmed_revealed_count = $2,
-    confirmed_selected_count = $3,
-    confirmed_effective_min_required = $4,
+    confirmed_revealed_count = $1,
+    confirmed_selected_count = $2,
+    confirmed_effective_min_required = $3,
     updated_at = now()
-WHERE id = $5::uuid
+WHERE id = $4::uuid
   AND state = 'COMPLETED'::roundstatus
   AND confirmed_at IS NULL
 `
 
 type MarkRoundConfirmedParams struct {
-	ConfirmedCommitID             *uuid.UUID
 	ConfirmedRevealedCount        int32
 	ConfirmedSelectedCount        int32
 	ConfirmedEffectiveMinRequired int32
@@ -805,7 +787,6 @@ type MarkRoundConfirmedParams struct {
 
 func (q *Queries) MarkRoundConfirmed(ctx context.Context, arg MarkRoundConfirmedParams) (int64, error) {
 	result, err := q.db.Exec(ctx, markRoundConfirmed,
-		arg.ConfirmedCommitID,
 		arg.ConfirmedRevealedCount,
 		arg.ConfirmedSelectedCount,
 		arg.ConfirmedEffectiveMinRequired,

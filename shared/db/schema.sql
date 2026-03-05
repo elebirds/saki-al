@@ -18,20 +18,6 @@ SET client_min_messages = warning;
 SET row_security = off;
 
 --
--- Name: public; Type: SCHEMA; Schema: -; Owner: -
---
-
--- *not* creating schema, since initdb creates it
-
-
---
--- Name: SCHEMA public; Type: COMMENT; Schema: -; Owner: -
---
-
-COMMENT ON SCHEMA public IS '';
-
-
---
 -- Name: annotationsource; Type: TYPE; Schema: public; Owner: -
 --
 
@@ -39,7 +25,8 @@ CREATE TYPE public.annotationsource AS ENUM (
     'MANUAL',
     'MODEL',
     'SYSTEM',
-    'IMPORTED'
+    'IMPORTED',
+    'CONFIRMED_MODEL'
 );
 
 
@@ -107,6 +94,21 @@ CREATE TYPE public.datasettype AS ENUM (
 
 
 --
+-- Name: looplifecycle; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.looplifecycle AS ENUM (
+    'DRAFT',
+    'RUNNING',
+    'PAUSED',
+    'STOPPING',
+    'STOPPED',
+    'COMPLETED',
+    'FAILED'
+);
+
+
+--
 -- Name: loopmode; Type: TYPE; Schema: public; Owner: -
 --
 
@@ -144,21 +146,6 @@ CREATE TYPE public.loopphase AS ENUM (
 
 
 --
--- Name: looplifecycle; Type: TYPE; Schema: public; Owner: -
---
-
-CREATE TYPE public.looplifecycle AS ENUM (
-    'DRAFT',
-    'RUNNING',
-    'PAUSED',
-    'STOPPING',
-    'STOPPED',
-    'COMPLETED',
-    'FAILED'
-);
-
-
---
 -- Name: projectstatus; Type: TYPE; Schema: public; Owner: -
 --
 
@@ -189,16 +176,60 @@ CREATE TYPE public.roletype AS ENUM (
 
 
 --
+-- Name: roundselectionoverrideop; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.roundselectionoverrideop AS ENUM (
+    'INCLUDE',
+    'EXCLUDE'
+);
+
+
+--
 -- Name: roundstatus; Type: TYPE; Schema: public; Owner: -
 --
 
 CREATE TYPE public.roundstatus AS ENUM (
     'PENDING',
     'RUNNING',
-    'WAIT_USER',
     'COMPLETED',
     'CANCELLED',
     'FAILED'
+);
+
+
+--
+-- Name: snapshotpartition; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.snapshotpartition AS ENUM (
+    'TRAIN_SEED',
+    'TRAIN_POOL',
+    'VAL_ANCHOR',
+    'VAL_BATCH',
+    'TEST_ANCHOR',
+    'TEST_BATCH'
+);
+
+
+--
+-- Name: snapshotupdatemode; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.snapshotupdatemode AS ENUM (
+    'INIT',
+    'APPEND_ALL_TO_POOL',
+    'APPEND_SPLIT'
+);
+
+
+--
+-- Name: snapshotvalpolicy; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.snapshotvalpolicy AS ENUM (
+    'ANCHOR_ONLY',
+    'EXPAND_WITH_BATCH_VAL'
 );
 
 
@@ -267,6 +298,18 @@ CREATE TYPE public.tasktype AS ENUM (
 );
 
 
+--
+-- Name: visibilitysource; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.visibilitysource AS ENUM (
+    'SNAPSHOT_INIT',
+    'SEED_INIT',
+    'ROUND_REVEAL',
+    'FORCE_REVEAL'
+);
+
+
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
@@ -286,8 +329,8 @@ CREATE TABLE public.alembic_version (
 
 CREATE TABLE public.annotation (
     id uuid NOT NULL,
-    created_at timestamp without time zone NOT NULL,
-    updated_at timestamp without time zone NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
     sample_id uuid NOT NULL,
     label_id uuid NOT NULL,
     project_id uuid NOT NULL,
@@ -310,8 +353,8 @@ CREATE TABLE public.annotation (
 
 CREATE TABLE public.annotation_draft (
     id uuid NOT NULL,
-    created_at timestamp without time zone NOT NULL,
-    updated_at timestamp without time zone NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
     project_id uuid NOT NULL,
     sample_id uuid NOT NULL,
     user_id uuid NOT NULL,
@@ -325,8 +368,8 @@ CREATE TABLE public.annotation_draft (
 --
 
 CREATE TABLE public.asset (
-    created_at timestamp without time zone NOT NULL,
-    updated_at timestamp without time zone NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
     id uuid NOT NULL,
     hash character varying(64) NOT NULL,
     storage_type public.storagetype NOT NULL,
@@ -347,8 +390,8 @@ CREATE TABLE public.asset (
 CREATE TABLE public.audit_log (
     created_by uuid,
     updated_by uuid,
-    created_at timestamp without time zone NOT NULL,
-    updated_at timestamp without time zone NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
     id uuid NOT NULL,
     action public.auditaction NOT NULL,
     target_type character varying(50) NOT NULL,
@@ -366,8 +409,8 @@ CREATE TABLE public.audit_log (
 
 CREATE TABLE public.branch (
     id uuid NOT NULL,
-    created_at timestamp without time zone NOT NULL,
-    updated_at timestamp without time zone NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
     name character varying(100) NOT NULL,
     project_id uuid NOT NULL,
     head_commit_id uuid NOT NULL,
@@ -382,8 +425,8 @@ CREATE TABLE public.branch (
 
 CREATE TABLE public.commit (
     id uuid NOT NULL,
-    created_at timestamp without time zone NOT NULL,
-    updated_at timestamp without time zone NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
     project_id uuid NOT NULL,
     parent_id uuid,
     message character varying(500) NOT NULL,
@@ -425,8 +468,8 @@ CREATE TABLE public.commit_sample_state (
 
 CREATE TABLE public.dataset (
     id uuid NOT NULL,
-    created_at timestamp without time zone NOT NULL,
-    updated_at timestamp without time zone NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
     name character varying(200) NOT NULL,
     description character varying(2000),
     type public.datasettype NOT NULL,
@@ -441,8 +484,8 @@ CREATE TABLE public.dataset (
 --
 
 CREATE TABLE public.dispatch_outbox (
-    created_at timestamp without time zone NOT NULL,
-    updated_at timestamp without time zone NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
     id uuid NOT NULL,
     step_id uuid NOT NULL,
     executor_id character varying(128) NOT NULL,
@@ -450,9 +493,9 @@ CREATE TABLE public.dispatch_outbox (
     payload jsonb,
     status character varying(32) NOT NULL,
     attempt_count integer NOT NULL,
-    next_attempt_at timestamp without time zone NOT NULL,
-    locked_at timestamp without time zone,
-    sent_at timestamp without time zone,
+    next_attempt_at timestamp with time zone NOT NULL,
+    locked_at timestamp with time zone,
+    sent_at timestamp with time zone,
     last_error character varying(4000)
 );
 
@@ -462,8 +505,8 @@ CREATE TABLE public.dispatch_outbox (
 --
 
 CREATE TABLE public.import_task (
-    created_at timestamp without time zone NOT NULL,
-    updated_at timestamp without time zone NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
     id uuid NOT NULL,
     mode character varying(64) NOT NULL,
     resource_type character varying(32) NOT NULL,
@@ -476,8 +519,8 @@ CREATE TABLE public.import_task (
     payload jsonb,
     summary jsonb,
     error character varying(2000),
-    started_at timestamp without time zone,
-    finished_at timestamp without time zone
+    started_at timestamp with time zone,
+    finished_at timestamp with time zone
 );
 
 
@@ -489,7 +532,7 @@ CREATE TABLE public.import_task_event (
     id uuid NOT NULL,
     task_id uuid NOT NULL,
     seq integer NOT NULL,
-    ts timestamp without time zone NOT NULL,
+    ts timestamp with time zone NOT NULL,
     event_type character varying(32) NOT NULL,
     event_subtype character varying(64),
     phase character varying(128),
@@ -508,14 +551,15 @@ CREATE TABLE public.import_task_event (
 
 CREATE TABLE public.label (
     id uuid NOT NULL,
-    created_at timestamp without time zone NOT NULL,
-    updated_at timestamp without time zone NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
     name character varying NOT NULL,
     color character varying NOT NULL,
     description character varying,
     sort_order integer NOT NULL,
     shortcut character varying(10),
-    project_id uuid NOT NULL
+    project_id uuid NOT NULL,
+    CONSTRAINT ck_label_sort_order_positive CHECK ((sort_order > 0))
 );
 
 
@@ -524,28 +568,74 @@ CREATE TABLE public.label (
 --
 
 CREATE TABLE public.loop (
-    created_at timestamp without time zone NOT NULL,
-    updated_at timestamp without time zone NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
     id uuid NOT NULL,
     project_id uuid NOT NULL,
     branch_id uuid NOT NULL,
     name character varying(100) NOT NULL,
     mode public.loopmode NOT NULL,
     phase public.loopphase NOT NULL,
-    phase_meta jsonb,
     model_arch character varying NOT NULL,
     config jsonb,
     current_iteration integer NOT NULL,
     lifecycle public.looplifecycle NOT NULL,
     max_rounds integer NOT NULL,
     query_batch_size integer NOT NULL,
-    min_seed_labeled integer NOT NULL,
     min_new_labels_per_round integer NOT NULL,
-    stop_patience_rounds integer NOT NULL,
-    stop_min_gain double precision NOT NULL,
-    auto_register_model boolean NOT NULL,
+    active_snapshot_version_id uuid,
     last_confirmed_commit_id uuid,
     terminal_reason character varying(4000)
+);
+
+
+--
+-- Name: loop_sample_state; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.loop_sample_state (
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    loop_id uuid NOT NULL,
+    sample_id uuid NOT NULL,
+    visible_in_train boolean NOT NULL,
+    source public.visibilitysource NOT NULL,
+    revealed_round_index integer,
+    reveal_commit_id uuid
+);
+
+
+--
+-- Name: loop_snapshot_sample; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.loop_snapshot_sample (
+    snapshot_version_id uuid NOT NULL,
+    sample_id uuid NOT NULL,
+    partition public.snapshotpartition NOT NULL,
+    cohort_index integer NOT NULL,
+    locked boolean NOT NULL
+);
+
+
+--
+-- Name: loop_snapshot_version; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.loop_snapshot_version (
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    id uuid NOT NULL,
+    loop_id uuid NOT NULL,
+    version_index integer NOT NULL,
+    parent_version_id uuid,
+    update_mode public.snapshotupdatemode NOT NULL,
+    val_policy public.snapshotvalpolicy NOT NULL,
+    seed character varying(128) NOT NULL,
+    rule_json jsonb,
+    manifest_hash character varying(64) NOT NULL,
+    sample_count integer NOT NULL,
+    created_by uuid
 );
 
 
@@ -554,8 +644,8 @@ CREATE TABLE public.loop (
 --
 
 CREATE TABLE public.model (
-    created_at timestamp without time zone NOT NULL,
-    updated_at timestamp without time zone NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
     id uuid NOT NULL,
     project_id uuid NOT NULL,
     source_commit_id uuid,
@@ -571,9 +661,86 @@ CREATE TABLE public.model (
     status character varying NOT NULL,
     metrics jsonb,
     artifacts jsonb,
-    publish_manifest jsonb NOT NULL,
-    promoted_at timestamp without time zone,
+    publish_manifest jsonb,
+    promoted_at timestamp with time zone,
     created_by uuid
+);
+
+
+--
+-- Name: model_class_schema; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.model_class_schema (
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    id uuid NOT NULL,
+    model_id uuid NOT NULL,
+    label_id uuid NOT NULL,
+    class_index integer NOT NULL,
+    class_name character varying(255) NOT NULL,
+    class_name_norm character varying(255) NOT NULL,
+    schema_hash character varying(64) NOT NULL
+);
+
+
+--
+-- Name: prediction_item; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.prediction_item (
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    prediction_set_id uuid NOT NULL,
+    sample_id uuid NOT NULL,
+    rank integer NOT NULL,
+    score double precision NOT NULL,
+    label_id uuid,
+    geometry jsonb,
+    attrs jsonb,
+    confidence double precision NOT NULL,
+    meta jsonb
+);
+
+
+--
+-- Name: prediction_set; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.prediction_set (
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    id uuid NOT NULL,
+    project_id uuid NOT NULL,
+    loop_id uuid,
+    plugin_id character varying(255) NOT NULL,
+    source_round_id uuid,
+    source_step_id uuid,
+    model_id uuid NOT NULL,
+    base_commit_id uuid,
+    scope_type character varying(64) NOT NULL,
+    scope_payload jsonb,
+    status character varying(32) NOT NULL,
+    total_items integer NOT NULL,
+    params jsonb,
+    last_error character varying(4000),
+    created_by uuid
+);
+
+
+--
+-- Name: prediction_set_binding; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.prediction_set_binding (
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    id uuid NOT NULL,
+    prediction_set_id uuid NOT NULL,
+    model_id uuid NOT NULL,
+    schema_hash character varying(64) NOT NULL,
+    by_index_json jsonb,
+    by_name_json jsonb
 );
 
 
@@ -583,8 +750,8 @@ CREATE TABLE public.model (
 
 CREATE TABLE public.project (
     id uuid NOT NULL,
-    created_at timestamp without time zone NOT NULL,
-    updated_at timestamp without time zone NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
     name character varying NOT NULL,
     description character varying,
     task_type public.tasktype NOT NULL,
@@ -612,8 +779,8 @@ CREATE TABLE public.project_dataset (
 CREATE TABLE public.resource_member (
     created_by uuid,
     updated_by uuid,
-    created_at timestamp without time zone NOT NULL,
-    updated_at timestamp without time zone NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
     id uuid NOT NULL,
     resource_type public.resourcetype NOT NULL,
     resource_id uuid NOT NULL,
@@ -627,8 +794,8 @@ CREATE TABLE public.resource_member (
 --
 
 CREATE TABLE public.role (
-    created_at timestamp without time zone NOT NULL,
-    updated_at timestamp without time zone NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
     id uuid NOT NULL,
     is_system boolean NOT NULL,
     is_default boolean NOT NULL,
@@ -649,8 +816,8 @@ CREATE TABLE public.role (
 --
 
 CREATE TABLE public.role_permission (
-    created_at timestamp without time zone NOT NULL,
-    updated_at timestamp without time zone NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
     id uuid NOT NULL,
     permission character varying(100) NOT NULL,
     role_id uuid NOT NULL
@@ -663,8 +830,8 @@ CREATE TABLE public.role_permission (
 
 CREATE TABLE public.round (
     id uuid NOT NULL,
-    created_at timestamp without time zone NOT NULL,
-    updated_at timestamp without time zone NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
     project_id uuid NOT NULL,
     loop_id uuid NOT NULL,
     round_index integer NOT NULL,
@@ -672,40 +839,50 @@ CREATE TABLE public.round (
     mode public.loopmode NOT NULL,
     state public.roundstatus NOT NULL,
     step_counts jsonb,
-    round_type character varying NOT NULL,
     plugin_id character varying NOT NULL,
     resolved_params jsonb,
     resources jsonb,
     input_commit_id uuid,
-    output_commit_id uuid,
     retry_of_round_id uuid,
-    retry_reason text,
+    retry_reason character varying(4000),
     assigned_executor_id character varying,
-    started_at timestamp without time zone,
-    ended_at timestamp without time zone,
-    retry_count integer NOT NULL,
+    started_at timestamp with time zone,
+    ended_at timestamp with time zone,
     terminal_reason character varying(4000),
-    confirmed_at timestamp without time zone,
-    confirmed_commit_id uuid,
-    confirmed_revealed_count integer DEFAULT 0 NOT NULL,
-    confirmed_selected_count integer DEFAULT 0 NOT NULL,
-    confirmed_effective_min_required integer DEFAULT 0 NOT NULL,
+    confirmed_at timestamp with time zone,
+    confirmed_revealed_count integer NOT NULL,
+    confirmed_selected_count integer NOT NULL,
+    confirmed_effective_min_required integer NOT NULL,
     final_metrics jsonb,
-    final_artifacts jsonb,
-    strategy_params jsonb
+    final_artifacts jsonb
 );
 
 
+--
+-- Name: round_selection_override; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.round_selection_override (
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    id uuid NOT NULL,
+    round_id uuid NOT NULL,
+    sample_id uuid NOT NULL,
+    op public.roundselectionoverrideop NOT NULL,
+    created_by uuid,
+    reason character varying(4000)
+);
+
+
+--
 -- Name: runtime_command_log; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.runtime_command_log (
-    created_at timestamp without time zone NOT NULL,
-    updated_at timestamp without time zone NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
     id uuid NOT NULL,
     command_id character varying(128) NOT NULL,
-    command_type character varying(64) NOT NULL,
-    resource_id character varying(128) NOT NULL,
     status character varying(32) NOT NULL,
     detail character varying NOT NULL
 );
@@ -716,8 +893,8 @@ CREATE TABLE public.runtime_command_log (
 --
 
 CREATE TABLE public.runtime_executor (
-    created_at timestamp without time zone NOT NULL,
-    updated_at timestamp without time zone NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
     id uuid NOT NULL,
     executor_id character varying(128) NOT NULL,
     version character varying(64) NOT NULL,
@@ -726,7 +903,7 @@ CREATE TABLE public.runtime_executor (
     current_step_id character varying(64),
     plugin_ids jsonb,
     resources jsonb,
-    last_seen_at timestamp without time zone,
+    last_seen_at timestamp with time zone,
     last_error character varying(4000)
 );
 
@@ -736,10 +913,10 @@ CREATE TABLE public.runtime_executor (
 --
 
 CREATE TABLE public.runtime_executor_stats (
-    created_at timestamp without time zone NOT NULL,
-    updated_at timestamp without time zone NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
     id uuid NOT NULL,
-    ts timestamp without time zone NOT NULL,
+    ts timestamp with time zone NOT NULL,
     total_count integer NOT NULL,
     online_count integer NOT NULL,
     busy_count integer NOT NULL,
@@ -756,8 +933,8 @@ CREATE TABLE public.runtime_executor_stats (
 
 CREATE TABLE public.sample (
     id uuid NOT NULL,
-    created_at timestamp without time zone NOT NULL,
-    updated_at timestamp without time zone NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
     dataset_id uuid NOT NULL,
     name character varying NOT NULL,
     asset_group json,
@@ -772,8 +949,8 @@ CREATE TABLE public.sample (
 --
 
 CREATE TABLE public.step (
-    created_at timestamp without time zone NOT NULL,
-    updated_at timestamp without time zone NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
     id uuid NOT NULL,
     round_id uuid NOT NULL,
     step_type public.steptype NOT NULL,
@@ -786,14 +963,12 @@ CREATE TABLE public.step (
     metrics jsonb,
     artifacts jsonb,
     input_commit_id uuid,
-    output_commit_id uuid,
     assigned_executor_id character varying,
-    dispatch_request_id character varying(128),
     state_version integer NOT NULL,
     attempt integer NOT NULL,
     max_attempts integer NOT NULL,
-    started_at timestamp without time zone,
-    ended_at timestamp without time zone,
+    started_at timestamp with time zone,
+    ended_at timestamp with time zone,
     last_error character varying(4000)
 );
 
@@ -803,8 +978,8 @@ CREATE TABLE public.step (
 --
 
 CREATE TABLE public.step_candidate_item (
-    created_at timestamp without time zone NOT NULL,
-    updated_at timestamp without time zone NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
     id uuid NOT NULL,
     step_id uuid NOT NULL,
     sample_id uuid NOT NULL,
@@ -820,15 +995,14 @@ CREATE TABLE public.step_candidate_item (
 --
 
 CREATE TABLE public.step_event (
-    created_at timestamp without time zone NOT NULL,
-    updated_at timestamp without time zone NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
     id uuid NOT NULL,
     step_id uuid NOT NULL,
     seq integer NOT NULL,
-    ts timestamp without time zone NOT NULL,
+    ts timestamp with time zone NOT NULL,
     event_type character varying(64) NOT NULL,
-    payload jsonb,
-    request_id character varying(128)
+    payload jsonb
 );
 
 
@@ -837,15 +1011,15 @@ CREATE TABLE public.step_event (
 --
 
 CREATE TABLE public.step_metric_point (
-    created_at timestamp without time zone NOT NULL,
-    updated_at timestamp without time zone NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
     id uuid NOT NULL,
     step_id uuid NOT NULL,
     step integer NOT NULL,
     epoch integer,
     metric_name character varying(128) NOT NULL,
     metric_value double precision NOT NULL,
-    ts timestamp without time zone NOT NULL
+    ts timestamp with time zone NOT NULL
 );
 
 
@@ -854,8 +1028,8 @@ CREATE TABLE public.step_metric_point (
 --
 
 CREATE TABLE public.system_setting (
-    created_at timestamp without time zone NOT NULL,
-    updated_at timestamp without time zone NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
     key character varying(128) NOT NULL,
     value_json json,
     updated_by uuid
@@ -868,8 +1042,8 @@ CREATE TABLE public.system_setting (
 
 CREATE TABLE public."user" (
     id uuid NOT NULL,
-    created_at timestamp without time zone NOT NULL,
-    updated_at timestamp without time zone NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
     email character varying(255) NOT NULL,
     full_name character varying(100),
     is_active boolean NOT NULL,
@@ -886,12 +1060,12 @@ CREATE TABLE public."user" (
 CREATE TABLE public.user_system_role (
     created_by uuid,
     updated_by uuid,
-    created_at timestamp without time zone NOT NULL,
-    updated_at timestamp without time zone NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
     id uuid NOT NULL,
     user_id uuid NOT NULL,
     role_id uuid NOT NULL,
-    expires_at timestamp without time zone
+    expires_at timestamp with time zone
 );
 
 
@@ -1016,11 +1190,67 @@ ALTER TABLE ONLY public.loop
 
 
 --
+-- Name: loop_sample_state loop_sample_state_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.loop_sample_state
+    ADD CONSTRAINT loop_sample_state_pkey PRIMARY KEY (loop_id, sample_id);
+
+
+--
+-- Name: loop_snapshot_sample loop_snapshot_sample_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.loop_snapshot_sample
+    ADD CONSTRAINT loop_snapshot_sample_pkey PRIMARY KEY (snapshot_version_id, sample_id);
+
+
+--
+-- Name: loop_snapshot_version loop_snapshot_version_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.loop_snapshot_version
+    ADD CONSTRAINT loop_snapshot_version_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: model_class_schema model_class_schema_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.model_class_schema
+    ADD CONSTRAINT model_class_schema_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: model model_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.model
     ADD CONSTRAINT model_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: prediction_item prediction_item_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.prediction_item
+    ADD CONSTRAINT prediction_item_pkey PRIMARY KEY (prediction_set_id, sample_id);
+
+
+--
+-- Name: prediction_set_binding prediction_set_binding_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.prediction_set_binding
+    ADD CONSTRAINT prediction_set_binding_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: prediction_set prediction_set_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.prediction_set
+    ADD CONSTRAINT prediction_set_pkey PRIMARY KEY (id);
 
 
 --
@@ -1071,6 +1301,15 @@ ALTER TABLE ONLY public.round
     ADD CONSTRAINT round_pkey PRIMARY KEY (id);
 
 
+--
+-- Name: round_selection_override round_selection_override_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.round_selection_override
+    ADD CONSTRAINT round_selection_override_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: runtime_command_log runtime_command_log_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1167,6 +1406,30 @@ ALTER TABLE ONLY public.loop
 
 
 --
+-- Name: loop_snapshot_version uq_loop_snapshot_version_loop_version; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.loop_snapshot_version
+    ADD CONSTRAINT uq_loop_snapshot_version_loop_version UNIQUE (loop_id, version_index);
+
+
+--
+-- Name: model_class_schema uq_model_class_schema_model_index; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.model_class_schema
+    ADD CONSTRAINT uq_model_class_schema_model_index UNIQUE (model_id, class_index);
+
+
+--
+-- Name: model_class_schema uq_model_class_schema_model_name_norm; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.model_class_schema
+    ADD CONSTRAINT uq_model_class_schema_model_name_norm UNIQUE (model_id, class_name_norm);
+
+
+--
 -- Name: branch uq_project_branch_name; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1191,14 +1454,6 @@ ALTER TABLE ONLY public.label
 
 
 --
--- Name: label ck_label_sort_order_positive; Type: CHECK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.label
-    ADD CONSTRAINT ck_label_sort_order_positive CHECK ((sort_order > 0));
-
-
---
 -- Name: resource_member uq_resource_member; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1212,6 +1467,14 @@ ALTER TABLE ONLY public.resource_member
 
 ALTER TABLE ONLY public.round
     ADD CONSTRAINT uq_round_loop_round_attempt UNIQUE (loop_id, round_index, attempt_index);
+
+
+--
+-- Name: round_selection_override uq_round_selection_override_round_sample; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.round_selection_override
+    ADD CONSTRAINT uq_round_selection_override_round_sample UNIQUE (round_id, sample_id);
 
 
 --
@@ -1598,6 +1861,13 @@ CREATE INDEX ix_label_project_id ON public.label USING btree (project_id);
 
 
 --
+-- Name: ix_loop_active_snapshot_version_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_loop_active_snapshot_version_id ON public.loop USING btree (active_snapshot_version_id);
+
+
+--
 -- Name: ix_loop_branch_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1609,6 +1879,13 @@ CREATE INDEX ix_loop_branch_id ON public.loop USING btree (branch_id);
 --
 
 CREATE INDEX ix_loop_last_confirmed_commit_id ON public.loop USING btree (last_confirmed_commit_id);
+
+
+--
+-- Name: ix_loop_lifecycle; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_loop_lifecycle ON public.loop USING btree (lifecycle);
 
 
 --
@@ -1633,10 +1910,129 @@ CREATE INDEX ix_loop_project_id ON public.loop USING btree (project_id);
 
 
 --
--- Name: ix_loop_lifecycle; Type: INDEX; Schema: public; Owner: -
+-- Name: ix_loop_sample_state_reveal_commit_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX ix_loop_lifecycle ON public.loop USING btree (lifecycle);
+CREATE INDEX ix_loop_sample_state_reveal_commit_id ON public.loop_sample_state USING btree (reveal_commit_id);
+
+
+--
+-- Name: ix_loop_sample_state_revealed_round_index; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_loop_sample_state_revealed_round_index ON public.loop_sample_state USING btree (revealed_round_index);
+
+
+--
+-- Name: ix_loop_sample_state_source; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_loop_sample_state_source ON public.loop_sample_state USING btree (source);
+
+
+--
+-- Name: ix_loop_sample_state_visible_in_train; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_loop_sample_state_visible_in_train ON public.loop_sample_state USING btree (visible_in_train);
+
+
+--
+-- Name: ix_loop_snapshot_sample_cohort_index; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_loop_snapshot_sample_cohort_index ON public.loop_snapshot_sample USING btree (cohort_index);
+
+
+--
+-- Name: ix_loop_snapshot_sample_locked; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_loop_snapshot_sample_locked ON public.loop_snapshot_sample USING btree (locked);
+
+
+--
+-- Name: ix_loop_snapshot_sample_partition; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_loop_snapshot_sample_partition ON public.loop_snapshot_sample USING btree (partition);
+
+
+--
+-- Name: ix_loop_snapshot_version_created_by; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_loop_snapshot_version_created_by ON public.loop_snapshot_version USING btree (created_by);
+
+
+--
+-- Name: ix_loop_snapshot_version_loop_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_loop_snapshot_version_loop_id ON public.loop_snapshot_version USING btree (loop_id);
+
+
+--
+-- Name: ix_loop_snapshot_version_manifest_hash; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_loop_snapshot_version_manifest_hash ON public.loop_snapshot_version USING btree (manifest_hash);
+
+
+--
+-- Name: ix_loop_snapshot_version_parent_version_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_loop_snapshot_version_parent_version_id ON public.loop_snapshot_version USING btree (parent_version_id);
+
+
+--
+-- Name: ix_loop_snapshot_version_update_mode; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_loop_snapshot_version_update_mode ON public.loop_snapshot_version USING btree (update_mode);
+
+
+--
+-- Name: ix_loop_snapshot_version_val_policy; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_loop_snapshot_version_val_policy ON public.loop_snapshot_version USING btree (val_policy);
+
+
+--
+-- Name: ix_loop_snapshot_version_version_index; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_loop_snapshot_version_version_index ON public.loop_snapshot_version USING btree (version_index);
+
+
+--
+-- Name: ix_model_class_schema_class_index; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_model_class_schema_class_index ON public.model_class_schema USING btree (class_index);
+
+
+--
+-- Name: ix_model_class_schema_label_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_model_class_schema_label_id ON public.model_class_schema USING btree (label_id);
+
+
+--
+-- Name: ix_model_class_schema_model_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_model_class_schema_model_id ON public.model_class_schema USING btree (model_id);
+
+
+--
+-- Name: ix_model_class_schema_schema_hash; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_model_class_schema_schema_hash ON public.model_class_schema USING btree (schema_hash);
 
 
 --
@@ -1696,10 +2092,108 @@ CREATE INDEX ix_model_source_step_id ON public.model USING btree (source_step_id
 
 
 --
--- Name: uq_model_publish_key; Type: INDEX; Schema: public; Owner: -
+-- Name: ix_prediction_item_label_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX uq_model_publish_key ON public.model USING btree (project_id, source_round_id, primary_artifact_name, version_tag) WHERE (source_round_id IS NOT NULL);
+CREATE INDEX ix_prediction_item_label_id ON public.prediction_item USING btree (label_id);
+
+
+--
+-- Name: ix_prediction_item_rank; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_prediction_item_rank ON public.prediction_item USING btree (rank);
+
+
+--
+-- Name: ix_prediction_set_base_commit_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_prediction_set_base_commit_id ON public.prediction_set USING btree (base_commit_id);
+
+
+--
+-- Name: ix_prediction_set_binding_model_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_prediction_set_binding_model_id ON public.prediction_set_binding USING btree (model_id);
+
+
+--
+-- Name: ix_prediction_set_binding_prediction_set_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX ix_prediction_set_binding_prediction_set_id ON public.prediction_set_binding USING btree (prediction_set_id);
+
+
+--
+-- Name: ix_prediction_set_binding_schema_hash; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_prediction_set_binding_schema_hash ON public.prediction_set_binding USING btree (schema_hash);
+
+
+--
+-- Name: ix_prediction_set_created_by; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_prediction_set_created_by ON public.prediction_set USING btree (created_by);
+
+
+--
+-- Name: ix_prediction_set_loop_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_prediction_set_loop_id ON public.prediction_set USING btree (loop_id);
+
+
+--
+-- Name: ix_prediction_set_model_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_prediction_set_model_id ON public.prediction_set USING btree (model_id);
+
+
+--
+-- Name: ix_prediction_set_plugin_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_prediction_set_plugin_id ON public.prediction_set USING btree (plugin_id);
+
+
+--
+-- Name: ix_prediction_set_project_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_prediction_set_project_id ON public.prediction_set USING btree (project_id);
+
+
+--
+-- Name: ix_prediction_set_scope_type; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_prediction_set_scope_type ON public.prediction_set USING btree (scope_type);
+
+
+--
+-- Name: ix_prediction_set_source_round_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_prediction_set_source_round_id ON public.prediction_set USING btree (source_round_id);
+
+
+--
+-- Name: ix_prediction_set_source_step_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_prediction_set_source_step_id ON public.prediction_set USING btree (source_step_id);
+
+
+--
+-- Name: ix_prediction_set_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_prediction_set_status ON public.prediction_set USING btree (status);
 
 
 --
@@ -1780,13 +2274,6 @@ CREATE INDEX ix_round_confirmed_at ON public.round USING btree (confirmed_at);
 
 
 --
--- Name: ix_round_confirmed_commit_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX ix_round_confirmed_commit_id ON public.round USING btree (confirmed_commit_id);
-
-
---
 -- Name: ix_round_loop_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1815,26 +2302,34 @@ CREATE INDEX ix_round_round_index ON public.round USING btree (round_index);
 
 
 --
--- Name: ix_round_round_type; Type: INDEX; Schema: public; Owner: -
+-- Name: ix_round_selection_override_created_by; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX ix_round_round_type ON public.round USING btree (round_type);
-
-
---
--- Name: ix_round_retry_of_round_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX ix_round_retry_of_round_id ON public.round USING btree (retry_of_round_id);
+CREATE INDEX ix_round_selection_override_created_by ON public.round_selection_override USING btree (created_by);
 
 
 --
--- Name: idx_round_loop_round_attempt; Type: INDEX; Schema: public; Owner: -
+-- Name: ix_round_selection_override_op; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_round_loop_round_attempt ON public.round USING btree (loop_id, round_index DESC, attempt_index DESC, created_at DESC);
+CREATE INDEX ix_round_selection_override_op ON public.round_selection_override USING btree (op);
 
 
+--
+-- Name: ix_round_selection_override_round_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_round_selection_override_round_id ON public.round_selection_override USING btree (round_id);
+
+
+--
+-- Name: ix_round_selection_override_sample_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_round_selection_override_sample_id ON public.round_selection_override USING btree (sample_id);
+
+
+--
 -- Name: ix_round_state; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1846,20 +2341,6 @@ CREATE INDEX ix_round_state ON public.round USING btree (state);
 --
 
 CREATE UNIQUE INDEX ix_runtime_command_log_command_id ON public.runtime_command_log USING btree (command_id);
-
-
---
--- Name: ix_runtime_command_log_command_type; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX ix_runtime_command_log_command_type ON public.runtime_command_log USING btree (command_type);
-
-
---
--- Name: ix_runtime_command_log_resource_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX ix_runtime_command_log_resource_id ON public.runtime_command_log USING btree (resource_id);
 
 
 --
@@ -1954,13 +2435,6 @@ CREATE INDEX ix_step_dispatch_kind ON public.step USING btree (dispatch_kind);
 
 
 --
--- Name: ix_step_dispatch_request_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX ix_step_dispatch_request_id ON public.step USING btree (dispatch_request_id);
-
-
---
 -- Name: ix_step_event_event_type; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2028,13 +2502,6 @@ CREATE INDEX ix_step_metric_point_step_id ON public.step_metric_point USING btre
 --
 
 CREATE INDEX ix_step_metric_point_ts ON public.step_metric_point USING btree (ts);
-
-
---
--- Name: ix_step_output_commit_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX ix_step_output_commit_id ON public.step USING btree (output_commit_id);
 
 
 --
@@ -2291,126 +2758,6 @@ ALTER TABLE ONLY public.dispatch_outbox
 
 
 --
--- Name: loop fk_loop_branch_id_branch; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.loop
-    ADD CONSTRAINT fk_loop_branch_id_branch FOREIGN KEY (branch_id) REFERENCES public.branch(id);
-
-
---
--- Name: loop fk_loop_last_confirmed_commit_id_commit; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.loop
-    ADD CONSTRAINT fk_loop_last_confirmed_commit_id_commit FOREIGN KEY (last_confirmed_commit_id) REFERENCES public.commit(id);
-
-
---
--- Name: loop fk_loop_project_id_project; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.loop
-    ADD CONSTRAINT fk_loop_project_id_project FOREIGN KEY (project_id) REFERENCES public.project(id);
-
-
---
--- Name: model fk_model_created_by_user; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.model
-    ADD CONSTRAINT fk_model_created_by_user FOREIGN KEY (created_by) REFERENCES public."user"(id);
-
-
---
--- Name: model fk_model_parent_model_id_model; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.model
-    ADD CONSTRAINT fk_model_parent_model_id_model FOREIGN KEY (parent_model_id) REFERENCES public.model(id);
-
-
---
--- Name: model fk_model_project_id_project; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.model
-    ADD CONSTRAINT fk_model_project_id_project FOREIGN KEY (project_id) REFERENCES public.project(id);
-
-
---
--- Name: model fk_model_source_commit_id_commit; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.model
-    ADD CONSTRAINT fk_model_source_commit_id_commit FOREIGN KEY (source_commit_id) REFERENCES public.commit(id);
-
-
---
--- Name: model fk_model_source_round_id_round; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.model
-    ADD CONSTRAINT fk_model_source_round_id_round FOREIGN KEY (source_round_id) REFERENCES public.round(id);
-
-
---
--- Name: model fk_model_source_step_id_step; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.model
-    ADD CONSTRAINT fk_model_source_step_id_step FOREIGN KEY (source_step_id) REFERENCES public.step(id);
-
-
---
--- Name: round fk_round_input_commit_id_commit; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.round
-    ADD CONSTRAINT fk_round_input_commit_id_commit FOREIGN KEY (input_commit_id) REFERENCES public.commit(id);
-
-
---
--- Name: round fk_round_confirmed_commit_id_commit; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.round
-    ADD CONSTRAINT fk_round_confirmed_commit_id_commit FOREIGN KEY (confirmed_commit_id) REFERENCES public.commit(id);
-
-
---
--- Name: round fk_round_loop_id_loop; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.round
-    ADD CONSTRAINT fk_round_loop_id_loop FOREIGN KEY (loop_id) REFERENCES public.loop(id);
-
-
---
--- Name: round fk_round_output_commit_id_commit; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.round
-    ADD CONSTRAINT fk_round_output_commit_id_commit FOREIGN KEY (output_commit_id) REFERENCES public.commit(id);
-
-
---
--- Name: round fk_round_retry_of_round_id_round; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.round
-    ADD CONSTRAINT fk_round_retry_of_round_id_round FOREIGN KEY (retry_of_round_id) REFERENCES public.round(id);
-
-
---
--- Name: round fk_round_project_id_project; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.round
-    ADD CONSTRAINT fk_round_project_id_project FOREIGN KEY (project_id) REFERENCES public.project(id);
-
-
---
 -- Name: import_task_event import_task_event_task_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2424,6 +2771,262 @@ ALTER TABLE ONLY public.import_task_event
 
 ALTER TABLE ONLY public.label
     ADD CONSTRAINT label_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.project(id);
+
+
+--
+-- Name: loop loop_active_snapshot_version_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.loop
+    ADD CONSTRAINT loop_active_snapshot_version_id_fkey FOREIGN KEY (active_snapshot_version_id) REFERENCES public.loop_snapshot_version(id);
+
+
+--
+-- Name: loop loop_branch_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.loop
+    ADD CONSTRAINT loop_branch_id_fkey FOREIGN KEY (branch_id) REFERENCES public.branch(id);
+
+
+--
+-- Name: loop loop_last_confirmed_commit_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.loop
+    ADD CONSTRAINT loop_last_confirmed_commit_id_fkey FOREIGN KEY (last_confirmed_commit_id) REFERENCES public.commit(id);
+
+
+--
+-- Name: loop loop_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.loop
+    ADD CONSTRAINT loop_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.project(id);
+
+
+--
+-- Name: loop_sample_state loop_sample_state_loop_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.loop_sample_state
+    ADD CONSTRAINT loop_sample_state_loop_id_fkey FOREIGN KEY (loop_id) REFERENCES public.loop(id);
+
+
+--
+-- Name: loop_sample_state loop_sample_state_reveal_commit_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.loop_sample_state
+    ADD CONSTRAINT loop_sample_state_reveal_commit_id_fkey FOREIGN KEY (reveal_commit_id) REFERENCES public.commit(id);
+
+
+--
+-- Name: loop_sample_state loop_sample_state_sample_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.loop_sample_state
+    ADD CONSTRAINT loop_sample_state_sample_id_fkey FOREIGN KEY (sample_id) REFERENCES public.sample(id);
+
+
+--
+-- Name: loop_snapshot_sample loop_snapshot_sample_sample_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.loop_snapshot_sample
+    ADD CONSTRAINT loop_snapshot_sample_sample_id_fkey FOREIGN KEY (sample_id) REFERENCES public.sample(id);
+
+
+--
+-- Name: loop_snapshot_sample loop_snapshot_sample_snapshot_version_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.loop_snapshot_sample
+    ADD CONSTRAINT loop_snapshot_sample_snapshot_version_id_fkey FOREIGN KEY (snapshot_version_id) REFERENCES public.loop_snapshot_version(id);
+
+
+--
+-- Name: loop_snapshot_version loop_snapshot_version_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.loop_snapshot_version
+    ADD CONSTRAINT loop_snapshot_version_created_by_fkey FOREIGN KEY (created_by) REFERENCES public."user"(id);
+
+
+--
+-- Name: loop_snapshot_version loop_snapshot_version_loop_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.loop_snapshot_version
+    ADD CONSTRAINT loop_snapshot_version_loop_id_fkey FOREIGN KEY (loop_id) REFERENCES public.loop(id);
+
+
+--
+-- Name: loop_snapshot_version loop_snapshot_version_parent_version_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.loop_snapshot_version
+    ADD CONSTRAINT loop_snapshot_version_parent_version_id_fkey FOREIGN KEY (parent_version_id) REFERENCES public.loop_snapshot_version(id);
+
+
+--
+-- Name: model_class_schema model_class_schema_label_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.model_class_schema
+    ADD CONSTRAINT model_class_schema_label_id_fkey FOREIGN KEY (label_id) REFERENCES public.label(id);
+
+
+--
+-- Name: model_class_schema model_class_schema_model_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.model_class_schema
+    ADD CONSTRAINT model_class_schema_model_id_fkey FOREIGN KEY (model_id) REFERENCES public.model(id);
+
+
+--
+-- Name: model model_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.model
+    ADD CONSTRAINT model_created_by_fkey FOREIGN KEY (created_by) REFERENCES public."user"(id);
+
+
+--
+-- Name: model model_parent_model_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.model
+    ADD CONSTRAINT model_parent_model_id_fkey FOREIGN KEY (parent_model_id) REFERENCES public.model(id);
+
+
+--
+-- Name: model model_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.model
+    ADD CONSTRAINT model_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.project(id);
+
+
+--
+-- Name: model model_source_commit_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.model
+    ADD CONSTRAINT model_source_commit_id_fkey FOREIGN KEY (source_commit_id) REFERENCES public.commit(id);
+
+
+--
+-- Name: model model_source_round_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.model
+    ADD CONSTRAINT model_source_round_id_fkey FOREIGN KEY (source_round_id) REFERENCES public.round(id);
+
+
+--
+-- Name: model model_source_step_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.model
+    ADD CONSTRAINT model_source_step_id_fkey FOREIGN KEY (source_step_id) REFERENCES public.step(id);
+
+
+--
+-- Name: prediction_item prediction_item_label_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.prediction_item
+    ADD CONSTRAINT prediction_item_label_id_fkey FOREIGN KEY (label_id) REFERENCES public.label(id);
+
+
+--
+-- Name: prediction_item prediction_item_prediction_set_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.prediction_item
+    ADD CONSTRAINT prediction_item_prediction_set_id_fkey FOREIGN KEY (prediction_set_id) REFERENCES public.prediction_set(id);
+
+
+--
+-- Name: prediction_item prediction_item_sample_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.prediction_item
+    ADD CONSTRAINT prediction_item_sample_id_fkey FOREIGN KEY (sample_id) REFERENCES public.sample(id);
+
+
+--
+-- Name: prediction_set prediction_set_base_commit_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.prediction_set
+    ADD CONSTRAINT prediction_set_base_commit_id_fkey FOREIGN KEY (base_commit_id) REFERENCES public.commit(id);
+
+
+--
+-- Name: prediction_set_binding prediction_set_binding_model_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.prediction_set_binding
+    ADD CONSTRAINT prediction_set_binding_model_id_fkey FOREIGN KEY (model_id) REFERENCES public.model(id);
+
+
+--
+-- Name: prediction_set_binding prediction_set_binding_prediction_set_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.prediction_set_binding
+    ADD CONSTRAINT prediction_set_binding_prediction_set_id_fkey FOREIGN KEY (prediction_set_id) REFERENCES public.prediction_set(id);
+
+
+--
+-- Name: prediction_set prediction_set_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.prediction_set
+    ADD CONSTRAINT prediction_set_created_by_fkey FOREIGN KEY (created_by) REFERENCES public."user"(id);
+
+
+--
+-- Name: prediction_set prediction_set_loop_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.prediction_set
+    ADD CONSTRAINT prediction_set_loop_id_fkey FOREIGN KEY (loop_id) REFERENCES public.loop(id);
+
+
+--
+-- Name: prediction_set prediction_set_model_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.prediction_set
+    ADD CONSTRAINT prediction_set_model_id_fkey FOREIGN KEY (model_id) REFERENCES public.model(id);
+
+
+--
+-- Name: prediction_set prediction_set_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.prediction_set
+    ADD CONSTRAINT prediction_set_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.project(id);
+
+
+--
+-- Name: prediction_set prediction_set_source_round_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.prediction_set
+    ADD CONSTRAINT prediction_set_source_round_id_fkey FOREIGN KEY (source_round_id) REFERENCES public.round(id);
+
+
+--
+-- Name: prediction_set prediction_set_source_step_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.prediction_set
+    ADD CONSTRAINT prediction_set_source_step_id_fkey FOREIGN KEY (source_step_id) REFERENCES public.step(id);
 
 
 --
@@ -2482,6 +3085,55 @@ ALTER TABLE ONLY public.role_permission
     ADD CONSTRAINT role_permission_role_id_fkey FOREIGN KEY (role_id) REFERENCES public.role(id);
 
 
+--
+-- Name: round round_input_commit_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.round
+    ADD CONSTRAINT round_input_commit_id_fkey FOREIGN KEY (input_commit_id) REFERENCES public.commit(id);
+
+
+--
+-- Name: round round_loop_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.round
+    ADD CONSTRAINT round_loop_id_fkey FOREIGN KEY (loop_id) REFERENCES public.loop(id);
+
+
+--
+-- Name: round round_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.round
+    ADD CONSTRAINT round_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.project(id);
+
+
+--
+-- Name: round round_retry_of_round_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.round
+    ADD CONSTRAINT round_retry_of_round_id_fkey FOREIGN KEY (retry_of_round_id) REFERENCES public.round(id);
+
+
+--
+-- Name: round_selection_override round_selection_override_round_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.round_selection_override
+    ADD CONSTRAINT round_selection_override_round_id_fkey FOREIGN KEY (round_id) REFERENCES public.round(id);
+
+
+--
+-- Name: round_selection_override round_selection_override_sample_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.round_selection_override
+    ADD CONSTRAINT round_selection_override_sample_id_fkey FOREIGN KEY (sample_id) REFERENCES public.sample(id);
+
+
+--
 -- Name: sample sample_dataset_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2527,14 +3179,6 @@ ALTER TABLE ONLY public.step
 
 ALTER TABLE ONLY public.step_metric_point
     ADD CONSTRAINT step_metric_point_step_id_fkey FOREIGN KEY (step_id) REFERENCES public.step(id);
-
-
---
--- Name: step step_output_commit_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.step
-    ADD CONSTRAINT step_output_commit_id_fkey FOREIGN KEY (output_commit_id) REFERENCES public.commit(id);
 
 
 --
@@ -2586,145 +3230,7 @@ ALTER TABLE ONLY public.user_system_role
 
 
 --
--- Name: prediction_set; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.prediction_set (
-    created_at timestamp without time zone NOT NULL,
-    updated_at timestamp without time zone NOT NULL,
-    id uuid NOT NULL,
-    project_id uuid NOT NULL,
-    loop_id uuid,
-    plugin_id character varying(255) NOT NULL,
-    source_round_id uuid,
-    source_step_id uuid,
-    model_id uuid NOT NULL,
-    base_commit_id uuid,
-    scope_type character varying(64) NOT NULL,
-    scope_payload jsonb,
-    status character varying(32) NOT NULL,
-    total_items integer NOT NULL,
-    params jsonb,
-    last_error character varying(4000),
-    created_by uuid
-);
-
-ALTER TABLE ONLY public.prediction_set
-    ADD CONSTRAINT prediction_set_pkey PRIMARY KEY (id);
-CREATE INDEX ix_prediction_set_project_id ON public.prediction_set USING btree (project_id);
-CREATE INDEX ix_prediction_set_status ON public.prediction_set USING btree (status);
-CREATE INDEX ix_prediction_set_model_id ON public.prediction_set USING btree (model_id);
-CREATE INDEX ix_prediction_set_source_step_id ON public.prediction_set USING btree (source_step_id);
-
-ALTER TABLE ONLY public.prediction_set
-    ADD CONSTRAINT prediction_set_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.project(id);
-ALTER TABLE ONLY public.prediction_set
-    ADD CONSTRAINT prediction_set_loop_id_fkey FOREIGN KEY (loop_id) REFERENCES public.loop(id);
-ALTER TABLE ONLY public.prediction_set
-    ADD CONSTRAINT prediction_set_source_round_id_fkey FOREIGN KEY (source_round_id) REFERENCES public.round(id);
-ALTER TABLE ONLY public.prediction_set
-    ADD CONSTRAINT prediction_set_source_step_id_fkey FOREIGN KEY (source_step_id) REFERENCES public.step(id);
-ALTER TABLE ONLY public.prediction_set
-    ADD CONSTRAINT prediction_set_model_id_fkey FOREIGN KEY (model_id) REFERENCES public.model(id);
-ALTER TABLE ONLY public.prediction_set
-    ADD CONSTRAINT prediction_set_base_commit_id_fkey FOREIGN KEY (base_commit_id) REFERENCES public.commit(id);
-ALTER TABLE ONLY public.prediction_set
-    ADD CONSTRAINT prediction_set_created_by_fkey FOREIGN KEY (created_by) REFERENCES public."user"(id);
-
-
---
--- Name: prediction_item; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.prediction_item (
-    created_at timestamp without time zone NOT NULL,
-    updated_at timestamp without time zone NOT NULL,
-    prediction_set_id uuid NOT NULL,
-    sample_id uuid NOT NULL,
-    rank integer NOT NULL,
-    score double precision NOT NULL,
-    label_id uuid,
-    geometry jsonb,
-    attrs jsonb,
-    confidence double precision NOT NULL,
-    meta jsonb
-);
-
-ALTER TABLE ONLY public.prediction_item
-    ADD CONSTRAINT prediction_item_pkey PRIMARY KEY (prediction_set_id, sample_id);
-CREATE INDEX ix_prediction_item_rank ON public.prediction_item USING btree (rank);
-CREATE INDEX ix_prediction_item_label_id ON public.prediction_item USING btree (label_id);
-
-ALTER TABLE ONLY public.prediction_item
-    ADD CONSTRAINT prediction_item_prediction_set_id_fkey FOREIGN KEY (prediction_set_id) REFERENCES public.prediction_set(id);
-ALTER TABLE ONLY public.prediction_item
-    ADD CONSTRAINT prediction_item_sample_id_fkey FOREIGN KEY (sample_id) REFERENCES public.sample(id);
-ALTER TABLE ONLY public.prediction_item
-    ADD CONSTRAINT prediction_item_label_id_fkey FOREIGN KEY (label_id) REFERENCES public.label(id);
-
-
---
--- Name: model_class_schema; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.model_class_schema (
-    created_at timestamp without time zone NOT NULL,
-    updated_at timestamp without time zone NOT NULL,
-    id uuid NOT NULL,
-    model_id uuid NOT NULL,
-    label_id uuid NOT NULL,
-    class_index integer NOT NULL,
-    class_name character varying(255) NOT NULL,
-    class_name_norm character varying(255) NOT NULL,
-    schema_hash character varying(64) NOT NULL
-);
-
-ALTER TABLE ONLY public.model_class_schema
-    ADD CONSTRAINT model_class_schema_pkey PRIMARY KEY (id);
-ALTER TABLE ONLY public.model_class_schema
-    ADD CONSTRAINT uq_model_class_schema_model_index UNIQUE (model_id, class_index);
-ALTER TABLE ONLY public.model_class_schema
-    ADD CONSTRAINT uq_model_class_schema_model_name_norm UNIQUE (model_id, class_name_norm);
-CREATE INDEX ix_model_class_schema_model_id ON public.model_class_schema USING btree (model_id);
-CREATE INDEX ix_model_class_schema_label_id ON public.model_class_schema USING btree (label_id);
-CREATE INDEX ix_model_class_schema_class_index ON public.model_class_schema USING btree (class_index);
-CREATE INDEX ix_model_class_schema_schema_hash ON public.model_class_schema USING btree (schema_hash);
-
-ALTER TABLE ONLY public.model_class_schema
-    ADD CONSTRAINT model_class_schema_model_id_fkey FOREIGN KEY (model_id) REFERENCES public.model(id);
-ALTER TABLE ONLY public.model_class_schema
-    ADD CONSTRAINT model_class_schema_label_id_fkey FOREIGN KEY (label_id) REFERENCES public.label(id);
-
-
---
--- Name: prediction_set_binding; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.prediction_set_binding (
-    created_at timestamp without time zone NOT NULL,
-    updated_at timestamp without time zone NOT NULL,
-    id uuid NOT NULL,
-    prediction_set_id uuid NOT NULL,
-    model_id uuid NOT NULL,
-    schema_hash character varying(64) NOT NULL,
-    by_index_json jsonb,
-    by_name_json jsonb
-);
-
-ALTER TABLE ONLY public.prediction_set_binding
-    ADD CONSTRAINT prediction_set_binding_pkey PRIMARY KEY (id);
-ALTER TABLE ONLY public.prediction_set_binding
-    ADD CONSTRAINT prediction_set_binding_prediction_set_id_key UNIQUE (prediction_set_id);
-CREATE INDEX ix_prediction_set_binding_prediction_set_id ON public.prediction_set_binding USING btree (prediction_set_id);
-CREATE INDEX ix_prediction_set_binding_model_id ON public.prediction_set_binding USING btree (model_id);
-CREATE INDEX ix_prediction_set_binding_schema_hash ON public.prediction_set_binding USING btree (schema_hash);
-
-ALTER TABLE ONLY public.prediction_set_binding
-    ADD CONSTRAINT prediction_set_binding_prediction_set_id_fkey FOREIGN KEY (prediction_set_id) REFERENCES public.prediction_set(id);
-ALTER TABLE ONLY public.prediction_set_binding
-    ADD CONSTRAINT prediction_set_binding_model_id_fkey FOREIGN KEY (model_id) REFERENCES public.model(id);
-
-
---
 -- PostgreSQL database dump complete
 --
+
+

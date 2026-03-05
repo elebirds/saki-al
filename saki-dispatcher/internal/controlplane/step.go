@@ -369,8 +369,7 @@ func (s *Service) executeOrchestratorStepTx(
 
 	resultStatus := stepSucceeded
 	lastError := ""
-	var resultCommitID *uuid.UUID
-	if err := s.runOrchestratorStepTx(ctx, tx, stepPayload, &resultCommitID); err != nil {
+	if err := s.runOrchestratorStepTx(ctx, tx, stepPayload); err != nil {
 		lastError = strings.TrimSpace(err.Error())
 		if lastError == "" {
 			lastError = "编排步骤执行失败"
@@ -392,26 +391,16 @@ func (s *Service) executeOrchestratorStepTx(
 	}
 
 	affected, err := s.qtx(tx).UpdateStepExecutionResultGuarded(ctx, db.UpdateStepExecutionResultGuardedParams{
-		State:          resultStatus,
-		LastError:      toNullablePGText(lastError),
-		OutputCommitID: resultCommitID,
-		StepID:         stepPayload.StepID,
-		FromState:      db.StepstatusRUNNING,
+		State:     resultStatus,
+		LastError: toNullablePGText(lastError),
+		StepID:    stepPayload.StepID,
+		FromState: db.StepstatusRUNNING,
 	})
 	if err != nil {
 		return false, err
 	}
 	if affected == 0 {
 		return false, nil
-	}
-
-	if resultCommitID != nil {
-		if err := s.qtx(tx).UpdateRoundOutputCommit(ctx, db.UpdateRoundOutputCommitParams{
-			OutputCommitID: resultCommitID,
-			RoundID:        stepPayload.RoundID,
-		}); err != nil {
-			return false, err
-		}
 	}
 
 	if _, err := s.refreshRoundAggregateTx(ctx, tx, stepPayload.RoundID); err != nil {
@@ -440,9 +429,7 @@ func (s *Service) runOrchestratorStepTx(
 	ctx context.Context,
 	tx pgx.Tx,
 	stepPayload stepDispatchPayload,
-	resultCommitID **uuid.UUID,
 ) error {
-	_ = resultCommitID
 	switch stepPayload.StepType {
 	case db.SteptypeSELECT:
 		return s.runSelectTopKTx(ctx, tx, stepPayload)
@@ -1015,9 +1002,9 @@ func (s *Service) markStepDispatchingTx(
 	executorID string,
 	requestID string,
 ) (bool, error) {
+	_ = requestID
 	updated, err := s.qtx(tx).MarkStepDispatching(ctx, db.MarkStepDispatchingParams{
 		AssignedExecutorID: toPGText(executorID),
-		DispatchRequestID:  toPGText(requestID),
 		StepID:             stepID,
 	})
 	if err != nil {
@@ -1078,6 +1065,7 @@ func (s *Service) insertStepEventTx(
 	payloadJSON string,
 	requestID string,
 ) (bool, error) {
+	_ = requestID
 	affected, err := s.qtx(tx).InsertStepEvent(ctx, db.InsertStepEventParams{
 		EventID:   uuid.New(),
 		StepID:    stepID,
@@ -1085,7 +1073,6 @@ func (s *Service) insertStepEventTx(
 		Ts:        toPGTimestamp(ts),
 		EventType: eventType,
 		Payload:   []byte(payloadJSON),
-		RequestID: toNullablePGText(requestID),
 	})
 	if err != nil {
 		return false, err

@@ -25,7 +25,7 @@ type Querier interface {
 	DeletePredictionCandidates(ctx context.Context, arg DeletePredictionCandidatesParams) (int64, error)
 	DeletePredictionEvents(ctx context.Context, arg DeletePredictionEventsParams) (int64, error)
 	DeletePredictionMetrics(ctx context.Context, arg DeletePredictionMetricsParams) (int64, error)
-	DeleteSentDispatchOutboxBefore(ctx context.Context, cutoff pgtype.Timestamp) (int64, error)
+	DeleteSentDispatchOutboxBefore(ctx context.Context, cutoff pgtype.Timestamptz) (int64, error)
 	DeleteStepCandidatesByStepID(ctx context.Context, stepID uuid.UUID) error
 	FindRoundIDByStep(ctx context.Context, stepID uuid.UUID) (uuid.UUID, error)
 	GetCommandLogByCommandID(ctx context.Context, commandID string) (GetCommandLogByCommandIDRow, error)
@@ -72,7 +72,7 @@ type Querier interface {
 	PromoteStepToReady(ctx context.Context, stepID uuid.UUID) (int64, error)
 	RecoverStaleDispatchingStepToReady(ctx context.Context, arg RecoverStaleDispatchingStepToReadyParams) (int64, error)
 	ReleaseDispatchAdvisoryLock(ctx context.Context, lockKey int64) (bool, error)
-	ReleaseStaleSendingOutbox(ctx context.Context, cutoff pgtype.Timestamp) (int64, error)
+	ReleaseStaleSendingOutbox(ctx context.Context, cutoff pgtype.Timestamptz) (int64, error)
 	ResetStepToReadyQueueFull(ctx context.Context, stepID uuid.UUID) (int64, error)
 	ResolveBranchHeadFromDB(ctx context.Context, branchID uuid.UUID) (ResolveBranchHeadFromDBRow, error)
 	TryDispatchAdvisoryLock(ctx context.Context, lockKey int64) (bool, error)
@@ -86,7 +86,6 @@ type Querier interface {
 	UpdateLoopRuntime(ctx context.Context, arg UpdateLoopRuntimeParams) error
 	UpdateLoopRuntimeGuarded(ctx context.Context, arg UpdateLoopRuntimeGuardedParams) (int64, error)
 	UpdateRoundAggregate(ctx context.Context, arg UpdateRoundAggregateParams) error
-	UpdateRoundOutputCommit(ctx context.Context, arg UpdateRoundOutputCommitParams) error
 	UpdateRoundStateWithReason(ctx context.Context, arg UpdateRoundStateWithReasonParams) error
 	UpdateRoundStateWithReasonGuarded(ctx context.Context, arg UpdateRoundStateWithReasonGuardedParams) (int64, error)
 	UpdateRuntimeExecutorDisconnected(ctx context.Context, arg UpdateRuntimeExecutorDisconnectedParams) error

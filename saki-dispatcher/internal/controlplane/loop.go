@@ -369,7 +369,6 @@ func (s *Service) ConfirmLoop(
 			}
 
 			confirmedRows, err := s.qtx(tx).MarkRoundConfirmed(ctx, db.MarkRoundConfirmedParams{
-				ConfirmedCommitID:             latestCommitID,
 				ConfirmedRevealedCount:        int32(revealedCount),
 				ConfirmedSelectedCount:        int32(selectedCount),
 				ConfirmedEffectiveMinRequired: int32(effectiveMinRequired),

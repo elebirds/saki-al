@@ -37,10 +37,8 @@ class Step(UUIDMixin, TimestampMixin, SQLModel, table=True):
     artifacts: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
 
     input_commit_id: Optional[uuid.UUID] = Field(default=None, foreign_key="commit.id", index=True)
-    output_commit_id: Optional[uuid.UUID] = Field(default=None, foreign_key="commit.id", index=True)
 
     assigned_executor_id: Optional[str] = Field(default=None, index=True)
-    dispatch_request_id: Optional[str] = Field(default=None, max_length=128, index=True)
     state_version: int = Field(default=0, ge=0)
     attempt: int = Field(default=1, ge=1)
     max_attempts: int = Field(default=2, ge=1)

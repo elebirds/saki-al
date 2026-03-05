@@ -13,7 +13,7 @@ import (
 )
 
 const insertStepEvent = `-- name: InsertStepEvent :execrows
-INSERT INTO step_event(id, step_id, seq, ts, event_type, payload, request_id, created_at, updated_at)
+INSERT INTO step_event(id, step_id, seq, ts, event_type, payload, created_at, updated_at)
 VALUES(
   $1::uuid,
   $2::uuid,
@@ -21,7 +21,6 @@ VALUES(
   $4,
   $5,
   $6::jsonb,
-  $7::text,
   now(),
   now()
 )
@@ -32,10 +31,9 @@ type InsertStepEventParams struct {
 	EventID   uuid.UUID
 	StepID    uuid.UUID
 	Seq       int32
-	Ts        pgtype.Timestamp
+	Ts        pgtype.Timestamptz
 	EventType string
 	Payload   []byte
-	RequestID pgtype.Text
 }
 
 func (q *Queries) InsertStepEvent(ctx context.Context, arg InsertStepEventParams) (int64, error) {
@@ -46,7 +44,6 @@ func (q *Queries) InsertStepEvent(ctx context.Context, arg InsertStepEventParams
 		arg.Ts,
 		arg.EventType,
 		arg.Payload,
-		arg.RequestID,
 	)
 	if err != nil {
 		return 0, err

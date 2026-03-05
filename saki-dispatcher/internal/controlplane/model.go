@@ -33,7 +33,6 @@ type roundRow struct {
 	SummaryStatus                 db.Roundstatus
 	EndedAt                       *time.Time
 	ConfirmedAt                   *time.Time
-	ConfirmedCommitID             *uuid.UUID
 	ConfirmedRevealedCount        int
 	ConfirmedSelectedCount        int
 	ConfirmedEffectiveMinRequired int
@@ -147,7 +146,6 @@ func mapLatestRound(record db.GetLatestRoundByLoopRow) roundRow {
 		SummaryStatus:                 record.SummaryStatus,
 		EndedAt:                       timestampPtr(record.EndedAt),
 		ConfirmedAt:                   timestampPtr(record.ConfirmedAt),
-		ConfirmedCommitID:             record.ConfirmedCommitID,
 		ConfirmedRevealedCount:        int(record.ConfirmedRevealedCount),
 		ConfirmedSelectedCount:        int(record.ConfirmedSelectedCount),
 		ConfirmedEffectiveMinRequired: int(record.ConfirmedEffectiveMinRequired),

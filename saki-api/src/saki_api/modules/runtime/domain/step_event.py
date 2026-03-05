@@ -23,6 +23,5 @@ class StepEvent(UUIDMixin, TimestampMixin, SQLModel, table=True):
     ts: datetime = Field(index=True, sa_type=sa.DateTime(timezone=True))
     event_type: str = Field(index=True, max_length=64)
     payload: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
-    request_id: str | None = Field(default=None, max_length=128)
 
     step: "Step" = Relationship(back_populates="events")

@@ -59,18 +59,13 @@ class LoopCreateData(BaseModel):
     name: str
     mode: LoopMode = LoopMode.ACTIVE_LEARNING
     phase: LoopPhase = LoopPhase.AL_BOOTSTRAP
-    phase_meta: Dict[str, Any] = Field(default_factory=dict)
     model_arch: str
     config: Dict[str, Any] = Field(default_factory=dict)
     current_iteration: int = Field(default=0, ge=0)
     lifecycle: LoopLifecycle = LoopLifecycle.DRAFT
     max_rounds: int = Field(default=20, ge=1)
     query_batch_size: int = Field(default=200, ge=1)
-    min_seed_labeled: int = Field(default=100, ge=1)
     min_new_labels_per_round: int = Field(default=120, ge=1)
-    stop_patience_rounds: int = Field(default=2, ge=1)
-    stop_min_gain: float = Field(default=0.002)
-    auto_register_model: bool = True
     active_snapshot_version_id: Optional[uuid.UUID] = None
     terminal_reason: Optional[str] = None
 
@@ -79,18 +74,13 @@ class LoopPatch(BaseModel):
     name: Optional[str] = None
     mode: Optional[LoopMode] = None
     phase: Optional[LoopPhase] = None
-    phase_meta: Optional[Dict[str, Any]] = None
     model_arch: Optional[str] = None
     config: Optional[Dict[str, Any]] = None
     current_iteration: Optional[int] = Field(default=None, ge=0)
     lifecycle: Optional[LoopLifecycle] = None
     max_rounds: Optional[int] = Field(default=None, ge=1)
     query_batch_size: Optional[int] = Field(default=None, ge=1)
-    min_seed_labeled: Optional[int] = Field(default=None, ge=1)
     min_new_labels_per_round: Optional[int] = Field(default=None, ge=1)
-    stop_patience_rounds: Optional[int] = Field(default=None, ge=1)
-    stop_min_gain: Optional[float] = None
-    auto_register_model: Optional[bool] = None
     active_snapshot_version_id: Optional[uuid.UUID] = None
     terminal_reason: Optional[str] = None
 
@@ -105,7 +95,6 @@ class LoopRead(BaseModel):
     mode: LoopMode
     phase: LoopPhase
     gate: LoopGate
-    phase_meta: Dict[str, Any]
     gate_meta: Dict[str, Any]
     model_arch: str
     config: Dict[str, Any]
@@ -114,11 +103,7 @@ class LoopRead(BaseModel):
     lifecycle: LoopLifecycle
     max_rounds: int
     query_batch_size: int
-    min_seed_labeled: int
     min_new_labels_per_round: int
-    stop_patience_rounds: int
-    stop_min_gain: float
-    auto_register_model: bool
     terminal_reason: Optional[str] = None
     created_at: datetime
     updated_at: datetime
@@ -129,13 +114,10 @@ class RoundUpdate(BaseModel):
     step_counts: Optional[Dict[str, int]] = None
     started_at: Optional[datetime] = None
     ended_at: Optional[datetime] = None
-    output_commit_id: Optional[uuid.UUID] = None
     assigned_executor_id: Optional[str] = None
-    retry_count: Optional[int] = Field(default=None, ge=0)
     terminal_reason: Optional[str] = None
     final_metrics: Optional[Dict[str, Any]] = None
     final_artifacts: Optional[Dict[str, Any]] = None
-    strategy_params: Optional[Dict[str, Any]] = None
 
 
 class RoundRead(BaseModel):
@@ -150,19 +132,15 @@ class RoundRead(BaseModel):
     state: RoundStatus
     awaiting_confirm: bool = False
     step_counts: Dict[str, int]
-    round_type: str
     plugin_id: str
     input_commit_id: Optional[uuid.UUID] = None
-    output_commit_id: Optional[uuid.UUID] = None
     retry_of_round_id: Optional[uuid.UUID] = None
     retry_reason: Optional[str] = None
     assigned_executor_id: Optional[str] = None
     started_at: Optional[datetime] = None
     ended_at: Optional[datetime] = None
-    retry_count: int
     terminal_reason: Optional[str] = None
     confirmed_at: Optional[datetime] = None
-    confirmed_commit_id: Optional[uuid.UUID] = None
     confirmed_revealed_count: int = 0
     confirmed_selected_count: int = 0
     confirmed_effective_min_required: int = 0
@@ -173,7 +151,6 @@ class RoundRead(BaseModel):
     final_artifacts: Dict[str, Any]
     resolved_params: Dict[str, Any]
     resources: Dict[str, Any]
-    strategy_params: Dict[str, Any]
     created_at: datetime
     updated_at: datetime
 
@@ -199,7 +176,6 @@ class StepRead(BaseModel):
     metrics: Dict[str, Any]
     artifacts: Dict[str, Any]
     input_commit_id: Optional[uuid.UUID] = None
-    output_commit_id: Optional[uuid.UUID] = None
     assigned_executor_id: Optional[str] = None
     attempt: int
     max_attempts: int

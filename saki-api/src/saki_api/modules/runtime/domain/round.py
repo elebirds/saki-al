@@ -28,30 +28,25 @@ class RoundBase(SQLModel):
     state: RoundStatus = Field(default=RoundStatus.PENDING, index=True)
     step_counts: Dict[str, int] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
 
-    round_type: str = Field(default="loop_round", index=True)
     plugin_id: str = Field(default="", index=True)
     resolved_params: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
     resources: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
 
     input_commit_id: Optional[uuid.UUID] = Field(default=None, foreign_key="commit.id")
-    output_commit_id: Optional[uuid.UUID] = Field(default=None, foreign_key="commit.id")
     retry_of_round_id: Optional[uuid.UUID] = Field(default=None, foreign_key="round.id")
     retry_reason: Optional[str] = Field(default=None, max_length=4000)
 
     assigned_executor_id: Optional[str] = Field(default=None, index=True)
     started_at: Optional[datetime] = Field(default=None, sa_type=sa.DateTime(timezone=True))
     ended_at: Optional[datetime] = Field(default=None, sa_type=sa.DateTime(timezone=True))
-    retry_count: int = Field(default=0)
     terminal_reason: Optional[str] = Field(default=None, max_length=4000)
     confirmed_at: Optional[datetime] = Field(default=None, sa_type=sa.DateTime(timezone=True), index=True)
-    confirmed_commit_id: Optional[uuid.UUID] = Field(default=None, foreign_key="commit.id")
     confirmed_revealed_count: int = Field(default=0, ge=0)
     confirmed_selected_count: int = Field(default=0, ge=0)
     confirmed_effective_min_required: int = Field(default=0, ge=0)
 
     final_metrics: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
     final_artifacts: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
-    strategy_params: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
 
 
 class Round(RoundBase, TimestampMixin, UUIDMixin, table=True):

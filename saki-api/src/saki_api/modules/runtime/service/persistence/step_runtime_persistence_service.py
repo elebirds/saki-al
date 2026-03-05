@@ -46,7 +46,6 @@ class RuntimeStepPersistenceService:
                 ts=event.ts,
                 event_type=event.event_type,
                 payload=event.payload,
-                request_id=event.request_id,
             ).model_dump(exclude_none=True)
         )
 

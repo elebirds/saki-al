@@ -94,8 +94,6 @@ def build_round_update_from_steps(*, round_row: Round, steps: Iterable[Step]) ->
                 continue
             merged_artifacts[name] = dict(raw_artifact)
     payload.final_artifacts = merged_artifacts
-    if last_step.output_commit_id:
-        payload.output_commit_id = last_step.output_commit_id
     if last_step.last_error:
         payload.terminal_reason = last_step.last_error
     return payload

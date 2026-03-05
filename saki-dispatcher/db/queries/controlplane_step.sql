@@ -107,7 +107,6 @@ WHERE id = sqlc.arg(step_id)::uuid
 UPDATE step
 SET state = 'DISPATCHING'::stepstatus,
     assigned_executor_id = sqlc.arg(assigned_executor_id),
-    dispatch_request_id = sqlc.arg(dispatch_request_id),
     state_version = state_version + 1,
     updated_at = now()
 WHERE id = sqlc.arg(step_id)::uuid
@@ -117,7 +116,6 @@ WHERE id = sqlc.arg(step_id)::uuid
 UPDATE step
 SET state = 'READY'::stepstatus,
     assigned_executor_id = NULL,
-    dispatch_request_id = NULL,
     last_error = '派发队列已满',
     state_version = state_version + 1,
     updated_at = now()
@@ -133,7 +131,6 @@ WHERE id = sqlc.arg(step_id)::uuid
 UPDATE step
 SET state = 'READY'::stepstatus,
     assigned_executor_id = NULL,
-    dispatch_request_id = NULL,
     last_error = sqlc.arg(last_error),
     state_version = state_version + 1,
     updated_at = now()
@@ -169,7 +166,6 @@ WHERE id = sqlc.arg(step_id)::uuid
 UPDATE step
 SET state = sqlc.arg(state)::stepstatus,
     last_error = sqlc.narg(last_error)::text,
-    output_commit_id = sqlc.narg(output_commit_id)::uuid,
     ended_at = CASE
       WHEN sqlc.arg(state)::stepstatus IN ('SUCCEEDED'::stepstatus, 'FAILED'::stepstatus, 'CANCELLED'::stepstatus, 'SKIPPED'::stepstatus)
       THEN COALESCE(ended_at, now())
@@ -179,12 +175,6 @@ SET state = sqlc.arg(state)::stepstatus,
     updated_at = now()
 WHERE id = sqlc.arg(step_id)::uuid
   AND state = sqlc.arg(from_state)::stepstatus;
-
--- name: UpdateRoundOutputCommit :exec
-UPDATE round
-SET output_commit_id = sqlc.narg(output_commit_id)::uuid,
-    updated_at = now()
-WHERE id = sqlc.arg(round_id)::uuid;
 
 -- name: GetLoopQueryBatchSize :one
 SELECT query_batch_size

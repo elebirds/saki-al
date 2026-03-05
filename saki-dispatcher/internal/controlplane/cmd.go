@@ -159,11 +159,11 @@ func (s *Service) insertCommandLogTx(
 	commandType string,
 	resourceID string,
 ) (bool, error) {
+	_ = commandType
+	_ = resourceID
 	affected, err := s.qtx(tx).InsertCommandLog(ctx, db.InsertCommandLogParams{
-		RequestID:   requestID,
-		CommandID:   commandID,
-		CommandType: commandType,
-		ResourceID:  resourceID,
+		RequestID: requestID,
+		CommandID: commandID,
 	})
 	if err != nil {
 		return false, err

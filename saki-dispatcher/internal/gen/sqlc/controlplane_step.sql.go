@@ -20,8 +20,8 @@ type CopyStepCandidateItemsParams struct {
 	Score              float64
 	Reason             []byte
 	PredictionSnapshot []byte
-	CreatedAt          pgtype.Timestamp
-	UpdatedAt          pgtype.Timestamp
+	CreatedAt          pgtype.Timestamptz
+	UpdatedAt          pgtype.Timestamptz
 }
 
 type CopyStepMetricPointsParams struct {
@@ -31,9 +31,9 @@ type CopyStepMetricPointsParams struct {
 	Epoch       pgtype.Int4
 	MetricName  string
 	MetricValue float64
-	Ts          pgtype.Timestamp
-	CreatedAt   pgtype.Timestamp
-	UpdatedAt   pgtype.Timestamp
+	Ts          pgtype.Timestamptz
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
 }
 
 const deleteStepCandidatesByStepID = `-- name: DeleteStepCandidatesByStepID :exec
@@ -167,7 +167,7 @@ type GetStepPayloadByIDForUpdateRow struct {
 	RoundIndex         int32
 	Attempt            int32
 	StateVersion       int32
-	UpdatedAt          pgtype.Timestamp
+	UpdatedAt          pgtype.Timestamptz
 	DependsOnRaw       []byte
 	ParamsRaw          []byte
 	InputCommitID      *uuid.UUID
@@ -300,7 +300,7 @@ type InsertStepMetricPointParams struct {
 	Epoch       pgtype.Int4
 	MetricName  string
 	MetricValue float64
-	Ts          pgtype.Timestamp
+	Ts          pgtype.Timestamptz
 }
 
 func (q *Queries) InsertStepMetricPoint(ctx context.Context, arg InsertStepMetricPointParams) error {
@@ -529,21 +529,19 @@ const markStepDispatching = `-- name: MarkStepDispatching :execrows
 UPDATE step
 SET state = 'DISPATCHING'::stepstatus,
     assigned_executor_id = $1,
-    dispatch_request_id = $2,
     state_version = state_version + 1,
     updated_at = now()
-WHERE id = $3::uuid
+WHERE id = $2::uuid
   AND state = 'READY'::stepstatus
 `
 
 type MarkStepDispatchingParams struct {
 	AssignedExecutorID pgtype.Text
-	DispatchRequestID  pgtype.Text
 	StepID             uuid.UUID
 }
 
 func (q *Queries) MarkStepDispatching(ctx context.Context, arg MarkStepDispatchingParams) (int64, error) {
-	result, err := q.db.Exec(ctx, markStepDispatching, arg.AssignedExecutorID, arg.DispatchRequestID, arg.StepID)
+	result, err := q.db.Exec(ctx, markStepDispatching, arg.AssignedExecutorID, arg.StepID)
 	if err != nil {
 		return 0, err
 	}
@@ -588,7 +586,6 @@ const recoverStaleDispatchingStepToReady = `-- name: RecoverStaleDispatchingStep
 UPDATE step
 SET state = 'READY'::stepstatus,
     assigned_executor_id = NULL,
-    dispatch_request_id = NULL,
     last_error = $1,
     state_version = state_version + 1,
     updated_at = now()
@@ -618,7 +615,6 @@ const resetStepToReadyQueueFull = `-- name: ResetStepToReadyQueueFull :execrows
 UPDATE step
 SET state = 'READY'::stepstatus,
     assigned_executor_id = NULL,
-    dispatch_request_id = NULL,
     last_error = '派发队列已满',
     state_version = state_version + 1,
     updated_at = now()
@@ -637,23 +633,6 @@ func (q *Queries) ResetStepToReadyQueueFull(ctx context.Context, stepID uuid.UUI
 		return 0, err
 	}
 	return result.RowsAffected(), nil
-}
-
-const updateRoundOutputCommit = `-- name: UpdateRoundOutputCommit :exec
-UPDATE round
-SET output_commit_id = $1::uuid,
-    updated_at = now()
-WHERE id = $2::uuid
-`
-
-type UpdateRoundOutputCommitParams struct {
-	OutputCommitID *uuid.UUID
-	RoundID        uuid.UUID
-}
-
-func (q *Queries) UpdateRoundOutputCommit(ctx context.Context, arg UpdateRoundOutputCommitParams) error {
-	_, err := q.db.Exec(ctx, updateRoundOutputCommit, arg.OutputCommitID, arg.RoundID)
-	return err
 }
 
 const updateStepArtifacts = `-- name: UpdateStepArtifacts :exec
@@ -677,7 +656,6 @@ const updateStepExecutionResultGuarded = `-- name: UpdateStepExecutionResultGuar
 UPDATE step
 SET state = $1::stepstatus,
     last_error = $2::text,
-    output_commit_id = $3::uuid,
     ended_at = CASE
       WHEN $1::stepstatus IN ('SUCCEEDED'::stepstatus, 'FAILED'::stepstatus, 'CANCELLED'::stepstatus, 'SKIPPED'::stepstatus)
       THEN COALESCE(ended_at, now())
@@ -685,23 +663,21 @@ SET state = $1::stepstatus,
     END,
     state_version = state_version + 1,
     updated_at = now()
-WHERE id = $4::uuid
-  AND state = $5::stepstatus
+WHERE id = $3::uuid
+  AND state = $4::stepstatus
 `
 
 type UpdateStepExecutionResultGuardedParams struct {
-	State          Stepstatus
-	LastError      pgtype.Text
-	OutputCommitID *uuid.UUID
-	StepID         uuid.UUID
-	FromState      Stepstatus
+	State     Stepstatus
+	LastError pgtype.Text
+	StepID    uuid.UUID
+	FromState Stepstatus
 }
 
 func (q *Queries) UpdateStepExecutionResultGuarded(ctx context.Context, arg UpdateStepExecutionResultGuardedParams) (int64, error) {
 	result, err := q.db.Exec(ctx, updateStepExecutionResultGuarded,
 		arg.State,
 		arg.LastError,
-		arg.OutputCommitID,
 		arg.StepID,
 		arg.FromState,
 	)

@@ -60,8 +60,8 @@ func toNullablePGText(raw string) pgtype.Text {
 	return pgtype.Text{String: value, Valid: true}
 }
 
-func toPGTimestamp(ts time.Time) pgtype.Timestamp {
-	return pgtype.Timestamp{
+func toPGTimestamp(ts time.Time) pgtype.Timestamptz {
+	return pgtype.Timestamptz{
 		Time:  ts,
 		Valid: true,
 	}
@@ -74,7 +74,7 @@ func toPGInt4(value *int) pgtype.Int4 {
 	return pgtype.Int4{Int32: int32(*value), Valid: true}
 }
 
-func timestampPtr(ts pgtype.Timestamp) *time.Time {
+func timestampPtr(ts pgtype.Timestamptz) *time.Time {
 	if !ts.Valid {
 		return nil
 	}

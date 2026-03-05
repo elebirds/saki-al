@@ -81,7 +81,7 @@ WHERE status = 'SENT'
   AND sent_at < $1
 `
 
-func (q *Queries) DeleteSentDispatchOutboxBefore(ctx context.Context, cutoff pgtype.Timestamp) (int64, error) {
+func (q *Queries) DeleteSentDispatchOutboxBefore(ctx context.Context, cutoff pgtype.Timestamptz) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteSentDispatchOutboxBefore, cutoff)
 	if err != nil {
 		return 0, err
@@ -159,7 +159,7 @@ LIMIT $2
 `
 
 type ListOrphanDispatchingStepIDsParams struct {
-	Cutoff     pgtype.Timestamp
+	Cutoff     pgtype.Timestamptz
 	LimitCount int32
 }
 
@@ -195,7 +195,7 @@ WHERE id = $3::uuid
 `
 
 type MarkDispatchOutboxRetryParams struct {
-	NextAttemptAt pgtype.Timestamp
+	NextAttemptAt pgtype.Timestamptz
 	LastError     pgtype.Text
 	OutboxID      uuid.UUID
 }
@@ -238,7 +238,7 @@ WHERE status = 'SENDING'
   AND locked_at < $1
 `
 
-func (q *Queries) ReleaseStaleSendingOutbox(ctx context.Context, cutoff pgtype.Timestamp) (int64, error) {
+func (q *Queries) ReleaseStaleSendingOutbox(ctx context.Context, cutoff pgtype.Timestamptz) (int64, error) {
 	result, err := q.db.Exec(ctx, releaseStaleSendingOutbox, cutoff)
 	if err != nil {
 		return 0, err

@@ -52,7 +52,6 @@ SELECT
   state AS summary_status,
   ended_at,
   confirmed_at,
-  confirmed_commit_id,
   confirmed_revealed_count,
   confirmed_selected_count,
   confirmed_effective_min_required
@@ -85,10 +84,10 @@ WHERE loop_id = sqlc.arg(loop_id)::uuid
 
 -- name: InsertRound :exec
 INSERT INTO round(
-  id, project_id, loop_id, round_index, attempt_index, mode, state, step_counts, round_type, plugin_id,
-  resolved_params, resources, input_commit_id, retry_of_round_id, retry_reason, retry_count, terminal_reason,
+  id, project_id, loop_id, round_index, attempt_index, mode, state, step_counts, plugin_id,
+  resolved_params, resources, input_commit_id, retry_of_round_id, retry_reason, terminal_reason,
   confirmed_revealed_count, confirmed_selected_count, confirmed_effective_min_required,
-  final_metrics, final_artifacts, strategy_params,
+  final_metrics, final_artifacts,
   created_at, updated_at
 ) VALUES (
   sqlc.arg(round_id)::uuid,
@@ -99,19 +98,16 @@ INSERT INTO round(
   sqlc.arg(mode)::loopmode,
   sqlc.arg(state)::roundstatus,
   sqlc.arg(step_counts)::jsonb,
-  'loop_round',
   sqlc.arg(plugin_id),
   sqlc.arg(resolved_params)::jsonb,
   sqlc.arg(resources)::jsonb,
   sqlc.narg(input_commit_id)::uuid,
   sqlc.narg(retry_of_round_id)::uuid,
   sqlc.narg(retry_reason)::text,
-  0,
   NULL,
   0,
   0,
   0,
-  '{}'::jsonb,
   '{}'::jsonb,
   '{}'::jsonb,
   now(),
@@ -121,7 +117,7 @@ INSERT INTO round(
 -- name: InsertStep :exec
 INSERT INTO step(
   id, round_id, step_type, dispatch_kind, state, round_index, step_index, depends_on_step_ids, resolved_params, metrics, artifacts,
-  input_commit_id, attempt, max_attempts, state_version, dispatch_request_id, created_at, updated_at
+  input_commit_id, attempt, max_attempts, state_version, created_at, updated_at
 ) VALUES (
   sqlc.arg(step_id)::uuid,
   sqlc.arg(round_id)::uuid,
@@ -138,7 +134,6 @@ INSERT INTO step(
   1,
   3,
   0,
-  NULL,
   now(),
   now()
 );
@@ -242,7 +237,6 @@ WHERE id = sqlc.arg(round_id)::uuid
 -- name: MarkRoundConfirmed :execrows
 UPDATE round
 SET confirmed_at = now(),
-    confirmed_commit_id = sqlc.narg(confirmed_commit_id)::uuid,
     confirmed_revealed_count = sqlc.arg(confirmed_revealed_count),
     confirmed_selected_count = sqlc.arg(confirmed_selected_count),
     confirmed_effective_min_required = sqlc.arg(confirmed_effective_min_required),
@@ -418,12 +412,10 @@ LIMIT 1;
 
 -- name: InsertCommandLog :execrows
 INSERT INTO runtime_command_log(
-  id, command_id, command_type, resource_id, status, detail, created_at, updated_at
+  id, command_id, status, detail, created_at, updated_at
 ) VALUES(
   sqlc.arg(request_id)::uuid,
   sqlc.arg(command_id),
-  sqlc.arg(command_type),
-  sqlc.arg(resource_id),
   'accepted',
   'accepted',
   now(),

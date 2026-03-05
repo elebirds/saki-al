@@ -25,7 +25,6 @@ class Loop(UUIDMixin, TimestampMixin, SQLModel, table=True):
     name: str = Field(max_length=100)
     mode: LoopMode = Field(default=LoopMode.ACTIVE_LEARNING, index=True)
     phase: LoopPhase = Field(default=LoopPhase.AL_BOOTSTRAP, index=True)
-    phase_meta: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
 
     model_arch: str
 
@@ -35,11 +34,7 @@ class Loop(UUIDMixin, TimestampMixin, SQLModel, table=True):
     lifecycle: LoopLifecycle = Field(default=LoopLifecycle.DRAFT, index=True)
     max_rounds: int = Field(default=5, ge=1)
     query_batch_size: int = Field(default=200, ge=1)
-    min_seed_labeled: int = Field(default=100, ge=1)
     min_new_labels_per_round: int = Field(default=120, ge=1)
-    stop_patience_rounds: int = Field(default=2, ge=1)
-    stop_min_gain: float = Field(default=0.002)
-    auto_register_model: bool = Field(default=True)
 
     active_snapshot_version_id: Optional[uuid.UUID] = Field(
         default=None,

@@ -27,7 +27,7 @@ WHERE c.step_id = s.id
 `
 
 type DeletePredictionCandidatesParams struct {
-	Cutoff     pgtype.Timestamp
+	Cutoff     pgtype.Timestamptz
 	KeepRounds int32
 }
 
@@ -56,7 +56,7 @@ WHERE e.step_id = s.id
 `
 
 type DeletePredictionEventsParams struct {
-	Cutoff     pgtype.Timestamp
+	Cutoff     pgtype.Timestamptz
 	KeepRounds int32
 	EventTypes []string
 }
@@ -85,7 +85,7 @@ WHERE m.step_id = s.id
 `
 
 type DeletePredictionMetricsParams struct {
-	Cutoff     pgtype.Timestamp
+	Cutoff     pgtype.Timestamptz
 	KeepRounds int32
 }
 

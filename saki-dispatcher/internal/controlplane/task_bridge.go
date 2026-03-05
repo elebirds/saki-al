@@ -118,6 +118,9 @@ func (s *Service) ensureTaskBindingForStepTx(
 	resolvedParams []byte,
 	maxAttempts int,
 ) (uuid.UUID, error) {
+	if stepType == db.SteptypePREDICT {
+		return uuid.Nil, fmt.Errorf("step_type=PREDICT is not allowed for loop step task binding")
+	}
 	taskID := uuid.New()
 	if maxAttempts <= 0 {
 		maxAttempts = 1

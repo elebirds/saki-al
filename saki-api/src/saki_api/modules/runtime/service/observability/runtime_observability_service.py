@@ -152,7 +152,7 @@ class RuntimeObservabilityService:
             version=executor.version,
             status=executor.status,
             is_online=executor.is_online,
-            current_step_id=executor.current_step_id,
+            current_task_id=executor.current_task_id,
             plugin_ids=executor.plugin_ids or {},
             resources=executor.resources or {},
             last_seen_at=executor.last_seen_at,

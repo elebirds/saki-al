@@ -1296,22 +1296,6 @@ type Dataset struct {
 	OwnerID                   uuid.UUID
 }
 
-type DispatchOutbox struct {
-	CreatedAt     pgtype.Timestamptz
-	UpdatedAt     pgtype.Timestamptz
-	ID            uuid.UUID
-	TaskID        uuid.UUID
-	ExecutorID    string
-	RequestID     string
-	Payload       []byte
-	Status        string
-	AttemptCount  int32
-	NextAttemptAt pgtype.Timestamptz
-	LockedAt      pgtype.Timestamptz
-	SentAt        pgtype.Timestamptz
-	LastError     pgtype.Text
-}
-
 type ImportTask struct {
 	CreatedAt       pgtype.Timestamptz
 	UpdatedAt       pgtype.Timestamptz
@@ -1605,7 +1589,7 @@ type RuntimeExecutor struct {
 	Version       string
 	Status        string
 	IsOnline      bool
-	CurrentStepID pgtype.Text
+	CurrentTaskID pgtype.Text
 	PluginIds     []byte
 	Resources     []byte
 	LastSeenAt    pgtype.Timestamptz
@@ -1700,6 +1684,22 @@ type TaskCandidateItem struct {
 	Score              float64
 	Reason             []byte
 	PredictionSnapshot []byte
+}
+
+type TaskDispatchOutbox struct {
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+	ID            uuid.UUID
+	TaskID        uuid.UUID
+	ExecutorID    string
+	RequestID     string
+	Payload       []byte
+	Status        string
+	AttemptCount  int32
+	NextAttemptAt pgtype.Timestamptz
+	LockedAt      pgtype.Timestamptz
+	SentAt        pgtype.Timestamptz
+	LastError     pgtype.Text
 }
 
 type TaskEvent struct {

@@ -16,7 +16,7 @@ const updateRuntimeExecutorDisconnected = `-- name: UpdateRuntimeExecutorDisconn
 UPDATE runtime_executor
 SET status = 'offline',
     is_online = FALSE,
-    current_step_id = NULL,
+    current_task_id = NULL,
     last_error = $1::text,
     last_seen_at = now(),
     updated_at = now()
@@ -35,7 +35,7 @@ func (q *Queries) UpdateRuntimeExecutorDisconnected(ctx context.Context, arg Upd
 
 const upsertRuntimeExecutorOnHeartbeat = `-- name: UpsertRuntimeExecutorOnHeartbeat :exec
 INSERT INTO runtime_executor(
-  id, executor_id, version, status, is_online, current_step_id, plugin_ids, resources, last_seen_at, last_error, created_at, updated_at
+  id, executor_id, version, status, is_online, current_task_id, plugin_ids, resources, last_seen_at, last_error, created_at, updated_at
 ) VALUES(
   $1::uuid,
   $2,
@@ -53,7 +53,7 @@ INSERT INTO runtime_executor(
 ON CONFLICT (executor_id) DO UPDATE SET
   status = EXCLUDED.status,
   is_online = TRUE,
-  current_step_id = EXCLUDED.current_step_id,
+  current_task_id = EXCLUDED.current_task_id,
   resources = EXCLUDED.resources,
   last_seen_at = EXCLUDED.last_seen_at,
   last_error = NULL,
@@ -64,7 +64,7 @@ type UpsertRuntimeExecutorOnHeartbeatParams struct {
 	ExecutorRowID uuid.UUID
 	ExecutorID    string
 	Status        string
-	CurrentStepID *uuid.UUID
+	CurrentTaskID *uuid.UUID
 	Resources     []byte
 }
 
@@ -73,7 +73,7 @@ func (q *Queries) UpsertRuntimeExecutorOnHeartbeat(ctx context.Context, arg Upse
 		arg.ExecutorRowID,
 		arg.ExecutorID,
 		arg.Status,
-		arg.CurrentStepID,
+		arg.CurrentTaskID,
 		arg.Resources,
 	)
 	return err
@@ -81,7 +81,7 @@ func (q *Queries) UpsertRuntimeExecutorOnHeartbeat(ctx context.Context, arg Upse
 
 const upsertRuntimeExecutorOnRegister = `-- name: UpsertRuntimeExecutorOnRegister :exec
 INSERT INTO runtime_executor(
-  id, executor_id, version, status, is_online, current_step_id, plugin_ids, resources, last_seen_at, last_error, created_at, updated_at
+  id, executor_id, version, status, is_online, current_task_id, plugin_ids, resources, last_seen_at, last_error, created_at, updated_at
 ) VALUES(
   $1::uuid,
   $2,
@@ -100,7 +100,7 @@ ON CONFLICT (executor_id) DO UPDATE SET
   version = EXCLUDED.version,
   status = 'idle',
   is_online = TRUE,
-  current_step_id = NULL,
+  current_task_id = NULL,
   plugin_ids = EXCLUDED.plugin_ids,
   resources = EXCLUDED.resources,
   last_seen_at = EXCLUDED.last_seen_at,

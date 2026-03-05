@@ -19,7 +19,7 @@ class RuntimeExecutor(UUIDMixin, TimestampMixin, SQLModel, table=True):
     status: str = Field(default="offline", index=True, max_length=32)
 
     is_online: bool = Field(default=False, index=True)
-    current_step_id: str | None = Field(default=None, index=True, max_length=64)
+    current_task_id: str | None = Field(default=None, index=True, max_length=64)
 
     plugin_ids: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
     resources: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))

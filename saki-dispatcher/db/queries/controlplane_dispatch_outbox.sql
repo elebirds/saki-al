@@ -1,5 +1,5 @@
 -- name: InsertDispatchOutbox :execrows
-INSERT INTO dispatch_outbox(
+INSERT INTO task_dispatch_outbox(
   id,
   task_id,
   executor_id,
@@ -27,14 +27,14 @@ ON CONFLICT (request_id) DO NOTHING;
 -- name: ClaimDispatchOutboxDue :many
 WITH picked AS (
   SELECT id
-  FROM dispatch_outbox
+  FROM task_dispatch_outbox
   WHERE status = 'PENDING'
     AND next_attempt_at <= now()
   ORDER BY next_attempt_at ASC, created_at ASC
   LIMIT sqlc.arg(limit_count)
   FOR UPDATE SKIP LOCKED
 )
-UPDATE dispatch_outbox o
+UPDATE task_dispatch_outbox o
 SET status = 'SENDING',
     locked_at = now(),
     attempt_count = o.attempt_count + 1,
@@ -50,7 +50,7 @@ RETURNING
   o.attempt_count;
 
 -- name: MarkDispatchOutboxSent :execrows
-UPDATE dispatch_outbox
+UPDATE task_dispatch_outbox
 SET status = 'SENT',
     sent_at = now(),
     locked_at = NULL,
@@ -59,7 +59,7 @@ WHERE id = sqlc.arg(outbox_id)::uuid
   AND status = 'SENDING';
 
 -- name: MarkDispatchOutboxRetry :execrows
-UPDATE dispatch_outbox
+UPDATE task_dispatch_outbox
 SET status = 'PENDING',
     next_attempt_at = sqlc.arg(next_attempt_at),
     last_error = sqlc.narg(last_error)::text,
@@ -69,7 +69,7 @@ WHERE id = sqlc.arg(outbox_id)::uuid
   AND status = 'SENDING';
 
 -- name: ReleaseStaleSendingOutbox :execrows
-UPDATE dispatch_outbox
+UPDATE task_dispatch_outbox
 SET status = 'PENDING',
     next_attempt_at = now(),
     last_error = 'stale sending lock released',
@@ -92,7 +92,7 @@ WHERE s.state IN (
   AND s.updated_at < sqlc.arg(cutoff)
   AND NOT EXISTS (
     SELECT 1
-    FROM dispatch_outbox o
+    FROM task_dispatch_outbox o
     WHERE o.task_id = s.task_id
       AND o.status IN ('PENDING', 'SENDING')
   )
@@ -100,7 +100,7 @@ ORDER BY s.updated_at ASC
 LIMIT sqlc.arg(limit_count);
 
 -- name: DeleteSentDispatchOutboxBefore :execrows
-DELETE FROM dispatch_outbox
+DELETE FROM task_dispatch_outbox
 WHERE status = 'SENT'
   AND sent_at IS NOT NULL
   AND sent_at < sqlc.arg(cutoff);

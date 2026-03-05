@@ -10,10 +10,11 @@ from sqlmodel import Field, SQLModel
 
 from saki_api.modules.shared.modeling.base import OPT_JSON, TimestampMixin, UUIDMixin
 
-class DispatchOutbox(UUIDMixin, TimestampMixin, SQLModel, table=True):
-    __tablename__ = "dispatch_outbox"
+
+class TaskDispatchOutbox(UUIDMixin, TimestampMixin, SQLModel, table=True):
+    __tablename__ = "task_dispatch_outbox"
     __table_args__ = (
-        Index("ix_dispatch_outbox_status_next_attempt_at", "status", "next_attempt_at"),
+        Index("ix_task_dispatch_outbox_status_next_attempt_at", "status", "next_attempt_at"),
     )
 
     task_id: uuid.UUID = Field(foreign_key="task.id", index=True)
@@ -26,3 +27,7 @@ class DispatchOutbox(UUIDMixin, TimestampMixin, SQLModel, table=True):
     locked_at: datetime | None = Field(default=None, sa_type=sa.DateTime(timezone=True))
     sent_at: datetime | None = Field(default=None, sa_type=sa.DateTime(timezone=True))
     last_error: str | None = Field(default=None, max_length=4000)
+
+
+# 向后兼容旧导出名，避免非关键调用点一次性大范围改名。
+DispatchOutbox = TaskDispatchOutbox

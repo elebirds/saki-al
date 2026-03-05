@@ -1836,8 +1836,8 @@ func (s *Service) OnExecutorHeartbeat(ctx context.Context, heartbeat *runtimecon
 	if heartbeat.GetBusy() {
 		status = "busy"
 	}
-	currentStepID := strings.TrimSpace(heartbeat.GetCurrentTaskId())
-	currentStepUUID, err := parseNullableUUID(currentStepID)
+	currentTaskID := strings.TrimSpace(heartbeat.GetCurrentTaskId())
+	currentTaskUUID, err := parseNullableUUID(currentTaskID)
 	if err != nil {
 		return err
 	}
@@ -1850,7 +1850,7 @@ func (s *Service) OnExecutorHeartbeat(ctx context.Context, heartbeat *runtimecon
 		ExecutorRowID: uuid.New(),
 		ExecutorID:    executorID,
 		Status:        status,
-		CurrentStepID: currentStepUUID,
+		CurrentTaskID: currentTaskUUID,
 		Resources:     []byte(resourcesJSON),
 	})
 }

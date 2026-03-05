@@ -15,14 +15,14 @@ import (
 const claimDispatchOutboxDue = `-- name: ClaimDispatchOutboxDue :many
 WITH picked AS (
   SELECT id
-  FROM dispatch_outbox
+  FROM task_dispatch_outbox
   WHERE status = 'PENDING'
     AND next_attempt_at <= now()
   ORDER BY next_attempt_at ASC, created_at ASC
   LIMIT $1
   FOR UPDATE SKIP LOCKED
 )
-UPDATE dispatch_outbox o
+UPDATE task_dispatch_outbox o
 SET status = 'SENDING',
     locked_at = now(),
     attempt_count = o.attempt_count + 1,
@@ -75,7 +75,7 @@ func (q *Queries) ClaimDispatchOutboxDue(ctx context.Context, limitCount int32) 
 }
 
 const deleteSentDispatchOutboxBefore = `-- name: DeleteSentDispatchOutboxBefore :execrows
-DELETE FROM dispatch_outbox
+DELETE FROM task_dispatch_outbox
 WHERE status = 'SENT'
   AND sent_at IS NOT NULL
   AND sent_at < $1
@@ -90,7 +90,7 @@ func (q *Queries) DeleteSentDispatchOutboxBefore(ctx context.Context, cutoff pgt
 }
 
 const insertDispatchOutbox = `-- name: InsertDispatchOutbox :execrows
-INSERT INTO dispatch_outbox(
+INSERT INTO task_dispatch_outbox(
   id,
   task_id,
   executor_id,
@@ -151,7 +151,7 @@ WHERE s.state IN (
   AND s.updated_at < $1
   AND NOT EXISTS (
     SELECT 1
-    FROM dispatch_outbox o
+    FROM task_dispatch_outbox o
     WHERE o.task_id = s.task_id
       AND o.status IN ('PENDING', 'SENDING')
   )
@@ -185,7 +185,7 @@ func (q *Queries) ListOrphanDispatchingStepIDs(ctx context.Context, arg ListOrph
 }
 
 const markDispatchOutboxRetry = `-- name: MarkDispatchOutboxRetry :execrows
-UPDATE dispatch_outbox
+UPDATE task_dispatch_outbox
 SET status = 'PENDING',
     next_attempt_at = $1,
     last_error = $2::text,
@@ -210,7 +210,7 @@ func (q *Queries) MarkDispatchOutboxRetry(ctx context.Context, arg MarkDispatchO
 }
 
 const markDispatchOutboxSent = `-- name: MarkDispatchOutboxSent :execrows
-UPDATE dispatch_outbox
+UPDATE task_dispatch_outbox
 SET status = 'SENT',
     sent_at = now(),
     locked_at = NULL,
@@ -228,7 +228,7 @@ func (q *Queries) MarkDispatchOutboxSent(ctx context.Context, outboxID uuid.UUID
 }
 
 const releaseStaleSendingOutbox = `-- name: ReleaseStaleSendingOutbox :execrows
-UPDATE dispatch_outbox
+UPDATE task_dispatch_outbox
 SET status = 'PENDING',
     next_attempt_at = now(),
     last_error = 'stale sending lock released',

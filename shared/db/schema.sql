@@ -538,10 +538,10 @@ CREATE TABLE public.dataset (
 
 
 --
--- Name: dispatch_outbox; Type: TABLE; Schema: public; Owner: -
+-- Name: task_dispatch_outbox; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.dispatch_outbox (
+CREATE TABLE public.task_dispatch_outbox (
     created_at timestamp with time zone NOT NULL,
     updated_at timestamp with time zone NOT NULL,
     id uuid NOT NULL,
@@ -956,7 +956,7 @@ CREATE TABLE public.runtime_executor (
     version character varying(64) NOT NULL,
     status character varying(32) NOT NULL,
     is_online boolean NOT NULL,
-    current_step_id character varying(64),
+    current_task_id character varying(64),
     plugin_ids jsonb,
     resources jsonb,
     last_seen_at timestamp with time zone,
@@ -1231,11 +1231,11 @@ ALTER TABLE ONLY public.dataset
 
 
 --
--- Name: dispatch_outbox dispatch_outbox_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: task_dispatch_outbox task_dispatch_outbox_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.dispatch_outbox
-    ADD CONSTRAINT dispatch_outbox_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.task_dispatch_outbox
+    ADD CONSTRAINT task_dispatch_outbox_pkey PRIMARY KEY (id);
 
 
 --
@@ -1845,24 +1845,24 @@ CREATE INDEX ix_dataset_owner_id ON public.dataset USING btree (owner_id);
 
 
 --
--- Name: ix_dispatch_outbox_request_id; Type: INDEX; Schema: public; Owner: -
+-- Name: ix_task_dispatch_outbox_request_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX ix_dispatch_outbox_request_id ON public.dispatch_outbox USING btree (request_id);
-
-
---
--- Name: ix_dispatch_outbox_status_next_attempt_at; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX ix_dispatch_outbox_status_next_attempt_at ON public.dispatch_outbox USING btree (status, next_attempt_at);
+CREATE UNIQUE INDEX ix_task_dispatch_outbox_request_id ON public.task_dispatch_outbox USING btree (request_id);
 
 
 --
--- Name: ix_dispatch_outbox_task_id; Type: INDEX; Schema: public; Owner: -
+-- Name: ix_task_dispatch_outbox_status_next_attempt_at; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX ix_dispatch_outbox_task_id ON public.dispatch_outbox USING btree (task_id);
+CREATE INDEX ix_task_dispatch_outbox_status_next_attempt_at ON public.task_dispatch_outbox USING btree (status, next_attempt_at);
+
+
+--
+-- Name: ix_task_dispatch_outbox_task_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_task_dispatch_outbox_task_id ON public.task_dispatch_outbox USING btree (task_id);
 
 
 --
@@ -2426,10 +2426,10 @@ CREATE INDEX ix_runtime_command_log_status ON public.runtime_command_log USING b
 
 
 --
--- Name: ix_runtime_executor_current_step_id; Type: INDEX; Schema: public; Owner: -
+-- Name: ix_runtime_executor_current_task_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX ix_runtime_executor_current_step_id ON public.runtime_executor USING btree (current_step_id);
+CREATE INDEX ix_runtime_executor_current_task_id ON public.runtime_executor USING btree (current_task_id);
 
 
 --
@@ -2881,11 +2881,11 @@ ALTER TABLE ONLY public.dataset
 
 
 --
--- Name: dispatch_outbox dispatch_outbox_task_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: task_dispatch_outbox task_dispatch_outbox_task_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.dispatch_outbox
-    ADD CONSTRAINT dispatch_outbox_task_id_fkey FOREIGN KEY (task_id) REFERENCES public.task(id);
+ALTER TABLE ONLY public.task_dispatch_outbox
+    ADD CONSTRAINT task_dispatch_outbox_task_id_fkey FOREIGN KEY (task_id) REFERENCES public.task(id);
 
 
 --

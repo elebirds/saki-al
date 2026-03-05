@@ -10,7 +10,7 @@ from saki_api.modules.runtime.domain.model import Model
 from saki_api.modules.runtime.domain.model_class_schema import ModelClassSchema
 from saki_api.modules.runtime.domain.round import Round
 from saki_api.modules.runtime.domain.task import Task
-from saki_api.modules.runtime.domain.dispatch_outbox import DispatchOutbox
+from saki_api.modules.runtime.domain.dispatch_outbox import DispatchOutbox, TaskDispatchOutbox
 from saki_api.modules.runtime.domain.runtime_command_log import RuntimeCommandLog
 from saki_api.modules.runtime.domain.runtime_executor import RuntimeExecutor
 from saki_api.modules.runtime.domain.runtime_executor_stats import RuntimeExecutorStats
@@ -39,6 +39,7 @@ __all__ = [
     "Round",
     "Step",
     "Task",
+    "TaskDispatchOutbox",
     "DispatchOutbox",
     "Model",
     "ModelClassSchema",

@@ -416,7 +416,7 @@ function normalizeRuntimeExecutor(executor: RuntimeExecutorRead): RuntimeExecuto
         : pluginIds.plugins;
     return {
         ...executor,
-        currentStepId: (executor as any).currentStepId ?? null,
+        currentTaskId: (executor as any).currentTaskId ?? (executor as any).current_task_id ?? null,
         pluginIds: {
             ...pluginIds,
             plugins,

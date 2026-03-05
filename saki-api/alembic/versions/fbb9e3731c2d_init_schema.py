@@ -167,14 +167,14 @@ def upgrade() -> None:
     sa.Column('version', sqlmodel.sql.sqltypes.AutoString(length=64), nullable=False),
     sa.Column('status', sqlmodel.sql.sqltypes.AutoString(length=32), nullable=False),
     sa.Column('is_online', sa.Boolean(), nullable=False),
-    sa.Column('current_step_id', sqlmodel.sql.sqltypes.AutoString(length=64), nullable=True),
+    sa.Column('current_task_id', sqlmodel.sql.sqltypes.AutoString(length=64), nullable=True),
     sa.Column('plugin_ids', sa.JSON().with_variant(postgresql.JSONB(astext_type=sa.Text()), 'postgresql'), nullable=True),
     sa.Column('resources', sa.JSON().with_variant(postgresql.JSONB(astext_type=sa.Text()), 'postgresql'), nullable=True),
     sa.Column('last_seen_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('last_error', sqlmodel.sql.sqltypes.AutoString(length=4000), nullable=True),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_index(op.f('ix_runtime_executor_current_step_id'), 'runtime_executor', ['current_step_id'], unique=False)
+    op.create_index(op.f('ix_runtime_executor_current_task_id'), 'runtime_executor', ['current_task_id'], unique=False)
     op.create_index(op.f('ix_runtime_executor_executor_id'), 'runtime_executor', ['executor_id'], unique=True)
     op.create_index(op.f('ix_runtime_executor_is_online'), 'runtime_executor', ['is_online'], unique=False)
     op.create_index(op.f('ix_runtime_executor_last_seen_at'), 'runtime_executor', ['last_seen_at'], unique=False)
@@ -531,7 +531,7 @@ def upgrade() -> None:
     op.create_index(op.f('ix_commit_sample_state_project_id'), 'commit_sample_state', ['project_id'], unique=False)
     op.create_index(op.f('ix_commit_sample_state_sample_id'), 'commit_sample_state', ['sample_id'], unique=False)
     op.create_index(op.f('ix_commit_sample_state_state'), 'commit_sample_state', ['state'], unique=False)
-    op.create_table('dispatch_outbox',
+    op.create_table('task_dispatch_outbox',
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('id', sa.Uuid(), nullable=False),
@@ -548,9 +548,9 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['task_id'], ['task.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_index(op.f('ix_dispatch_outbox_request_id'), 'dispatch_outbox', ['request_id'], unique=True)
-    op.create_index('ix_dispatch_outbox_status_next_attempt_at', 'dispatch_outbox', ['status', 'next_attempt_at'], unique=False)
-    op.create_index(op.f('ix_dispatch_outbox_task_id'), 'dispatch_outbox', ['task_id'], unique=False)
+    op.create_index(op.f('ix_task_dispatch_outbox_request_id'), 'task_dispatch_outbox', ['request_id'], unique=True)
+    op.create_index('ix_task_dispatch_outbox_status_next_attempt_at', 'task_dispatch_outbox', ['status', 'next_attempt_at'], unique=False)
+    op.create_index(op.f('ix_task_dispatch_outbox_task_id'), 'task_dispatch_outbox', ['task_id'], unique=False)
     op.create_table('loop_sample_state',
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
@@ -936,10 +936,10 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_loop_sample_state_revealed_round_index'), table_name='loop_sample_state')
     op.drop_index(op.f('ix_loop_sample_state_reveal_commit_id'), table_name='loop_sample_state')
     op.drop_table('loop_sample_state')
-    op.drop_index(op.f('ix_dispatch_outbox_task_id'), table_name='dispatch_outbox')
-    op.drop_index('ix_dispatch_outbox_status_next_attempt_at', table_name='dispatch_outbox')
-    op.drop_index(op.f('ix_dispatch_outbox_request_id'), table_name='dispatch_outbox')
-    op.drop_table('dispatch_outbox')
+    op.drop_index(op.f('ix_task_dispatch_outbox_task_id'), table_name='task_dispatch_outbox')
+    op.drop_index('ix_task_dispatch_outbox_status_next_attempt_at', table_name='task_dispatch_outbox')
+    op.drop_index(op.f('ix_task_dispatch_outbox_request_id'), table_name='task_dispatch_outbox')
+    op.drop_table('task_dispatch_outbox')
     op.drop_index(op.f('ix_commit_sample_state_state'), table_name='commit_sample_state')
     op.drop_index(op.f('ix_commit_sample_state_sample_id'), table_name='commit_sample_state')
     op.drop_index(op.f('ix_commit_sample_state_project_id'), table_name='commit_sample_state')
@@ -1026,7 +1026,7 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_runtime_executor_last_seen_at'), table_name='runtime_executor')
     op.drop_index(op.f('ix_runtime_executor_is_online'), table_name='runtime_executor')
     op.drop_index(op.f('ix_runtime_executor_executor_id'), table_name='runtime_executor')
-    op.drop_index(op.f('ix_runtime_executor_current_step_id'), table_name='runtime_executor')
+    op.drop_index(op.f('ix_runtime_executor_current_task_id'), table_name='runtime_executor')
     op.drop_table('runtime_executor')
     op.drop_index(op.f('ix_runtime_command_log_status'), table_name='runtime_command_log')
     op.drop_index(op.f('ix_runtime_command_log_command_id'), table_name='runtime_command_log')

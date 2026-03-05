@@ -173,7 +173,7 @@ export type RuntimeStepState =
     | 'cancelled'
     | 'skipped';
 
-export type RuntimeStepType =
+export type RuntimeTaskType =
     | 'train'
     | 'eval'
     | 'score'
@@ -186,7 +186,7 @@ export type RuntimeStepDispatchKind = 'dispatchable' | 'orchestrator';
 export interface RuntimeStep {
     id: string;
     roundId: string;
-    stepType: RuntimeStepType;
+    stepType: RuntimeTaskType;
     dispatchKind: RuntimeStepDispatchKind;
     state: RuntimeStepState;
     roundIndex: number;
@@ -254,10 +254,10 @@ export interface RuntimeStepEvent {
 export interface RuntimeRoundEvent {
     taskId: string;
     taskIndex: number;
-    taskType: RuntimeStepType;
+    taskType: RuntimeTaskType;
     stepId?: string;
     stepIndex?: number;
-    stepType?: RuntimeStepType;
+    stepType?: RuntimeTaskType;
     stage: 'train' | 'eval' | 'score' | 'select' | 'custom';
     seq: number;
     ts: string;
@@ -770,7 +770,7 @@ export interface RuntimeExecutorRead {
     version: string;
     status: string;
     isOnline: boolean;
-    currentStepId?: string | null;
+    currentTaskId?: string | null;
     pluginIds: {
         plugins?: RuntimeExecutorPluginCapability[];
         ids?: string[];

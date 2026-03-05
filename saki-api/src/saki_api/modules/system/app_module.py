@@ -5,8 +5,10 @@ from dataclasses import dataclass
 from fastapi import APIRouter
 
 from saki_api.infra.db.session import SessionLocal
+from saki_api.modules.access.service.presets import init_preset_roles
 from saki_api.modules.system.api.http import system
 from saki_api.modules.system.service.asset_gc_scheduler import asset_gc_scheduler
+from saki_api.modules.system.service.system import SystemService
 from saki_api.modules.system.service.system_settings import SystemSettingsService
 
 
@@ -20,6 +22,9 @@ class SystemAppModule:
     async def startup(self) -> None:
         async with SessionLocal() as session:
             await SystemSettingsService(session).bootstrap_defaults()
+            if await SystemService(session).is_init():
+                await init_preset_roles(session)
+                await session.commit()
         await asset_gc_scheduler.start()
 
     async def shutdown(self) -> None:

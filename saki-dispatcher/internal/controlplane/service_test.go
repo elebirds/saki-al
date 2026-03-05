@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	runtimecontrolv1 "github.com/elebirds/saki/saki-dispatcher/internal/gen/runtimecontrolv1"
 	db "github.com/elebirds/saki/saki-dispatcher/internal/gen/sqlc"
@@ -61,6 +62,25 @@ func TestToRuntimeStepType(t *testing.T) {
 	}
 	if got := toRuntimeStepType(db.Steptype("UNKNOWN")); got != runtimecontrolv1.RuntimeStepType_RUNTIME_STEP_TYPE_UNSPECIFIED {
 		t.Fatalf("unknown step type fallback mismatch: %v", got)
+	}
+}
+
+func TestRuntimeStepTypeFromTaskType(t *testing.T) {
+	cases := map[string]runtimecontrolv1.RuntimeStepType{
+		"TRAIN":   runtimecontrolv1.RuntimeStepType_TRAIN,
+		"EVAL":    runtimecontrolv1.RuntimeStepType_EVAL,
+		"SCORE":   runtimecontrolv1.RuntimeStepType_SCORE,
+		"SELECT":  runtimecontrolv1.RuntimeStepType_SELECT,
+		"PREDICT": runtimecontrolv1.RuntimeStepType_PREDICT,
+		"CUSTOM":  runtimecontrolv1.RuntimeStepType_CUSTOM,
+	}
+	for taskType, want := range cases {
+		if got := runtimeStepTypeFromTaskType(taskType); got != want {
+			t.Fatalf("task type mapping mismatch: %s -> %v, want %v", taskType, got, want)
+		}
+	}
+	if got := runtimeStepTypeFromTaskType("legacy"); got != runtimecontrolv1.RuntimeStepType_RUNTIME_STEP_TYPE_UNSPECIFIED {
+		t.Fatalf("unknown task type fallback mismatch: %v", got)
 	}
 }
 
@@ -397,5 +417,45 @@ func TestExtractPredictionSnapshotFromReasonFallbackAndInvalid(t *testing.T) {
 	gotInvalid := extractPredictionSnapshotFromReason(invalid)
 	if !reflect.DeepEqual(gotInvalid, map[string]any{}) {
 		t.Fatalf("invalid snapshot should fallback to empty object: got=%v", gotInvalid)
+	}
+}
+
+func TestBuildTaskResultCandidateRows(t *testing.T) {
+	reason, err := structpb.NewStruct(map[string]any{
+		"prediction_snapshot": map[string]any{
+			"base_predictions": []any{
+				map[string]any{"class_index": float64(1), "confidence": float64(0.8)},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("build reason struct failed: %v", err)
+	}
+	rows := buildTaskResultCandidateRows([]*runtimecontrolv1.QueryCandidate{
+		{
+			SampleId: "sample-a",
+			Score:    0.66,
+			Reason:   reason,
+		},
+	})
+	if len(rows) != 1 {
+		t.Fatalf("candidate rows size mismatch: %d", len(rows))
+	}
+	got := rows[0]
+	if got["sample_id"] != "sample-a" {
+		t.Fatalf("sample_id mismatch: %v", got["sample_id"])
+	}
+	if got["rank"] != 1 {
+		t.Fatalf("rank mismatch: %v", got["rank"])
+	}
+	if got["score"] != float64(0.66) {
+		t.Fatalf("score mismatch: %v", got["score"])
+	}
+	snapshot, ok := got["prediction_snapshot"].(map[string]any)
+	if !ok {
+		t.Fatalf("prediction_snapshot type mismatch: %T", got["prediction_snapshot"])
+	}
+	if _, exists := snapshot["base_predictions"]; !exists {
+		t.Fatalf("prediction_snapshot should include base_predictions: %v", snapshot)
 	}
 }

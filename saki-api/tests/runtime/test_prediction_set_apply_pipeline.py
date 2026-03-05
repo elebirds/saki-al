@@ -22,16 +22,14 @@ from saki_api.modules.runtime.domain.loop import Loop
 from saki_api.modules.runtime.domain.model import Model
 from saki_api.modules.runtime.domain.model_class_schema import ModelClassSchema
 from saki_api.modules.runtime.domain.round import Round
-from saki_api.modules.runtime.domain.step import Step
-from saki_api.modules.runtime.domain.step_candidate_item import StepCandidateItem
+from saki_api.modules.runtime.domain.task import Task
 from saki_api.modules.runtime.service.runtime_service import RuntimeService
 from saki_api.modules.shared.modeling.enums import (
     AnnotationSource,
     AnnotationType,
     AuthorType,
     CommitSampleReviewState,
-    StepStatus,
-    StepType,
+    RuntimeTaskStatus,
     TaskType,
 )
 from saki_api.modules.storage.domain.dataset import Dataset
@@ -262,33 +260,40 @@ async def _create_prediction_task(
     )
 
 
-async def _finish_predict_step(
+async def _finish_prediction_task(
     *,
     session: AsyncSession,
-    step_id: uuid.UUID,
+    task_id: uuid.UUID,
     rows: list[dict],
 ) -> None:
+    task_row = await session.get(Task, task_id)
+    assert task_row is not None
+    resolved_params = dict(task_row.resolved_params or {})
+    task_candidates = []
     for idx, row in enumerate(rows, start=1):
-        session.add(
-            StepCandidateItem(
-                step_id=step_id,
-                sample_id=row["sample_id"],
-                rank=idx,
-                score=float(row.get("score", 0.0)),
-                reason=dict(row.get("reason") or {}),
-                prediction_snapshot=dict(row.get("prediction_snapshot") or {}),
-            )
+        reason_payload = dict(row.get("reason") or {})
+        snapshot_payload = row.get("prediction_snapshot")
+        if not isinstance(snapshot_payload, dict):
+            raw_snapshot = reason_payload.get("prediction_snapshot")
+            snapshot_payload = raw_snapshot if isinstance(raw_snapshot, dict) else {}
+        task_candidates.append(
+            {
+                "sample_id": str(row["sample_id"]),
+                "rank": idx,
+                "score": float(row.get("score", 0.0)),
+                "reason": reason_payload,
+                "prediction_snapshot": dict(snapshot_payload),
+            }
         )
-
-    step = await session.get(Step, step_id)
-    assert step is not None
-    step.state = StepStatus.SUCCEEDED
-    session.add(step)
+    resolved_params["_result_candidates"] = task_candidates
+    task_row.resolved_params = resolved_params
+    task_row.status = RuntimeTaskStatus.SUCCEEDED
+    session.add(task_row)
     await session.commit()
 
 
 @pytest.mark.anyio
-async def test_generate_prediction_set_creates_predict_step_and_queued_task(prediction_set_env):
+async def test_generate_prediction_set_creates_queued_prediction_task_without_step(prediction_set_env):
     session_local = prediction_set_env
     async with session_local() as session:
         ctx = await _seed_prediction_context(session)
@@ -299,14 +304,11 @@ async def test_generate_prediction_set_creates_predict_step_and_queued_task(pred
         assert prediction_set.status == "queued"
         assert prediction_set.project_id == ctx.project.id
         assert prediction_set.plugin_id == "demo_det_v1"
-        assert prediction_set.source_step_id is not None
-
-        created_step = await session.get(Step, prediction_set.source_step_id)
-        assert created_step is not None
-        assert created_step.step_type == StepType.PREDICT
-        assert created_step.state == StepStatus.READY
+        assert prediction_set.source_step_id is None
         assert prediction_set.task_id is not None
-        assert created_step.task_id == prediction_set.task_id
+        task_row = await session.get(Task, prediction_set.task_id)
+        assert task_row is not None
+        assert task_row.status == RuntimeTaskStatus.READY
 
 
 @pytest.mark.anyio
@@ -347,12 +349,11 @@ async def test_generate_prediction_set_persists_predict_conf_to_plugin_params(pr
             scope_status="all",
             predict_conf=0.02,
         )
-        assert prediction_set.source_step_id is not None
-        created_step = await session.get(Step, prediction_set.source_step_id)
-        assert created_step is not None
+        task_row = await session.get(Task, prediction_set.task_id)
+        assert task_row is not None
         plugin_params = (
-            created_step.resolved_params.get("plugin")
-            if isinstance(created_step.resolved_params, dict)
+            task_row.resolved_params.get("plugin")
+            if isinstance(task_row.resolved_params, dict)
             else {}
         )
         assert isinstance(plugin_params, dict)
@@ -417,10 +418,10 @@ async def test_materialize_prediction_set_from_reason_snapshot_with_cls_mapping(
         service = RuntimeService(session)
 
         prediction_set = await _create_prediction_task(service=service, ctx=ctx, scope_status="all")
-        assert prediction_set.source_step_id is not None
-        await _finish_predict_step(
+        assert prediction_set.source_step_id is None
+        await _finish_prediction_task(
             session=session,
-            step_id=prediction_set.source_step_id,
+            task_id=prediction_set.task_id,
             rows=[
                 {
                     "sample_id": ctx.sample.id,
@@ -490,11 +491,11 @@ async def test_sample_status_unlabeled_filters_labeled_samples(prediction_set_en
 
         service = RuntimeService(session)
         prediction_set = await _create_prediction_task(service=service, ctx=ctx, scope_status="unlabeled")
-        assert prediction_set.source_step_id is not None
+        assert prediction_set.source_step_id is None
 
-        await _finish_predict_step(
+        await _finish_prediction_task(
             session=session,
-            step_id=prediction_set.source_step_id,
+            task_id=prediction_set.task_id,
             rows=[
                 {
                     "sample_id": ctx.sample.id,
@@ -569,11 +570,11 @@ async def test_apply_prediction_set_merges_head_commit_and_expands_multi_predict
 
         service = RuntimeService(session)
         prediction_set = await _create_prediction_task(service=service, ctx=ctx, scope_status="all")
-        assert prediction_set.source_step_id is not None
+        assert prediction_set.source_step_id is None
 
-        await _finish_predict_step(
+        await _finish_prediction_task(
             session=session,
-            step_id=prediction_set.source_step_id,
+            task_id=prediction_set.task_id,
             rows=[
                 {
                     "sample_id": ctx.sample.id,
@@ -660,11 +661,11 @@ async def test_apply_prediction_set_fails_on_unresolvable_label(prediction_set_e
         service = RuntimeService(session)
 
         prediction_set = await _create_prediction_task(service=service, ctx=ctx, scope_status="all")
-        assert prediction_set.source_step_id is not None
+        assert prediction_set.source_step_id is None
 
-        await _finish_predict_step(
+        await _finish_prediction_task(
             session=session,
-            step_id=prediction_set.source_step_id,
+            task_id=prediction_set.task_id,
             rows=[
                 {
                     "sample_id": ctx.sample.id,
@@ -763,11 +764,11 @@ async def test_settle_prediction_set_fails_on_class_name_and_index_conflict(pred
         ctx = await _seed_prediction_context(session)
         service = RuntimeService(session)
         prediction_set = await _create_prediction_task(service=service, ctx=ctx, scope_status="all")
-        assert prediction_set.source_step_id is not None
+        assert prediction_set.source_step_id is None
 
-        await _finish_predict_step(
+        await _finish_prediction_task(
             session=session,
-            step_id=prediction_set.source_step_id,
+            task_id=prediction_set.task_id,
             rows=[
                 {
                     "sample_id": ctx.sample.id,

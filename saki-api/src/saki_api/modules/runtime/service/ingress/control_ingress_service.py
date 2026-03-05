@@ -30,6 +30,7 @@ from saki_api.modules.runtime.domain.al_snapshot_version import ALSnapshotVersio
 from saki_api.modules.runtime.domain.loop import Loop
 from saki_api.modules.runtime.domain.round import Round
 from saki_api.modules.runtime.domain.step import Step
+from saki_api.modules.runtime.domain.task import Task
 from saki_api.modules.runtime.service.application.control_plane_dto import (
     RuntimeDataRequestDTO,
     RuntimeUploadTicketRequestDTO,
@@ -45,6 +46,7 @@ from saki_api.modules.runtime.service.persistence.step_runtime_persistence_servi
 )
 from saki_api.modules.shared.modeling.enums import (
     LoopMode,
+    RuntimeTaskStatus,
     SnapshotPartition,
     SnapshotValPolicy,
     StepStatus,
@@ -204,7 +206,14 @@ class RuntimeControlIngressService:
         async with self._session_local() as session:
             step_id = await self._resolve_step_id_by_task(session=session, task_id=task_id)
             if step_id is None:
-                logger.warning("runtime task event ignored: task_id={} has no mapped step", task_id)
+                await self._persist_task_event_without_step(
+                    session=session,
+                    task_id=task_id,
+                    event_type=event_type,
+                    payload=payload,
+                    mapped_status=mapped_status,
+                )
+                await session.commit()
                 return
             event_dto = RuntimeStepEventDTO(
                 step_id=step_id,
@@ -270,7 +279,16 @@ class RuntimeControlIngressService:
         async with self._session_local() as session:
             step_id = await self._resolve_step_id_by_task(session=session, task_id=task_id)
             if step_id is None:
-                logger.warning("runtime task result ignored: task_id={} has no mapped step", task_id)
+                await self._persist_task_result_without_step(
+                    session=session,
+                    task_id=task_id,
+                    status=self._runtime_task_status_from_pb(int(message.status)),
+                    metrics={str(k): float(v) for k, v in message.metrics.items()},
+                    artifacts=artifacts,
+                    candidates=candidates,
+                    last_error=str(message.error_message or "") or None,
+                )
+                await session.commit()
                 return
             result_dto = RuntimeStepResultDTO(
                 step_id=step_id,
@@ -283,6 +301,104 @@ class RuntimeControlIngressService:
             persistence = RuntimeStepPersistenceService(session)
             await persistence.persist_step_result(result_dto)
             await session.commit()
+
+    async def _persist_task_event_without_step(
+            self,
+            *,
+            session,
+            task_id: uuid.UUID,
+            event_type: str,
+            payload: dict[str, Any],
+            mapped_status: StepStatus | None,
+    ) -> None:
+        task = await session.get(Task, task_id)
+        if task is None:
+            logger.warning("runtime task event ignored: task_id={} not found", task_id)
+            return
+        if event_type != "status" or mapped_status is None:
+            return
+        status_text = str(getattr(mapped_status, "value", mapped_status) or "").strip().lower()
+        if status_text == "" or status_text == RuntimeTaskStatus.PENDING.value:
+            return
+        allowed = {item.value for item in RuntimeTaskStatus}
+        if status_text not in allowed:
+            return
+        next_status = RuntimeTaskStatus(status_text)
+        task.status = next_status
+        reason = str(payload.get("reason") or "").strip() if isinstance(payload, dict) else ""
+        if next_status in {RuntimeTaskStatus.FAILED, RuntimeTaskStatus.CANCELLED, RuntimeTaskStatus.SKIPPED}:
+            task.last_error = reason or task.last_error
+            if task.ended_at is None:
+                task.ended_at = datetime.now(UTC)
+        elif next_status == RuntimeTaskStatus.RUNNING:
+            if task.started_at is None:
+                task.started_at = datetime.now(UTC)
+        elif next_status == RuntimeTaskStatus.SUCCEEDED:
+            task.last_error = None
+            if task.started_at is None:
+                task.started_at = datetime.now(UTC)
+            if task.ended_at is None:
+                task.ended_at = datetime.now(UTC)
+        session.add(task)
+
+    async def _persist_task_result_without_step(
+            self,
+            *,
+            session,
+            task_id: uuid.UUID,
+            status: RuntimeTaskStatus,
+            metrics: dict[str, float],
+            artifacts: list[RuntimeArtifactDTO],
+            candidates: list[RuntimeStepCandidateDTO],
+            last_error: str | None,
+    ) -> None:
+        task = await session.get(Task, task_id)
+        if task is None:
+            logger.warning("runtime task result ignored: task_id={} not found", task_id)
+            return
+        resolved_params = dict(task.resolved_params or {})
+        resolved_params["_result_metrics"] = dict(metrics)
+        resolved_params["_result_artifacts"] = [
+            {
+                "name": str(item.name or ""),
+                "kind": str(item.kind or ""),
+                "uri": str(item.uri or ""),
+                "meta": dict(item.meta or {}),
+            }
+            for item in artifacts
+        ]
+        resolved_params["_result_candidates"] = [
+            {
+                "sample_id": str(item.sample_id),
+                "rank": int(item.rank or 0),
+                "score": float(item.score or 0.0),
+                "reason": dict(item.reason or {}),
+                "prediction_snapshot": dict(item.prediction_snapshot or {}),
+            }
+            for item in candidates
+        ]
+        resolved_params["_result_completed_at"] = datetime.now(UTC).isoformat()
+        task.resolved_params = resolved_params
+        task.status = status
+        if status in {RuntimeTaskStatus.FAILED, RuntimeTaskStatus.CANCELLED, RuntimeTaskStatus.SKIPPED}:
+            task.last_error = str(last_error or "") or None
+        else:
+            task.last_error = None
+        if task.started_at is None:
+            task.started_at = datetime.now(UTC)
+        if status in {RuntimeTaskStatus.SUCCEEDED, RuntimeTaskStatus.FAILED, RuntimeTaskStatus.CANCELLED, RuntimeTaskStatus.SKIPPED}:
+            if task.ended_at is None:
+                task.ended_at = datetime.now(UTC)
+        session.add(task)
+
+    @staticmethod
+    def _runtime_task_status_from_pb(raw: int) -> RuntimeTaskStatus:
+        step_status = RuntimeControlIngressService._status_from_pb(raw)
+        text = str(getattr(step_status, "value", step_status) or "").strip().lower()
+        allowed = {item.value for item in RuntimeTaskStatus}
+        if text in allowed:
+            return RuntimeTaskStatus(text)
+        return RuntimeTaskStatus.FAILED
 
     def _decode_data_request(self, message: pb.DataRequest) -> RuntimeDataRequestDTO:
         request_id = str(message.request_id or "")

@@ -614,7 +614,35 @@ func (s *Service) StopTask(ctx context.Context, commandID string, taskID string,
 			return "", "", err
 		}
 		if !found {
-			return "rejected", "task not found", nil
+			taskRow, taskFound, taskErr := s.getTaskForUpdateTx(ctx, tx, taskPGID)
+			if taskErr != nil {
+				return "", "", taskErr
+			}
+			if !taskFound {
+				return "rejected", "task not found", nil
+			}
+			if isTerminalTaskStatus(taskRow.Status) {
+				return "applied", "task already in terminal state", nil
+			}
+			_, updateErr := tx.Exec(
+				ctx,
+				`UPDATE task
+				 SET status = 'CANCELLED'::taskstatus,
+				     last_error = $2::text,
+				     ended_at = COALESCE(ended_at, now()),
+				     updated_at = now()
+				 WHERE id = $1`,
+				taskPGID,
+				reason,
+			)
+			if updateErr != nil {
+				if isTaskBridgeCompatErr(updateErr) {
+					return "rejected", "task not found", nil
+				}
+				return "", "", updateErr
+			}
+			s.dispatcher.StopStep(taskPGID.String(), reason)
+			return "applied", "stop_task applied", nil
 		}
 		currentState, err := s.qtx(tx).GetStepState(ctx, stepPGID)
 		if err != nil {
@@ -648,7 +676,26 @@ func (s *Service) DispatchTask(ctx context.Context, commandID string, taskID str
 			return "", "", err
 		}
 		if !found {
-			return "rejected", "task not found", nil
+			taskRow, taskFound, taskErr := s.getTaskForUpdateTx(ctx, tx, taskPGID)
+			if taskErr != nil {
+				return "", "", taskErr
+			}
+			if !taskFound {
+				return "rejected", "task not found", nil
+			}
+			if isTerminalTaskStatus(taskRow.Status) {
+				return "rejected", "task is in terminal state", nil
+			}
+			if normalizeTaskEnumText(taskRow.Kind) != "PREDICTION" {
+				return "rejected", "task has no mapped step", nil
+			}
+			switch normalizeTaskEnumText(taskRow.Status) {
+			case "PENDING", "READY", "RETRYING":
+			default:
+				return "rejected", "task is not dispatchable", nil
+			}
+			s.dispatcher.QueueTask(taskPGID.String())
+			return "applied", "dispatch_task queued", nil
 		}
 		currentState, err := s.qtx(tx).GetStepState(ctx, stepPGID)
 		if err != nil {

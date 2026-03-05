@@ -3,6 +3,7 @@ package controlplane
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -61,6 +62,19 @@ func (s *Service) dispatchPending(ctx context.Context, limit int) (int, error) {
 			claimed++
 		}
 	}
+	for _, queuedTaskID := range s.dispatcher.DrainQueuedTaskIDs() {
+		taskID, err := parseUUID(queuedTaskID)
+		if err != nil {
+			continue
+		}
+		dispatched, err := s.dispatchPredictionTaskByID(ctx, taskID)
+		if err != nil {
+			return claimed, err
+		}
+		if dispatched {
+			claimed++
+		}
+	}
 
 	if _, err := s.promotePendingStepsToReady(ctx, max(64, limit*2)); err != nil {
 		return claimed, err
@@ -74,6 +88,19 @@ func (s *Service) dispatchPending(ctx context.Context, limit int) (int, error) {
 	}
 	for _, stepID := range stepIDs {
 		dispatched, err := s.dispatchStepByID(ctx, stepID)
+		if err != nil {
+			return claimed, err
+		}
+		if dispatched {
+			claimed++
+		}
+	}
+	taskIDs, err := s.listReadyPredictionTaskIDs(ctx, limit)
+	if err != nil {
+		return claimed, err
+	}
+	for _, taskID := range taskIDs {
+		dispatched, err := s.dispatchPredictionTaskByID(ctx, taskID)
 		if err != nil {
 			return claimed, err
 		}
@@ -347,6 +374,123 @@ func (s *Service) dispatchStepByID(ctx context.Context, stepID uuid.UUID) (bool,
 	return true, tx.Commit(ctx)
 }
 
+func (s *Service) dispatchPredictionTaskByID(ctx context.Context, taskID uuid.UUID) (bool, error) {
+	tx, err := s.beginTx(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback(ctx)
+
+	taskRow, found, err := s.getTaskForUpdateTx(ctx, tx, taskID)
+	if err != nil {
+		return false, err
+	}
+	if !found {
+		return false, tx.Commit(ctx)
+	}
+	if normalizeTaskEnumText(taskRow.Kind) != "PREDICTION" {
+		return false, tx.Commit(ctx)
+	}
+	if isTerminalTaskStatus(taskRow.Status) {
+		return false, tx.Commit(ctx)
+	}
+	switch normalizeTaskEnumText(taskRow.Status) {
+	case "PENDING", "READY", "RETRYING":
+	default:
+		return false, tx.Commit(ctx)
+	}
+
+	executorID, ok := s.dispatcher.PickExecutor(strings.TrimSpace(taskRow.PluginID))
+	if !ok || strings.TrimSpace(executorID) == "" {
+		return false, tx.Commit(ctx)
+	}
+
+	resolvedParams, err := toStruct(taskRow.ResolvedParamsJSON)
+	if err != nil {
+		return false, err
+	}
+	paramsMap, err := parseJSONObject(taskRow.ResolvedParamsJSON)
+	if err != nil {
+		return false, err
+	}
+	meta := map[string]any{}
+	if rawMeta, ok := paramsMap["_prediction_task"]; ok {
+		if payload, ok := rawMeta.(map[string]any); ok && payload != nil {
+			meta = payload
+		}
+	}
+	roundID := strings.TrimSpace(fmt.Sprintf("%v", meta["target_round_id"]))
+	if roundID == "<nil>" {
+		roundID = ""
+	}
+	loopID := strings.TrimSpace(fmt.Sprintf("%v", meta["loop_id"]))
+	if loopID == "<nil>" {
+		loopID = ""
+	}
+	modeText := strings.TrimSpace(fmt.Sprintf("%v", meta["mode"]))
+	if modeText == "" || modeText == "<nil>" {
+		modeText = "manual"
+	}
+	mode := runtimeLoopModeFromText(modeText)
+	roundIndex := toIntValue(meta["round_index"], 0)
+	attempt := max(1, taskRow.Attempt)
+	inputCommitID := ""
+	if taskRow.InputCommitID != nil {
+		inputCommitID = taskRow.InputCommitID.String()
+	}
+
+	requestID := uuid.NewString()
+	_, err = tx.Exec(
+		ctx,
+		`UPDATE task
+		 SET status = 'DISPATCHING'::taskstatus,
+		     assigned_executor_id = $2,
+		     last_error = NULL,
+		     updated_at = now()
+		 WHERE id = $1`,
+		taskRow.ID,
+		executorID,
+	)
+	if err != nil {
+		if isTaskBridgeCompatErr(err) {
+			return false, tx.Commit(ctx)
+		}
+		return false, err
+	}
+
+	payload := &runtimecontrolv1.TaskPayload{
+		TaskId:           taskRow.ID.String(),
+		RoundId:          roundID,
+		LoopId:           loopID,
+		ProjectId:        taskRow.ProjectID.String(),
+		InputCommitId:    inputCommitID,
+		StepType:         runtimeStepTypeFromTaskType(taskRow.TaskType),
+		DispatchKind:     runtimecontrolv1.RuntimeStepDispatchKind_DISPATCHABLE,
+		PluginId:         strings.TrimSpace(taskRow.PluginID),
+		Mode:             mode,
+		QueryStrategy:    extractSamplingStrategyFromStruct(resolvedParams),
+		ResolvedParams:   resolvedParams,
+		Resources:        &runtimecontrolv1.ResourceSummary{},
+		RoundIndex:       int32(roundIndex),
+		Attempt:          int32(attempt),
+		DependsOnTaskIds: []string{},
+	}
+	if !s.dispatcher.DispatchStep(executorID, requestID, payload) {
+		_, _ = tx.Exec(
+			ctx,
+			`UPDATE task
+			 SET status = 'READY'::taskstatus,
+			     assigned_executor_id = NULL,
+			     last_error = 'executor unavailable or queue full',
+			     updated_at = now()
+			 WHERE id = $1`,
+			taskRow.ID,
+		)
+		return false, tx.Commit(ctx)
+	}
+	return true, tx.Commit(ctx)
+}
+
 func (s *Service) syncLoopPhaseWithStepTx(ctx context.Context, tx pgx.Tx, stepPayload stepDispatchPayload) error {
 	nextPhase, ok := phaseForStep(stepPayload.Mode, stepPayload.StepType)
 	if !ok {
@@ -543,6 +687,15 @@ func (s *Service) OnTaskEvent(ctx context.Context, event *runtimecontrolv1.TaskE
 		return err
 	}
 	if !found {
+		if eventType == "status" {
+			targetTaskStatus := normalizeTaskEnumText(string(statusValue))
+			if targetTaskStatus != "" && targetTaskStatus != "PENDING" {
+				reason := strings.TrimSpace(event.GetStatusEvent().GetReason())
+				if err := s.updateStandaloneTaskStatusTx(ctx, tx, taskID, targetTaskStatus, reason); err != nil {
+					return err
+				}
+			}
+		}
 		return tx.Commit(ctx)
 	}
 
@@ -652,6 +805,18 @@ func (s *Service) OnTaskResult(ctx context.Context, result *runtimecontrolv1.Tas
 		return err
 	}
 	if !found {
+		if err := s.persistStandaloneTaskResultTx(
+			ctx,
+			tx,
+			taskID,
+			targetState,
+			result.GetMetrics(),
+			result.GetArtifacts(),
+			result.GetCandidates(),
+			strings.TrimSpace(result.GetErrorMessage()),
+		); err != nil {
+			return err
+		}
 		return tx.Commit(ctx)
 	}
 
@@ -751,6 +916,177 @@ func (s *Service) updateStepResultGuardedTx(
 	return 0, nil
 }
 
+func taskStatusFromStepStatus(status db.Stepstatus) string {
+	normalized := normalizeTaskEnumText(string(status))
+	if normalized == "" {
+		return ""
+	}
+	switch normalized {
+	case "PENDING", "READY", "DISPATCHING", "SYNCING_ENV", "PROBING_RUNTIME", "BINDING_DEVICE", "RUNNING", "RETRYING", "SUCCEEDED", "FAILED", "CANCELLED", "SKIPPED":
+		return normalized
+	default:
+		return ""
+	}
+}
+
+func (s *Service) updateStandaloneTaskStatusTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	taskID uuid.UUID,
+	targetStatus string,
+	reason string,
+) error {
+	targetStatus = normalizeTaskEnumText(targetStatus)
+	if targetStatus == "" {
+		return nil
+	}
+	reason = strings.TrimSpace(reason)
+	var lastError any = nil
+	if targetStatus == "FAILED" || targetStatus == "CANCELLED" || targetStatus == "SKIPPED" {
+		lastError = reason
+	}
+	_, err := tx.Exec(
+		ctx,
+		`UPDATE task
+		 SET status = $2::taskstatus,
+		     started_at = CASE
+		       WHEN $2::taskstatus IN (
+		         'RUNNING'::taskstatus,
+		         'SUCCEEDED'::taskstatus,
+		         'FAILED'::taskstatus,
+		         'CANCELLED'::taskstatus,
+		         'SKIPPED'::taskstatus
+		       ) THEN COALESCE(started_at, now())
+		       ELSE started_at
+		     END,
+		     ended_at = CASE
+		       WHEN $2::taskstatus IN (
+		         'SUCCEEDED'::taskstatus,
+		         'FAILED'::taskstatus,
+		         'CANCELLED'::taskstatus,
+		         'SKIPPED'::taskstatus
+		       ) THEN COALESCE(ended_at, now())
+		       ELSE ended_at
+		     END,
+		     last_error = $3::text,
+		     updated_at = now()
+		 WHERE id = $1`,
+		taskID,
+		targetStatus,
+		lastError,
+	)
+	if err != nil {
+		if isTaskBridgeCompatErr(err) {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
+func buildTaskResultCandidateRows(candidates []*runtimecontrolv1.QueryCandidate) []map[string]any {
+	rows := make([]map[string]any, 0, len(candidates))
+	for idx, item := range candidates {
+		sampleID := strings.TrimSpace(item.GetSampleId())
+		if sampleID == "" {
+			continue
+		}
+		reasonPayload := structToMap(item.GetReason())
+		snapshot := extractPredictionSnapshotFromReason(reasonPayload)
+		rows = append(rows, map[string]any{
+			"sample_id":           sampleID,
+			"rank":                idx + 1,
+			"score":               item.GetScore(),
+			"reason":              reasonPayload,
+			"prediction_snapshot": snapshot,
+		})
+	}
+	return rows
+}
+
+func (s *Service) persistStandaloneTaskResultTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	taskID uuid.UUID,
+	targetState db.Stepstatus,
+	metrics map[string]float64,
+	artifacts []*runtimecontrolv1.ArtifactItem,
+	candidates []*runtimecontrolv1.QueryCandidate,
+	errorMessage string,
+) error {
+	taskRow, found, err := s.getTaskForUpdateTx(ctx, tx, taskID)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return nil
+	}
+	paramsMap, err := parseJSONObject(taskRow.ResolvedParamsJSON)
+	if err != nil {
+		return err
+	}
+	paramsMap["_result_metrics"] = metrics
+	artifactJSON, err := marshalArtifacts(artifacts)
+	if err != nil {
+		return err
+	}
+	artifactPayload, err := parseJSONObject([]byte(artifactJSON))
+	if err != nil {
+		return err
+	}
+	paramsMap["_result_artifacts"] = artifactPayload
+	paramsMap["_result_candidates"] = buildTaskResultCandidateRows(candidates)
+	errorMessage = strings.TrimSpace(errorMessage)
+	if errorMessage == "" {
+		delete(paramsMap, "_result_error_message")
+	} else {
+		paramsMap["_result_error_message"] = errorMessage
+	}
+	paramsMap["_result_completed_at"] = time.Now().UTC().Format(time.RFC3339)
+	resolvedParamsJSON, err := marshalJSON(paramsMap)
+	if err != nil {
+		return err
+	}
+	targetTaskStatus := taskStatusFromStepStatus(targetState)
+	if targetTaskStatus == "" {
+		targetTaskStatus = "FAILED"
+	}
+	var lastError any = nil
+	if targetTaskStatus == "FAILED" || targetTaskStatus == "CANCELLED" || targetTaskStatus == "SKIPPED" {
+		lastError = errorMessage
+	}
+	_, err = tx.Exec(
+		ctx,
+		`UPDATE task
+		 SET status = $2::taskstatus,
+		     resolved_params = $3::jsonb,
+		     started_at = COALESCE(started_at, now()),
+		     ended_at = CASE
+		       WHEN $2::taskstatus IN (
+		         'SUCCEEDED'::taskstatus,
+		         'FAILED'::taskstatus,
+		         'CANCELLED'::taskstatus,
+		         'SKIPPED'::taskstatus
+		       ) THEN COALESCE(ended_at, now())
+		       ELSE ended_at
+		     END,
+		     last_error = $4::text,
+		     updated_at = now()
+		 WHERE id = $1`,
+		taskID,
+		targetTaskStatus,
+		resolvedParamsJSON,
+		lastError,
+	)
+	if err != nil {
+		if isTaskBridgeCompatErr(err) {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
 func (s *Service) listPendingStepIDs(ctx context.Context, limit int) ([]uuid.UUID, error) {
 	return s.queries.ListPendingStepIDs(ctx, int32(max(1, limit)))
 }
@@ -761,6 +1097,96 @@ func (s *Service) listReadyStepIDs(ctx context.Context, limit int) ([]uuid.UUID,
 
 func (s *Service) listRetryingStepIDsDue(ctx context.Context, limit int) ([]uuid.UUID, error) {
 	return s.queries.ListRetryingStepIDsDueForUpdateSkipLocked(ctx, int32(max(1, limit)))
+}
+
+func (s *Service) listReadyPredictionTaskIDs(ctx context.Context, limit int) ([]uuid.UUID, error) {
+	rows, err := s.pool.Query(
+		ctx,
+		`SELECT id
+		FROM task
+		WHERE kind = 'PREDICTION'::taskkind
+		  AND status IN (
+		    'PENDING'::taskstatus,
+		    'READY'::taskstatus,
+		    'RETRYING'::taskstatus
+		  )
+		ORDER BY created_at ASC
+		LIMIT $1`,
+		max(1, limit),
+	)
+	if err != nil {
+		if isTaskBridgeCompatErr(err) {
+			return []uuid.UUID{}, nil
+		}
+		return nil, err
+	}
+	defer rows.Close()
+
+	ids := make([]uuid.UUID, 0, max(1, limit))
+	for rows.Next() {
+		var taskID uuid.UUID
+		if scanErr := rows.Scan(&taskID); scanErr != nil {
+			return nil, scanErr
+		}
+		ids = append(ids, taskID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
+func runtimeStepTypeFromTaskType(taskType string) runtimecontrolv1.RuntimeStepType {
+	switch normalizeTaskEnumText(taskType) {
+	case "TRAIN":
+		return runtimecontrolv1.RuntimeStepType_TRAIN
+	case "EVAL":
+		return runtimecontrolv1.RuntimeStepType_EVAL
+	case "SCORE":
+		return runtimecontrolv1.RuntimeStepType_SCORE
+	case "SELECT":
+		return runtimecontrolv1.RuntimeStepType_SELECT
+	case "PREDICT":
+		return runtimecontrolv1.RuntimeStepType_PREDICT
+	case "CUSTOM":
+		return runtimecontrolv1.RuntimeStepType_CUSTOM
+	default:
+		return runtimecontrolv1.RuntimeStepType_RUNTIME_STEP_TYPE_UNSPECIFIED
+	}
+}
+
+func runtimeLoopModeFromText(raw string) runtimecontrolv1.RuntimeLoopMode {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "active_learning":
+		return runtimecontrolv1.RuntimeLoopMode_ACTIVE_LEARNING
+	case "simulation":
+		return runtimecontrolv1.RuntimeLoopMode_SIMULATION
+	case "manual":
+		return runtimecontrolv1.RuntimeLoopMode_MANUAL
+	default:
+		return runtimecontrolv1.RuntimeLoopMode_RUNTIME_LOOP_MODE_UNSPECIFIED
+	}
+}
+
+func toIntValue(raw any, fallback int) int {
+	switch value := raw.(type) {
+	case int:
+		return value
+	case int32:
+		return int(value)
+	case int64:
+		return int(value)
+	case float32:
+		return int(value)
+	case float64:
+		return int(value)
+	case string:
+		parsed, err := strconv.Atoi(strings.TrimSpace(value))
+		if err == nil {
+			return parsed
+		}
+	}
+	return fallback
 }
 
 func (s *Service) dependenciesSatisfiedTx(ctx context.Context, tx pgx.Tx, dependencyIDs []uuid.UUID) (bool, error) {

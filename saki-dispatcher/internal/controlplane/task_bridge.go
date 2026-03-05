@@ -12,6 +12,21 @@ import (
 	db "github.com/elebirds/saki/saki-dispatcher/internal/gen/sqlc"
 )
 
+type runtimeTaskRow struct {
+	ID                 uuid.UUID
+	ProjectID          uuid.UUID
+	Kind               string
+	TaskType           string
+	Status             string
+	PluginID           string
+	InputCommitID      *uuid.UUID
+	ResolvedParamsJSON []byte
+	Attempt            int
+	MaxAttempts        int
+	AssignedExecutorID string
+	LastError          string
+}
+
 const (
 	pgErrCodeUndefinedColumn = "42703"
 	pgErrCodeUndefinedTable  = "42P01"
@@ -190,4 +205,65 @@ func (s *Service) ensureTaskBindingForStepTx(
 		return uuid.Nil, false, err
 	}
 	return taskID, true, nil
+}
+
+func normalizeTaskEnumText(raw string) string {
+	return strings.ToUpper(strings.TrimSpace(raw))
+}
+
+func isTerminalTaskStatus(raw string) bool {
+	switch normalizeTaskEnumText(raw) {
+	case "SUCCEEDED", "FAILED", "CANCELLED", "SKIPPED":
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *Service) getTaskForUpdateTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	taskID uuid.UUID,
+) (runtimeTaskRow, bool, error) {
+	row := runtimeTaskRow{}
+	err := tx.QueryRow(
+		ctx,
+		`SELECT
+		  id,
+		  project_id,
+		  kind::text,
+		  task_type::text,
+		  status::text,
+		  plugin_id,
+		  input_commit_id,
+		  COALESCE(resolved_params, '{}'::jsonb),
+		  attempt,
+		  max_attempts,
+		  COALESCE(assigned_executor_id, ''),
+		  COALESCE(last_error, '')
+		FROM task
+		WHERE id = $1
+		FOR UPDATE`,
+		taskID,
+	).Scan(
+		&row.ID,
+		&row.ProjectID,
+		&row.Kind,
+		&row.TaskType,
+		&row.Status,
+		&row.PluginID,
+		&row.InputCommitID,
+		&row.ResolvedParamsJSON,
+		&row.Attempt,
+		&row.MaxAttempts,
+		&row.AssignedExecutorID,
+		&row.LastError,
+	)
+	if err == nil {
+		return row, true, nil
+	}
+	if errors.Is(err, pgx.ErrNoRows) || isTaskBridgeCompatErr(err) {
+		return runtimeTaskRow{}, false, nil
+	}
+	return runtimeTaskRow{}, false, err
 }

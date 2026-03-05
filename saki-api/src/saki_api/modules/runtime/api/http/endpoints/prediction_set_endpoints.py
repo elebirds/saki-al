@@ -51,8 +51,8 @@ async def create_prediction(
         payload=payload.model_dump(exclude_none=True),
         actor_user_id=current_user_id,
     )
-    dispatch_task_id = getattr(result, "task_id", None) or result.source_step_id
-    if dispatch_task_id is not None and dispatcher_admin_client.enabled:
+    dispatch_task_id = result.task_id
+    if dispatcher_admin_client.enabled:
         try:
             await dispatcher_admin_client.dispatch_task(str(dispatch_task_id))
         except Exception as exc:
@@ -63,8 +63,7 @@ async def create_prediction(
             )
     settled = await runtime_service.get_prediction_task(task_id=result.task_id)
     task = await runtime_service.task_repo.get_by_id(settled.task_id)
-    settled_step = await runtime_service.step_repo.get_by_id(settled.source_step_id) if settled.source_step_id else None
-    return to_prediction_set_read(settled, task=task, task_step=settled_step)
+    return to_prediction_set_read(settled, task=task)
 
 
 @router.get("/projects/{project_id}/predictions", response_model=list[PredictionRead])
@@ -83,9 +82,6 @@ async def list_predictions(
         required=Permissions.LOOP_READ,
     )
     rows = await runtime_service.list_prediction_sets(project_id=project_id, limit=limit)
-    step_ids = [row.source_step_id for row in rows if getattr(row, "source_step_id", None) is not None]
-    steps = await runtime_service.step_repo.get_by_ids(step_ids)
-    step_by_id = {item.id: item for item in steps}
     task_ids = [row.task_id for row in rows if getattr(row, "task_id", None) is not None]
     tasks = await runtime_service.task_repo.get_by_ids(task_ids)
     task_by_id = {item.id: item for item in tasks}
@@ -93,7 +89,6 @@ async def list_predictions(
         to_prediction_set_read(
             row,
             task=task_by_id.get(getattr(row, "task_id", None)),
-            task_step=step_by_id.get(getattr(row, "source_step_id", None)),
         )
         for row in rows
     ]
@@ -115,9 +110,6 @@ async def list_prediction_tasks(
         required=Permissions.LOOP_READ,
     )
     rows = await runtime_service.list_prediction_tasks(project_id=project_id, limit=limit)
-    step_ids = [row.source_step_id for row in rows if getattr(row, "source_step_id", None) is not None]
-    steps = await runtime_service.step_repo.get_by_ids(step_ids)
-    step_by_id = {item.id: item for item in steps}
     task_ids = [row.task_id for row in rows if getattr(row, "task_id", None) is not None]
     tasks = await runtime_service.task_repo.get_by_ids(task_ids)
     task_by_id = {item.id: item for item in tasks}
@@ -125,7 +117,6 @@ async def list_prediction_tasks(
         to_prediction_task_read(
             row,
             task=task_by_id.get(getattr(row, "task_id", None)),
-            task_step=step_by_id.get(getattr(row, "source_step_id", None)),
         )
         for row in rows
     ]
@@ -146,9 +137,8 @@ async def get_prediction_task(
         project_id=row.project_id,
         required=Permissions.LOOP_READ,
     )
-    step = await runtime_service.step_repo.get_by_id(row.source_step_id) if getattr(row, "source_step_id", None) else None
     task = await runtime_service.task_repo.get_by_id(row.task_id) if getattr(row, "task_id", None) else None
-    return to_prediction_task_read(row, task=task, task_step=step)
+    return to_prediction_task_read(row, task=task)
 
 
 @router.get("/predictions/{prediction_id}", response_model=PredictionDetailRead)
@@ -174,11 +164,6 @@ async def get_prediction_detail(
         prediction=to_prediction_set_read(
             prediction_set,
             task=(await runtime_service.task_repo.get_by_id(prediction_set.task_id) if prediction_set.task_id else None),
-            task_step=(
-                await runtime_service.step_repo.get_by_id(prediction_set.source_step_id)
-                if prediction_set.source_step_id
-                else None
-            ),
         ),
         items=[
             {

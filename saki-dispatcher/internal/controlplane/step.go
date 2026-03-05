@@ -409,30 +409,6 @@ func (s *Service) dispatchPredictionTaskByID(ctx context.Context, taskID uuid.UU
 	if err != nil {
 		return false, err
 	}
-	paramsMap, err := parseJSONObject(taskRow.ResolvedParamsJSON)
-	if err != nil {
-		return false, err
-	}
-	meta := map[string]any{}
-	if rawMeta, ok := paramsMap["_prediction_task"]; ok {
-		if payload, ok := rawMeta.(map[string]any); ok && payload != nil {
-			meta = payload
-		}
-	}
-	roundID := strings.TrimSpace(fmt.Sprintf("%v", meta["target_round_id"]))
-	if roundID == "<nil>" {
-		roundID = ""
-	}
-	loopID := strings.TrimSpace(fmt.Sprintf("%v", meta["loop_id"]))
-	if loopID == "<nil>" {
-		loopID = ""
-	}
-	modeText := strings.TrimSpace(fmt.Sprintf("%v", meta["mode"]))
-	if modeText == "" || modeText == "<nil>" {
-		modeText = "manual"
-	}
-	mode := runtimeLoopModeFromText(modeText)
-	roundIndex := toIntValue(meta["round_index"], 0)
 	attempt := max(1, taskRow.Attempt)
 	inputCommitID := ""
 	if taskRow.InputCommitID != nil {
@@ -457,18 +433,18 @@ func (s *Service) dispatchPredictionTaskByID(ctx context.Context, taskID uuid.UU
 
 	payload := &runtimecontrolv1.TaskPayload{
 		TaskId:           taskRow.ID.String(),
-		RoundId:          roundID,
-		LoopId:           loopID,
+		RoundId:          "",
+		LoopId:           "",
 		ProjectId:        taskRow.ProjectID.String(),
 		InputCommitId:    inputCommitID,
 		StepType:         runtimeStepTypeFromTaskType(taskRow.TaskType),
 		DispatchKind:     runtimecontrolv1.RuntimeStepDispatchKind_DISPATCHABLE,
 		PluginId:         strings.TrimSpace(taskRow.PluginID),
-		Mode:             mode,
+		Mode:             runtimecontrolv1.RuntimeLoopMode_MANUAL,
 		QueryStrategy:    extractSamplingStrategyFromStruct(resolvedParams),
 		ResolvedParams:   resolvedParams,
 		Resources:        &runtimecontrolv1.ResourceSummary{},
-		RoundIndex:       int32(roundIndex),
+		RoundIndex:       0,
 		Attempt:          int32(attempt),
 		DependsOnTaskIds: []string{},
 	}

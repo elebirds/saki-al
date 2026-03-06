@@ -733,7 +733,7 @@ class RuntimeQueryMixin:
         await self.task_repo.get_by_id_or_raise(task_id)
         step = await self.step_repo.get_by_task_id(task_id)
         if step is None:
-            raise NotFoundAppException(f"Task {task_id} has no mapped step artifacts")
+            raise NotFoundAppException(f"Task {task_id} has no mapped artifacts (step projection missing)")
         return self._resolve_artifact_download_url_from_step(
             step=step,
             artifact_name=artifact_name,

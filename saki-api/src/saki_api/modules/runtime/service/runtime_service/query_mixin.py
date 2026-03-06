@@ -548,6 +548,12 @@ class RuntimeQueryMixin:
     ) -> dict[str, Any]:
         await self.repository.get_by_id_or_raise(round_id)
         all_steps = await self.step_repo.list_by_round(round_id)
+        round_task_ids = [step.task_id for step in all_steps if step.task_id is not None]
+        round_tasks = await self.task_repo.get_by_ids(round_task_ids) if round_task_ids else []
+        task_type_by_id = {
+            task.id: str(task.task_type.value if hasattr(task.task_type, "value") else task.task_type).strip().lower()
+            for task in round_tasks
+        }
 
         normalized_stages = [str(item or "").strip().lower() for item in (stages or []) if str(item or "").strip()]
         invalid_stages = [item for item in normalized_stages if item not in self._ROUND_EVENT_STAGE_ALLOWLIST]
@@ -558,7 +564,8 @@ class RuntimeQueryMixin:
         step_stage: dict[uuid.UUID, str] = {}
         target_steps: list[Step] = []
         for step in all_steps:
-            stage = self._round_stage_from_step_type(step.step_type)
+            task_type = task_type_by_id.get(step.task_id) if step.task_id is not None else None
+            stage = self._round_stage_from_task_type(task_type) if task_type else self._round_stage_from_step_type(step.step_type)
             step_stage[step.id] = stage
             if stage_filter and stage not in stage_filter:
                 continue
@@ -576,11 +583,6 @@ class RuntimeQueryMixin:
 
         safe_limit = max(1, min(int(limit or 5000), 100000))
         target_task_ids = [step.task_id for step in target_steps if step.task_id is not None]
-        task_rows = await self.task_repo.get_by_ids(target_task_ids)
-        task_type_by_id = {
-            task.id: str(task.task_type.value if hasattr(task.task_type, "value") else task.task_type).strip().lower()
-            for task in task_rows
-        }
         task_seq_cursor = {
             task_id: max(0, int(cursor_task_seq.get(str(task_id), 0)))
             for task_id in target_task_ids

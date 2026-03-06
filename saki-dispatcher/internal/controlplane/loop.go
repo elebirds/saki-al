@@ -872,8 +872,6 @@ func (s *Service) processStoppingLoopTx(ctx context.Context, tx pgx.Tx, loop loo
 
 		for _, item := range tasks {
 			switch item.TaskStatus {
-			case taskPending:
-				immediateCancelStepIDs = append(immediateCancelStepIDs, item.ID)
 			case taskDispatching:
 				if _, err := s.issueCancelAttemptTx(ctx, tx, item.ID, item.Attempt, reason); err != nil {
 					return err
@@ -888,6 +886,10 @@ func (s *Service) processStoppingLoopTx(ctx context.Context, tx pgx.Tx, loop loo
 					continue
 				}
 				hasInflightRunning = true
+			default:
+				if isImmediateCancelOnLoopStopping(item.TaskStatus) {
+					immediateCancelStepIDs = append(immediateCancelStepIDs, item.ID)
+				}
 			}
 		}
 		if err := s.cancelStepIDsTx(ctx, tx, immediateCancelStepIDs, reason); err != nil {
@@ -934,6 +936,15 @@ func (s *Service) processStoppingLoopTx(ctx context.Context, tx pgx.Tx, loop loo
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+func isImmediateCancelOnLoopStopping(status db.Runtimetaskstatus) bool {
+	switch status {
+	case taskPending, taskReady, taskSyncingEnv, taskProbingRt, taskBindingDev:
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *Service) shouldDelaySimulationRound(lastEndedAt *time.Time) bool {

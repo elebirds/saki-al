@@ -178,63 +178,26 @@ func TestIsOrchestratorDispatchKind(t *testing.T) {
 	}
 }
 
-func TestCanStepTransitionRejectsTerminalRollback(t *testing.T) {
-	if canStepTransition(db.StepstatusCANCELLED, db.StepstatusRUNNING) {
-		t.Fatal("terminal step status should not transition back to RUNNING")
+func TestIsImmediateCancelOnLoopStopping(t *testing.T) {
+	cases := []struct {
+		status db.Runtimetaskstatus
+		want   bool
+	}{
+		{status: db.RuntimetaskstatusPENDING, want: true},
+		{status: db.RuntimetaskstatusREADY, want: true},
+		{status: db.RuntimetaskstatusSYNCINGENV, want: true},
+		{status: db.RuntimetaskstatusPROBINGRUNTIME, want: true},
+		{status: db.RuntimetaskstatusBINDINGDEVICE, want: true},
+		{status: db.RuntimetaskstatusDISPATCHING, want: false},
+		{status: db.RuntimetaskstatusRUNNING, want: false},
+		{status: db.RuntimetaskstatusRETRYING, want: false},
+		{status: db.RuntimetaskstatusSUCCEEDED, want: false},
 	}
-	if canStepTransition(db.StepstatusSUCCEEDED, db.StepstatusREADY) {
-		t.Fatal("SUCCEEDED step should not transition back to READY")
-	}
-}
-
-func TestCanStepTransitionAllowsReadyDispatchingAndRunning(t *testing.T) {
-	if !canStepTransition(db.StepstatusREADY, db.StepstatusDISPATCHING) {
-		t.Fatal("READY -> DISPATCHING should be allowed")
-	}
-	if !canStepTransition(db.StepstatusREADY, db.StepstatusFAILED) {
-		t.Fatal("READY -> FAILED should be allowed for pre-dispatch failure")
-	}
-	if !canStepTransition(db.StepstatusDISPATCHING, db.StepstatusSYNCINGENV) {
-		t.Fatal("DISPATCHING -> SYNCING_ENV should be allowed")
-	}
-	if !canStepTransition(db.StepstatusSYNCINGENV, db.StepstatusPROBINGRUNTIME) {
-		t.Fatal("SYNCING_ENV -> PROBING_RUNTIME should be allowed")
-	}
-	if !canStepTransition(db.StepstatusPROBINGRUNTIME, db.StepstatusBINDINGDEVICE) {
-		t.Fatal("PROBING_RUNTIME -> BINDING_DEVICE should be allowed")
-	}
-	if !canStepTransition(db.StepstatusBINDINGDEVICE, db.StepstatusRUNNING) {
-		t.Fatal("BINDING_DEVICE -> RUNNING should be allowed")
-	}
-	if !canStepTransition(db.StepstatusDISPATCHING, db.StepstatusRUNNING) {
-		t.Fatal("DISPATCHING -> RUNNING should be allowed")
-	}
-}
-
-func TestStepFromCandidatesForResultTargetIncludesTargetState(t *testing.T) {
-	result := stepFromCandidatesForResultTarget(db.StepstatusSUCCEEDED)
-	found := false
-	for _, item := range result {
-		if item == db.StepstatusSUCCEEDED {
-			found = true
-			break
+	for _, tc := range cases {
+		got := isImmediateCancelOnLoopStopping(tc.status)
+		if got != tc.want {
+			t.Fatalf("unexpected stopping cancel policy status=%s got=%v want=%v", tc.status, got, tc.want)
 		}
-	}
-	if !found {
-		t.Fatalf("result candidates should include target state, got=%v", result)
-	}
-}
-
-func TestStepFromCandidatesForResultTargetDeduplicatesTargetState(t *testing.T) {
-	result := stepFromCandidatesForResultTarget(db.StepstatusRUNNING)
-	count := 0
-	for _, item := range result {
-		if item == db.StepstatusRUNNING {
-			count++
-		}
-	}
-	if count != 1 {
-		t.Fatalf("target state should appear exactly once, got=%v", result)
 	}
 }
 

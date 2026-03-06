@@ -397,6 +397,13 @@ class RuntimeQueryMixin:
         return "custom"
 
     @staticmethod
+    def _round_stage_from_task_type(task_type: Any) -> str:
+        value = str(task_type.value if hasattr(task_type, "value") else task_type).strip().lower()
+        if value in {"train", "eval", "score", "select", "predict"}:
+            return value
+        return "custom"
+
+    @staticmethod
     def _encode_round_events_cursor_payload(payload: dict[str, Any]) -> str:
         raw = json.dumps(payload, separators=(",", ":"), sort_keys=True, ensure_ascii=True).encode("utf-8")
         return base64.urlsafe_b64encode(raw).decode("utf-8").rstrip("=")
@@ -569,6 +576,11 @@ class RuntimeQueryMixin:
 
         safe_limit = max(1, min(int(limit or 5000), 100000))
         target_task_ids = [step.task_id for step in target_steps if step.task_id is not None]
+        task_rows = await self.task_repo.get_by_ids(target_task_ids)
+        task_type_by_id = {
+            task.id: str(task.task_type.value if hasattr(task.task_type, "value") else task.task_type).strip().lower()
+            for task in task_rows
+        }
         task_seq_cursor = {
             task_id: max(0, int(cursor_task_seq.get(str(task_id), 0)))
             for task_id in target_task_ids
@@ -590,11 +602,14 @@ class RuntimeQueryMixin:
                 continue
             step = step_lookup[event.task_id]
             item = self._normalize_task_event(event)
+            task_type = task_type_by_id.get(event.task_id) or str(
+                step.step_type.value if hasattr(step.step_type, "value") else step.step_type
+            ).strip().lower()
             item["task_id"] = event.task_id
             item["task_index"] = int(step.step_index or 0)
-            item["task_type"] = str(step.step_type.value if hasattr(step.step_type, "value") else step.step_type)
+            item["task_type"] = task_type
             item["step_id"] = step.id
-            item["stage"] = step_stage.get(step.id) or self._round_stage_from_step_type(step.step_type)
+            item["stage"] = step_stage.get(step.id) or self._round_stage_from_task_type(task_type)
             items.append(item)
             task_key = str(event.task_id)
             next_task_seq[task_key] = max(int(next_task_seq.get(task_key, 0) or 0), int(event.seq or 0))

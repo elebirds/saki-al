@@ -33,3 +33,10 @@ class TaskRepository(BaseRepository[Task]):
             .limit(max(1, min(int(limit or 100), 1000)))
         )
         return list((await self.session.exec(stmt)).all())
+
+    async def get_by_ids(self, ids: list[uuid.UUID]) -> list[Task]:
+        normalized = [item for item in ids if item is not None]
+        if not normalized:
+            return []
+        stmt = select(Task).where(Task.id.in_(normalized))
+        return list((await self.session.exec(stmt)).all())

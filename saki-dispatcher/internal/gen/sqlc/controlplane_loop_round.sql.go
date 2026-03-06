@@ -162,10 +162,13 @@ func (q *Queries) CountLoopInFlightSteps(ctx context.Context, loopID uuid.UUID) 
 }
 
 const countStepStatesByRound = `-- name: CountStepStatesByRound :many
-SELECT state, COUNT(*)::int AS count
-FROM step
-WHERE round_id = $1::uuid
-GROUP BY state
+SELECT
+  COALESCE(t.status::text, s.state::text)::stepstatus AS state,
+  COUNT(*)::int AS count
+FROM step s
+LEFT JOIN task t ON t.id = s.task_id
+WHERE s.round_id = $1::uuid
+GROUP BY COALESCE(t.status::text, s.state::text)::stepstatus
 `
 
 type CountStepStatesByRoundRow struct {

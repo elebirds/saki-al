@@ -199,10 +199,13 @@ ORDER BY updated_at ASC
 LIMIT sqlc.arg(limit_count);
 
 -- name: CountStepStatesByRound :many
-SELECT state, COUNT(*)::int AS count
-FROM step
-WHERE round_id = sqlc.arg(round_id)::uuid
-GROUP BY state;
+SELECT
+  COALESCE(t.status::text, s.state::text)::stepstatus AS state,
+  COUNT(*)::int AS count
+FROM step s
+LEFT JOIN task t ON t.id = s.task_id
+WHERE s.round_id = sqlc.arg(round_id)::uuid
+GROUP BY COALESCE(t.status::text, s.state::text)::stepstatus;
 
 -- name: UpdateRoundAggregate :exec
 UPDATE round

@@ -34,7 +34,6 @@ import {
     RuntimeStep,
     RuntimeStepArtifactsResponse,
     RuntimeStepCandidate,
-    RuntimeStepCommandResponse,
     RuntimeTaskEvent,
     RuntimeRoundEvent,
     RoundEventQuery,
@@ -386,13 +385,6 @@ function normalizeRoundCommandResponse(response: RuntimeRoundCommandResponse): R
     return {
         ...response,
         roundId: (response as any).roundId,
-    };
-}
-
-function normalizeStepCommandResponse(response: RuntimeStepCommandResponse): RuntimeStepCommandResponse {
-    return {
-        ...response,
-        stepId: (response as any).stepId,
     };
 }
 
@@ -1142,16 +1134,6 @@ export class RealApiService implements ApiService {
         }
         const response = await this.client.get(`/rounds/${roundId}/events`, {params});
         return normalizeRoundEventQueryResponse(response.data);
-    }
-
-    async getStep(stepId: string): Promise<RuntimeStep> {
-        const response = await this.client.get<RuntimeStep>(`/steps/${stepId}`);
-        return response.data;
-    }
-
-    async stopStep(stepId: string, reason: string = 'user requested stop'): Promise<RuntimeStepCommandResponse> {
-        const response = await this.client.post<RuntimeStepCommandResponse>(`/steps/${stepId}:stop`, null, {params: {reason}});
-        return normalizeStepCommandResponse(response.data);
     }
 
     async getTaskEvents(taskId: string, query: TaskEventQuery = {}): Promise<TaskEventQueryResponse> {

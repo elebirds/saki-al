@@ -227,12 +227,6 @@ export interface RuntimeRoundCommandResponse {
     status: string;
 }
 
-export interface RuntimeStepCommandResponse {
-    requestId: string;
-    stepId: string;
-    status: string;
-}
-
 export interface RuntimeTaskEvent {
     seq: number;
     ts: string;

@@ -4,7 +4,6 @@ from saki_api.modules.runtime.service.application.control_plane_dto import (
     RuntimeDataRequestDTO,
     RuntimeUploadTicketRequestDTO,
 )
-from saki_api.modules.runtime.service.application.dispatch_dto import StepDispatchPayloadDTO
 from saki_api.modules.runtime.service.application.event_dto import (
     RuntimeArtifactDTO,
     RuntimeTaskCandidateDTO,
@@ -17,7 +16,6 @@ from saki_api.modules.runtime.service.application.round_aggregation import (
 )
 
 __all__ = [
-    "StepDispatchPayloadDTO",
     "RuntimeDataRequestDTO",
     "RuntimeUploadTicketRequestDTO",
     "RuntimeArtifactDTO",

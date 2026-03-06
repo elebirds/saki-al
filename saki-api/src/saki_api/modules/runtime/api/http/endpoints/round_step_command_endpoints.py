@@ -161,5 +161,5 @@ async def stop_step(
             status="stopping" if status == "accepted" else status,
         )
     except Exception as exc:
-        logger.warning("dispatcher stop_step failed step_id={} error={}", step_id, exc)
-        raise InternalServerErrorAppException("dispatcher stop_step failed") from exc
+        logger.warning("dispatcher stop_task failed via step binding step_id={} error={}", step_id, exc)
+        raise InternalServerErrorAppException("dispatcher stop_task failed") from exc

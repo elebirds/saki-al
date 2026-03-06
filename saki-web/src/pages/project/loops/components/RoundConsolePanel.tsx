@@ -160,8 +160,8 @@ const buildLogMessageCandidates = (event: RuntimeRoundEvent, payload: Record<str
 
 const inferEventEpoch = (
     event: RuntimeRoundEvent,
-    lastEpochByStep: Map<string, number>,
-    lastTotalByStep: Map<string, number>,
+    lastEpochByTask: Map<string, number>,
+    lastTotalByTask: Map<string, number>,
 ): EpochHint => {
     const payload = event.payload && typeof event.payload === 'object' ? event.payload : {};
     const params = event.messageParams && typeof event.messageParams === 'object' ? event.messageParams : {};
@@ -172,12 +172,12 @@ const inferEventEpoch = (
         ?? (params as any).total_steps
         ?? (params as any).totalSteps,
     );
-    if (directTotal != null) lastTotalByStep.set(event.taskId, directTotal);
+    if (directTotal != null) lastTotalByTask.set(event.taskId, directTotal);
     if (direct != null) {
-        lastEpochByStep.set(event.taskId, direct);
+        lastEpochByTask.set(event.taskId, direct);
         return {
             epoch: direct,
-            total: directTotal ?? lastTotalByStep.get(event.taskId) ?? null,
+            total: directTotal ?? lastTotalByTask.get(event.taskId) ?? null,
         };
     }
     if (event.eventType === 'log') {
@@ -185,34 +185,34 @@ const inferEventEpoch = (
         const candidates = buildLogMessageCandidates(event, payload);
         for (const message of candidates) {
             const parsedHint = parseEpochFromLogMessage(message);
-            if (parsedHint.total != null) lastTotalByStep.set(event.taskId, parsedHint.total);
+            if (parsedHint.total != null) lastTotalByTask.set(event.taskId, parsedHint.total);
             if (parsedHint.epoch == null) continue;
-            lastEpochByStep.set(event.taskId, parsedHint.epoch);
+            lastEpochByTask.set(event.taskId, parsedHint.epoch);
             return {
                 epoch: parsedHint.epoch,
-                total: parsedHint.total ?? lastTotalByStep.get(event.taskId) ?? null,
+                total: parsedHint.total ?? lastTotalByTask.get(event.taskId) ?? null,
             };
         }
         if (source !== 'worker_stdio') {
-            const remembered = lastEpochByStep.get(event.taskId);
+            const remembered = lastEpochByTask.get(event.taskId);
             if (remembered != null) {
                 return {
                     epoch: remembered,
-                    total: lastTotalByStep.get(event.taskId) ?? null,
+                    total: lastTotalByTask.get(event.taskId) ?? null,
                 };
             }
         }
     }
-    return {epoch: null, total: lastTotalByStep.get(event.taskId) ?? null};
+    return {epoch: null, total: lastTotalByTask.get(event.taskId) ?? null};
 };
 
 const buildConsoleBlocks = (events: RuntimeRoundEvent[]): ConsoleEventBlock[] => {
     if (events.length === 0) return [];
-    const lastEpochByStep = new Map<string, number>();
-    const lastTotalByStep = new Map<string, number>();
+    const lastEpochByTask = new Map<string, number>();
+    const lastTotalByTask = new Map<string, number>();
     const annotated = events.map((event) => ({
         event,
-        hint: inferEventEpoch(event, lastEpochByStep, lastTotalByStep),
+        hint: inferEventEpoch(event, lastEpochByTask, lastTotalByTask),
     }));
 
     const blocks: ConsoleEventBlock[] = [];
@@ -222,16 +222,16 @@ const buildConsoleBlocks = (events: RuntimeRoundEvent[]): ConsoleEventBlock[] =>
         const seedEvent = seed.event;
         const seedEpoch = seed.hint.epoch;
         let seedTotalEpochs = seed.hint.total;
-        const seedStepId = String(seedEvent.taskId || '');
-        const seedStepIndex = Number(seedEvent.taskIndex || 0);
-        const seedStepType = String(seedEvent.taskType || 'custom');
+        const seedTaskId = String(seedEvent.taskId || '');
+        const seedTaskIndex = Number(seedEvent.taskIndex || 0);
+        const seedTaskType = String(seedEvent.taskType || 'custom');
 
         if (seedEpoch == null) {
             blocks.push({
-                key: `${seedStepId}:${seedEvent.seq}:single`,
-                taskId: seedStepId,
-                taskIndex: seedStepIndex,
-                taskType: seedStepType,
+                key: `${seedTaskId}:${seedEvent.seq}:single`,
+                taskId: seedTaskId,
+                taskIndex: seedTaskIndex,
+                taskType: seedTaskType,
                 epoch: null,
                 totalEpochs: null,
                 events: [seedEvent],
@@ -246,7 +246,7 @@ const buildConsoleBlocks = (events: RuntimeRoundEvent[]): ConsoleEventBlock[] =>
         while (cursor < annotated.length) {
             const item = annotated[cursor];
             const event = item.event;
-            if (String(event.taskId || '') !== seedStepId) break;
+            if (String(event.taskId || '') !== seedTaskId) break;
             if (!['progress', 'metric', 'log'].includes(String(event.eventType || '').toLowerCase())) break;
             if (item.hint.epoch !== seedEpoch) break;
             if (seedTotalEpochs == null && item.hint.total != null) seedTotalEpochs = item.hint.total;
@@ -258,10 +258,10 @@ const buildConsoleBlocks = (events: RuntimeRoundEvent[]): ConsoleEventBlock[] =>
         const hasLog = groupedEvents.some((item) => item.eventType === 'log');
         if (groupedEvents.length >= 2 && hasSemantic && hasLog) {
             blocks.push({
-                key: `${seedStepId}:epoch:${seedEpoch}:${groupedEvents[0].seq}`,
-                taskId: seedStepId,
-                taskIndex: seedStepIndex,
-                taskType: seedStepType,
+                key: `${seedTaskId}:epoch:${seedEpoch}:${groupedEvents[0].seq}`,
+                taskId: seedTaskId,
+                taskIndex: seedTaskIndex,
+                taskType: seedTaskType,
                 epoch: seedEpoch,
                 totalEpochs: seedTotalEpochs,
                 events: groupedEvents,
@@ -272,10 +272,10 @@ const buildConsoleBlocks = (events: RuntimeRoundEvent[]): ConsoleEventBlock[] =>
         }
 
         blocks.push({
-            key: `${seedStepId}:${seedEvent.seq}:single`,
-            taskId: seedStepId,
-            taskIndex: seedStepIndex,
-            taskType: seedStepType,
+            key: `${seedTaskId}:${seedEvent.seq}:single`,
+            taskId: seedTaskId,
+            taskIndex: seedTaskIndex,
+            taskType: seedTaskType,
             epoch: seedEpoch,
             totalEpochs: seedTotalEpochs,
             events: [seedEvent],

@@ -1456,6 +1456,9 @@ func (s *Service) failStepDispatchPreflightTx(
 		return err
 	}
 	if affected == 0 {
+		if taskID, ok, mapErr := s.resolveTaskIDForStepTx(ctx, tx, stepID); mapErr == nil && ok {
+			return fmt.Errorf("预派发失败后状态更新冲突: task_id=%s step_id=%s", taskID, stepID)
+		}
 		return fmt.Errorf("预派发失败后状态更新冲突: step_id=%s", stepID)
 	}
 	return nil

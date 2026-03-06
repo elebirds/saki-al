@@ -271,7 +271,7 @@ func (s *Service) dispatchTaskByID(ctx context.Context, taskID uuid.UUID) (bool,
 		if err := tx.Commit(ctx); err != nil {
 			return false, err
 		}
-		return s.dispatchStandaloneTaskByID(ctx, taskID)
+		return s.dispatchPredictionTaskByID(ctx, taskID)
 	}
 	if taskKind != "STEP" {
 		return false, tx.Commit(ctx)
@@ -290,7 +290,7 @@ func (s *Service) dispatchTaskByID(ctx context.Context, taskID uuid.UUID) (bool,
 	return s.dispatchStepByID(ctx, stepID)
 }
 
-func (s *Service) dispatchStandaloneTaskByID(ctx context.Context, taskID uuid.UUID) (bool, error) {
+func (s *Service) dispatchPredictionTaskByID(ctx context.Context, taskID uuid.UUID) (bool, error) {
 	tx, err := s.beginTx(ctx)
 	if err != nil {
 		return false, err
@@ -310,9 +310,7 @@ func (s *Service) dispatchStandaloneTaskByID(ctx context.Context, taskID uuid.UU
 	if isTerminalTaskStatus(taskRow.Status) {
 		return false, tx.Commit(ctx)
 	}
-	switch normalizeTaskEnumText(taskRow.Status) {
-	case "PENDING", "READY", "RETRYING":
-	default:
+	if !isTaskStatusDispatchable(taskRow.Status) {
 		return false, tx.Commit(ctx)
 	}
 
@@ -1035,6 +1033,15 @@ func (s *Service) persistTaskResultTx(
 
 func (s *Service) listReadyTaskIDs(ctx context.Context, limit int) ([]uuid.UUID, error) {
 	return s.queries.ListReadyTaskIDsForDispatch(ctx, int32(max(1, limit)))
+}
+
+func isTaskStatusDispatchable(status string) bool {
+	switch normalizeTaskEnumText(status) {
+	case "PENDING", "READY", "RETRYING":
+		return true
+	default:
+		return false
+	}
 }
 
 func runtimeTaskTypeFromTaskType(taskType string) runtimecontrolv1.RuntimeTaskType {

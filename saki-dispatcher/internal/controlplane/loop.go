@@ -623,12 +623,14 @@ func (s *Service) DispatchTask(ctx context.Context, commandID string, taskID str
 			if isTerminalTaskStatus(taskRow.Status) {
 				return "rejected", "task is in terminal state", nil
 			}
-			if normalizeTaskEnumText(taskRow.Kind) != "PREDICTION" {
+			taskKind := normalizeTaskEnumText(taskRow.Kind)
+			if taskKind == "STEP" {
+				return "rejected", "step projection missing", nil
+			}
+			if taskKind != "PREDICTION" {
 				return "rejected", "task is not dispatchable", nil
 			}
-			switch normalizeTaskEnumText(taskRow.Status) {
-			case "PENDING", "READY", "RETRYING":
-			default:
+			if !isTaskStatusDispatchable(taskRow.Status) {
 				return "rejected", "task is not dispatchable", nil
 			}
 			s.dispatcher.QueueTask(taskPGID.String())

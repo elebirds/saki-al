@@ -25,4 +25,4 @@ def test_runtime_context_roundtrip():
 
 def test_runtime_context_rejects_missing_required_fields():
     with pytest.raises(ValueError):
-        TaskRuntimeContext.from_dict({"step_type": "train", "mode": "simulation"})
+        TaskRuntimeContext.from_dict({"mode": "simulation"})

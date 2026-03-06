@@ -202,14 +202,14 @@ export function normalizeRuntimeTaskEvent(raw: unknown): RuntimeTaskEvent {
 
 export function normalizeRuntimeRoundEvent(raw: unknown): RuntimeRoundEvent | null {
     const row = asRecord(raw);
-    const taskId = String(row.taskId ?? row.task_id ?? row.stepId ?? row.step_id ?? '').trim();
+    const taskId = String(row.taskId ?? row.task_id ?? '').trim();
     if (!taskId) return null;
 
-    const taskIndexRaw = Number(row.taskIndex ?? row.task_index ?? row.stepIndex ?? row.step_index ?? 0);
+    const taskIndexRaw = Number(row.taskIndex ?? row.task_index ?? 0);
     const taskIndex = Number.isFinite(taskIndexRaw) && taskIndexRaw > 0 ? Math.floor(taskIndexRaw) : 0;
     if (taskIndex <= 0) return null;
 
-    const taskTypeText = String(row.taskType ?? row.task_type ?? row.stepType ?? row.step_type ?? 'custom').trim().toLowerCase();
+    const taskTypeText = String(row.taskType ?? row.task_type ?? 'custom').trim().toLowerCase();
     const taskType = STEP_TYPES.has(taskTypeText) ? taskTypeText : 'custom';
     const stepId = String(row.stepId ?? row.step_id ?? '').trim() || undefined;
     const stepIndexRaw = Number(row.stepIndex ?? row.step_index ?? 0);

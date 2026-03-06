@@ -233,7 +233,7 @@ export interface RuntimeStepCommandResponse {
     status: string;
 }
 
-export interface RuntimeStepEvent {
+export interface RuntimeTaskEvent {
     seq: number;
     ts: string;
     eventType: string;
@@ -288,13 +288,13 @@ export interface RoundEventQueryResponse {
     hasMore: boolean;
 }
 
-export interface StepEventFacets {
+export interface TaskEventFacets {
     eventTypes: Record<string, number>;
     levels: Record<string, number>;
     tags: Record<string, number>;
 }
 
-export interface StepEventQuery {
+export interface TaskEventQuery {
     afterSeq?: number;
     limit?: number;
     eventTypes?: string[];
@@ -306,10 +306,10 @@ export interface StepEventQuery {
     includeFacets?: boolean;
 }
 
-export interface StepEventQueryResponse {
-    items: RuntimeStepEvent[];
+export interface TaskEventQueryResponse {
+    items: RuntimeTaskEvent[];
     nextAfterSeq?: number | null;
-    facets?: StepEventFacets | null;
+    facets?: TaskEventFacets | null;
 }
 
 export interface RuntimeStepMetricPoint {

@@ -1,8 +1,8 @@
-import {RuntimeRoundEvent, RuntimeStepEvent} from '../../../types';
+import {RuntimeRoundEvent, RuntimeTaskEvent} from '../../../types';
 
 export type RuntimeMessageTranslator = (key: string, params?: Record<string, any>) => string;
 
-type RuntimeEventLike = RuntimeStepEvent | RuntimeRoundEvent;
+type RuntimeEventLike = RuntimeTaskEvent | RuntimeRoundEvent;
 
 const SYSTEM_TAG_PREFIXES = ['event:', 'level:', 'status:', 'kind:'];
 const ROUND_STAGES = new Set(['train', 'eval', 'score', 'select', 'custom']);
@@ -137,7 +137,7 @@ export function stripAnsiAndControl(input: unknown): string {
         .replace(CONTROL_RE, '');
 }
 
-export function normalizeRuntimeStepEvent(raw: unknown): RuntimeStepEvent {
+export function normalizeRuntimeTaskEvent(raw: unknown): RuntimeTaskEvent {
     const row = asRecord(raw);
     const payload = asRecord(row.payload);
     const eventType = String(row.eventType ?? row.event_type ?? 'unknown').trim().toLowerCase();
@@ -222,7 +222,7 @@ export function normalizeRuntimeRoundEvent(raw: unknown): RuntimeRoundEvent | nu
         ? (stageText as RuntimeRoundEvent['stage'])
         : deriveStageFromStepType(taskType);
 
-    const base = normalizeRuntimeStepEvent(raw);
+    const base = normalizeRuntimeTaskEvent(raw);
 
     return {
         ...base,

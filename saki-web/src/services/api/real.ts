@@ -35,12 +35,12 @@ import {
     RuntimeStepArtifactsResponse,
     RuntimeStepCandidate,
     RuntimeStepCommandResponse,
-    RuntimeStepEvent,
+    RuntimeTaskEvent,
     RuntimeRoundEvent,
     RoundEventQuery,
     RoundEventQueryResponse,
-    StepEventQuery,
-    StepEventQueryResponse,
+    TaskEventQuery,
+    TaskEventQueryResponse,
     RuntimeStepMetricPoint,
     StepArtifactDownload,
     LoopCreateRequest,
@@ -103,7 +103,7 @@ import {ApiService} from './interface';
 import {useAuthStore} from '../../store/authStore';
 import {hydrateAnnotationRead, hydrateDraftPayload} from '../../utils/annotationGeometry';
 import {enforceHttps, hashPassword} from '../../utils/security';
-import {normalizeRuntimeRoundEvent, normalizeRuntimeStepEvent} from '../../pages/project/loops/runtimeEventFormatter';
+import {normalizeRuntimeRoundEvent, normalizeRuntimeTaskEvent} from '../../pages/project/loops/runtimeEventFormatter';
 
 // ============================================================================
 // Case Conversion Utilities
@@ -347,15 +347,15 @@ function normalizeRound(round: RuntimeRound): RuntimeRound {
     };
 }
 
-function normalizeStepEvent(event: any): RuntimeStepEvent {
-    return normalizeRuntimeStepEvent(event);
+function normalizeTaskEvent(event: any): RuntimeTaskEvent {
+    return normalizeRuntimeTaskEvent(event);
 }
 
-function normalizeStepEventQueryResponse(response: any): StepEventQueryResponse {
+function normalizeTaskEventQueryResponse(response: any): TaskEventQueryResponse {
     const itemsRaw = Array.isArray(response?.items) ? response.items : [];
     const facetsRaw = response?.facets && typeof response.facets === 'object' ? response.facets : null;
     return {
-        items: itemsRaw.map((item: any) => normalizeStepEvent(item)),
+        items: itemsRaw.map((item: any) => normalizeTaskEvent(item)),
         nextAfterSeq: response?.nextAfterSeq ?? response?.next_after_seq ?? null,
         facets: facetsRaw
             ? {
@@ -1154,7 +1154,7 @@ export class RealApiService implements ApiService {
         return normalizeStepCommandResponse(response.data);
     }
 
-    async getTaskEvents(taskId: string, query: StepEventQuery = {}): Promise<StepEventQueryResponse> {
+    async getTaskEvents(taskId: string, query: TaskEventQuery = {}): Promise<TaskEventQueryResponse> {
         const params: Record<string, any> = {
             after_seq: Number(query.afterSeq ?? 0),
             limit: Number(query.limit ?? 5000),
@@ -1182,7 +1182,7 @@ export class RealApiService implements ApiService {
             `/tasks/${taskId}/events`,
             {params},
         );
-        return normalizeStepEventQueryResponse(response.data);
+        return normalizeTaskEventQueryResponse(response.data);
     }
 
     async getStepMetricSeries(stepId: string, limit: number = 5000): Promise<RuntimeStepMetricPoint[]> {

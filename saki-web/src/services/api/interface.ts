@@ -36,8 +36,8 @@ import {
     RoundEventQuery,
     RoundEventQueryResponse,
     RuntimeStepCommandResponse,
-    StepEventQuery,
-    StepEventQueryResponse,
+    TaskEventQuery,
+    TaskEventQueryResponse,
     RuntimeStepMetricPoint,
     StepArtifactDownload,
     RoundPredictionCleanupResponse,
@@ -293,7 +293,7 @@ export interface ApiService {
 
     stopStep(stepId: string, reason?: string): Promise<RuntimeStepCommandResponse>;
 
-    getTaskEvents(taskId: string, query?: StepEventQuery): Promise<StepEventQueryResponse>;
+    getTaskEvents(taskId: string, query?: TaskEventQuery): Promise<TaskEventQueryResponse>;
 
     getStepMetricSeries(stepId: string, limit?: number): Promise<RuntimeStepMetricPoint[]>;
 

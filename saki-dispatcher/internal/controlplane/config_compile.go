@@ -57,7 +57,7 @@ func compileRoundConfig(loop loopRow, roundIndex int) map[string]any {
 
 func compileStepConfig(roundConfig map[string]any, stepType db.Steptype, mode db.Loopmode) map[string]any {
 	stepConfig := cloneMap(roundConfig)
-	stepConfig["step_type"] = strings.ToLower(string(stepType))
+	stepConfig["task_type"] = strings.ToLower(string(stepType))
 	if mode == modeManual {
 		delete(stepConfig, "sampling")
 		return stepConfig

@@ -97,10 +97,10 @@ var loopModeStepPlan = map[db.Loopmode][]loopModeStepSpec{
 
 // stoppingStep is used by STOPPING drain logic.
 type stoppingStep struct {
-	ID        uuid.UUID
-	State     db.Stepstatus
-	Attempt   int
-	UpdatedAt time.Time
+	ID         uuid.UUID
+	TaskStatus db.Runtimetaskstatus
+	Attempt    int
+	UpdatedAt  time.Time
 }
 
 func mapLoopForUpdate(record db.GetLoopForUpdateRow) loopRow {
@@ -157,9 +157,9 @@ func mapLoopStoppableSteps(rows []db.ListLoopStoppableStepsRow) []stoppingStep {
 	items := make([]stoppingStep, 0, len(rows))
 	for _, row := range rows {
 		item := stoppingStep{
-			ID:      row.ID,
-			State:   row.State,
-			Attempt: int(row.Attempt),
+			ID:         row.ID,
+			TaskStatus: row.TaskStatus,
+			Attempt:    int(row.Attempt),
 		}
 		if row.UpdatedAt.Valid {
 			item.UpdatedAt = row.UpdatedAt.Time
@@ -273,31 +273,31 @@ func toRuntimeLoopMode(raw db.Loopmode) runtimecontrolv1.RuntimeLoopMode {
 	}
 }
 
-func runtimeStatusToStepStatus(status runtimecontrolv1.RuntimeTaskStatus) db.Stepstatus {
+func runtimeStatusToTaskStatus(status runtimecontrolv1.RuntimeTaskStatus) (db.Runtimetaskstatus, bool) {
 	switch status {
 	case runtimecontrolv1.RuntimeTaskStatus_PENDING:
-		return stepPending
+		return taskPending, true
 	case runtimecontrolv1.RuntimeTaskStatus_DISPATCHING:
-		return stepDispatching
+		return taskDispatching, true
 	case runtimecontrolv1.RuntimeTaskStatus_SYNCING_ENV:
-		return stepSyncingEnv
+		return taskSyncingEnv, true
 	case runtimecontrolv1.RuntimeTaskStatus_PROBING_RUNTIME:
-		return stepProbingRt
+		return taskProbingRt, true
 	case runtimecontrolv1.RuntimeTaskStatus_BINDING_DEVICE:
-		return stepBindingDev
+		return taskBindingDev, true
 	case runtimecontrolv1.RuntimeTaskStatus_RUNNING:
-		return stepRunning
+		return taskRunning, true
 	case runtimecontrolv1.RuntimeTaskStatus_RETRYING:
-		return stepRetrying
+		return taskRetrying, true
 	case runtimecontrolv1.RuntimeTaskStatus_SUCCEEDED:
-		return stepSucceeded
+		return taskSucceeded, true
 	case runtimecontrolv1.RuntimeTaskStatus_FAILED:
-		return stepFailed
+		return taskFailed, true
 	case runtimecontrolv1.RuntimeTaskStatus_CANCELLED:
-		return stepCancelled
+		return taskCancelled, true
 	case runtimecontrolv1.RuntimeTaskStatus_SKIPPED:
-		return stepSkipped
+		return taskSkipped, true
 	default:
-		return ""
+		return "", false
 	}
 }

@@ -146,15 +146,6 @@ func stepFromCandidatesForResultTarget(target db.Stepstatus) []db.Stepstatus {
 	return result
 }
 
-func shouldApplyRuntimeStatus(target db.Stepstatus) bool {
-	switch target {
-	case "", db.StepstatusPENDING:
-		return false
-	default:
-		return true
-	}
-}
-
 func canLoopLifecycleTransition(from db.Looplifecycle, to db.Looplifecycle) bool {
 	if from == to {
 		return true

@@ -160,13 +160,13 @@ func extractPredictionSnapshotFromReason(reason map[string]any) map[string]any {
 	return map[string]any{}
 }
 
-func decodeTaskEvent(event *runtimecontrolv1.TaskEvent) (string, map[string]any, db.Stepstatus) {
+func decodeTaskEvent(event *runtimecontrolv1.TaskEvent) (string, map[string]any, db.Runtimetaskstatus) {
 	if event == nil {
 		return "", map[string]any{}, ""
 	}
 	switch payload := event.GetEventPayload().(type) {
 	case *runtimecontrolv1.TaskEvent_StatusEvent:
-		statusValue := runtimeStatusToStepStatus(payload.StatusEvent.GetStatus())
+		statusValue, _ := runtimeStatusToTaskStatus(payload.StatusEvent.GetStatus())
 		statusText := strings.ToLower(strings.TrimSpace(string(statusValue)))
 		return "status", map[string]any{
 			"status": statusText,

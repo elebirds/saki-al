@@ -73,31 +73,31 @@ func (q *Queries) CountLoopInFlightSteps(ctx context.Context, loopID uuid.UUID) 
 	return count, err
 }
 
-const countStepStatesByRound = `-- name: CountStepStatesByRound :many
+const countTaskStatesByRound = `-- name: CountTaskStatesByRound :many
 SELECT
-  t.status::text::stepstatus AS state,
+  t.status AS task_status,
   COUNT(*)::int AS count
 FROM step s
 JOIN task t ON t.id = s.task_id
 WHERE s.round_id = $1::uuid
-GROUP BY t.status::text::stepstatus
+GROUP BY t.status
 `
 
-type CountStepStatesByRoundRow struct {
-	State Stepstatus
-	Count int32
+type CountTaskStatesByRoundRow struct {
+	TaskStatus Runtimetaskstatus
+	Count      int32
 }
 
-func (q *Queries) CountStepStatesByRound(ctx context.Context, roundID uuid.UUID) ([]CountStepStatesByRoundRow, error) {
-	rows, err := q.db.Query(ctx, countStepStatesByRound, roundID)
+func (q *Queries) CountTaskStatesByRound(ctx context.Context, roundID uuid.UUID) ([]CountTaskStatesByRoundRow, error) {
+	rows, err := q.db.Query(ctx, countTaskStatesByRound, roundID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []CountStepStatesByRoundRow
+	var items []CountTaskStatesByRoundRow
 	for rows.Next() {
-		var i CountStepStatesByRoundRow
-		if err := rows.Scan(&i.State, &i.Count); err != nil {
+		var i CountTaskStatesByRoundRow
+		if err := rows.Scan(&i.TaskStatus, &i.Count); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -549,7 +549,7 @@ func (q *Queries) InsertStep(ctx context.Context, arg InsertStepParams) error {
 const listLoopStoppableSteps = `-- name: ListLoopStoppableSteps :many
 SELECT
   s.id AS id,
-  t.status::text::stepstatus AS state,
+  t.status AS task_status,
   t.attempt AS attempt,
   t.updated_at AS updated_at
 FROM step s
@@ -570,10 +570,10 @@ ORDER BY s.created_at ASC
 `
 
 type ListLoopStoppableStepsRow struct {
-	ID        uuid.UUID
-	State     Stepstatus
-	Attempt   int32
-	UpdatedAt pgtype.Timestamptz
+	ID         uuid.UUID
+	TaskStatus Runtimetaskstatus
+	Attempt    int32
+	UpdatedAt  pgtype.Timestamptz
 }
 
 func (q *Queries) ListLoopStoppableSteps(ctx context.Context, loopID uuid.UUID) ([]ListLoopStoppableStepsRow, error) {
@@ -587,7 +587,7 @@ func (q *Queries) ListLoopStoppableSteps(ctx context.Context, loopID uuid.UUID) 
 		var i ListLoopStoppableStepsRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.State,
+			&i.TaskStatus,
 			&i.Attempt,
 			&i.UpdatedAt,
 		); err != nil {

@@ -344,14 +344,14 @@ func TestResolveModelArtifactCandidatesDeduplicatesAndAppliesDefault(t *testing.
 	}
 }
 
-func TestShouldApplyRuntimeStatus(t *testing.T) {
-	if shouldApplyRuntimeStatus(db.Stepstatus("")) {
+func TestShouldApplyRuntimeTaskStatus(t *testing.T) {
+	if shouldApplyRuntimeTaskStatus(db.Runtimetaskstatus("")) {
 		t.Fatal("empty runtime status should be ignored")
 	}
-	if shouldApplyRuntimeStatus(db.StepstatusPENDING) {
+	if shouldApplyRuntimeTaskStatus(db.RuntimetaskstatusPENDING) {
 		t.Fatal("runtime PENDING status should be ignored")
 	}
-	if !shouldApplyRuntimeStatus(db.StepstatusRUNNING) {
+	if !shouldApplyRuntimeTaskStatus(db.RuntimetaskstatusRUNNING) {
 		t.Fatal("runtime RUNNING status should be applied")
 	}
 }
@@ -383,14 +383,14 @@ func TestDispatchOutboxRetryBackoffCapsAtSixtySeconds(t *testing.T) {
 	}
 }
 
-func TestStepStatusCountsForAPINormalizesToLowercase(t *testing.T) {
-	counts := map[db.Stepstatus]int{
-		db.StepstatusSUCCEEDED:     4,
-		db.StepstatusRUNNING:       1,
-		db.Stepstatus("succeeded"): 2,
-		db.Stepstatus(" "):         7,
+func TestTaskStatusCountsForAPINormalizesToLowercase(t *testing.T) {
+	counts := map[db.Runtimetaskstatus]int{
+		db.RuntimetaskstatusSUCCEEDED:     4,
+		db.RuntimetaskstatusRUNNING:       1,
+		db.Runtimetaskstatus("succeeded"): 2,
+		db.Runtimetaskstatus(" "):         7,
 	}
-	got := stepStatusCountsForAPI(counts)
+	got := taskStatusCountsForAPI(counts)
 	want := map[string]int{
 		"succeeded": 6,
 		"running":   1,
@@ -400,12 +400,12 @@ func TestStepStatusCountsForAPINormalizesToLowercase(t *testing.T) {
 	}
 }
 
-func TestSummarizeRoundStateTreatsPreRunStagesAsRunning(t *testing.T) {
-	state := summarizeRoundState(
-		map[db.Stepstatus]int{
-			db.StepstatusSYNCINGENV:     1,
-			db.StepstatusPROBINGRUNTIME: 1,
-			db.StepstatusBINDINGDEVICE:  1,
+func TestSummarizeRoundStateFromTaskStatusTreatsPreRunStagesAsRunning(t *testing.T) {
+	state := summarizeRoundStateFromTaskStatus(
+		map[db.Runtimetaskstatus]int{
+			db.RuntimetaskstatusSYNCINGENV:     1,
+			db.RuntimetaskstatusPROBINGRUNTIME: 1,
+			db.RuntimetaskstatusBINDINGDEVICE:  1,
 		},
 		3,
 	)

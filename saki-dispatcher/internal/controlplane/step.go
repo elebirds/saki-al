@@ -606,7 +606,7 @@ func (s *Service) OnTaskEvent(ctx context.Context, event *runtimecontrolv1.TaskE
 			if err := s.updateTaskStatusTx(ctx, tx, taskID, targetTaskStatus, statusReason); err != nil {
 				return err
 			}
-			if found && statusValue != stepPending && shouldApplyRuntimeStatus(statusValue) {
+			if found && shouldApplyRuntimeTaskStatus(statusValue) {
 				if err := s.projectTaskToStepTx(ctx, tx, taskID); err != nil {
 					return err
 				}
@@ -667,9 +667,9 @@ func (s *Service) OnTaskResult(ctx context.Context, result *runtimecontrolv1.Tas
 	if err != nil {
 		return nil
 	}
-	targetState := runtimeStatusToStepStatus(result.GetStatus())
-	if targetState == "" {
-		targetState = stepFailed
+	targetTaskStatus, ok := runtimeStatusToTaskStatus(result.GetStatus())
+	if !ok {
+		targetTaskStatus = taskFailed
 	}
 
 	metricsJSON, err := marshalJSON(result.GetMetrics())
@@ -695,7 +695,7 @@ func (s *Service) OnTaskResult(ctx context.Context, result *runtimecontrolv1.Tas
 		ctx,
 		tx,
 		taskID,
-		targetState,
+		targetTaskStatus,
 		result.GetMetrics(),
 		result.GetArtifacts(),
 		result.GetCandidates(),
@@ -722,7 +722,7 @@ func (s *Service) OnTaskResult(ctx context.Context, result *runtimecontrolv1.Tas
 		s.logger.Warn().
 			Str("task_id", taskID.String()).
 			Str("step_id", stepID.String()).
-			Str("target_state", string(targetState)).
+			Str("target_status", string(targetTaskStatus)).
 			Msg("任务结果的步骤内容投影冲突，已保留 task 主干结果")
 		return tx.Commit(ctx)
 	}
@@ -737,19 +737,6 @@ func (s *Service) OnTaskResult(ctx context.Context, result *runtimecontrolv1.Tas
 		}
 	}
 	return tx.Commit(ctx)
-}
-
-func taskStatusFromStepStatus(status db.Stepstatus) string {
-	normalized := normalizeTaskEnumText(string(status))
-	if normalized == "" {
-		return ""
-	}
-	switch normalized {
-	case "PENDING", "READY", "DISPATCHING", "SYNCING_ENV", "PROBING_RUNTIME", "BINDING_DEVICE", "RUNNING", "RETRYING", "SUCCEEDED", "FAILED", "CANCELLED", "SKIPPED":
-		return normalized
-	default:
-		return ""
-	}
 }
 
 func runtimeTaskStatusFromText(raw string) (db.Runtimetaskstatus, bool) {
@@ -814,6 +801,10 @@ func (s *Service) updateTaskStatusTx(
 	return nil
 }
 
+func shouldApplyRuntimeTaskStatus(target db.Runtimetaskstatus) bool {
+	return normalizeTaskEnumText(string(target)) != "" && target != taskPending
+}
+
 func buildTaskResultCandidateRows(candidates []*runtimecontrolv1.QueryCandidate) []map[string]any {
 	rows := make([]map[string]any, 0, len(candidates))
 	for idx, item := range candidates {
@@ -838,7 +829,7 @@ func (s *Service) persistTaskResultTx(
 	ctx context.Context,
 	tx pgx.Tx,
 	taskID uuid.UUID,
-	targetState db.Stepstatus,
+	targetTaskStatus db.Runtimetaskstatus,
 	metrics map[string]float64,
 	artifacts []*runtimecontrolv1.ArtifactItem,
 	candidates []*runtimecontrolv1.QueryCandidate,
@@ -880,9 +871,7 @@ func (s *Service) persistTaskResultTx(
 	if err != nil {
 		return err
 	}
-	targetTaskStatusText := taskStatusFromStepStatus(targetState)
-	targetTaskStatus, ok := runtimeTaskStatusFromText(targetTaskStatusText)
-	if !ok {
+	if normalizeTaskEnumText(string(targetTaskStatus)) == "" {
 		targetTaskStatus = db.RuntimetaskstatusFAILED
 	}
 	lastError := toNullablePGText("")

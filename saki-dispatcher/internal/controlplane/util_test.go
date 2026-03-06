@@ -21,7 +21,7 @@ func TestDecodeTaskEventStatusUsesLowercasePayload(t *testing.T) {
 	if got := payload["status"]; got != "running" {
 		t.Fatalf("status payload should be lowercase, got=%v", got)
 	}
-	if statusValue != stepRunning {
+	if statusValue != taskRunning {
 		t.Fatalf("status value mapping mismatch: %s", statusValue)
 	}
 }
@@ -42,7 +42,7 @@ func TestDecodeTaskEventStatusMapsPreRunStages(t *testing.T) {
 	if got := payload["status"]; got != "probing_runtime" {
 		t.Fatalf("status payload should be lowercase, got=%v", got)
 	}
-	if statusValue != stepProbingRt {
+	if statusValue != taskProbingRt {
 		t.Fatalf("status value mapping mismatch: %s", statusValue)
 	}
 }

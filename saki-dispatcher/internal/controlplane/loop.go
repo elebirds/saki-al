@@ -871,15 +871,15 @@ func (s *Service) processStoppingLoopTx(ctx context.Context, tx pgx.Tx, loop loo
 		now := time.Now().UTC()
 
 		for _, item := range tasks {
-			switch item.State {
-			case stepPending:
+			switch item.TaskStatus {
+			case taskPending:
 				immediateCancelStepIDs = append(immediateCancelStepIDs, item.ID)
-			case stepDispatching:
+			case taskDispatching:
 				if _, err := s.issueCancelAttemptTx(ctx, tx, item.ID, item.Attempt, reason); err != nil {
 					return err
 				}
 				immediateCancelStepIDs = append(immediateCancelStepIDs, item.ID)
-			case stepRunning, stepRetrying:
+			case taskRunning, taskRetrying:
 				if _, err := s.issueCancelAttemptTx(ctx, tx, item.ID, item.Attempt, reason); err != nil {
 					return err
 				}
@@ -1161,14 +1161,14 @@ func (s *Service) createRoundAttemptTx(
 }
 
 func (s *Service) refreshRoundAggregateTx(ctx context.Context, tx pgx.Tx, roundID uuid.UUID) (db.Roundstatus, error) {
-	rows, err := s.qtx(tx).CountStepStatesByRound(ctx, roundID)
+	rows, err := s.qtx(tx).CountTaskStatesByRound(ctx, roundID)
 	if err != nil {
 		return "", err
 	}
-	counts := map[db.Stepstatus]int{}
+	counts := map[db.Runtimetaskstatus]int{}
 	total := 0
 	for _, row := range rows {
-		state := row.State
+		state := row.TaskStatus
 		count := int(row.Count)
 		counts[state] = count
 		total += count
@@ -1177,8 +1177,8 @@ func (s *Service) refreshRoundAggregateTx(ctx context.Context, tx pgx.Tx, roundI
 		return roundPending, nil
 	}
 
-	state := summarizeRoundState(counts, total)
-	countsJSON, err := marshalJSON(stepStatusCountsForAPI(counts))
+	state := summarizeRoundStateFromTaskStatus(counts, total)
+	countsJSON, err := marshalJSON(taskStatusCountsForAPI(counts))
 	if err != nil {
 		return "", err
 	}
@@ -1192,7 +1192,7 @@ func (s *Service) refreshRoundAggregateTx(ctx context.Context, tx pgx.Tx, roundI
 	return state, nil
 }
 
-func stepStatusCountsForAPI(counts map[db.Stepstatus]int) map[string]int {
+func taskStatusCountsForAPI(counts map[db.Runtimetaskstatus]int) map[string]int {
 	if len(counts) == 0 {
 		return map[string]int{}
 	}
@@ -1207,20 +1207,20 @@ func stepStatusCountsForAPI(counts map[db.Stepstatus]int) map[string]int {
 	return normalized
 }
 
-func summarizeRoundState(counts map[db.Stepstatus]int, total int) db.Roundstatus {
+func summarizeRoundStateFromTaskStatus(counts map[db.Runtimetaskstatus]int, total int) db.Roundstatus {
 	if total <= 0 {
 		return roundPending
 	}
-	failed := counts[stepFailed]
-	cancelled := counts[stepCancelled]
-	running := counts[stepRunning] +
-		counts[stepBindingDev] +
-		counts[stepProbingRt] +
-		counts[stepSyncingEnv] +
-		counts[stepDispatching] +
-		counts[stepRetrying]
-	pending := counts[stepPending] + counts[stepReady]
-	succeeded := counts[stepSucceeded] + counts[stepSkipped]
+	failed := counts[taskFailed]
+	cancelled := counts[taskCancelled]
+	running := counts[taskRunning] +
+		counts[taskBindingDev] +
+		counts[taskProbingRt] +
+		counts[taskSyncingEnv] +
+		counts[taskDispatching] +
+		counts[taskRetrying]
+	pending := counts[taskPending] + counts[taskReady]
+	succeeded := counts[taskSucceeded] + counts[taskSkipped]
 
 	if failed > 0 {
 		return roundFailed

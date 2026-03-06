@@ -19,7 +19,7 @@ type Querier interface {
 	CountCommitAnnotationsByCommit(ctx context.Context, commitID uuid.UUID) (int64, error)
 	CountLoopActiveSteps(ctx context.Context, loopID uuid.UUID) (int32, error)
 	CountLoopInFlightSteps(ctx context.Context, loopID uuid.UUID) (int32, error)
-	CountStepStatesByRound(ctx context.Context, roundID uuid.UUID) ([]CountStepStatesByRoundRow, error)
+	CountTaskStatesByRound(ctx context.Context, roundID uuid.UUID) ([]CountTaskStatesByRoundRow, error)
 	DeletePredictionCandidates(ctx context.Context, arg DeletePredictionCandidatesParams) (int64, error)
 	DeletePredictionEvents(ctx context.Context, arg DeletePredictionEventsParams) (int64, error)
 	DeletePredictionMetrics(ctx context.Context, arg DeletePredictionMetricsParams) (int64, error)

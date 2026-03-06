@@ -36,6 +36,19 @@ const (
 	roundFailed    db.Roundstatus = db.RoundstatusFAILED
 	roundCancelled db.Roundstatus = db.RoundstatusCANCELLED
 
+	taskPending     db.Runtimetaskstatus = db.RuntimetaskstatusPENDING
+	taskReady       db.Runtimetaskstatus = db.RuntimetaskstatusREADY
+	taskDispatching db.Runtimetaskstatus = db.RuntimetaskstatusDISPATCHING
+	taskSyncingEnv  db.Runtimetaskstatus = db.RuntimetaskstatusSYNCINGENV
+	taskProbingRt   db.Runtimetaskstatus = db.RuntimetaskstatusPROBINGRUNTIME
+	taskBindingDev  db.Runtimetaskstatus = db.RuntimetaskstatusBINDINGDEVICE
+	taskRunning     db.Runtimetaskstatus = db.RuntimetaskstatusRUNNING
+	taskRetrying    db.Runtimetaskstatus = db.RuntimetaskstatusRETRYING
+	taskSucceeded   db.Runtimetaskstatus = db.RuntimetaskstatusSUCCEEDED
+	taskFailed      db.Runtimetaskstatus = db.RuntimetaskstatusFAILED
+	taskCancelled   db.Runtimetaskstatus = db.RuntimetaskstatusCANCELLED
+	taskSkipped     db.Runtimetaskstatus = db.RuntimetaskstatusSKIPPED
+
 	stepPending     db.Stepstatus = db.StepstatusPENDING
 	stepReady       db.Stepstatus = db.StepstatusREADY
 	stepDispatching db.Stepstatus = db.StepstatusDISPATCHING

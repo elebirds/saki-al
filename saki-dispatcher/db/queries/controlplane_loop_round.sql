@@ -199,14 +199,14 @@ WHERE lifecycle IN ('RUNNING'::looplifecycle, 'STOPPING'::looplifecycle)
 ORDER BY updated_at ASC
 LIMIT sqlc.arg(limit_count);
 
--- name: CountStepStatesByRound :many
+-- name: CountTaskStatesByRound :many
 SELECT
-  t.status::text::stepstatus AS state,
+  t.status AS task_status,
   COUNT(*)::int AS count
 FROM step s
 JOIN task t ON t.id = s.task_id
 WHERE s.round_id = sqlc.arg(round_id)::uuid
-GROUP BY t.status::text::stepstatus;
+GROUP BY t.status;
 
 -- name: UpdateRoundAggregate :exec
 UPDATE round
@@ -267,7 +267,7 @@ WHERE s.round_id = sqlc.arg(round_id)::uuid
 -- name: ListLoopStoppableSteps :many
 SELECT
   s.id AS id,
-  t.status::text::stepstatus AS state,
+  t.status AS task_status,
   t.attempt AS attempt,
   t.updated_at AS updated_at
 FROM step s

@@ -286,7 +286,7 @@ func (s *Service) dispatchStepByID(ctx context.Context, stepID uuid.UUID) (bool,
 				Err(err).
 				Str("task_id", dispatchTaskID.String()).
 				Str("step_id", stepPayload.StepID.String()).
-				Str("step_type", strings.ToLower(string(stepPayload.StepType))).
+				Str("task_type", strings.ToLower(string(stepPayload.StepType))).
 				Msg("训练模型交接失败，STRICT_TRAIN_MODEL_HANDOFF=false，回退旧行为")
 			resolvedParams = stepPayload.Params
 		} else {
@@ -303,7 +303,7 @@ func (s *Service) dispatchStepByID(ctx context.Context, stepID uuid.UUID) (bool,
 			s.logger.Warn().
 				Str("task_id", dispatchTaskID.String()).
 				Str("step_id", stepPayload.StepID.String()).
-				Str("step_type", strings.ToLower(string(stepPayload.StepType))).
+				Str("task_type", strings.ToLower(string(stepPayload.StepType))).
 				Msgf("训练模型交接失败，步骤已标记 FAILED: %s", reason)
 			return true, tx.Commit(ctx)
 		}

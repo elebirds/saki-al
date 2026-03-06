@@ -19,6 +19,7 @@ from saki_api.modules.shared.modeling.enums import (
     StepStatus,
     StepType,
     RuntimeTaskStatus,
+    RuntimeTaskType,
     LoopPhase,
 )
 from saki_api.modules.storage.api.sample import ProjectSampleRead
@@ -242,10 +243,8 @@ class TaskEventQueryResponse(BaseModel):
 class RoundEventRead(BaseModel):
     task_id: uuid.UUID
     task_index: int
-    task_type: StepType
-    step_id: uuid.UUID
-    step_index: int
-    step_type: StepType
+    task_type: RuntimeTaskType
+    step_id: Optional[uuid.UUID] = None
     stage: str
     seq: int
     ts: datetime

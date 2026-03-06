@@ -148,7 +148,7 @@ export const buildArtifactFromRoundEvent = (event: RuntimeRoundEvent): RuntimeRo
     if (!ownerId) return null;
     return {
         stepId: ownerId,
-        stepIndex: Number(event.stepIndex || event.taskIndex || 0),
+        stepIndex: Number(event.taskIndex || 0),
         stage: event.stage,
         artifactClass: deriveArtifactClass(event.stage, kind),
         name,

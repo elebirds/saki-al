@@ -6,7 +6,7 @@ type RuntimeEventLike = RuntimeTaskEvent | RuntimeRoundEvent;
 
 const SYSTEM_TAG_PREFIXES = ['event:', 'level:', 'status:', 'kind:'];
 const ROUND_STAGES = new Set(['train', 'eval', 'score', 'select', 'custom']);
-const STEP_TYPES = new Set(['train', 'eval', 'score', 'select', 'predict', 'custom']);
+const TASK_TYPES = new Set(['train', 'eval', 'score', 'select', 'predict', 'custom']);
 
 const ANSI_CSI_RE = /\x1b\[[0-?]*[ -/]*[@-~]/g;
 const ANSI_OSC_RE = /\x1b\][^\x07]*(?:\x07|\x1b\\)/g;
@@ -66,8 +66,8 @@ function expandMessageParams(params: Record<string, any>): Record<string, any> {
     return merged;
 }
 
-function deriveStageFromStepType(stepType: string): RuntimeRoundEvent['stage'] {
-    const normalized = String(stepType || '').trim().toLowerCase();
+function deriveStageFromTaskType(taskType: string): RuntimeRoundEvent['stage'] {
+    const normalized = String(taskType || '').trim().toLowerCase();
     if (normalized === 'train') return 'train';
     if (normalized === 'eval') return 'eval';
     if (normalized === 'score') return 'score';
@@ -210,17 +210,13 @@ export function normalizeRuntimeRoundEvent(raw: unknown): RuntimeRoundEvent | nu
     if (taskIndex <= 0) return null;
 
     const taskTypeText = String(row.taskType ?? row.task_type ?? 'custom').trim().toLowerCase();
-    const taskType = STEP_TYPES.has(taskTypeText) ? taskTypeText : 'custom';
+    const taskType = TASK_TYPES.has(taskTypeText) ? taskTypeText : 'custom';
     const stepId = String(row.stepId ?? row.step_id ?? '').trim() || undefined;
-    const stepIndexRaw = Number(row.stepIndex ?? row.step_index ?? 0);
-    const stepIndex = Number.isFinite(stepIndexRaw) && stepIndexRaw > 0 ? Math.floor(stepIndexRaw) : undefined;
-    const stepTypeText = String(row.stepType ?? row.step_type ?? '').trim().toLowerCase();
-    const stepType = STEP_TYPES.has(stepTypeText) ? (stepTypeText as RuntimeRoundEvent['taskType']) : undefined;
 
     const stageText = String(row.stage ?? '').trim().toLowerCase();
     const stage = ROUND_STAGES.has(stageText)
         ? (stageText as RuntimeRoundEvent['stage'])
-        : deriveStageFromStepType(taskType);
+        : deriveStageFromTaskType(taskType);
 
     const base = normalizeRuntimeTaskEvent(raw);
 
@@ -230,8 +226,6 @@ export function normalizeRuntimeRoundEvent(raw: unknown): RuntimeRoundEvent | nu
         taskIndex,
         taskType: taskType as RuntimeRoundEvent['taskType'],
         stepId,
-        stepIndex,
-        stepType,
         stage,
     };
 }

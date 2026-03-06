@@ -1972,7 +1972,7 @@ async def test_get_round_events_query_contract(loop_api_env, monkeypatch):
             )
             assert len(train_only.items) == 1
             assert train_only.items[0].stage == "train"
-            assert train_only.items[0].step_type == StepType.TRAIN
+            assert train_only.items[0].task_type == RuntimeTaskType.TRAIN
 
             with pytest.raises(BadRequestAppException):
                 await round_step_query_endpoint.get_round_events(

@@ -594,8 +594,6 @@ class RuntimeQueryMixin:
             item["task_index"] = int(step.step_index or 0)
             item["task_type"] = str(step.step_type.value if hasattr(step.step_type, "value") else step.step_type)
             item["step_id"] = step.id
-            item["step_index"] = int(step.step_index or 0)
-            item["step_type"] = str(step.step_type.value if hasattr(step.step_type, "value") else step.step_type)
             item["stage"] = step_stage.get(step.id) or self._round_stage_from_step_type(step.step_type)
             items.append(item)
             task_key = str(event.task_id)

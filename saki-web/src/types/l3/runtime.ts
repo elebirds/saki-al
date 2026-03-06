@@ -193,6 +193,7 @@ export interface RuntimeStep {
     roundIndex: number;
     stepIndex: number;
     dependsOnStepIds: string[];
+    dependsOnTaskIds?: string[];
     resolvedParams: Record<string, any>;
     metrics: Record<string, any>;
     artifacts: Record<string, any>;

@@ -41,6 +41,11 @@ const StepDetailDrawer: React.FC<StepDetailDrawerProps> = ({open, onClose, step,
                             ? (step.dependsOnStepIds || []).map((item) => <Tag key={item}>{item}</Tag>)
                             : '-'}
                     </Descriptions.Item>
+                    <Descriptions.Item label="依赖 Task">
+                        {(step.dependsOnTaskIds || []).length > 0
+                            ? (step.dependsOnTaskIds || []).map((item) => <Tag key={item}>{item}</Tag>)
+                            : '-'}
+                    </Descriptions.Item>
                     <Descriptions.Item label="错误信息">{step.lastError || '-'}</Descriptions.Item>
                 </Descriptions>
             )}

@@ -123,8 +123,6 @@ async def _seed_train_step(session: AsyncSession) -> tuple[uuid.UUID, uuid.UUID]
         attempt=1,
         max_attempts=3,
     )
-    session.add(step)
-    await session.flush()
     await _attach_step_task(
         session=session,
         project_id=project.id,
@@ -197,9 +195,6 @@ async def _seed_train_eval_select_steps(session: AsyncSession) -> tuple[dict[str
         attempt=1,
         max_attempts=3,
     )
-    session.add(eval_step)
-    session.add(select_step)
-    await session.flush()
     round_row = await session.get(Round, round_id)
     if round_row is None:
         raise RuntimeError("round not found while attaching step tasks")

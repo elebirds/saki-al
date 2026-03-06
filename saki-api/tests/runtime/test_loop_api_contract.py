@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 import uuid
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -1581,8 +1582,6 @@ async def test_cleanup_round_predictions_writes_audit_log(loop_api_env, monkeypa
                 attempt=1,
                 max_attempts=3,
             )
-            session.add(step)
-            await session.flush()
             await _attach_step_task(
                 session,
                 project_id=project.id,
@@ -1698,8 +1697,6 @@ async def test_get_task_events_query_contract(loop_api_env, monkeypatch):
                 attempt=1,
                 max_attempts=3,
             )
-            session.add(step)
-            await session.flush()
             await _attach_step_task(
                 session,
                 project_id=project.id,
@@ -1924,8 +1921,6 @@ async def test_get_round_events_query_contract(loop_api_env, monkeypatch):
                 attempt=1,
                 max_attempts=3,
             )
-            session.add_all([train_step, eval_step])
-            await session.flush()
             await _attach_step_task(
                 session,
                 project_id=project.id,
@@ -2103,8 +2098,6 @@ async def test_get_round_prefers_eval_metrics_as_final_metrics(loop_api_env, mon
                 attempt=1,
                 max_attempts=3,
             )
-            session.add_all([train_step, eval_step, select_step])
-            await session.flush()
             await _attach_step_task_with_result_metrics(
                 session,
                 project_id=project.id,
@@ -2234,8 +2227,6 @@ async def test_get_round_falls_back_to_train_when_eval_step_metrics_empty(loop_a
                 attempt=1,
                 max_attempts=3,
             )
-            session.add_all([train_step, eval_step, select_step])
-            await session.flush()
             train_task = await _attach_step_task_with_result_metrics(
                 session,
                 project_id=project.id,
@@ -2403,8 +2394,6 @@ async def test_get_round_metric_view_empty_when_all_steps_missing_metrics(loop_a
                 attempt=1,
                 max_attempts=3,
             )
-            session.add_all([train_step, eval_step, select_step])
-            await session.flush()
             await _attach_step_task(session, project_id=project.id, step=train_step, plugin_id=loop.model_arch)
             await _attach_step_task(session, project_id=project.id, step=eval_step, plugin_id=loop.model_arch)
             await _attach_step_task(session, project_id=project.id, step=select_step, plugin_id=loop.model_arch)
@@ -2516,8 +2505,6 @@ async def test_get_loop_summary_returns_split_metric_views(loop_api_env, monkeyp
                 attempt=1,
                 max_attempts=3,
             )
-            session.add_all([train_step, eval_step, select_step])
-            await session.flush()
             await _attach_step_task_with_result_metrics(
                 session,
                 project_id=project.id,
@@ -2647,8 +2634,6 @@ async def test_list_loop_rounds_returns_split_metric_views(loop_api_env, monkeyp
                 attempt=1,
                 max_attempts=3,
             )
-            session.add_all([train_step, eval_step, select_step])
-            await session.flush()
             await _attach_step_task_with_result_metrics(
                 session,
                 project_id=project.id,
@@ -2751,8 +2736,6 @@ async def test_get_task_metric_series_ignores_non_positive_step_points(loop_api_
                 attempt=1,
                 max_attempts=3,
             )
-            session.add(step)
-            await session.flush()
             await _attach_step_task(
                 session,
                 project_id=project.id,
@@ -2873,10 +2856,6 @@ async def test_list_round_steps_returns_depends_on_task_ids(loop_api_env, monkey
                 attempt=1,
                 max_attempts=3,
             )
-            session.add(train_step)
-            session.add(eval_step)
-            await session.flush()
-
             train_task = await _attach_step_task(
                 session,
                 project_id=project.id,
@@ -2954,32 +2933,25 @@ async def test_list_round_steps_raises_when_step_task_binding_missing(loop_api_e
             session.add(round_row)
             await session.flush()
 
-            step = Step(
-                round_id=round_row.id,
-                step_type=StepType.TRAIN,
-                dispatch_kind=StepDispatchKind.DISPATCHABLE,
-                state=StepStatus.PENDING,
-                round_index=1,
-                step_index=1,
-                depends_on_step_ids=[],
-                resolved_params={},
-                metrics={},
-                artifacts={},
-                input_commit_id=branch.head_commit_id,
-                attempt=1,
-                max_attempts=3,
-            )
-            session.add(step)
-            await session.commit()
-
-            with pytest.raises(NotFoundAppException):
-                await round_step_query_endpoint.list_round_steps(
+            with pytest.raises(IntegrityError):
+                step = Step(
                     round_id=round_row.id,
-                    limit=100,
-                    runtime_service=service,
-                    session=session,
-                    current_user_id=current_user_id,
+                    step_type=StepType.TRAIN,
+                    dispatch_kind=StepDispatchKind.DISPATCHABLE,
+                    state=StepStatus.PENDING,
+                    round_index=1,
+                    step_index=1,
+                    depends_on_step_ids=[],
+                    resolved_params={},
+                    metrics={},
+                    artifacts={},
+                    input_commit_id=branch.head_commit_id,
+                    attempt=1,
+                    max_attempts=3,
                 )
+                session.add(step)
+                await session.commit()
+            await session.rollback()
         finally:
             _session_ctx.reset(token)
 
@@ -3031,32 +3003,25 @@ async def test_list_loop_rounds_raises_when_step_task_binding_missing(loop_api_e
             session.add(round_row)
             await session.flush()
 
-            step = Step(
-                round_id=round_row.id,
-                step_type=StepType.TRAIN,
-                dispatch_kind=StepDispatchKind.DISPATCHABLE,
-                state=StepStatus.PENDING,
-                round_index=1,
-                step_index=1,
-                depends_on_step_ids=[],
-                resolved_params={},
-                metrics={},
-                artifacts={},
-                input_commit_id=branch.head_commit_id,
-                attempt=1,
-                max_attempts=3,
-            )
-            session.add(step)
-            await session.commit()
-
-            with pytest.raises(NotFoundAppException):
-                await loop_query_endpoint.list_loop_rounds(
-                    loop_id=loop.id,
-                    limit=20,
-                    runtime_service=service,
-                    session=session,
-                    current_user_id=current_user_id,
+            with pytest.raises(IntegrityError):
+                step = Step(
+                    round_id=round_row.id,
+                    step_type=StepType.TRAIN,
+                    dispatch_kind=StepDispatchKind.DISPATCHABLE,
+                    state=StepStatus.PENDING,
+                    round_index=1,
+                    step_index=1,
+                    depends_on_step_ids=[],
+                    resolved_params={},
+                    metrics={},
+                    artifacts={},
+                    input_commit_id=branch.head_commit_id,
+                    attempt=1,
+                    max_attempts=3,
                 )
+                session.add(step)
+                await session.commit()
+            await session.rollback()
         finally:
             _session_ctx.reset(token)
 
@@ -3123,8 +3088,6 @@ async def test_get_round_prefers_task_result_metrics_over_step_projection(loop_a
                 attempt=1,
                 max_attempts=3,
             )
-            session.add(step)
-            await session.flush()
             task = await _attach_step_task(
                 session,
                 project_id=project.id,
@@ -3211,8 +3174,6 @@ async def test_task_artifact_download_url_only_reads_task_artifacts(loop_api_env
                 attempt=1,
                 max_attempts=3,
             )
-            session.add(step)
-            await session.flush()
             task = await _attach_step_task(
                 session,
                 project_id=project.id,
@@ -3311,8 +3272,6 @@ async def test_list_round_artifacts_only_reads_task_artifacts(loop_api_env):
                 attempt=1,
                 max_attempts=3,
             )
-            session.add(step)
-            await session.flush()
             task = await _attach_step_task(
                 session,
                 project_id=project.id,

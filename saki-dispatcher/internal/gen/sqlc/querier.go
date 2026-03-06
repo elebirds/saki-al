@@ -45,7 +45,7 @@ type Querier interface {
 	GetStepPayloadByTaskIDForUpdate(ctx context.Context, taskID uuid.UUID) (GetStepPayloadByTaskIDForUpdateRow, error)
 	GetSucceededScoreTaskIDByRound(ctx context.Context, roundID uuid.UUID) (uuid.UUID, error)
 	GetTaskForUpdate(ctx context.Context, taskID uuid.UUID) (GetTaskForUpdateRow, error)
-	GetTaskIDByStepID(ctx context.Context, stepID uuid.UUID) (*uuid.UUID, error)
+	GetTaskIDByStepID(ctx context.Context, stepID uuid.UUID) (uuid.UUID, error)
 	Healthcheck(ctx context.Context) (int32, error)
 	InsertCommandLog(ctx context.Context, arg InsertCommandLogParams) (int64, error)
 	InsertDispatchOutbox(ctx context.Context, arg InsertDispatchOutboxParams) (int64, error)
@@ -76,6 +76,7 @@ type Querier interface {
 	ReleaseStaleSendingOutbox(ctx context.Context, cutoff pgtype.Timestamptz) (int64, error)
 	ResetTaskToReadyQueueFull(ctx context.Context, taskID uuid.UUID) (int64, error)
 	ResolveBranchHeadFromDB(ctx context.Context, branchID uuid.UUID) (ResolveBranchHeadFromDBRow, error)
+	RoundHasStepType(ctx context.Context, arg RoundHasStepTypeParams) (bool, error)
 	TryDispatchAdvisoryLock(ctx context.Context, lockKey int64) (bool, error)
 	TryLoopAdvisoryXactLock(ctx context.Context, lockKey int64) (bool, error)
 	UpdateCommandLogStatusDetail(ctx context.Context, arg UpdateCommandLogStatusDetailParams) error

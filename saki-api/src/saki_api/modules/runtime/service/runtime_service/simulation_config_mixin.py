@@ -18,6 +18,7 @@ class SimulationSnapshotInitConfig:
 class SimulationModeConfig:
     oracle_commit_id: str | None = None
     max_rounds: int = 20
+    finalize_train: bool = True
     snapshot_init: SimulationSnapshotInitConfig = field(default_factory=SimulationSnapshotInitConfig)
 
 
@@ -37,6 +38,19 @@ class SimulationConfigMixin:
             return default
 
     @staticmethod
+    def _safe_bool(value: Any, default: bool) -> bool:
+        if isinstance(value, bool):
+            return value
+        if value is None:
+            return default
+        raw = str(value).strip().lower()
+        if raw in {"1", "true", "yes", "on"}:
+            return True
+        if raw in {"0", "false", "no", "off"}:
+            return False
+        return default
+
+    @staticmethod
     def _extract_simulation_config(loop_config: dict[str, Any]) -> SimulationModeConfig:
         payload = loop_config.get("mode")
         mode_cfg = payload if isinstance(payload, dict) else {}
@@ -45,6 +59,7 @@ class SimulationConfigMixin:
         return SimulationModeConfig(
             oracle_commit_id=str(mode_cfg.get("oracle_commit_id") or "").strip() or None,
             max_rounds=max(1, SimulationConfigMixin._safe_int(mode_cfg.get("max_rounds", 20), 20)),
+            finalize_train=SimulationConfigMixin._safe_bool(mode_cfg.get("finalize_train"), True),
             snapshot_init=SimulationSnapshotInitConfig(
                 train_seed_ratio=SimulationConfigMixin._safe_float(snapshot_init_cfg.get("train_seed_ratio", 0.05), 0.05),
                 val_ratio=SimulationConfigMixin._safe_float(snapshot_init_cfg.get("val_ratio", 0.1), 0.1),

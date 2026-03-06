@@ -148,6 +148,21 @@ func TestPhaseForStep(t *testing.T) {
 	}
 }
 
+func TestSimulationFinalizeTrainEnabledStepPlan(t *testing.T) {
+	disabled := simulationFinalizeTrainEnabledStepPlan(false)
+	if len(disabled) != 0 {
+		t.Fatalf("disabled finalize train plan should be empty, got=%d", len(disabled))
+	}
+
+	enabled := simulationFinalizeTrainEnabledStepPlan(true)
+	if len(enabled) != 2 {
+		t.Fatalf("enabled finalize train plan size mismatch: %d", len(enabled))
+	}
+	if enabled[0].StepType != db.SteptypeTRAIN || enabled[1].StepType != db.SteptypeEVAL {
+		t.Fatalf("finalize train plan should be TRAIN->EVAL, got=%s->%s", enabled[0].StepType, enabled[1].StepType)
+	}
+}
+
 func TestModeRoundPolicyForSupportsAllLoopModes(t *testing.T) {
 	service := &Service{}
 	cases := []db.Loopmode{modeAL, modeSIM, modeManual}

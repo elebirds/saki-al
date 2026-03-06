@@ -130,7 +130,7 @@ func (s *Service) StartNextRound(ctx context.Context, commandID string, loopID s
 			return "applied", completedMsg, nil
 		}
 
-		created, err := s.createNextRoundTx(ctx, tx, loop, commandID)
+		created, err := s.createNextRoundTx(ctx, tx, loop, commandID, false)
 		if err != nil {
 			return "", "", err
 		}
@@ -530,6 +530,17 @@ func (s *Service) RetryRound(
 		if err != nil {
 			return "", "", err
 		}
+		simFinalizeTrainRound := false
+		if loop.Mode == modeSIM {
+			hasSelectStep, hasSelectErr := s.qtx(tx).RoundHasStepType(ctx, db.RoundHasStepTypeParams{
+				RoundID:  targetRound.ID,
+				StepType: db.SteptypeSELECT,
+			})
+			if hasSelectErr != nil {
+				return "", "", hasSelectErr
+			}
+			simFinalizeTrainRound = !hasSelectStep
+		}
 		createdRoundID, err := s.createRoundAttemptTx(
 			ctx,
 			tx,
@@ -538,6 +549,7 @@ func (s *Service) RetryRound(
 			nextAttempt,
 			&targetRound.ID,
 			reason,
+			simFinalizeTrainRound,
 		)
 		if err != nil {
 			return "", "", err
@@ -678,7 +690,7 @@ func (s *Service) processRunningLoopTx(ctx context.Context, tx pgx.Tx, loop loop
 		return err
 	}
 	if !hasRound {
-		_, err := s.createNextRoundTx(ctx, tx, loop, uuid.NewString())
+		_, err := s.createNextRoundTx(ctx, tx, loop, uuid.NewString(), false)
 		return err
 	}
 
@@ -759,6 +771,25 @@ func (s *Service) handleSimulationTerminalRoundTx(
 	loop loopRow,
 	latestRound roundRow,
 ) error {
+	hasSelectStep, err := s.qtx(tx).RoundHasStepType(ctx, db.RoundHasStepTypeParams{
+		RoundID:  latestRound.ID,
+		StepType: db.SteptypeSELECT,
+	})
+	if err != nil {
+		return err
+	}
+	if !hasSelectStep {
+		// Finalize-train round has no SCORE/SELECT; just finalize loop successfully.
+		return s.updateLoopRuntime(
+			ctx,
+			tx,
+			loop.ID,
+			lifecycleCompleted,
+			phaseSimFinalize,
+			terminalReasonSuccess,
+			loop.LastConfirmedCommitID,
+		)
+	}
 	if s.shouldDelaySimulationRound(latestRound.EndedAt) {
 		return nil
 	}
@@ -820,6 +851,15 @@ func (s *Service) handleSimulationTerminalRoundTx(
 	}
 
 	if poolHiddenAfter == 0 {
+		if extractSimulationFinalizeTrain(loop.Config) {
+			created, createErr := s.createNextRoundTx(ctx, tx, loop, uuid.NewString(), true)
+			if createErr != nil {
+				return createErr
+			}
+			if created {
+				return nil
+			}
+		}
 		return s.updateLoopRuntime(
 			ctx,
 			tx,
@@ -852,7 +892,7 @@ func (s *Service) handleSimulationTerminalRoundTx(
 			latestCommitID,
 		)
 	}
-	_, err = s.createNextRoundTx(ctx, tx, loop, uuid.NewString())
+	_, err = s.createNextRoundTx(ctx, tx, loop, uuid.NewString(), false)
 	return err
 }
 
@@ -978,7 +1018,7 @@ func (s *Service) ensureLoopHasRound(ctx context.Context, tx pgx.Tx, loop loopRo
 		return false, err
 	}
 	if !hasRound {
-		return s.createNextRoundTx(ctx, tx, loop, commandID)
+		return s.createNextRoundTx(ctx, tx, loop, commandID, false)
 	}
 	return false, nil
 }
@@ -1007,7 +1047,14 @@ func (s *Service) getNextRoundAttemptIndexTx(
 	return int(next), nil
 }
 
-func (s *Service) createNextRoundTx(ctx context.Context, tx pgx.Tx, loop loopRow, commandID string) (bool, error) {
+func (s *Service) createNextRoundTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	loop loopRow,
+	commandID string,
+	simulationFinalizeTrain bool,
+) (bool, error) {
+	_ = commandID
 	nextRound, err := s.getNextRoundIndexTx(ctx, tx, loop.ID)
 	if err != nil {
 		return false, err
@@ -1023,6 +1070,7 @@ func (s *Service) createNextRoundTx(ctx context.Context, tx pgx.Tx, loop loopRow
 		1,
 		nil,
 		"",
+		simulationFinalizeTrain,
 	)
 	if err != nil {
 		return false, err
@@ -1038,6 +1086,7 @@ func (s *Service) createRoundAttemptTx(
 	attemptIndex int,
 	retryOfRoundID *uuid.UUID,
 	retryReason string,
+	simulationFinalizeTrain bool,
 ) (*uuid.UUID, error) {
 	if roundIndex <= 0 {
 		return nil, fmt.Errorf("invalid round_index: %d", roundIndex)
@@ -1068,6 +1117,9 @@ func (s *Service) createRoundAttemptTx(
 
 	roundID := uuid.New()
 	roundConfig := compileRoundConfig(loop, roundIndex)
+	if loop.Mode == modeSIM {
+		roundConfig["simulation_finalize_train_round"] = simulationFinalizeTrain
+	}
 	paramsJSON, err := marshalJSON(roundConfig)
 	if err != nil {
 		return nil, err
@@ -1099,6 +1151,9 @@ func (s *Service) createRoundAttemptTx(
 	}
 
 	stepPlan := stepPlanByMode(loop.Mode)
+	if loop.Mode == modeSIM && simulationFinalizeTrain {
+		stepPlan = simulationFinalizeTrainEnabledStepPlan(true)
+	}
 	if len(stepPlan) == 0 {
 		return nil, fmt.Errorf("unsupported loop mode for step plan: %s", loop.Mode)
 	}

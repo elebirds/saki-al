@@ -95,6 +95,11 @@ var loopModeStepPlan = map[db.Loopmode][]loopModeStepSpec{
 	},
 }
 
+var simulationFinalizeTrainStepPlan = []loopModeStepSpec{
+	{StepType: db.SteptypeTRAIN, DispatchKind: db.StepdispatchkindDISPATCHABLE, Phase: phaseSimTrain},
+	{StepType: db.SteptypeEVAL, DispatchKind: db.StepdispatchkindDISPATCHABLE, Phase: phaseSimEval},
+}
+
 // stoppingStep is used by STOPPING drain logic.
 type stoppingStep struct {
 	ID         uuid.UUID
@@ -220,6 +225,15 @@ func stepPlanByMode(mode db.Loopmode) []loopModeStepSpec {
 	}
 	result := make([]loopModeStepSpec, len(specs))
 	copy(result, specs)
+	return result
+}
+
+func simulationFinalizeTrainEnabledStepPlan(enabled bool) []loopModeStepSpec {
+	if !enabled {
+		return nil
+	}
+	result := make([]loopModeStepSpec, len(simulationFinalizeTrainStepPlan))
+	copy(result, simulationFinalizeTrainStepPlan)
 	return result
 }
 

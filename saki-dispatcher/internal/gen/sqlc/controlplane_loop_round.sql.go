@@ -729,6 +729,27 @@ func (q *Queries) ResolveBranchHeadFromDB(ctx context.Context, branchID uuid.UUI
 	return i, err
 }
 
+const roundHasStepType = `-- name: RoundHasStepType :one
+SELECT EXISTS (
+  SELECT 1
+  FROM step
+  WHERE round_id = $1::uuid
+    AND step_type = $2::steptype
+)::bool AS exists
+`
+
+type RoundHasStepTypeParams struct {
+	RoundID  uuid.UUID
+	StepType Steptype
+}
+
+func (q *Queries) RoundHasStepType(ctx context.Context, arg RoundHasStepTypeParams) (bool, error) {
+	row := q.db.QueryRow(ctx, roundHasStepType, arg.RoundID, arg.StepType)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const tryDispatchAdvisoryLock = `-- name: TryDispatchAdvisoryLock :one
 SELECT pg_try_advisory_lock($1)::bool AS locked
 `

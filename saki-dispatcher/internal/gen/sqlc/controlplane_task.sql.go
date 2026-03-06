@@ -121,9 +121,9 @@ FROM step
 WHERE id = $1::uuid
 `
 
-func (q *Queries) GetTaskIDByStepID(ctx context.Context, stepID uuid.UUID) (*uuid.UUID, error) {
+func (q *Queries) GetTaskIDByStepID(ctx context.Context, stepID uuid.UUID) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, getTaskIDByStepID, stepID)
-	var task_id *uuid.UUID
+	var task_id uuid.UUID
 	err := row.Scan(&task_id)
 	return task_id, err
 }

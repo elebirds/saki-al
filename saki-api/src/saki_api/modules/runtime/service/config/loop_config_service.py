@@ -148,6 +148,7 @@ def normalize_loop_config(raw_config: dict[str, Any] | None, *, mode: str) -> di
         normalized_mode = {
             "oracle_commit_id": str(normalized_mode.get("oracle_commit_id") or "").strip(),
             "max_rounds": max(1, to_int(normalized_mode.get("max_rounds"), 20)),
+            "finalize_train": to_bool(normalized_mode.get("finalize_train"), True),
             "snapshot_init": snapshot_init,
         }
     else:

@@ -1636,7 +1636,7 @@ type Step struct {
 	Metrics            []byte
 	Artifacts          []byte
 	InputCommitID      *uuid.UUID
-	TaskID             *uuid.UUID
+	TaskID             uuid.UUID
 	AssignedExecutorID pgtype.Text
 	StateVersion       int32
 	Attempt            int32
@@ -1663,6 +1663,7 @@ type Task struct {
 	TaskType           Runtimetasktype
 	Status             Runtimetaskstatus
 	PluginID           string
+	DependsOnTaskIds   []byte
 	InputCommitID      *uuid.UUID
 	ResolvedParams     []byte
 	AssignedExecutorID pgtype.Text
@@ -1671,7 +1672,6 @@ type Task struct {
 	StartedAt          pgtype.Timestamptz
 	EndedAt            pgtype.Timestamptz
 	LastError          pgtype.Text
-	DependsOnTaskIds   []byte
 }
 
 type TaskCandidateItem struct {

@@ -119,3 +119,24 @@ func TestExtractOracleCommitIDMissingReturnsEmpty(t *testing.T) {
 		t.Fatalf("expected empty oracle commit id, got=%s", got)
 	}
 }
+
+func TestExtractSimulationFinalizeTrainDefaultsTrue(t *testing.T) {
+	if got := extractSimulationFinalizeTrain([]byte(`{}`)); !got {
+		t.Fatalf("expected default finalize_train=true, got=%v", got)
+	}
+	if got := extractSimulationFinalizeTrain([]byte(`{"mode":{}}`)); !got {
+		t.Fatalf("expected missing finalize_train to default true, got=%v", got)
+	}
+	if got := extractSimulationFinalizeTrain([]byte(`{"mode":{"finalize_train":"invalid"}}`)); !got {
+		t.Fatalf("expected invalid finalize_train to default true, got=%v", got)
+	}
+}
+
+func TestExtractSimulationFinalizeTrainParsesConfiguredValue(t *testing.T) {
+	if got := extractSimulationFinalizeTrain([]byte(`{"mode":{"finalize_train":false}}`)); got {
+		t.Fatalf("expected finalize_train=false, got=%v", got)
+	}
+	if got := extractSimulationFinalizeTrain([]byte(`{"mode":{"finalize_train":"true"}}`)); !got {
+		t.Fatalf("expected finalize_train=true, got=%v", got)
+	}
+}

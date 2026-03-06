@@ -48,10 +48,10 @@ func (s *Service) resolveTaskIDForStepTx(
 ) (uuid.UUID, bool, error) {
 	taskID, err := s.qtx(tx).GetTaskIDByStepID(ctx, stepID)
 	if err == nil {
-		if taskID == nil {
+		if taskID == uuid.Nil {
 			return uuid.Nil, false, nil
 		}
-		return *taskID, true, nil
+		return taskID, true, nil
 	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		return uuid.Nil, false, nil

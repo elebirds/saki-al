@@ -35,6 +35,7 @@ class LoopSnapshotInitConfig(BaseModel):
 class LoopSimulationConfig(BaseModel):
     oracle_commit_id: Optional[uuid.UUID] = None
     max_rounds: int = Field(default=20, ge=1)
+    finalize_train: bool = True
     snapshot_init: LoopSnapshotInitConfig = Field(default_factory=LoopSnapshotInitConfig)
 
 

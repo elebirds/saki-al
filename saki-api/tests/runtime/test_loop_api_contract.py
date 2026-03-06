@@ -779,6 +779,55 @@ async def test_update_loop_oracle_commit_change_requires_draft_and_no_snapshot(l
             _session_ctx.reset(token)
 
 
+@pytest.mark.anyio
+async def test_update_loop_rejects_finalize_train_change_after_non_draft(loop_api_env):
+    session_local = loop_api_env
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        service = RuntimeService(session)
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-sim-finalize-train-locked",
+                    branch_id=branch.id,
+                    mode=LoopMode.SIMULATION,
+                    model_arch="yolo_det_v1",
+                    config=_loop_config(
+                        {
+                            "sampling": {"strategy": "random_baseline", "topk": 200},
+                            "mode": {
+                                "oracle_commit_id": str(branch.head_commit_id),
+                                "finalize_train": True,
+                            },
+                        }
+                    ),
+                    lifecycle=LoopLifecycle.RUNNING,
+                ),
+            )
+
+            with pytest.raises(BadRequestAppException, match="config.mode.finalize_train is immutable"):
+                await service.update_loop(
+                    loop.id,
+                    LoopUpdateRequest(
+                        config=_loop_config(
+                            {
+                                "sampling": {"strategy": "random_baseline", "topk": 200},
+                                "mode": {
+                                    "oracle_commit_id": str(branch.head_commit_id),
+                                    "finalize_train": False,
+                                },
+                            }
+                        )
+                    ),
+                )
+        finally:
+            _session_ctx.reset(token)
+
+
 def test_effective_round_min_required_requires_full_selected():
     assert SnapshotPolicyMixin._effective_round_min_required(selected_count=0, configured_min_required=1) == 0
     assert SnapshotPolicyMixin._effective_round_min_required(selected_count=2, configured_min_required=1) == 2
@@ -1206,6 +1255,131 @@ async def test_simulation_draft_without_snapshot_can_start(loop_api_env):
             action_keys = {str(item.get("key")) for item in gate.get("actions") or []}
             assert "start" in action_keys
             assert "snapshot_init" not in action_keys
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_loop_gate_allows_retry_when_failed_round_has_pending_downstream_tasks(loop_api_env):
+    session_local = loop_api_env
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        service = RuntimeService(session)
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-retry-gate-pending-downstream",
+                    branch_id=branch.id,
+                    mode=LoopMode.SIMULATION,
+                    model_arch="yolo_det_v1",
+                    config=_loop_config(
+                        {
+                            "sampling": {"strategy": "random_baseline", "topk": 200},
+                            "mode": {"oracle_commit_id": str(branch.head_commit_id)},
+                        }
+                    ),
+                    lifecycle=LoopLifecycle.FAILED,
+                ),
+            )
+            round_row = Round(
+                project_id=project.id,
+                loop_id=loop.id,
+                round_index=1,
+                attempt_index=1,
+                mode=LoopMode.SIMULATION,
+                state=RoundStatus.FAILED,
+                step_counts={},
+                plugin_id=loop.model_arch,
+                resolved_params={},
+                resources={},
+                input_commit_id=branch.head_commit_id,
+                final_metrics={},
+                final_artifacts={},
+                terminal_reason="train failed",
+            )
+            session.add(round_row)
+            await session.flush()
+
+            train_step = Step(
+                round_id=round_row.id,
+                step_type=StepType.TRAIN,
+                dispatch_kind=StepDispatchKind.DISPATCHABLE,
+                state=StepStatus.FAILED,
+                round_index=1,
+                step_index=1,
+                depends_on_step_ids=[],
+                resolved_params={},
+                metrics={},
+                artifacts={},
+                input_commit_id=branch.head_commit_id,
+                attempt=1,
+                max_attempts=3,
+                last_error="prepare data failed",
+            )
+            eval_step = Step(
+                round_id=round_row.id,
+                step_type=StepType.EVAL,
+                dispatch_kind=StepDispatchKind.DISPATCHABLE,
+                state=StepStatus.PENDING,
+                round_index=1,
+                step_index=2,
+                depends_on_step_ids=[str(train_step.id)],
+                resolved_params={},
+                metrics={},
+                artifacts={},
+                input_commit_id=branch.head_commit_id,
+                attempt=1,
+                max_attempts=3,
+            )
+            score_step = Step(
+                round_id=round_row.id,
+                step_type=StepType.SCORE,
+                dispatch_kind=StepDispatchKind.DISPATCHABLE,
+                state=StepStatus.PENDING,
+                round_index=1,
+                step_index=3,
+                depends_on_step_ids=[str(eval_step.id)],
+                resolved_params={},
+                metrics={},
+                artifacts={},
+                input_commit_id=branch.head_commit_id,
+                attempt=1,
+                max_attempts=3,
+            )
+            select_step = Step(
+                round_id=round_row.id,
+                step_type=StepType.SELECT,
+                dispatch_kind=StepDispatchKind.ORCHESTRATOR,
+                state=StepStatus.PENDING,
+                round_index=1,
+                step_index=4,
+                depends_on_step_ids=[str(score_step.id)],
+                resolved_params={},
+                metrics={},
+                artifacts={},
+                input_commit_id=branch.head_commit_id,
+                attempt=1,
+                max_attempts=3,
+            )
+            await _attach_step_task(session, project_id=project.id, step=train_step, plugin_id=loop.model_arch)
+            await _attach_step_task(session, project_id=project.id, step=eval_step, plugin_id=loop.model_arch)
+            await _attach_step_task(session, project_id=project.id, step=score_step, plugin_id=loop.model_arch)
+            await _attach_step_task(session, project_id=project.id, step=select_step, plugin_id=loop.model_arch)
+            await session.commit()
+
+            gate = await service.get_loop_gate(loop_id=loop.id)
+            assert gate["gate"] == LoopGate.CAN_RETRY
+            actions = gate.get("actions") or []
+            retry_action = next((item for item in actions if str(item.get("key")) == "retry_round"), None)
+            assert retry_action is not None
+            payload = retry_action.get("payload") if isinstance(retry_action.get("payload"), dict) else {}
+            assert str(payload.get("round_id")) == str(round_row.id)
+            assert int(payload.get("round_index") or 0) == 1
+            assert int(payload.get("attempt_index") or 0) == 1
         finally:
             _session_ctx.reset(token)
 
@@ -3364,6 +3538,7 @@ async def test_create_simulation_loop_normalizes_mode_without_seeds_or_random_ba
             assert float(snapshot_init_cfg.get("test_ratio")) == pytest.approx(0.3)
             assert str(snapshot_init_cfg.get("val_policy")) == "expand_with_batch_val"
             assert int(mode_cfg.get("max_rounds")) == 7
+            assert bool(mode_cfg.get("finalize_train")) is True
             assert "seed_ratio" not in mode_cfg
             assert "step_ratio" not in mode_cfg
             assert "seeds" not in mode_cfg
@@ -3432,6 +3607,7 @@ async def test_update_simulation_loop_applies_mode_max_rounds(loop_api_env, monk
                                 "val_policy": "expand_with_batch_val",
                             },
                             "max_rounds": 11,
+                            "finalize_train": False,
                         },
                     },
                 ),
@@ -3442,6 +3618,7 @@ async def test_update_simulation_loop_applies_mode_max_rounds(loop_api_env, monk
             assert int(updated.max_rounds) == 11
             mode_cfg = updated.config.get("mode") if isinstance(updated.config.get("mode"), dict) else {}
             assert int(mode_cfg.get("max_rounds")) == 11
+            assert bool(mode_cfg.get("finalize_train")) is False
             snapshot_init_cfg = mode_cfg.get("snapshot_init") if isinstance(mode_cfg.get("snapshot_init"), dict) else {}
             assert float(snapshot_init_cfg.get("train_seed_ratio")) == pytest.approx(0.15)
             assert float(snapshot_init_cfg.get("val_ratio")) == pytest.approx(0.25)

@@ -315,19 +315,19 @@ LEFT JOIN step s ON s.task_id = t.id
 LEFT JOIN round r ON r.id = s.round_id
 LEFT JOIN loop l ON l.id = r.loop_id
 WHERE (
-  t.kind = 'PREDICTION'::taskkind
+  t.kind = 'PREDICTION'
   AND t.status IN (
-    'PENDING'::taskstatus,
-    'READY'::taskstatus,
-    'RETRYING'::taskstatus
+    'PENDING',
+    'READY',
+    'RETRYING'
   )
 )
 OR (
-  t.kind = 'STEP'::taskkind
+  t.kind = 'STEP'
   AND t.status IN (
-    'PENDING'::taskstatus,
-    'READY'::taskstatus,
-    'RETRYING'::taskstatus
+    'PENDING',
+    'READY',
+    'RETRYING'
   )
   AND l.lifecycle = 'RUNNING'::looplifecycle
 )

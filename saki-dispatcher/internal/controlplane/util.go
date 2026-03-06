@@ -384,6 +384,30 @@ func extractOracleCommitID(rawConfig []byte) string {
 	return value
 }
 
+func extractSimulationFinalizeTrain(rawConfig []byte) bool {
+	payload := map[string]any{}
+	if err := json.Unmarshal(rawConfig, &payload); err != nil {
+		return true
+	}
+	modeRaw, ok := payload["mode"]
+	if !ok {
+		return true
+	}
+	modeMap, ok := modeRaw.(map[string]any)
+	if !ok {
+		return true
+	}
+	finalizeRaw, exists := modeMap["finalize_train"]
+	if !exists || finalizeRaw == nil {
+		return true
+	}
+	parsed, err := cast.ToBoolE(finalizeRaw)
+	if err != nil {
+		return true
+	}
+	return parsed
+}
+
 func extractRoundResources(rawConfig []byte) map[string]any {
 	payload := map[string]any{}
 	if err := json.Unmarshal(rawConfig, &payload); err != nil {

@@ -56,16 +56,20 @@ class LoopGateMixin:
                     task.id: str(task.status.value if hasattr(task.status, "value") else task.status).strip().lower()
                     for task in tasks
                 }
-                terminal_task_statuses = {
-                    RuntimeTaskStatus.SUCCEEDED.value,
-                    RuntimeTaskStatus.FAILED.value,
-                    RuntimeTaskStatus.CANCELLED.value,
-                    RuntimeTaskStatus.SKIPPED.value,
+                # Keep gate rule consistent with dispatcher RetryRound:
+                # downstream steps may stay pending/ready after an upstream failure
+                # and should not block retry. Only true in-flight statuses block.
+                inflight_task_statuses = {
+                    RuntimeTaskStatus.DISPATCHING.value,
+                    RuntimeTaskStatus.SYNCING_ENV.value,
+                    RuntimeTaskStatus.PROBING_RUNTIME.value,
+                    RuntimeTaskStatus.BINDING_DEVICE.value,
+                    RuntimeTaskStatus.RUNNING.value,
+                    RuntimeTaskStatus.RETRYING.value,
                 }
                 has_inflight_tasks = any(
-                    step.task_id is None
-                    or str(task_status_by_id.get(step.task_id) or "").strip().lower() not in terminal_task_statuses
-                    for step in steps
+                    status in inflight_task_statuses
+                    for status in task_status_by_id.values()
                 )
                 if not has_inflight_tasks:
                     retry_action = self._action(

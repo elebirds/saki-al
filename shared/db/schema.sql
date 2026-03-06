@@ -997,7 +997,7 @@ CREATE TABLE public.step (
     metrics jsonb,
     artifacts jsonb,
     input_commit_id uuid,
-    task_id uuid,
+    task_id uuid NOT NULL,
     assigned_executor_id character varying,
     state_version integer NOT NULL,
     attempt integer NOT NULL,
@@ -1034,6 +1034,7 @@ CREATE TABLE public.task (
     task_type public.runtimetasktype NOT NULL,
     status public.runtimetaskstatus NOT NULL,
     plugin_id character varying(255) NOT NULL,
+    depends_on_task_ids jsonb,
     input_commit_id uuid,
     resolved_params jsonb,
     assigned_executor_id character varying,
@@ -1041,8 +1042,7 @@ CREATE TABLE public.task (
     max_attempts integer NOT NULL,
     started_at timestamp with time zone,
     ended_at timestamp with time zone,
-    last_error character varying(4000),
-    depends_on_task_ids jsonb DEFAULT '[]'::jsonb NOT NULL
+    last_error character varying(4000)
 );
 
 

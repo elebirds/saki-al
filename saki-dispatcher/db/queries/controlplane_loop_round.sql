@@ -222,6 +222,14 @@ SELECT state
 FROM round
 WHERE id = sqlc.arg(round_id)::uuid;
 
+-- name: RoundHasStepType :one
+SELECT EXISTS (
+  SELECT 1
+  FROM step
+  WHERE round_id = sqlc.arg(round_id)::uuid
+    AND step_type = sqlc.arg(step_type)::steptype
+)::bool AS exists;
+
 -- name: UpdateRoundStateWithReason :exec
 UPDATE round
 SET state = sqlc.arg(state)::roundstatus,

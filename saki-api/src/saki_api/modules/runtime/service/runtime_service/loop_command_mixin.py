@@ -45,6 +45,10 @@ class LoopCommandMixin:
             "val_policy": str(snapshot_init.val_policy or "").strip() or "anchor_only",
         }
 
+    def _extract_config_finalize_train(self, config: dict[str, Any] | None) -> bool:
+        simulation = self._extract_simulation_config(dict(config or {}))
+        return bool(simulation.finalize_train)
+
     async def _validate_simulation_oracle_commit(
         self,
         *,
@@ -159,6 +163,24 @@ class LoopCommandMixin:
             ):
                 raise BadRequestAppException(
                     "config.reproducibility.deterministic_level is immutable once lifecycle is not draft"
+                )
+            current_finalize_train = (
+                self._extract_config_finalize_train(loop.config or {})
+                if loop.mode == LoopMode.SIMULATION
+                else True
+            )
+            next_finalize_train = (
+                self._extract_config_finalize_train(normalized_config)
+                if next_mode == LoopMode.SIMULATION
+                else True
+            )
+            if (
+                str(loop.lifecycle.value if hasattr(loop.lifecycle, "value") else loop.lifecycle).strip().lower()
+                != "draft"
+                and current_finalize_train != next_finalize_train
+            ):
+                raise BadRequestAppException(
+                    "config.mode.finalize_train is immutable once lifecycle is not draft"
                 )
 
             current_oracle_commit_id = await self._validate_simulation_oracle_commit(

@@ -679,12 +679,7 @@ class RuntimeQueryMixin:
     async def list_task_artifacts(self, task_id: uuid.UUID) -> list[TaskArtifactRead]:
         task = await self.task_repo.get_by_id_or_raise(task_id)
         task_artifacts = self._extract_downloadable_task_artifacts(task)
-        if task_artifacts:
-            return task_artifacts
-        step = await self.step_repo.get_by_task_id(task_id)
-        if step is None:
-            return []
-        return self._extract_downloadable_step_artifacts(step)
+        return task_artifacts
 
     @staticmethod
     def _artifact_class_from_stage(stage: str, kind: str) -> str:
@@ -742,25 +737,6 @@ class RuntimeQueryMixin:
         items.sort(key=lambda item: (int(item.step_index or 0), str(item.name or "")))
         return items
 
-    def _resolve_artifact_download_url_from_step(
-        self,
-        *,
-        step: Step,
-        artifact_name: str,
-        expires_in_hours: int = 2,
-    ) -> str:
-        artifact = (step.artifacts or {}).get(artifact_name)
-        if not artifact:
-            raise NotFoundAppException(f"Artifact {artifact_name} not found")
-        if not isinstance(artifact, dict):
-            raise BadRequestAppException("Artifact payload is invalid")
-
-        uri = str(artifact.get("uri") or "")
-        if not uri:
-            raise BadRequestAppException("Artifact URI is empty")
-
-        return self._resolve_artifact_download_url_from_uri(uri=uri, expires_in_hours=expires_in_hours)
-
     def _resolve_artifact_download_url_from_uri(
         self,
         *,
@@ -804,14 +780,7 @@ class RuntimeQueryMixin:
                     expires_in_hours=expires_in_hours,
                 )
 
-        step = await self.step_repo.get_by_task_id(task_id)
-        if step is None:
-            raise NotFoundAppException(f"Task {task_id} has no downloadable artifacts")
-        return self._resolve_artifact_download_url_from_step(
-            step=step,
-            artifact_name=artifact_name,
-            expires_in_hours=expires_in_hours,
-        )
+        raise NotFoundAppException(f"Task {task_id} has no downloadable artifact: {artifact_name}")
 
     async def summarize_loop(self, loop_id: uuid.UUID) -> LoopSummaryStatsVO:
         await self.loop_repo.get_by_id_or_raise(loop_id)

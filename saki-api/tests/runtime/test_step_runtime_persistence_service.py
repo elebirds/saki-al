@@ -16,10 +16,10 @@ from saki_api.modules.project.domain.project import Project
 from saki_api.modules.runtime.domain.loop import Loop
 from saki_api.modules.runtime.domain.round import Round
 from saki_api.modules.runtime.domain.step import Step
+from saki_api.modules.runtime.domain.task import Task
 from saki_api.modules.runtime.domain.task_metric_point import TaskMetricPoint
 from saki_api.modules.runtime.service.application.event_dto import (
-    RuntimeStepEventDTO,
-    RuntimeStepResultDTO,
+    RuntimeTaskEventDTO,
     RuntimeTaskResultDTO,
 )
 from saki_api.modules.runtime.service.persistence.task_runtime_persistence_service import RuntimeTaskPersistenceService
@@ -32,6 +32,9 @@ from saki_api.modules.shared.modeling.enums import (
     StepStatus,
     StepType,
     TaskType,
+    RuntimeTaskKind,
+    RuntimeTaskStatus,
+    RuntimeTaskType,
 )
 
 
@@ -121,9 +124,42 @@ async def _seed_train_step(session: AsyncSession) -> tuple[uuid.UUID, uuid.UUID]
         max_attempts=3,
     )
     session.add(step)
+    await session.flush()
+    await _attach_step_task(
+        session=session,
+        project_id=project.id,
+        step=step,
+        plugin_id=loop.model_arch,
+    )
     await session.commit()
 
     return step.id, round_row.id
+
+
+async def _attach_step_task(
+    session: AsyncSession,
+    *,
+    project_id: uuid.UUID,
+    step: Step,
+    plugin_id: str,
+) -> Task:
+    task = Task(
+        project_id=project_id,
+        kind=RuntimeTaskKind.STEP,
+        task_type=RuntimeTaskType(step.step_type.value),
+        status=RuntimeTaskStatus(step.state.value),
+        plugin_id=plugin_id,
+        input_commit_id=step.input_commit_id,
+        resolved_params=dict(step.resolved_params or {}),
+        attempt=max(1, int(step.attempt or 1)),
+        max_attempts=max(1, int(step.max_attempts or 1)),
+    )
+    session.add(task)
+    await session.flush()
+    step.task_id = task.id
+    session.add(step)
+    await session.flush()
+    return task
 
 
 async def _seed_train_eval_select_steps(session: AsyncSession) -> tuple[dict[str, uuid.UUID], uuid.UUID]:
@@ -163,6 +199,32 @@ async def _seed_train_eval_select_steps(session: AsyncSession) -> tuple[dict[str
     )
     session.add(eval_step)
     session.add(select_step)
+    await session.flush()
+    round_row = await session.get(Round, round_id)
+    if round_row is None:
+        raise RuntimeError("round not found while attaching step tasks")
+    loop_row = await session.get(Loop, round_row.loop_id)
+    if loop_row is None:
+        raise RuntimeError("loop not found while attaching step tasks")
+    project_id = uuid.UUID(str(loop_row.project_id))
+    await _attach_step_task(
+        session=session,
+        project_id=project_id,
+        step=train_step,
+        plugin_id=loop_row.model_arch,
+    )
+    await _attach_step_task(
+        session=session,
+        project_id=project_id,
+        step=eval_step,
+        plugin_id=loop_row.model_arch,
+    )
+    await _attach_step_task(
+        session=session,
+        project_id=project_id,
+        step=select_step,
+        plugin_id=loop_row.model_arch,
+    )
     await session.commit()
 
     return {
@@ -179,19 +241,22 @@ async def test_persist_step_result_no_longer_appends_terminal_metric_points(pers
     async with session_local() as session:
         step_id, _ = await _seed_train_step(session)
         persistence = RuntimeTaskPersistenceService(session)
+        step = await session.get(Step, step_id)
+        assert step is not None
+        assert step.task_id is not None
 
-        await persistence.persist_step_event(
-            RuntimeStepEventDTO(
-                step_id=step_id,
+        await persistence.persist_task_event(
+            RuntimeTaskEventDTO(
+                task_id=step.task_id,
                 seq=1,
                 ts=datetime.now(UTC),
                 event_type="metric",
                 payload={"step": 3, "epoch": 3, "metrics": {"map50": 0.62, "loss": 0.40}},
             )
         )
-        await persistence.persist_step_result(
-            RuntimeStepResultDTO(
-                step_id=step_id,
+        await persistence.persist_task_result(
+            RuntimeTaskResultDTO(
+                task_id=step.task_id,
                 status=StepStatus.SUCCEEDED,
                 metrics={"map50": 0.66, "loss": 0.35},
                 artifacts=[],
@@ -224,10 +289,13 @@ async def test_persist_step_result_without_metric_events_keeps_series_empty(pers
     async with session_local() as session:
         step_id, round_id = await _seed_train_step(session)
         persistence = RuntimeTaskPersistenceService(session)
+        step = await session.get(Step, step_id)
+        assert step is not None
+        assert step.task_id is not None
 
-        await persistence.persist_step_result(
-            RuntimeStepResultDTO(
-                step_id=step_id,
+        await persistence.persist_task_result(
+            RuntimeTaskResultDTO(
+                task_id=step.task_id,
                 status=StepStatus.SUCCEEDED,
                 metrics={"map50": 0.70, "loss": 0.30},
                 artifacts=[],
@@ -260,28 +328,34 @@ async def test_persist_multi_step_result_keeps_eval_metrics_as_round_final(persi
     async with session_local() as session:
         step_ids, round_id = await _seed_train_eval_select_steps(session)
         persistence = RuntimeTaskPersistenceService(session)
+        train_step = await session.get(Step, step_ids["train"])
+        eval_step = await session.get(Step, step_ids["eval"])
+        select_step = await session.get(Step, step_ids["select"])
+        assert train_step is not None and train_step.task_id is not None
+        assert eval_step is not None and eval_step.task_id is not None
+        assert select_step is not None and select_step.task_id is not None
 
-        await persistence.persist_step_result(
-            RuntimeStepResultDTO(
-                step_id=step_ids["train"],
+        await persistence.persist_task_result(
+            RuntimeTaskResultDTO(
+                task_id=train_step.task_id,
                 status=StepStatus.SUCCEEDED,
                 metrics={"loss": 0.55},
                 artifacts=[],
                 candidates=[],
             )
         )
-        await persistence.persist_step_result(
-            RuntimeStepResultDTO(
-                step_id=step_ids["eval"],
+        await persistence.persist_task_result(
+            RuntimeTaskResultDTO(
+                task_id=eval_step.task_id,
                 status=StepStatus.SUCCEEDED,
                 metrics={"map50": 0.81, "precision": 0.89},
                 artifacts=[],
                 candidates=[],
             )
         )
-        await persistence.persist_step_result(
-            RuntimeStepResultDTO(
-                step_id=step_ids["select"],
+        await persistence.persist_task_result(
+            RuntimeTaskResultDTO(
+                task_id=select_step.task_id,
                 status=StepStatus.SUCCEEDED,
                 metrics={},
                 artifacts=[],
@@ -303,10 +377,13 @@ async def test_persist_task_result_projects_back_to_step_without_step_id_input(p
     async with session_local() as session:
         step_id, round_id = await _seed_train_step(session)
         persistence = RuntimeTaskPersistenceService(session)
+        step = await session.get(Step, step_id)
+        assert step is not None
+        assert step.task_id is not None
 
-        await persistence.persist_step_event(
-            RuntimeStepEventDTO(
-                step_id=step_id,
+        await persistence.persist_task_event(
+            RuntimeTaskEventDTO(
+                task_id=step.task_id,
                 seq=1,
                 ts=datetime.now(UTC),
                 event_type="status",

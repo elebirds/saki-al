@@ -18,13 +18,11 @@ from saki_api.modules.runtime.repo.task_event import TaskEventRepository
 from saki_api.modules.runtime.repo.task_metric_point import TaskMetricPointRepository
 from saki_api.modules.runtime.repo.task import TaskRepository
 from saki_api.modules.runtime.service.application.event_dto import (
-    RuntimeStepEventDTO,
-    RuntimeStepResultDTO,
     RuntimeTaskEventDTO,
     RuntimeTaskResultDTO,
 )
 from saki_api.modules.runtime.service.application.round_aggregation import apply_round_update, build_round_update_from_steps
-from saki_api.modules.shared.modeling.enums import RuntimeTaskKind, RuntimeTaskStatus, RuntimeTaskType, StepStatus, StepType
+from saki_api.modules.shared.modeling.enums import RuntimeTaskStatus, StepStatus
 
 
 class RuntimeTaskPersistenceService:
@@ -127,26 +125,6 @@ class RuntimeTaskPersistenceService:
         await self._recompute_round_summary(step.round_id)
 
     @transactional
-    async def persist_step_event(self, event: RuntimeStepEventDTO) -> None:
-        step = await self.step_repo.get_by_id(event.step_id)
-        if step is None:
-            raise ValueError(f"step task binding not found: {event.step_id}")
-        if step.task_id is None:
-            step.task_id = await self._ensure_task_binding_for_step(step.id)
-            self.session.add(step)
-        await self.persist_task_event(
-            RuntimeTaskEventDTO(
-                task_id=step.task_id,
-                seq=event.seq,
-                ts=event.ts,
-                event_type=event.event_type,
-                payload=dict(event.payload or {}),
-                status=event.status,
-                request_id=event.request_id,
-            )
-        )
-
-    @transactional
     async def persist_task_result(self, result: RuntimeTaskResultDTO) -> None:
         task = await self.task_repo.get_by_id(result.task_id)
         if not task:
@@ -204,25 +182,6 @@ class RuntimeTaskPersistenceService:
         self.session.add(step)
         await self._recompute_round_summary(step.round_id)
 
-    @transactional
-    async def persist_step_result(self, result: RuntimeStepResultDTO) -> None:
-        step = await self.step_repo.get_by_id(result.step_id)
-        if step is None:
-            raise ValueError(f"step task binding not found: {result.step_id}")
-        if step.task_id is None:
-            step.task_id = await self._ensure_task_binding_for_step(step.id)
-            self.session.add(step)
-        await self.persist_task_result(
-            RuntimeTaskResultDTO(
-                task_id=step.task_id,
-                status=result.status,
-                metrics=dict(result.metrics or {}),
-                artifacts=list(result.artifacts or []),
-                candidates=list(result.candidates or []),
-                last_error=result.last_error,
-            )
-        )
-
     async def _recompute_round_summary(self, round_id: uuid.UUID) -> None:
         round_row = await self.round_repo.get_by_id(round_id)
         if not round_row:
@@ -239,35 +198,3 @@ class RuntimeTaskPersistenceService:
             if item.value == text:
                 return item
         return RuntimeTaskStatus.FAILED
-
-    @staticmethod
-    def _to_runtime_task_type(step_type: StepType) -> RuntimeTaskType:
-        text = str(getattr(step_type, "value", step_type) or "").strip().lower()
-        for item in RuntimeTaskType:
-            if item.value == text:
-                return item
-        return RuntimeTaskType.CUSTOM
-
-    async def _ensure_task_binding_for_step(self, step_id: uuid.UUID) -> uuid.UUID:
-        step = await self.step_repo.get_by_id_or_raise(step_id)
-        if step.task_id is not None:
-            return step.task_id
-        round_row = await self.round_repo.get_by_id_or_raise(step.round_id)
-        task = await self.task_repo.create(
-            {
-                "project_id": round_row.project_id,
-                "kind": RuntimeTaskKind.STEP,
-                "task_type": self._to_runtime_task_type(step.step_type),
-                "status": self._to_runtime_task_status(step.state),
-                "plugin_id": str(round_row.plugin_id or ""),
-                "input_commit_id": step.input_commit_id,
-                "resolved_params": dict(step.resolved_params or {}),
-                "assigned_executor_id": step.assigned_executor_id,
-                "attempt": int(step.attempt or 1),
-                "max_attempts": int(step.max_attempts or 1),
-                "started_at": step.started_at,
-                "ended_at": step.ended_at,
-                "last_error": step.last_error,
-            }
-        )
-        return task.id

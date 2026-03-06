@@ -7,9 +7,9 @@ from saki_api.modules.runtime.service.application.control_plane_dto import (
 from saki_api.modules.runtime.service.application.dispatch_dto import StepDispatchPayloadDTO
 from saki_api.modules.runtime.service.application.event_dto import (
     RuntimeArtifactDTO,
-    RuntimeStepCandidateDTO,
-    RuntimeStepEventDTO,
-    RuntimeStepResultDTO,
+    RuntimeTaskCandidateDTO,
+    RuntimeTaskEventDTO,
+    RuntimeTaskResultDTO,
 )
 from saki_api.modules.runtime.service.application.round_aggregation import (
     apply_round_update,
@@ -21,9 +21,9 @@ __all__ = [
     "RuntimeDataRequestDTO",
     "RuntimeUploadTicketRequestDTO",
     "RuntimeArtifactDTO",
-    "RuntimeStepCandidateDTO",
-    "RuntimeStepEventDTO",
-    "RuntimeStepResultDTO",
+    "RuntimeTaskCandidateDTO",
+    "RuntimeTaskEventDTO",
+    "RuntimeTaskResultDTO",
     "apply_round_update",
     "build_round_update_from_steps",
 ]

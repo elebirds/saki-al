@@ -26,10 +26,6 @@ class RuntimeTaskCandidateDTO(BaseModel):
     prediction_snapshot: dict[str, Any] = Field(default_factory=dict)
 
 
-class RuntimeStepCandidateDTO(RuntimeTaskCandidateDTO):
-    pass
-
-
 class RuntimeTaskEventDTO(BaseModel):
     task_id: uuid.UUID
     seq: int
@@ -46,23 +42,4 @@ class RuntimeTaskResultDTO(BaseModel):
     metrics: dict[str, float] = Field(default_factory=dict)
     artifacts: list[RuntimeArtifactDTO] = Field(default_factory=list)
     candidates: list[RuntimeTaskCandidateDTO] = Field(default_factory=list)
-    last_error: str | None = None
-
-
-class RuntimeStepEventDTO(BaseModel):
-    step_id: uuid.UUID
-    seq: int
-    ts: datetime
-    event_type: Literal["status", "log", "progress", "metric", "artifact"]
-    payload: dict[str, Any] = Field(default_factory=dict)
-    status: StepStatus | None = None
-    request_id: str | None = None
-
-
-class RuntimeStepResultDTO(BaseModel):
-    step_id: uuid.UUID
-    status: StepStatus
-    metrics: dict[str, float] = Field(default_factory=dict)
-    artifacts: list[RuntimeArtifactDTO] = Field(default_factory=list)
-    candidates: list[RuntimeStepCandidateDTO] = Field(default_factory=list)
     last_error: str | None = None

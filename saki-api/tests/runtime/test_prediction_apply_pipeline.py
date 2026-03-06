@@ -23,6 +23,7 @@ from saki_api.modules.runtime.domain.model import Model
 from saki_api.modules.runtime.domain.model_class_schema import ModelClassSchema
 from saki_api.modules.runtime.domain.round import Round
 from saki_api.modules.runtime.domain.task import Task
+from saki_api.modules.runtime.domain.task_candidate_item import TaskCandidateItem
 from saki_api.modules.runtime.service.runtime_service import RuntimeService
 from saki_api.modules.shared.modeling.enums import (
     AnnotationSource,
@@ -268,25 +269,28 @@ async def _finish_prediction_task(
 ) -> None:
     task_row = await session.get(Task, task_id)
     assert task_row is not None
-    resolved_params = dict(task_row.resolved_params or {})
-    task_candidates = []
+    existing_candidates = await session.exec(
+        select(TaskCandidateItem).where(TaskCandidateItem.task_id == task_id)
+    )
+    for item in list(existing_candidates.all()):
+        await session.delete(item)
+
     for idx, row in enumerate(rows, start=1):
         reason_payload = dict(row.get("reason") or {})
         snapshot_payload = row.get("prediction_snapshot")
         if not isinstance(snapshot_payload, dict):
             raw_snapshot = reason_payload.get("prediction_snapshot")
             snapshot_payload = raw_snapshot if isinstance(raw_snapshot, dict) else {}
-        task_candidates.append(
-            {
-                "sample_id": str(row["sample_id"]),
-                "rank": idx,
-                "score": float(row.get("score", 0.0)),
-                "reason": reason_payload,
-                "prediction_snapshot": dict(snapshot_payload),
-            }
+        session.add(
+            TaskCandidateItem(
+                task_id=task_id,
+                sample_id=uuid.UUID(str(row["sample_id"])),
+                rank=idx,
+                score=float(row.get("score", 0.0)),
+                reason=reason_payload,
+                prediction_snapshot=dict(snapshot_payload),
+            )
         )
-    resolved_params["_result_candidates"] = task_candidates
-    task_row.resolved_params = resolved_params
     task_row.status = RuntimeTaskStatus.SUCCEEDED
     session.add(task_row)
     await session.commit()

@@ -196,7 +196,7 @@ class RuntimeControlIngressService:
             )
         )
 
-    async def persist_step_event(self, message: pb.TaskEvent) -> None:
+    async def persist_task_event(self, message: pb.TaskEvent) -> None:
         event_type, payload, status_enum = runtime_codec.decode_task_event(message)
         mapped_status = self._status_from_pb(status_enum) if status_enum is not None else None
         task_id = self._parse_uuid(message.task_id, "task_id")
@@ -215,7 +215,7 @@ class RuntimeControlIngressService:
             await persistence.persist_task_event(event_dto)
             await session.commit()
 
-    async def persist_step_result(self, message: pb.TaskResult) -> None:
+    async def persist_task_result(self, message: pb.TaskResult) -> None:
         task_id = self._parse_uuid(message.task_id, "task_id")
         artifacts: list[RuntimeArtifactDTO] = [
             RuntimeArtifactDTO(

@@ -259,7 +259,7 @@ export function formatRuntimeEventMessage(
     event: RuntimeEventLike,
     options?: {
         translator?: RuntimeMessageTranslator;
-        withStepPrefix?: boolean;
+        withTaskPrefix?: boolean;
     },
 ): string {
     const translated = translateRuntimeMessage(event.messageKey, event.messageParams || {}, options?.translator);
@@ -271,8 +271,8 @@ export function formatRuntimeEventMessage(
         || deriveFallbackMessage(event.eventType, asRecord(event.payload), stripAnsiAndControl(event.rawMessage || ''));
     const content = translated || fallback || '-';
 
-    const withStepPrefix = Boolean(options?.withStepPrefix);
-    if (!withStepPrefix) return content;
+    const withTaskPrefix = Boolean(options?.withTaskPrefix);
+    if (!withTaskPrefix) return content;
     const maybeRound = event as Partial<RuntimeRoundEvent>;
     const taskIndex = Number(maybeRound.taskIndex ?? 0);
     const taskType = String(maybeRound.taskType ?? '').trim().toLowerCase();

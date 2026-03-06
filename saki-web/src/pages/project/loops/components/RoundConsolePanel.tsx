@@ -318,7 +318,7 @@ const RoundConsolePanel: React.FC<RoundConsolePanelProps> = ({
     );
 
     const getDisplayMessage = useCallback(
-        (event: RuntimeRoundEvent) => formatRuntimeEventMessage(event, {translator: t, withStepPrefix: false}),
+        (event: RuntimeRoundEvent) => formatRuntimeEventMessage(event, {translator: t, withTaskPrefix: false}),
         [t],
     );
 
@@ -659,7 +659,7 @@ const RoundConsolePanel: React.FC<RoundConsolePanelProps> = ({
                         <div>
                             <div className="mb-1 text-xs text-slate-500">语义文案</div>
                             <pre className="rounded border border-github-border bg-github-bg p-2 whitespace-pre-wrap break-all">
-                                {formatRuntimeEventMessage(rawEvent, {translator: t, withStepPrefix: false})}
+                                {formatRuntimeEventMessage(rawEvent, {translator: t, withTaskPrefix: false})}
                             </pre>
                         </div>
                         <div>

@@ -1,9 +1,10 @@
 -- name: ListPendingStepIDs :many
 SELECT s.id AS id
 FROM step s
+LEFT JOIN task t ON t.id = s.task_id
 JOIN round r ON r.id = s.round_id
 JOIN loop l ON l.id = r.loop_id
-WHERE s.state = 'PENDING'::stepstatus
+WHERE COALESCE(t.status::text, s.state::text)::stepstatus = 'PENDING'::stepstatus
   AND l.lifecycle = 'RUNNING'::looplifecycle
 ORDER BY s.created_at ASC
 LIMIT sqlc.arg(limit_count);
@@ -11,9 +12,10 @@ LIMIT sqlc.arg(limit_count);
 -- name: ListReadyStepIDsForUpdateSkipLocked :many
 SELECT s.id AS id
 FROM step s
+LEFT JOIN task t ON t.id = s.task_id
 JOIN round r ON r.id = s.round_id
 JOIN loop l ON l.id = r.loop_id
-WHERE s.state = 'READY'::stepstatus
+WHERE COALESCE(t.status::text, s.state::text)::stepstatus = 'READY'::stepstatus
   AND l.lifecycle = 'RUNNING'::looplifecycle
 ORDER BY s.created_at ASC
 LIMIT sqlc.arg(limit_count)
@@ -45,21 +47,22 @@ FOR UPDATE OF t SKIP LOCKED;
 -- name: ListRetryingStepIDsDueForUpdateSkipLocked :many
 SELECT s.id AS id
 FROM step s
+LEFT JOIN task t ON t.id = s.task_id
 JOIN round r ON r.id = s.round_id
 JOIN loop l ON l.id = r.loop_id
-WHERE s.state = 'RETRYING'::stepstatus
+WHERE COALESCE(t.status::text, s.state::text)::stepstatus = 'RETRYING'::stepstatus
   AND l.lifecycle = 'RUNNING'::looplifecycle
-  AND s.updated_at <= now() - (
+  AND COALESCE(t.updated_at, s.updated_at) <= now() - (
     CASE
-      WHEN s.attempt <= 1 THEN interval '1 second'
-      WHEN s.attempt = 2 THEN interval '2 seconds'
-      WHEN s.attempt = 3 THEN interval '4 seconds'
-      WHEN s.attempt = 4 THEN interval '8 seconds'
-      WHEN s.attempt = 5 THEN interval '16 seconds'
+      WHEN COALESCE(t.attempt, s.attempt) <= 1 THEN interval '1 second'
+      WHEN COALESCE(t.attempt, s.attempt) = 2 THEN interval '2 seconds'
+      WHEN COALESCE(t.attempt, s.attempt) = 3 THEN interval '4 seconds'
+      WHEN COALESCE(t.attempt, s.attempt) = 4 THEN interval '8 seconds'
+      WHEN COALESCE(t.attempt, s.attempt) = 5 THEN interval '16 seconds'
       ELSE interval '30 seconds'
     END
   )
-ORDER BY s.updated_at ASC
+ORDER BY COALESCE(t.updated_at, s.updated_at) ASC
 LIMIT sqlc.arg(limit_count)
 FOR UPDATE OF s SKIP LOCKED;
 

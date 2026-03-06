@@ -564,12 +564,14 @@ class RuntimeQueryMixin:
         step_stage: dict[uuid.UUID, str] = {}
         target_steps: list[Step] = []
         for step in all_steps:
-            task_type = task_type_by_id.get(step.task_id) if step.task_id is not None else None
-            stage = self._round_stage_from_task_type(task_type) if task_type else self._round_stage_from_step_type(step.step_type)
+            if step.task_id is None:
+                continue
+            task_type = task_type_by_id.get(step.task_id)
+            if not task_type:
+                continue
+            stage = self._round_stage_from_task_type(task_type)
             step_stage[step.id] = stage
             if stage_filter and stage not in stage_filter:
-                continue
-            if step.task_id is None:
                 continue
             target_steps.append(step)
 
@@ -603,10 +605,10 @@ class RuntimeQueryMixin:
             if event.task_id not in step_lookup:
                 continue
             step = step_lookup[event.task_id]
+            task_type = task_type_by_id.get(event.task_id)
+            if not task_type:
+                continue
             item = self._normalize_task_event(event)
-            task_type = task_type_by_id.get(event.task_id) or str(
-                step.step_type.value if hasattr(step.step_type, "value") else step.step_type
-            ).strip().lower()
             item["task_id"] = event.task_id
             item["task_index"] = int(step.step_index or 0)
             item["task_type"] = task_type

@@ -213,7 +213,7 @@ const ProjectPredictionTasks: React.FC = () => {
 
     const toTaskConsoleEvent = useCallback((task: PredictionTaskRead, event: any): RuntimeRoundEvent => ({
         ...event,
-        taskId: String(task.taskId || task.id),
+        taskId: String(task.taskId || ''),
         taskIndex: 1,
         taskType: 'predict',
         stage: 'custom',

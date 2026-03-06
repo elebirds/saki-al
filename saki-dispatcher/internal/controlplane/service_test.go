@@ -83,6 +83,35 @@ func TestRuntimeTaskTypeFromTaskType(t *testing.T) {
 	}
 }
 
+func TestIsTaskStatusDispatchable(t *testing.T) {
+	dispatchable := []string{
+		"PENDING",
+		"READY",
+		"RETRYING",
+	}
+	for _, status := range dispatchable {
+		if !isTaskStatusDispatchable(status) {
+			t.Fatalf("status should be dispatchable: %s", status)
+		}
+	}
+
+	undispatchable := []string{
+		"DISPATCHING",
+		"RUNNING",
+		"SUCCEEDED",
+		"FAILED",
+		"SKIPPED",
+		"CANCELLED",
+		"UNKNOWN",
+		"",
+	}
+	for _, status := range undispatchable {
+		if isTaskStatusDispatchable(status) {
+			t.Fatalf("status should not be dispatchable: %s", status)
+		}
+	}
+}
+
 func TestStepPlanByModeDispatchKinds(t *testing.T) {
 	plan := stepPlanByMode(modeSIM)
 	if len(plan) != 4 {

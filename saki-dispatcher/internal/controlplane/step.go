@@ -282,7 +282,15 @@ func (s *Service) dispatchTaskByID(ctx context.Context, taskID uuid.UUID) (bool,
 		return false, err
 	}
 	if !mapped {
-		return false, tx.Commit(ctx)
+		reason := "step projection missing"
+		if err := s.updateTaskStatusTx(ctx, tx, taskID, "FAILED", reason); err != nil {
+			return false, err
+		}
+		s.logger.Warn().
+			Str("task_id", taskID.String()).
+			Str("task_kind", taskKind).
+			Msg("检测到无 step 投影的 step task，已标记 FAILED")
+		return true, tx.Commit(ctx)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return false, err

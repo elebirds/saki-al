@@ -565,10 +565,10 @@ class RuntimeQueryMixin:
         target_steps: list[Step] = []
         for step in all_steps:
             if step.task_id is None:
-                continue
+                raise NotFoundAppException(f"step {step.id} has no task binding")
             task_type = task_type_by_id.get(step.task_id)
             if not task_type:
-                continue
+                raise NotFoundAppException(f"task {step.task_id} not found for step {step.id}")
             stage = self._round_stage_from_task_type(task_type)
             step_stage[step.id] = stage
             if stage_filter and stage not in stage_filter:
@@ -607,7 +607,7 @@ class RuntimeQueryMixin:
             step = step_lookup[event.task_id]
             task_type = task_type_by_id.get(event.task_id)
             if not task_type:
-                continue
+                raise NotFoundAppException(f"task {event.task_id} not found for step {step.id}")
             item = self._normalize_task_event(event)
             item["task_id"] = event.task_id
             item["task_index"] = int(step.step_index or 0)
@@ -686,10 +686,10 @@ class RuntimeQueryMixin:
         items: list[RoundArtifactRead] = []
         for step in steps:
             if step.task_id is None:
-                continue
+                raise NotFoundAppException(f"step {step.id} has no task binding")
             task = task_by_id.get(step.task_id)
             if task is None:
-                continue
+                raise NotFoundAppException(f"task {step.task_id} not found for step {step.id}")
 
             task_type = str(task.task_type.value if hasattr(task.task_type, "value") else task.task_type).strip().lower()
             stage = self._round_stage_from_task_type(task_type)

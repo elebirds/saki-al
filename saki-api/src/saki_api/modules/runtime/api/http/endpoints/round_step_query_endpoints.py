@@ -27,6 +27,7 @@ from saki_api.modules.runtime.api.round_step import (
     TaskMetricPointRead,
 )
 from saki_api.modules.access.domain.rbac import Permissions
+from saki_api.core.exceptions import NotFoundAppException
 
 router = APIRouter()
 
@@ -104,8 +105,12 @@ async def list_round_steps(
 
     result: list[StepRead] = []
     for item in steps:
+        if item.task_id is None:
+            raise NotFoundAppException(f"step {item.id} has no task binding")
+        if item.task_id not in task_depends_map:
+            raise NotFoundAppException(f"task {item.task_id} not found for step {item.id}")
         payload = StepRead.model_validate(item).model_dump()
-        payload["depends_on_task_ids"] = task_depends_map.get(item.task_id, []) if item.task_id is not None else []
+        payload["depends_on_task_ids"] = task_depends_map[item.task_id]
         result.append(StepRead.model_validate(payload))
     return result
 

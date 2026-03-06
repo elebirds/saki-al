@@ -7,7 +7,6 @@ from sqlmodel import delete, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.infra.db.repository import BaseRepository
-from saki_api.modules.runtime.domain.step import Step
 from saki_api.modules.runtime.domain.task_metric_point import TaskMetricPoint
 
 
@@ -33,15 +32,3 @@ class TaskMetricPointRepository(BaseRepository[TaskMetricPoint]):
         stmt = delete(TaskMetricPoint).where(TaskMetricPoint.task_id == task_id)
         result = await self.session.exec(stmt)
         return int(result.rowcount or 0)
-
-    async def list_by_step(self, step_id: uuid.UUID, limit: int = 5000) -> List[TaskMetricPoint]:
-        step = await self.session.get(Step, step_id)
-        if step is None or step.task_id is None:
-            return []
-        return await self.list_by_task(step.task_id, limit=limit)
-
-    async def delete_by_step(self, step_id: uuid.UUID) -> int:
-        step = await self.session.get(Step, step_id)
-        if step is None or step.task_id is None:
-            return 0
-        return await self.delete_by_task(step.task_id)

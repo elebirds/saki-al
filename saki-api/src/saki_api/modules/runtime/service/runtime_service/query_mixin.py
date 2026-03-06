@@ -191,16 +191,6 @@ class RuntimeQueryMixin:
         steps = await self.step_repo.list_by_round(round_id)
         return steps[: max(1, min(limit, 5000))]
 
-    async def list_step_events(self, step_id: uuid.UUID, after_seq: int = 0, limit: int = 5000):
-        step = await self.step_repo.get_by_id_or_raise(step_id)
-        if not step.task_id:
-            return []
-        return await self.task_event_repo.list_by_task_after_seq(
-            task_id=step.task_id,
-            after_seq=max(0, after_seq),
-            limit=max(1, min(limit, 100000)),
-        )
-
     @staticmethod
     def _derive_business_tags(*, payload: dict[str, Any]) -> list[str]:
         tags: list[str] = []
@@ -540,36 +530,6 @@ class RuntimeQueryMixin:
                 "tags": dict(tag_counter),
             }
         return payload
-
-    async def query_step_events(
-        self,
-        *,
-        step_id: uuid.UUID,
-        after_seq: int = 0,
-        limit: int = 5000,
-        event_types: list[str] | None = None,
-        levels: list[str] | None = None,
-        tags: list[str] | None = None,
-        q: str | None = None,
-        from_ts: datetime | None = None,
-        to_ts: datetime | None = None,
-        include_facets: bool = False,
-    ) -> dict[str, Any]:
-        step = await self.step_repo.get_by_id_or_raise(step_id)
-        if not step.task_id:
-            return {"items": [], "next_after_seq": None, "facets": None}
-        return await self.query_task_events(
-            task_id=step.task_id,
-            after_seq=after_seq,
-            limit=limit,
-            event_types=event_types,
-            levels=levels,
-            tags=tags,
-            q=q,
-            from_ts=from_ts,
-            to_ts=to_ts,
-            include_facets=include_facets,
-        )
 
     async def query_round_events(
         self,

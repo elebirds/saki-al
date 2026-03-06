@@ -56,21 +56,3 @@ class TaskCandidateItemRepository(BaseRepository[TaskCandidateItem]):
         )
         rows = await self.session.exec(stmt)
         return [sample_id for sample_id, _rank in rows.all()]
-
-    async def list_by_step(self, step_id: uuid.UUID) -> List[TaskCandidateItem]:
-        step = await self.session.get(Step, step_id)
-        if step is None or step.task_id is None:
-            return []
-        return await self.list_by_task(step.task_id)
-
-    async def delete_by_step(self, step_id: uuid.UUID) -> int:
-        step = await self.session.get(Step, step_id)
-        if step is None or step.task_id is None:
-            return 0
-        return await self.delete_by_task(step.task_id)
-
-    async def list_topk_by_step(self, step_id: uuid.UUID, limit: int = 200) -> List[TaskCandidateItem]:
-        step = await self.session.get(Step, step_id)
-        if step is None or step.task_id is None:
-            return []
-        return await self.list_topk_by_task(step.task_id, limit=limit)

@@ -57,9 +57,11 @@ class RoundSelectionMixin:
             raise BadRequestAppException("round has no select step")
         score_step = sorted(score_steps, key=lambda item: int(item.step_index), reverse=True)[0]
         select_step = sorted(select_steps, key=lambda item: int(item.step_index), reverse=True)[0]
+        if score_step.task_id is None:
+            raise BadRequestAppException("score step missing task binding")
 
         topk, review_pool_size = self._sampling_limits_from_round(round_row=round_row, fallback_topk=loop.query_batch_size)
-        score_pool = await self.task_candidate_repo.list_by_step(score_step.id)
+        score_pool = await self.task_candidate_repo.list_by_task(score_step.task_id)
         if review_pool_size > 0:
             score_pool = score_pool[:review_pool_size]
         auto_selected = score_pool[:topk]

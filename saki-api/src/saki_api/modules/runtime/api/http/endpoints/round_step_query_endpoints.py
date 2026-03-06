@@ -23,7 +23,6 @@ from saki_api.modules.runtime.api.round_step import (
     StepArtifactDownloadResponse,
     StepArtifactsResponse,
     StepCandidateRead,
-    StepEventQueryResponse,
     TaskEventQueryResponse,
     StepMetricPointRead,
 )
@@ -266,47 +265,6 @@ async def get_task_events(
         include_facets=include_facets,
     )
     return TaskEventQueryResponse.model_validate(payload)
-
-
-async def get_step_events(
-    *,
-    step_id: uuid.UUID,
-    after_seq: int = 0,
-    limit: int = 5000,
-    event_types: str | None = None,
-    levels: str | None = None,
-    tags: str | None = None,
-    q: str | None = None,
-    from_ts: datetime | None = None,
-    to_ts: datetime | None = None,
-    include_facets: bool = False,
-    runtime_service: RuntimeServiceDep,
-    session: AsyncSession,
-    current_user_id: uuid.UUID,
-) -> StepEventQueryResponse:
-    step = await runtime_service.get_step_by_id_or_raise(step_id)
-    round_item = await runtime_service.get_by_id_or_raise(step.round_id)
-    await ensure_project_permission(
-        session=session,
-        current_user_id=current_user_id,
-        project_id=round_item.project_id,
-        required_permission=Permissions.ROUND_READ,
-    )
-    if step.task_id is None:
-        return StepEventQueryResponse(items=[], next_after_seq=None, facets=None)
-    payload = await runtime_service.query_task_events(
-        task_id=step.task_id,
-        after_seq=after_seq,
-        limit=limit,
-        event_types=_csv_to_list(event_types),
-        levels=_csv_to_list(levels),
-        tags=_csv_to_list(tags),
-        q=q,
-        from_ts=from_ts,
-        to_ts=to_ts,
-        include_facets=include_facets,
-    )
-    return StepEventQueryResponse.model_validate(payload)
 
 
 @router.get("/steps/{step_id}/metrics/series", response_model=List[StepMetricPointRead])

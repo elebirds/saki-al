@@ -1614,7 +1614,7 @@ async def test_cleanup_round_predictions_writes_audit_log(loop_api_env, monkeypa
 
 
 @pytest.mark.anyio
-async def test_get_step_events_query_contract(loop_api_env, monkeypatch):
+async def test_get_task_events_query_contract(loop_api_env, monkeypatch):
     session_local = loop_api_env
 
     async def _allow(*args, **kwargs) -> None:
@@ -1717,9 +1717,10 @@ async def test_get_step_events_query_contract(loop_api_env, monkeypatch):
                 ]
             )
             await session.commit()
+            assert step.task_id is not None
 
-            all_events = await round_step_query_endpoint.get_step_events(
-                step_id=step.id,
+            all_events = await round_step_query_endpoint.get_task_events(
+                task_id=step.task_id,
                 after_seq=0,
                 limit=5000,
                 include_facets=True,
@@ -1748,8 +1749,8 @@ async def test_get_step_events_query_contract(loop_api_env, monkeypatch):
             assert "map50=0.7" in metric_event.message_text
             assert "precision=0.8" in metric_event.message_text
 
-            error_only = await round_step_query_endpoint.get_step_events(
-                step_id=step.id,
+            error_only = await round_step_query_endpoint.get_task_events(
+                task_id=step.task_id,
                 after_seq=0,
                 limit=5000,
                 event_types=None,
@@ -1766,8 +1767,8 @@ async def test_get_step_events_query_contract(loop_api_env, monkeypatch):
             assert len(error_only.items) == 1
             assert error_only.items[0].seq == 3
 
-            io_tag_only = await round_step_query_endpoint.get_step_events(
-                step_id=step.id,
+            io_tag_only = await round_step_query_endpoint.get_task_events(
+                task_id=step.task_id,
                 after_seq=0,
                 limit=5000,
                 event_types=None,
@@ -1784,8 +1785,8 @@ async def test_get_step_events_query_contract(loop_api_env, monkeypatch):
             assert len(io_tag_only.items) == 1
             assert io_tag_only.items[0].seq == 3
 
-            status_only = await round_step_query_endpoint.get_step_events(
-                step_id=step.id,
+            status_only = await round_step_query_endpoint.get_task_events(
+                task_id=step.task_id,
                 after_seq=0,
                 limit=5000,
                 event_types="status",
@@ -1802,8 +1803,8 @@ async def test_get_step_events_query_contract(loop_api_env, monkeypatch):
             assert len(status_only.items) == 1
             assert status_only.items[0].seq == 2
 
-            message_search = await round_step_query_endpoint.get_step_events(
-                step_id=step.id,
+            message_search = await round_step_query_endpoint.get_task_events(
+                task_id=step.task_id,
                 after_seq=0,
                 limit=5000,
                 event_types=None,

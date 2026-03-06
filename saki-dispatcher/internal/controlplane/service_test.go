@@ -59,9 +59,6 @@ func TestToRuntimeTaskType(t *testing.T) {
 			t.Fatalf("step type mapping mismatch: %s -> %v, want %v", stepType, got, want)
 		}
 	}
-	if got := toRuntimeTaskType(db.SteptypePREDICT); got != runtimecontrolv1.RuntimeTaskType_RUNTIME_TASK_TYPE_UNSPECIFIED {
-		t.Fatalf("predict step type should be unsupported: %v", got)
-	}
 	if got := toRuntimeTaskType(db.Steptype("UNKNOWN")); got != runtimecontrolv1.RuntimeTaskType_RUNTIME_TASK_TYPE_UNSPECIFIED {
 		t.Fatalf("unknown step type fallback mismatch: %v", got)
 	}

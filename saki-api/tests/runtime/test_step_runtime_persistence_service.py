@@ -17,7 +17,11 @@ from saki_api.modules.runtime.domain.loop import Loop
 from saki_api.modules.runtime.domain.round import Round
 from saki_api.modules.runtime.domain.step import Step
 from saki_api.modules.runtime.domain.step_metric_point import StepMetricPoint
-from saki_api.modules.runtime.service.application.event_dto import RuntimeStepEventDTO, RuntimeStepResultDTO
+from saki_api.modules.runtime.service.application.event_dto import (
+    RuntimeStepEventDTO,
+    RuntimeStepResultDTO,
+    RuntimeTaskResultDTO,
+)
 from saki_api.modules.runtime.service.persistence.step_runtime_persistence_service import RuntimeStepPersistenceService
 from saki_api.modules.shared.modeling.enums import (
     AuthorType,
@@ -290,3 +294,50 @@ async def test_persist_multi_step_result_keeps_eval_metrics_as_round_final(persi
         assert round_row is not None
         assert round_row.state == RoundStatus.COMPLETED
         assert round_row.final_metrics == {"map50": 0.81, "precision": 0.89}
+
+
+@pytest.mark.anyio
+async def test_persist_task_result_projects_back_to_step_without_step_id_input(persistence_env):
+    session_local = persistence_env
+
+    async with session_local() as session:
+        step_id, round_id = await _seed_train_step(session)
+        persistence = RuntimeStepPersistenceService(session)
+
+        await persistence.persist_step_event(
+            RuntimeStepEventDTO(
+                step_id=step_id,
+                seq=1,
+                ts=datetime.now(UTC),
+                event_type="status",
+                payload={"reason": "bootstrap"},
+                status=StepStatus.RUNNING,
+            )
+        )
+        await session.flush()
+
+        step = await session.get(Step, step_id)
+        assert step is not None
+        assert step.task_id is not None
+
+        await persistence.persist_task_result(
+            RuntimeTaskResultDTO(
+                task_id=step.task_id,
+                status=StepStatus.SUCCEEDED,
+                metrics={"map50": 0.77, "loss": 0.28},
+                artifacts=[],
+                candidates=[],
+            )
+        )
+        await session.commit()
+
+        refreshed_step = await session.get(Step, step_id)
+        assert refreshed_step is not None
+        assert refreshed_step.state == StepStatus.SUCCEEDED
+        assert float(refreshed_step.metrics.get("map50", 0.0)) == pytest.approx(0.77)
+        assert float(refreshed_step.metrics.get("loss", 0.0)) == pytest.approx(0.28)
+
+        round_row = await session.get(Round, round_id)
+        assert round_row is not None
+        assert float(round_row.final_metrics.get("map50", 0.0)) == pytest.approx(0.77)
+        assert float(round_row.final_metrics.get("loss", 0.0)) == pytest.approx(0.28)

@@ -103,7 +103,7 @@ async def test_plugin_facade_forwards_context_to_runtime(tmp_path):
 
     workspace = Workspace(str(tmp_path / "runs"), "step-ctx-1")
     workspace.ensure()
-    step_context = TaskRuntimeContext(
+    task_context = TaskRuntimeContext(
         task_id="step-ctx-1",
         round_id="round-ctx-1",
         round_index=4,
@@ -116,7 +116,7 @@ async def test_plugin_facade_forwards_context_to_runtime(tmp_path):
         resolved_device_backend="cpu",
     )
     context = ExecutionBindingContext(
-        task_context=step_context,
+        task_context=task_context,
         host_capability=HostCapabilitySnapshot.from_dict(
             {
                 "cpu_workers": 8,
@@ -156,12 +156,12 @@ async def test_plugin_facade_forwards_context_to_runtime(tmp_path):
         context=context,
     )
     assert runtime_stub.last_train_context is not None
-    forwarded_step_context = runtime_stub.last_train_context.task_context
-    assert forwarded_step_context.task_type == "train"
-    assert forwarded_step_context.mode == "simulation"
-    assert forwarded_step_context.split_seed == 11
-    assert forwarded_step_context.train_seed == 22
-    assert forwarded_step_context.sampling_seed == 33
+    forwarded_task_context = runtime_stub.last_train_context.task_context
+    assert forwarded_task_context.task_type == "train"
+    assert forwarded_task_context.mode == "simulation"
+    assert forwarded_task_context.split_seed == 11
+    assert forwarded_task_context.train_seed == 22
+    assert forwarded_task_context.sampling_seed == 33
 
 
 def test_config_service_uses_manifest_options_as_single_source():
@@ -265,7 +265,7 @@ async def test_runtime_prepare_data_ignores_yolo_task_split_hint(tmp_path: Path,
         _fake_prepare_yolo_dataset,
     )
 
-    step_context = TaskRuntimeContext(
+    task_context = TaskRuntimeContext(
         task_id="step-prepare-1",
         round_id="round-prepare-1",
         round_index=0,
@@ -278,7 +278,7 @@ async def test_runtime_prepare_data_ignores_yolo_task_split_hint(tmp_path: Path,
         resolved_device_backend="cpu",
     )
     context = ExecutionBindingContext(
-        task_context=step_context,
+        task_context=task_context,
         host_capability=HostCapabilitySnapshot.from_dict(
             {
                 "cpu_workers": 8,
@@ -363,7 +363,7 @@ async def test_runtime_train_reads_split_seed_from_plugin_config_attrs(tmp_path:
         lambda *, metrics, prepare_stats, to_int, to_bool: dict(metrics),
     )
 
-    step_context = TaskRuntimeContext(
+    task_context = TaskRuntimeContext(
         task_id="step-train-1",
         round_id="round-train-1",
         round_index=1,
@@ -376,7 +376,7 @@ async def test_runtime_train_reads_split_seed_from_plugin_config_attrs(tmp_path:
         resolved_device_backend="cpu",
     )
     context = ExecutionBindingContext(
-        task_context=step_context,
+        task_context=task_context,
         host_capability=HostCapabilitySnapshot.from_dict(
             {
                 "cpu_workers": 8,

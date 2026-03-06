@@ -59,7 +59,7 @@ class DemoDetectionInternal:
             *,
             context: ExecutionBindingContext,
     ) -> TrainOutput:
-        step_context = context.task_context
+        task_context = context.task_context
         epochs = int(params.get("epochs", 5))
         steps_per_epoch = int(params.get("steps_per_epoch", 20))
 
@@ -69,9 +69,9 @@ class DemoDetectionInternal:
                 "level": "INFO",
                 "message": (
                     "training started "
-                    f"task_type={step_context.task_type} mode={step_context.mode} "
-                    f"split_seed={step_context.split_seed} train_seed={step_context.train_seed} "
-                    f"sampling_seed={step_context.sampling_seed}"
+                    f"task_type={task_context.task_type} mode={task_context.mode} "
+                    f"split_seed={task_context.split_seed} train_seed={task_context.train_seed} "
+                    f"sampling_seed={task_context.sampling_seed}"
                 ),
             },
         )
@@ -94,11 +94,11 @@ class DemoDetectionInternal:
             await emit("metric", {"step": epoch, "epoch": epoch, "metrics": metrics})
 
         report_meta = {
-            "context_task_type": step_context.task_type,
-            "context_mode": step_context.mode,
-            "context_split_seed": float(step_context.split_seed),
-            "context_train_seed": float(step_context.train_seed),
-            "context_sampling_seed": float(step_context.sampling_seed),
+            "context_task_type": task_context.task_type,
+            "context_mode": task_context.mode,
+            "context_split_seed": float(task_context.split_seed),
+            "context_train_seed": float(task_context.train_seed),
+            "context_sampling_seed": float(task_context.sampling_seed),
         }
 
         model_path = workspace.artifacts_dir / "best.pt"

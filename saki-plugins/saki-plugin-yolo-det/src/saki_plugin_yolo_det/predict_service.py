@@ -69,15 +69,15 @@ class YoloPredictService:
         topk = max(1, to_int(getattr(cfg, "topk", getattr(cfg, "sampling_topk", 200)), 200))
         conf = to_float(cfg.predict_conf, 0.1)
         imgsz = to_int(cfg.imgsz, 640)
-        step_context = context.task_context
+        task_context = context.task_context
         random_seed = max(
             0,
             to_int(
-                getattr(cfg, "sampling_seed", getattr(cfg, "random_seed", step_context.sampling_seed))
+                getattr(cfg, "sampling_seed", getattr(cfg, "random_seed", task_context.sampling_seed))
             ),
             0,
         )
-        round_index = max(1, to_int(getattr(cfg, "round_index", step_context.round_index)), 1)
+        round_index = max(1, to_int(getattr(cfg, "round_index", task_context.round_index)), 1)
         device = to_yolo_device(
             str(context.device_binding.backend or ""),
             str(context.device_binding.device_spec or ""),

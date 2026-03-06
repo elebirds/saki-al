@@ -942,7 +942,7 @@
         "createSuccess": "Prediction task created",
         "createFailed": "Failed to create prediction task",
         "applySuccess": "Applied to Draft: {{count}} items",
-        "applyFailed": "Failed to apply prediction set"
+        "applyFailed": "Failed to apply prediction task result"
       },
       "table": {
         "taskId": "Task ID",
@@ -961,13 +961,8 @@
       },
       "form": {
         "plugin": "Plugin",
-        "pluginExtra": "Select plugin first, then Round/Model/Artifact will be filtered accordingly.",
-        "targetRound": "Target Round",
-        "targetRoundExtra": "Task will be attached to this Round for scheduling (execution anchor).",
-        "modelSource": "Model Source",
+        "pluginExtra": "Select plugin first, then Model/Artifact options will be filtered accordingly.",
         "model": "Model",
-        "sourceRound": "Source Round",
-        "sourceRoundExtra": "Only used in Round Artifact mode to pick model files from that Round artifacts.",
         "artifactName": "Artifact Name",
         "targetBranch": "Target Branch",
         "baseCommit": "Base Commit",

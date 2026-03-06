@@ -168,7 +168,7 @@ class RuntimeControlIngressService:
                 reason=exc.reason,
             )
 
-        object_name = f"runtime/steps/{request.task_id}/{request.artifact_name}"
+        object_name = f"runtime/tasks/{request.task_id}/{request.artifact_name}"
         try:
             upload_url = self.storage.get_presigned_put_url(
                 object_name=object_name,
@@ -202,10 +202,8 @@ class RuntimeControlIngressService:
         task_id = self._parse_uuid(message.task_id, "task_id")
 
         async with self._session_local() as session:
-            step_id = await self._resolve_step_id_by_task(session=session, task_id=task_id)
             event_dto = RuntimeTaskEventDTO(
                 task_id=task_id,
-                step_id=step_id,
                 seq=int(message.seq),
                 ts=self._to_datetime_seconds(int(message.ts)),
                 event_type=event_type,
@@ -263,13 +261,11 @@ class RuntimeControlIngressService:
                     reason=reason_payload,
                     prediction_snapshot=snapshot_payload,
                 )
-            )
+                )
 
         async with self._session_local() as session:
-            step_id = await self._resolve_step_id_by_task(session=session, task_id=task_id)
             result_dto = RuntimeTaskResultDTO(
                 task_id=task_id,
-                step_id=step_id,
                 status=self._status_from_pb(int(message.status)),
                 metrics={str(k): float(v) for k, v in message.metrics.items()},
                 artifacts=artifacts,
@@ -520,15 +516,6 @@ class RuntimeControlIngressService:
         if not snapshot:
             return loop_id, mode, None
         return loop_id, mode, snapshot
-
-    async def _resolve_step_id_by_task(self, *, session, task_id: uuid.UUID) -> uuid.UUID | None:
-        return (
-            await session.exec(
-                select(Step.id)
-                .where(Step.task_id == task_id)
-                .limit(1)
-            )
-        ).first()
 
     async def _to_sample_items(
         self,

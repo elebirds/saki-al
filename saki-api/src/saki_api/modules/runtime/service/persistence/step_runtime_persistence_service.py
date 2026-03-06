@@ -94,9 +94,7 @@ class RuntimeTaskPersistenceService:
                 )
             await self.metric_repo.add_many(metric_points)
 
-        if event.step_id is None:
-            return
-        step = await self.step_repo.get_by_id(event.step_id)
+        step = await self.step_repo.get_by_task_id(event.task_id)
         if not step:
             return
 
@@ -139,7 +137,6 @@ class RuntimeTaskPersistenceService:
         await self.persist_task_event(
             RuntimeTaskEventDTO(
                 task_id=step.task_id,
-                step_id=step.id,
                 seq=event.seq,
                 ts=event.ts,
                 event_type=event.event_type,
@@ -187,9 +184,7 @@ class RuntimeTaskPersistenceService:
                 ).model_dump(exclude_none=True)
             )
 
-        if result.step_id is None:
-            return
-        step = await self.step_repo.get_by_id(result.step_id)
+        step = await self.step_repo.get_by_task_id(result.task_id)
         if not step:
             return
 
@@ -220,7 +215,6 @@ class RuntimeTaskPersistenceService:
         await self.persist_task_result(
             RuntimeTaskResultDTO(
                 task_id=step.task_id,
-                step_id=step.id,
                 status=result.status,
                 metrics=dict(result.metrics or {}),
                 artifacts=list(result.artifacts or []),

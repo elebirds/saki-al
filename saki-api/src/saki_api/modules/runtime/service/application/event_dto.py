@@ -32,7 +32,6 @@ class RuntimeStepCandidateDTO(RuntimeTaskCandidateDTO):
 
 class RuntimeTaskEventDTO(BaseModel):
     task_id: uuid.UUID
-    step_id: uuid.UUID | None = None
     seq: int
     ts: datetime
     event_type: Literal["status", "log", "progress", "metric", "artifact"]
@@ -43,7 +42,6 @@ class RuntimeTaskEventDTO(BaseModel):
 
 class RuntimeTaskResultDTO(BaseModel):
     task_id: uuid.UUID
-    step_id: uuid.UUID | None = None
     status: StepStatus
     metrics: dict[str, float] = Field(default_factory=dict)
     artifacts: list[RuntimeArtifactDTO] = Field(default_factory=list)

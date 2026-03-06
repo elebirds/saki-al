@@ -25,6 +25,9 @@ class StepRepository(BaseRepository[Step]):
     async def get_by_id_with_relations(self, step_id: uuid.UUID) -> Optional[Step]:
         return await self.get_one(filters=[Step.id == step_id])
 
+    async def get_by_task_id(self, task_id: uuid.UUID) -> Optional[Step]:
+        return await self.get_one(filters=[Step.task_id == task_id])
+
     async def list_pending_by_round(self, round_id: uuid.UUID) -> List[Step]:
         stmt = (
             select(Step)

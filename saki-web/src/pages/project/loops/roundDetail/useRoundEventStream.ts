@@ -140,13 +140,18 @@ export const useRoundEventStream = ({
             if (statusRows.length > 0) {
                 setSteps((prev) => {
                     if (!prev || prev.length === 0) return prev;
-                    const indexMap = new Map(prev.map((item, idx) => [item.id, idx]));
+                    const indexMap = new Map<string, number>();
+                    prev.forEach((item, idx) => {
+                        const taskId = String(item.taskId || '').trim();
+                        if (!taskId) return;
+                        indexMap.set(taskId, idx);
+                    });
                     const next = [...prev];
                     let changed = false;
                     statusRows.forEach((row) => {
-                        const stepId = String(row.stepId || '').trim();
-                        if (!stepId) return;
-                        const idx = indexMap.get(stepId);
+                        const taskId = String(row.taskId || '').trim();
+                        if (!taskId) return;
+                        const idx = indexMap.get(taskId);
                         if (idx == null) return;
                         const current = next[idx];
                         if (!current) return;

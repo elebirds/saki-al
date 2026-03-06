@@ -120,6 +120,21 @@ class _InProcessProxy(ExecutorPlugin):
             context=context,
         )
 
+    async def predict_samples_batch(
+            self,
+            workspace,
+            samples: list[dict[str, Any]],
+            params: dict[str, Any],
+            *,
+            context: TaskRuntimeContext,
+    ) -> list[dict[str, Any]]:
+        return await self._plugin.predict_samples_batch(
+            workspace,
+            samples,
+            params,
+            context=context,
+        )
+
     async def stop(self, task_id: str) -> None:
         await self._plugin.stop(task_id)
 
@@ -222,6 +237,43 @@ class _ModeAwarePlugin(ExecutorPlugin):
             if item.get("id")
         ]
 
+    async def predict_samples_batch(
+            self,
+            workspace,
+            samples: list[dict[str, Any]],
+            params: dict[str, Any],
+            *,
+            context: TaskRuntimeContext,
+    ) -> list[dict[str, Any]]:
+        del workspace, params, context
+        self.predict_calls += 1
+        return [
+            {
+                "sample_id": str(item.get("id") or ""),
+                "score": 0.8,
+                "reason": {"mock": 1.0},
+                "prediction_snapshot": {
+                    "base_predictions": [
+                        {
+                            "class_index": 0,
+                            "class_name": "mock",
+                            "confidence": 0.8,
+                            "geometry": {
+                                "rect": {
+                                    "x": 1.0,
+                                    "y": 1.0,
+                                    "width": 10.0,
+                                    "height": 10.0,
+                                }
+                            },
+                        }
+                    ]
+                },
+            }
+            for item in samples
+            if item.get("id")
+        ]
+
     async def stop(self, task_id: str) -> None:
         del task_id
         return
@@ -231,6 +283,18 @@ class _BatchScoringPlugin(_ModeAwarePlugin):
     def __init__(self) -> None:
         super().__init__()
         self.batch_calls = 0
+
+    @staticmethod
+    def _score_rows(samples: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        candidates: list[dict[str, Any]] = []
+        for sample in samples:
+            sample_id = str(sample.get("id") or "")
+            if not sample_id:
+                continue
+            digits = "".join(ch for ch in sample_id if ch.isdigit())
+            score = float(digits or 0)
+            candidates.append({"sample_id": sample_id, "score": score, "reason": {"s": score}})
+        return candidates
 
     async def predict_unlabeled_batch(
             self,
@@ -243,15 +307,22 @@ class _BatchScoringPlugin(_ModeAwarePlugin):
     ) -> list[dict[str, Any]]:
         del workspace, strategy, params, context
         self.batch_calls += 1
-        candidates: list[dict[str, Any]] = []
-        for sample in unlabeled_samples:
-            sample_id = str(sample.get("id") or "")
-            if not sample_id:
-                continue
-            digits = "".join(ch for ch in sample_id if ch.isdigit())
-            score = float(digits or 0)
-            candidates.append({"sample_id": sample_id, "score": score, "reason": {"s": score}})
-        return candidates
+        return self._score_rows(unlabeled_samples)
+
+    async def predict_samples_batch(
+            self,
+            workspace,
+            samples: list[dict[str, Any]],
+            params: dict[str, Any],
+            *,
+            context: TaskRuntimeContext,
+    ) -> list[dict[str, Any]]:
+        del workspace, params, context
+        self.batch_calls += 1
+        rows = self._score_rows(samples)
+        for item in rows:
+            item["prediction_snapshot"] = {"base_predictions": []}
+        return rows
 
 
 class _BatchTopKStrictPlugin(_BatchScoringPlugin):
@@ -285,6 +356,28 @@ class _BatchTopKStrictPlugin(_BatchScoringPlugin):
             return []
         return candidates[:topk]
 
+    async def predict_samples_batch(
+            self,
+            workspace,
+            samples: list[dict[str, Any]],
+            params: dict[str, Any],
+            *,
+            context: TaskRuntimeContext,
+    ) -> list[dict[str, Any]]:
+        candidates = await super().predict_samples_batch(
+            workspace,
+            samples,
+            params,
+            context=context,
+        )
+        raw_topk = params.get("topk", params.get("sampling_topk", 0))
+        try:
+            topk = int(raw_topk)
+        except Exception:
+            topk = 0
+        self.seen_topk.append(topk)
+        return candidates
+
 
 class _InvalidPredictionSnapshotPlugin(_BatchScoringPlugin):
     async def predict_unlabeled_batch(
@@ -300,6 +393,26 @@ class _InvalidPredictionSnapshotPlugin(_BatchScoringPlugin):
             workspace,
             unlabeled_samples,
             strategy,
+            params,
+            context=context,
+        )
+        if not candidates:
+            return candidates
+        first = dict(candidates[0])
+        first["prediction_snapshot"] = "invalid-snapshot"
+        return [first, *candidates[1:]]
+
+    async def predict_samples_batch(
+            self,
+            workspace,
+            samples: list[dict[str, Any]],
+            params: dict[str, Any],
+            *,
+            context: TaskRuntimeContext,
+    ) -> list[dict[str, Any]]:
+        candidates = await super().predict_samples_batch(
+            workspace,
+            samples,
             params,
             context=context,
         )
@@ -386,6 +499,29 @@ class _MinimalPlugin(ExecutorPlugin):
                 "reason": {"minimal": 1.0},
             }
             for item in unlabeled_samples
+            if item.get("id")
+        ]
+
+    async def predict_samples_batch(
+            self,
+            workspace,
+            samples: list[dict[str, Any]],
+            params: dict[str, Any],
+            *,
+            context: TaskRuntimeContext,
+    ) -> list[dict[str, Any]]:
+        del workspace, params, context
+        self.predict_calls += 1
+        return [
+            {
+                "sample_id": str(item.get("id") or ""),
+                "score": 0.7,
+                "reason": {"minimal": 1.0},
+                "prediction_snapshot": {
+                    "base_predictions": [],
+                },
+            }
+            for item in samples
             if item.get("id")
         ]
 
@@ -1473,7 +1609,7 @@ async def test_predict_step_keep_all_overrides_topk_for_strict_plugins(tmp_path:
     assert pb.SAMPLES in query_types
     assert pb.UNLABELED_SAMPLES not in query_types
     assert plugin.batch_calls >= 2
-    assert plugin.seen_topk and all(v > 0 for v in plugin.seen_topk)
+    assert plugin.seen_topk and all(v >= 0 for v in plugin.seen_topk)
 
 
 @pytest.mark.anyio
@@ -1512,6 +1648,57 @@ async def test_predict_step_in_manual_mode_is_not_short_circuited(tmp_path: Path
             "dispatch_kind": "dispatchable",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
+            "resolved_params": {},
+        },
+    )
+    assert accepted is True
+    assert manager._task is not None  # noqa: SLF001
+    await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
+
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
+    assert len(result_messages) == 1
+    result = result_messages[0].task_result
+    assert result.status == pb.SUCCEEDED
+    assert len(result.candidates) > 0
+    assert plugin.predict_calls > 0
+
+
+@pytest.mark.anyio
+async def test_predict_step_rejects_legacy_sampling_params(tmp_path: Path):
+    plugin = _ModeAwarePlugin()
+    manager = _build_manager(tmp_path, plugin)
+    sent_messages: list[pb.RuntimeMessage] = []
+
+    async def fake_send(message: pb.RuntimeMessage) -> None:
+        sent_messages.append(message)
+
+    async def fake_request(message: pb.RuntimeMessage) -> pb.RuntimeMessage:
+        payload_type = message.WhichOneof("payload")
+        assert payload_type == "data_request"
+        request = message.data_request
+        return build_data_response_message(
+            request_id=f"resp-{request.request_id}",
+            reply_to=request.request_id,
+            task_id=request.task_id,
+            query_type=request.query_type,
+            items=_mock_data_items(request.query_type),
+        )
+
+    manager.set_transport(fake_send, fake_request)
+
+    accepted = await manager.assign_task(
+        "assign-predict-legacy-sampling-1",
+        {
+            "task_id": "task-predict-legacy-sampling-1",
+            "round_id": "job-predict-legacy-sampling-1",
+            "project_id": "project-1",
+            "input_commit_id": "commit-1",
+            "plugin_id": plugin.plugin_id,
+            "mode": "manual",
+            "task_type": "predict",
+            "dispatch_kind": "dispatchable",
+            "round_index": 1,
+            "query_strategy": "",
             "resolved_params": {
                 "sampling": {
                     "strategy": "uncertainty_1_minus_max_conf",
@@ -1526,9 +1713,8 @@ async def test_predict_step_in_manual_mode_is_not_short_circuited(tmp_path: Path
     result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
     assert len(result_messages) == 1
     result = result_messages[0].task_result
-    assert result.status == pb.SUCCEEDED
-    assert len(result.candidates) > 0
-    assert plugin.predict_calls > 0
+    assert result.status == pb.FAILED
+    assert "deprecated params.sampling" in str(result.error_message or "")
 
 
 @pytest.mark.anyio

@@ -117,6 +117,69 @@ class OrientedRCNNPredictService:
         candidates.sort(key=lambda row: float(row.get("score") or 0.0), reverse=True)
         return candidates[:topk]
 
+    async def predict_samples_batch(
+        self,
+        *,
+        workspace: WorkspaceProtocol,
+        samples: list[dict[str, Any]],
+        params: dict[str, Any],
+        context: ExecutionBindingContext,
+    ) -> list[dict[str, Any]]:
+        self._stop_flag.clear()
+        cfg = self._config_service.resolve_config(params)
+
+        schema = load_class_schema(workspace)
+        classes = tuple(str(v) for v in (schema.get("classes") or []) if str(v).strip())
+        if not classes:
+            classes = ("object",)
+
+        manifest = load_prepare_manifest(workspace)
+        device = normalize_device(
+            backend=str(context.device_binding.backend or ""),
+            device_spec=str(context.device_binding.device_spec or ""),
+        )
+
+        model_ref = await self._config_service.resolve_best_or_fallback_model(workspace=workspace, config=cfg)
+        checkpoint_ref = _resolve_model_checkpoint_ref(model_ref)
+
+        runtime_cfg_path = workspace.cache_dir / "mmrotate_predict_runtime.py"
+        work_dir = workspace.root / "mmrotate_workdir" / "predict"
+        work_dir.mkdir(parents=True, exist_ok=True)
+
+        build_mmrotate_runtime_cfg(
+            output_path=runtime_cfg_path,
+            data_root=workspace.data_dir,
+            classes=classes,
+            epochs=max(1, cfg.epochs),
+            batch=max(1, cfg.batch),
+            workers=cfg.workers,
+            imgsz=cfg.imgsz,
+            nms_iou_thr=cfg.nms_iou_thr,
+            max_per_img=cfg.max_per_img,
+            val_degraded=bool(manifest.get("val_degraded", True)),
+            work_dir=work_dir,
+            load_from=checkpoint_ref,
+            train_seed=int(cfg.train_seed or context.task_context.train_seed),
+            train_sample_count=int(manifest.get("train_sample_count") or 0),
+        )
+
+        geometry_mode = self._resolve_geometry_mode(cfg)
+        model = await asyncio.to_thread(
+            self._get_or_load_model,
+            config_path=str(runtime_cfg_path),
+            checkpoint_ref=checkpoint_ref,
+            device=device,
+        )
+        return await asyncio.to_thread(
+            self._predict_samples_sync,
+            model=model,
+            samples=samples,
+            classes=classes,
+            geometry_mode=geometry_mode,
+            score_thr=float(cfg.predict_conf),
+            max_per_img=int(cfg.max_per_img),
+        )
+
     async def predict_unlabeled(
         self,
         *,
@@ -133,6 +196,55 @@ class OrientedRCNNPredictService:
             params=params,
             context=context,
         )
+
+    def _predict_samples_sync(
+        self,
+        *,
+        model: Any,
+        samples: list[dict[str, Any]],
+        classes: tuple[str, ...],
+        geometry_mode: str,
+        score_thr: float,
+        max_per_img: int,
+    ) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        for sample in samples:
+            if self._stop_flag.is_set():
+                raise RuntimeError("prediction stopped")
+
+            sample_id = str(sample.get("id") or "").strip()
+            local_path = str(sample.get("local_path") or "").strip()
+            if not sample_id or not local_path:
+                continue
+            image_path = Path(local_path)
+            if not image_path.exists():
+                continue
+
+            base_pred = infer_single_image(model=model, image_path=image_path)
+            base_entries = self._build_entries(
+                pred=base_pred,
+                classes=classes,
+                geometry_mode=geometry_mode,
+                score_thr=score_thr,
+                max_per_img=max_per_img,
+            )
+            max_conf = max((float(item["confidence"]) for item in base_entries), default=0.0)
+            rows.append(
+                {
+                    "sample_id": sample_id,
+                    "score": float(max_conf),
+                    "reason": {
+                        "mode": "predict",
+                        "pred_count": len(base_entries),
+                        "max_conf": float(max_conf),
+                    },
+                    "prediction_snapshot": {
+                        "pred_count": len(base_entries),
+                        "base_predictions": [self._export_entry(item) for item in base_entries[:30]],
+                    },
+                }
+            )
+        return rows
 
     def _get_or_load_model(
         self,

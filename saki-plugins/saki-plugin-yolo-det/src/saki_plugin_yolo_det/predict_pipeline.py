@@ -20,6 +20,7 @@ def score_unlabeled_samples(
     device: Any,
     stop_flag: Event,
     get_model: Callable[[], Any] | None,
+    predict_single_image: Callable[..., list[dict[str, Any]]],
     predict_with_aug: Callable[..., list[list[dict[str, Any]]]],
     extract_predictions: Callable[[Any], list[dict[str, Any]]],
     build_detection_boxes: Callable[[list[dict[str, Any]]], list[Any]],
@@ -71,15 +72,13 @@ def score_unlabeled_samples(
             )
             continue
         if strategy_key == "uncertainty_1_minus_max_conf":
-            predicts = model.predict(
-                source=str(image_path),
+            rows = predict_single_image(
+                model=model,
+                image_path=image_path,
                 conf=conf,
                 imgsz=imgsz,
                 device=device,
-                verbose=False,
             )
-            first = predicts[0] if predicts else None
-            rows = extract_predictions(first)
             conf_values = [float(item.get("confidence") or 0.0) for item in rows]
             max_conf = max(conf_values) if conf_values else 0.0
             uncertainty = 1.0 - max(0.0, min(1.0, max_conf))

@@ -239,5 +239,49 @@ class DemoDetectionInternal:
         topk = int(params.get("topk", 200))
         return candidates[:topk]
 
+    async def predict_samples_batch(
+            self,
+            workspace: WorkspaceProtocol,
+            samples: list[dict[str, Any]],
+            params: dict[str, Any],
+            *,
+            context: ExecutionBindingContext,
+    ) -> list[dict[str, Any]]:
+        del workspace, params, context
+        rows: list[dict[str, Any]] = []
+        for sample in samples:
+            sample_id = str(sample.get("id") or "")
+            if not sample_id:
+                continue
+            score = 0.9
+            rows.append(
+                {
+                    "sample_id": sample_id,
+                    "score": score,
+                    "reason": {
+                        "mode": "predict",
+                        "pred_count": 1,
+                    },
+                    "prediction_snapshot": {
+                        "base_predictions": [
+                            {
+                                "class_index": 0,
+                                "class_name": "demo",
+                                "confidence": score,
+                                "geometry": {
+                                    "rect": {
+                                        "x": 10.0,
+                                        "y": 10.0,
+                                        "width": 90.0,
+                                        "height": 90.0,
+                                    }
+                                },
+                            }
+                        ]
+                    },
+                }
+            )
+        return rows
+
     async def stop(self, task_id: str) -> None:
         return

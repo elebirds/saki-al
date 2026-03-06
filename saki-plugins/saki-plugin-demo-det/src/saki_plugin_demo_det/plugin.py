@@ -92,5 +92,20 @@ class DemoDetectionPlugin(ExecutorPlugin):
     ) -> TrainOutput:
         return await self._internal.eval(workspace, params, emit, context=context)
 
+    async def predict_samples_batch(
+            self,
+            workspace: WorkspaceProtocol,
+            samples: list[dict[str, Any]],
+            params: dict[str, Any],
+            *,
+            context: ExecutionBindingContext,
+    ) -> list[dict[str, Any]]:
+        return await self._internal.predict_samples_batch(
+            workspace,
+            samples,
+            params,
+            context=context,
+        )
+
     async def stop(self, task_id: str) -> None:
         await self._internal.stop(task_id)

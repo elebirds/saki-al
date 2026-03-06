@@ -1203,7 +1203,7 @@ const ProjectLoopDetail: React.FC = () => {
                                     size="small"
                                     onClick={() => void handleApplyPrediction(row.id)}
                                     loading={applyingPredictionId === row.id}
-                                    disabled={row.status === 'applied'}
+                                    disabled={!['ready', 'applied'].includes(String(row.status || '').toLowerCase())}
                                 >
                                     应用到 Draft
                                 </Button>

@@ -111,6 +111,66 @@ class SamplingService:
             return self._build_ranked_output_from_rows(rows)
         return self._build_ranked_output(heap)
 
+    async def collect_prediction_candidates_streaming(
+        self,
+        *,
+        plugin: ExecutorPlugin,
+        workspace: WorkspaceProtocol,
+        task_id: str,
+        project_id: str,
+        commit_id: str,
+        params: dict[str, Any],
+        protected: set[str],
+        query_type: str,
+        context: ExecutionBindingContext,
+    ) -> list[dict[str, Any]]:
+        page_size = max(1, min(5000, int(params.get("predict_page_size", params.get("unlabeled_page_size", 1000)))))
+        cursor: str | None = None
+        rows: list[dict[str, Any]] = []
+
+        while True:
+            if self._stop_event.is_set():
+                raise asyncio.CancelledError("step stop requested")
+
+            response = await self._fetch_page(
+                task_id=task_id,
+                query_type=query_type,
+                project_id=project_id,
+                commit_id=commit_id,
+                cursor=cursor,
+                limit=page_size,
+            )
+            chunk = response.items
+            if not chunk and not response.next_cursor:
+                break
+
+            for item in chunk:
+                asset_hash = item.get("asset_hash")
+                download_url = item.get("download_url")
+                if not asset_hash or not download_url:
+                    continue
+                cached_path = await self._cache.ensure_cached(
+                    str(asset_hash),
+                    str(download_url),
+                    protected=protected,
+                    pin_task_id=task_id,
+                )
+                item["local_path"] = str(cached_path)
+                protected.add(str(asset_hash))
+
+            batch = await plugin.predict_samples_batch(
+                workspace=workspace,
+                samples=chunk,
+                params=params,
+                context=context,
+            )
+            rows.extend(self._normalize_batch(batch or []))
+            cursor = response.next_cursor
+            if not cursor:
+                break
+
+        return self._build_ranked_output_from_rows(rows)
+
     @staticmethod
     def _normalize_batch(batch: list[dict[str, Any]]) -> list[dict[str, Any]]:
         normalized: list[dict[str, Any]] = []

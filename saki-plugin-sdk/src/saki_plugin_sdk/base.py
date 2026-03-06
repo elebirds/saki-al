@@ -504,6 +504,22 @@ class ExecutorPlugin(ABC):
             context=context,
         )
 
+    async def predict_samples_batch(
+        self,
+        workspace: WorkspaceProtocol,
+        samples: list[dict[str, Any]],
+        params: dict[str, Any],
+        *,
+        context: ExecutionBindingContext,
+    ) -> list[dict[str, Any]]:
+        """Direct prediction for ``predict`` task.
+
+        Plugins should return prediction candidates with optional
+        ``prediction_snapshot`` payload.
+        """
+        del workspace, samples, params, context
+        raise NotImplementedError("predict_samples_batch is not implemented by this plugin")
+
     async def eval(
         self,
         workspace: WorkspaceProtocol,

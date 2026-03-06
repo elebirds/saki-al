@@ -187,6 +187,31 @@ class TaskManager:
             context=context,
         )
 
+    async def collect_prediction_candidates_streaming(
+        self,
+        *,
+        plugin: ExecutorPlugin,
+        workspace: WorkspaceProtocol,
+        task_id: str,
+        project_id: str,
+        commit_id: str,
+        params: dict[str, Any],
+        protected: set[str],
+        query_type: str,
+        context: ExecutionBindingContext,
+    ) -> list[dict[str, Any]]:
+        return await self._collect_prediction_candidates_streaming(
+            plugin=plugin,
+            workspace=workspace,
+            task_id=task_id,
+            project_id=project_id,
+            commit_id=commit_id,
+            params=params,
+            protected=protected,
+            query_type=query_type,
+            context=context,
+        )
+
     async def assign_task(self, request_id: str, payload: dict[str, Any]) -> bool:
         request = TaskExecutionRequest.from_payload(payload)
         async with self._lock:
@@ -230,12 +255,22 @@ class TaskManager:
         if self._send_message is None or self._request_message is None:
             raise RuntimeError("task manager transport is not configured")
         final_status = TaskStatus.FAILED
+        strategy = ""
+        if request.task_type in {"score", "custom"}:
+            sampling_cfg = request.resolved_params.get("sampling")
+            if isinstance(sampling_cfg, dict):
+                strategy = str(sampling_cfg.get("strategy") or "").strip()
+            if not strategy:
+                strategy = str(request.query_strategy or "").strip()
+        inference_mode = "direct" if request.task_type == "predict" else ""
         logger.info(
-            "任务开始执行 task_id={} plugin_id={} mode={} sampling_strategy={}",
+            "任务开始执行 task_id={} plugin_id={} task_type={} mode={} sampling_strategy={} inference_mode={}",
             request.task_id,
             request.plugin_id,
+            request.task_type,
             request.mode,
-            (request.resolved_params.get("sampling") or {}).get("strategy") if isinstance(request.resolved_params.get("sampling"), dict) else request.query_strategy,
+            strategy,
+            inference_mode,
         )
         try:
             result = await TaskPipelineRunner(manager=self, request=request).run()
@@ -428,5 +463,30 @@ class TaskManager:
             protected=protected,
             query_type=query_type,
             topk=topk,
+            context=context,
+        )
+
+    async def _collect_prediction_candidates_streaming(
+        self,
+        *,
+        plugin: ExecutorPlugin,
+        workspace: WorkspaceProtocol,
+        task_id: str,
+        project_id: str,
+        commit_id: str,
+        params: dict[str, Any],
+        protected: set[str],
+        query_type: str,
+        context: ExecutionBindingContext,
+    ) -> list[dict[str, Any]]:
+        return await self._sampling_service.collect_prediction_candidates_streaming(
+            plugin=plugin,
+            workspace=workspace,
+            task_id=task_id,
+            project_id=project_id,
+            commit_id=commit_id,
+            params=params,
+            protected=protected,
+            query_type=query_type,
             context=context,
         )

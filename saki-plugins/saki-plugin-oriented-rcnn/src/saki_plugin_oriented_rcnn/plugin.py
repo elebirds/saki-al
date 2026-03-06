@@ -150,6 +150,22 @@ class OrientedRCNNPlugin(ExecutorPlugin):
             context=context,
         )
 
+    async def predict_samples_batch(
+        self,
+        workspace: WorkspaceProtocol,
+        samples: list[dict[str, Any]],
+        params: dict[str, Any],
+        *,
+        context: ExecutionBindingContext,
+    ) -> list[dict[str, Any]]:
+        self.logger.info(f"执行直接推理，样本数={len(samples)}")
+        return await self._runtime.predict_samples_batch(
+            workspace=workspace,
+            samples=samples,
+            params=params,
+            context=context,
+        )
+
     async def stop(self, task_id: str) -> None:
         self.logger.info(f"收到 step {task_id} 停止请求")
         await self._runtime.stop(task_id)

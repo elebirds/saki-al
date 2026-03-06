@@ -390,13 +390,13 @@ async def test_generate_prediction_persists_predict_conf_to_plugin_params(predic
         )
         task_row = await session.get(Task, prediction.task_id)
         assert task_row is not None
-        plugin_params = (
-            task_row.resolved_params.get("plugin")
+        predict_params = (
+            task_row.resolved_params.get("predict")
             if isinstance(task_row.resolved_params, dict)
             else {}
         )
-        assert isinstance(plugin_params, dict)
-        assert float(plugin_params.get("predict_conf")) == pytest.approx(0.02)
+        assert isinstance(predict_params, dict)
+        assert float(predict_params.get("predict_conf")) == pytest.approx(0.02)
 
 
 @pytest.mark.anyio
@@ -420,7 +420,7 @@ async def test_generate_prediction_rejects_sampling_topk_for_predict(prediction_
     async with session_local() as session:
         ctx = await _seed_prediction_context(session)
         service = RuntimeService(session)
-        with pytest.raises(BadRequestAppException, match="predict does not support topk/review_pool parameters"):
+        with pytest.raises(BadRequestAppException, match="predict does not support sampling parameters"):
             await _create_prediction_task(
                 service=service,
                 ctx=ctx,
@@ -506,6 +506,59 @@ async def test_materialize_prediction_from_reason_snapshot_with_cls_mapping(pred
         assert rect.get("y") == pytest.approx(20.0)
         assert rect.get("width") == pytest.approx(100.0)
         assert rect.get("height") == pytest.approx(100.0)
+
+
+@pytest.mark.anyio
+async def test_settle_prediction_skips_empty_prediction_snapshot_rows(prediction_env):
+    session_local = prediction_env
+    async with session_local() as session:
+        ctx = await _seed_prediction_context(session)
+        sample_b = Sample(dataset_id=ctx.sample.dataset_id, name="sample-empty-skip", asset_group={})
+        session.add(sample_b)
+        await session.commit()
+
+        service = RuntimeService(session)
+        prediction = await _create_prediction_task(service=service, ctx=ctx, scope_status="all")
+        await _finish_prediction_task(
+            session=session,
+            task_id=prediction.task_id,
+            rows=[
+                {
+                    "sample_id": ctx.sample.id,
+                    "score": 0.12,
+                    "reason": {"strategy": "predict"},
+                    "prediction_snapshot": {"base_predictions": []},
+                },
+                {
+                    "sample_id": sample_b.id,
+                    "score": 0.88,
+                    "reason": {"strategy": "predict"},
+                    "prediction_snapshot": {
+                        "base_predictions": [
+                            {
+                                "class_index": 0,
+                                "class_name": ctx.labels_sorted_by_sort[0].name,
+                                "confidence": 0.88,
+                                "geometry": {
+                                    "rect": {
+                                        "x": 4,
+                                        "y": 5,
+                                        "width": 20,
+                                        "height": 30,
+                                    }
+                                },
+                            }
+                        ]
+                    },
+                },
+            ],
+        )
+
+        settled = await service.get_prediction_task(task_id=prediction.task_id)
+        assert str(settled.status or "").lower() == "ready"
+        _, items = await service.get_prediction_detail(prediction_id=prediction.id, item_limit=10)
+        assert len(items) == 1
+        assert items[0].sample_id == sample_b.id
 
 
 @pytest.mark.anyio
@@ -687,6 +740,95 @@ async def test_apply_prediction_merges_head_commit_and_expands_multi_predictions
             assert ann.get("type") == "rect"
             assert isinstance(ann.get("group_id"), str) and ann.get("group_id")
             assert isinstance(ann.get("lineage_id"), str) and ann.get("lineage_id")
+
+
+@pytest.mark.anyio
+async def test_apply_prediction_can_be_reapplied_without_model_duplication(prediction_env):
+    session_local = prediction_env
+    async with session_local() as session:
+        ctx = await _seed_prediction_context(session)
+        committed_ann = await _seed_committed_annotation(
+            session=session,
+            commit_id=ctx.init_commit.id,
+            project_id=ctx.project.id,
+            sample_id=ctx.sample.id,
+            label_id=ctx.labels_sorted_by_sort[0].id,
+            annotator_id=ctx.actor.id,
+        )
+        await session.commit()
+
+        service = RuntimeService(session)
+        prediction = await _create_prediction_task(service=service, ctx=ctx, scope_status="all")
+        await _finish_prediction_task(
+            session=session,
+            task_id=prediction.task_id,
+            rows=[
+                {
+                    "sample_id": ctx.sample.id,
+                    "score": 0.83,
+                    "reason": {
+                        "prediction_snapshot": {
+                            "base_predictions": [
+                                {
+                                    "class_index": 1,
+                                    "class_name": ctx.labels_sorted_by_sort[1].name,
+                                    "confidence": 0.9,
+                                    "geometry": {
+                                        "rect": {"x": 5, "y": 6, "width": 10, "height": 20}
+                                    },
+                                },
+                                {
+                                    "class_index": 0,
+                                    "class_name": ctx.labels_sorted_by_sort[0].name,
+                                    "confidence": 0.8,
+                                    "geometry": {
+                                        "rect": {"x": 30, "y": 40, "width": 40, "height": 50}
+                                    },
+                                },
+                            ]
+                        }
+                    },
+                    "prediction_snapshot": {},
+                }
+            ],
+        )
+
+        first = await service.apply_prediction(
+            prediction_id=prediction.id,
+            actor_user_id=ctx.actor.id,
+            branch_name="master",
+            dry_run=False,
+        )
+        second = await service.apply_prediction(
+            prediction_id=prediction.id,
+            actor_user_id=ctx.actor.id,
+            branch_name="master",
+            dry_run=False,
+        )
+
+        assert first["applied_count"] == 2
+        assert second["applied_count"] == 2
+        assert str(second.get("status") or "").lower() == "applied"
+
+        draft = await session.exec(
+            select(AnnotationDraft).where(
+                AnnotationDraft.project_id == ctx.project.id,
+                AnnotationDraft.sample_id == ctx.sample.id,
+                AnnotationDraft.user_id == ctx.actor.id,
+                AnnotationDraft.branch_name == "master",
+            )
+        )
+        row = draft.one_or_none()
+        assert row is not None
+        payload = row.payload if isinstance(row.payload, dict) else {}
+        annotations = payload.get("annotations") if isinstance(payload.get("annotations"), list) else []
+        assert len(annotations) == 3
+
+        manual_rows = [item for item in annotations if str(item.get("source") or "").lower() == "manual"]
+        model_rows = [item for item in annotations if str(item.get("source") or "").lower() == "model"]
+        assert len(manual_rows) == 1
+        assert len(model_rows) == 2
+        assert manual_rows[0].get("id") == str(committed_ann.id)
 
 
 @pytest.mark.anyio

@@ -133,6 +133,22 @@ class OrientedRCNNRuntimeService:
             context=context,
         )
 
+    async def predict_samples_batch(
+        self,
+        *,
+        workspace: WorkspaceProtocol,
+        samples: list[dict[str, Any]],
+        params: dict[str, Any],
+        context: ExecutionBindingContext,
+    ) -> list[dict[str, Any]]:
+        self._stop_flag.clear()
+        return await self._predict_service.predict_samples_batch(
+            workspace=workspace,
+            samples=samples,
+            params=params,
+            context=context,
+        )
+
     async def stop(self, task_id: str) -> None:
         del task_id
         self._stop_flag.set()

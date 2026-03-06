@@ -287,7 +287,7 @@ const ProjectPredictionTaskDetail: React.FC = () => {
                     <Button
                         type="primary"
                         loading={applying}
-                        disabled={predictionStatus !== 'ready'}
+                        disabled={!['ready', 'applied'].includes(predictionStatus)}
                         onClick={() => void onApplyPrediction()}
                     >
                         {t('project.predictionTasks.actions.apply')}

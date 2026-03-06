@@ -32,6 +32,7 @@ def test_random_baseline_candidates_are_round_invariant(tmp_path: Path) -> None:
         "device": "cpu",
         "stop_flag": Event(),
         "get_model": None,
+        "predict_single_image": lambda **_kw: [],
         "predict_with_aug": lambda **_kw: [],
         "extract_predictions": lambda _pred: [],
         "build_detection_boxes": lambda _rows: [],

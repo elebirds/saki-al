@@ -1,5 +1,5 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {Button, Card, Form, Modal, Select, Slider, Space, Table, Tag, Typography, message} from 'antd';
+import {Button, Card, Form, Modal, Select, Slider, Space, Table, Tag, Tooltip, Typography, message} from 'antd';
 import {PlusOutlined, ReloadOutlined} from '@ant-design/icons';
 import {useTranslation} from 'react-i18next';
 import {useNavigate, useParams} from 'react-router-dom';
@@ -51,6 +51,30 @@ interface TaskFormValues {
     predictConf?: number;
     scopeStatus: ScopeStatus;
 }
+
+const renderTaskErrorCell = (value?: string | null) => {
+    const text = String(value || '').trim();
+    if (!text) return '-';
+    return (
+        <Tooltip
+            placement="topLeft"
+            title={<div className="max-w-[680px] whitespace-pre-wrap break-all">{text}</div>}
+        >
+            <Typography.Text
+                className="block text-github-muted"
+                style={{
+                    display: '-webkit-box',
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: 'vertical',
+                    overflow: 'hidden',
+                    wordBreak: 'break-all',
+                }}
+            >
+                {text}
+            </Typography.Text>
+        </Tooltip>
+    );
+};
 
 const ProjectPredictionTasks: React.FC = () => {
     const {t} = useTranslation();
@@ -345,6 +369,8 @@ const ProjectPredictionTasks: React.FC = () => {
                     rowKey="id"
                     loading={loading}
                     dataSource={tasks}
+                    tableLayout="fixed"
+                    scroll={{x: 1720}}
                     rowSelection={{
                         type: 'radio',
                         selectedRowKeys: selectedTaskId ? [selectedTaskId] : [],
@@ -396,7 +422,8 @@ const ProjectPredictionTasks: React.FC = () => {
                         {
                             title: t('project.predictionTasks.table.error'),
                             dataIndex: 'lastError',
-                            render: (value?: string | null) => value || '-',
+                            width: 380,
+                            render: (value?: string | null) => renderTaskErrorCell(value),
                         },
                         {
                             title: t('project.predictionTasks.table.actions'),
@@ -410,14 +437,14 @@ const ProjectPredictionTasks: React.FC = () => {
                                     >
                                         {t('project.predictionTasks.actions.detail')}
                                     </Button>
-                                    <Button
-                                        size="small"
-                                        type="primary"
-                                        disabled={row.status !== 'ready'}
-                                        onClick={() => void onApply(row.id)}
-                                    >
-                                        {t('project.predictionTasks.actions.apply')}
-                                    </Button>
+                    <Button
+                        size="small"
+                        type="primary"
+                        disabled={!['ready', 'applied'].includes(String(row.status || '').toLowerCase())}
+                        onClick={() => void onApply(row.id)}
+                    >
+                        {t('project.predictionTasks.actions.apply')}
+                    </Button>
                                 </Space>
                             ),
                         },

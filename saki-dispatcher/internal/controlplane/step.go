@@ -224,7 +224,7 @@ func (s *Service) dispatchStepTaskByID(ctx context.Context, taskID uuid.UUID) (b
 		DispatchKind:     toRuntimeTaskDispatchKind(stepPayload.DispatchKind),
 		PluginId:         stepPayload.PluginID,
 		Mode:             toRuntimeLoopMode(stepPayload.Mode),
-		QueryStrategy:    extractSamplingStrategyFromStruct(resolvedParams),
+		QueryStrategy:    resolveTaskPayloadQueryStrategy(string(stepPayload.StepType), resolvedParams),
 		ResolvedParams:   resolvedParams,
 		Resources:        stepPayload.Resources,
 		RoundIndex:       int32(stepPayload.RoundIndex),
@@ -359,7 +359,7 @@ func (s *Service) dispatchPredictionTaskByID(ctx context.Context, taskID uuid.UU
 		DispatchKind:     runtimecontrolv1.RuntimeTaskDispatchKind_DISPATCHABLE,
 		PluginId:         strings.TrimSpace(taskRow.PluginID),
 		Mode:             runtimecontrolv1.RuntimeLoopMode_MANUAL,
-		QueryStrategy:    extractSamplingStrategyFromStruct(resolvedParams),
+		QueryStrategy:    resolveTaskPayloadQueryStrategy(taskRow.TaskType, resolvedParams),
 		ResolvedParams:   resolvedParams,
 		Resources:        &runtimecontrolv1.ResourceSummary{},
 		RoundIndex:       0,
@@ -387,6 +387,13 @@ func (s *Service) syncLoopPhaseWithStepTx(ctx context.Context, tx pgx.Tx, stepPa
 
 func isOrchestratorDispatchKind(dispatchKind db.Stepdispatchkind) bool {
 	return dispatchKind == db.StepdispatchkindORCHESTRATOR
+}
+
+func resolveTaskPayloadQueryStrategy(taskType string, resolvedParams *structpb.Struct) string {
+	if strings.EqualFold(strings.TrimSpace(taskType), "predict") {
+		return ""
+	}
+	return extractSamplingStrategyFromStruct(resolvedParams)
 }
 
 func (s *Service) executeOrchestratorStepTx(

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -11,16 +10,6 @@ from saki_executor.steps.orchestration.error_codes import TaskErrorCode, TaskSta
 from saki_executor.steps.orchestration.models import BoundExecutionPlan
 from saki_executor.steps.orchestration.training_data_service import TrainingDataService
 from saki_plugin_sdk import TaskReporter, TaskRuntimeRequirements, WorkspaceProtocol
-
-
-@dataclass(frozen=True, slots=True)
-class _InferenceTaskProfile:
-    name: str
-    query_type: str
-    candidate_limit_mode: str
-    default_strategy: str
-    metric_key: str
-    skip_when_strategy_empty: bool
 
 
 class PipelineStageService:
@@ -99,14 +88,21 @@ class PipelineStageService:
         bound_plan: BoundExecutionPlan,
     ) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], list[str]]:
         try:
-            if self._request.task_type in {"score", "predict"}:
-                profile = self._inference_profile_for_task(self._request.task_type)
-                return await self._run_inference_pipeline(
+            if self._request.task_type == "score":
+                return await self._run_score_pipeline(
                     plugin=plugin,
                     workspace=workspace,
                     emitter=emitter,
                     runtime_requirements=runtime_requirements,
-                    profile=profile,
+                    bound_plan=bound_plan,
+                )
+
+            if self._request.task_type == "predict":
+                return await self._run_predict_pipeline(
+                    plugin=plugin,
+                    workspace=workspace,
+                    emitter=emitter,
+                    runtime_requirements=runtime_requirements,
                     bound_plan=bound_plan,
                 )
 
@@ -408,12 +404,13 @@ class PipelineStageService:
             runtime_requirements=runtime_requirements,
             bound_plan=bound_plan,
         )
-        candidates = await self._collect_candidates(
+        candidates = await self._collect_sampling_candidates(
             plugin=plugin,
             workspace=workspace,
             emitter=emitter,
             protected=protected,
             bound_plan=bound_plan,
+            candidate_limit_mode="topk",
         )
         artifacts, optional_upload_failures = await self._upload_artifacts(
             output_artifacts=output.artifacts,
@@ -479,35 +476,13 @@ class PipelineStageService:
         )
         return output.metrics, artifacts, [], optional_upload_failures
 
-    @staticmethod
-    def _inference_profile_for_task(task_type: str) -> _InferenceTaskProfile:
-        normalized = str(task_type or "").strip().lower()
-        if normalized == "predict":
-            return _InferenceTaskProfile(
-                name="predict",
-                query_type="samples",
-                candidate_limit_mode="keep_all",
-                default_strategy="uncertainty_1_minus_max_conf",
-                metric_key="predict_candidate_count",
-                skip_when_strategy_empty=False,
-            )
-        return _InferenceTaskProfile(
-            name="score",
-            query_type="unlabeled_samples",
-            candidate_limit_mode="review_pool",
-            default_strategy="",
-            metric_key="score_candidate_count",
-            skip_when_strategy_empty=True,
-        )
-
-    async def _run_inference_pipeline(
+    async def _run_score_pipeline(
         self,
         *,
         plugin: Any,
         workspace: WorkspaceProtocol,
         emitter: Any,
         runtime_requirements: TaskRuntimeRequirements,
-        profile: _InferenceTaskProfile,
         bound_plan: BoundExecutionPlan,
     ) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], list[str]]:
         protected = await self._prepare_data_for_step(
@@ -517,19 +492,46 @@ class PipelineStageService:
             runtime_requirements=runtime_requirements,
             bound_plan=bound_plan,
         )
-        candidates = await self._collect_candidates(
+        candidates = await self._collect_sampling_candidates(
             plugin=plugin,
             workspace=workspace,
             emitter=emitter,
             protected=protected,
-            profile=profile,
+            bound_plan=bound_plan,
+            candidate_limit_mode="review_pool",
+        )
+        candidates = normalize_prediction_candidates(candidates)
+        metrics = {"score_candidate_count": float(len(candidates))}
+        return metrics, {}, candidates, []
+
+    async def _run_predict_pipeline(
+        self,
+        *,
+        plugin: Any,
+        workspace: WorkspaceProtocol,
+        emitter: Any,
+        runtime_requirements: TaskRuntimeRequirements,
+        bound_plan: BoundExecutionPlan,
+    ) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], list[str]]:
+        protected = await self._prepare_data_for_step(
+            plugin=plugin,
+            workspace=workspace,
+            emitter=emitter,
+            runtime_requirements=runtime_requirements,
+            bound_plan=bound_plan,
+        )
+        candidates = await self._collect_predict_candidates(
+            plugin=plugin,
+            workspace=workspace,
+            emitter=emitter,
+            protected=protected,
             bound_plan=bound_plan,
         )
         candidates = normalize_prediction_candidates(candidates)
-        metrics = {profile.metric_key: float(len(candidates))}
+        metrics = {"predict_candidate_count": float(len(candidates))}
         return metrics, {}, candidates, []
 
-    async def _collect_candidates(
+    async def _collect_sampling_candidates(
         self,
         *,
         plugin: Any,
@@ -537,49 +539,31 @@ class PipelineStageService:
         emitter: Any,
         protected: set[str],
         bound_plan: BoundExecutionPlan,
-        profile: _InferenceTaskProfile | None = None,
+        candidate_limit_mode: str,
     ) -> list[dict[str, Any]]:
         mode = self._request.mode
-        query_type = "unlabeled_samples"
-        candidate_limit_mode = "topk"
-        default_strategy = ""
-        skip_when_strategy_empty = True
-        if profile is not None:
-            query_type = profile.query_type
-            candidate_limit_mode = profile.candidate_limit_mode
-            default_strategy = profile.default_strategy
-            skip_when_strategy_empty = profile.skip_when_strategy_empty
-
-        is_keep_all = candidate_limit_mode == "keep_all"
-        skip_sampling = bool(self._request.resolved_params.get("skip_sampling", False))
-        if mode == "manual" and not is_keep_all:
+        if mode == "manual":
             await emitter.emit("log", {"level": "INFO", "message": "manual mode: skip sampling"})
             return []
+
+        skip_sampling = bool(self._request.resolved_params.get("skip_sampling", False))
         if skip_sampling:
-            await emitter.emit("log", {"level": "INFO", "message": "skip_sampling=true, TopK sampling skipped"})
+            await emitter.emit("log", {"level": "INFO", "message": "skip_sampling=true, skip sampling"})
             return []
 
         sampling_cfg = self._request.resolved_params.get("sampling")
         sampling_cfg = dict(sampling_cfg) if isinstance(sampling_cfg, dict) else {}
-        strategy = str(
-            sampling_cfg.get("strategy")
-            or self._request.query_strategy
-            or default_strategy
-        ).strip()
+        strategy = str(sampling_cfg.get("strategy") or self._request.query_strategy or "").strip()
         if not strategy:
-            if skip_when_strategy_empty:
-                await emitter.emit("log", {"level": "INFO", "message": "sampling strategy is empty, skip sampling"})
-                return []
-            strategy = "uncertainty_1_minus_max_conf"
+            await emitter.emit("log", {"level": "INFO", "message": "sampling strategy is empty, skip sampling"})
+            return []
         topk = int(sampling_cfg.get("topk", self._request.resolved_params.get("topk", 200)))
         review_pool_size = int(sampling_cfg.get("review_pool_size", 0) or 0)
         if review_pool_size <= 0:
             review_pool_multiplier = int(sampling_cfg.get("review_pool_multiplier", 3) or 3)
             review_pool_multiplier = max(1, review_pool_multiplier)
             review_pool_size = max(topk, topk * review_pool_multiplier)
-        if candidate_limit_mode == "keep_all":
-            candidate_limit = 0
-        elif candidate_limit_mode == "review_pool":
+        if candidate_limit_mode == "review_pool":
             candidate_limit = max(topk, review_pool_size)
         else:
             candidate_limit = topk
@@ -599,8 +583,48 @@ class PipelineStageService:
             strategy=strategy,
             params=sampling_params,
             protected=protected,
-            query_type=query_type,
+            query_type="unlabeled_samples",
             topk=candidate_limit,
+            context=bound_plan.execution_context,
+        )
+
+    async def _collect_predict_candidates(
+        self,
+        *,
+        plugin: Any,
+        workspace: WorkspaceProtocol,
+        emitter: Any,
+        protected: set[str],
+        bound_plan: BoundExecutionPlan,
+    ) -> list[dict[str, Any]]:
+        if "sampling" in self._request.resolved_params:
+            raise RuntimeError(
+                "predict task contains deprecated params.sampling; please recreate the prediction task"
+            )
+        predict_cfg = self._request.resolved_params.get("predict")
+        predict_cfg = dict(predict_cfg) if isinstance(predict_cfg, dict) else {}
+        predict_params = dict(bound_plan.effective_plugin_params)
+        predict_params.update(predict_cfg)
+        runtime_context = bound_plan.plan.runtime_context
+        predict_params["sampling_seed"] = int(
+            predict_params.get("sampling_seed", runtime_context.sampling_seed)
+        )
+        await emitter.emit(
+            "log",
+            {
+                "level": "INFO",
+                "message": "prediction inference collector enabled query_type=samples",
+            },
+        )
+        return await self._manager.collect_prediction_candidates_streaming(
+            plugin=plugin,
+            workspace=workspace,
+            task_id=self._request.task_id,
+            project_id=self._request.project_id,
+            commit_id=self._request.input_commit_id,
+            params=predict_params,
+            protected=protected,
+            query_type="samples",
             context=bound_plan.execution_context,
         )
 

@@ -101,6 +101,35 @@ class YoloPredictService:
         candidates.sort(key=lambda item: float(item.get("score") or 0.0), reverse=True)
         return candidates[:topk]
 
+    async def predict_samples_batch(
+        self,
+        *,
+        workspace: WorkspaceProtocol,
+        samples: list[dict[str, Any]],
+        params: dict[str, Any],
+        context: ExecutionBindingContext,
+    ) -> list[dict[str, Any]]:
+        self._stop_flag.clear()
+        cfg = self._config_service.resolve_config(params)
+        conf = to_float(cfg.predict_conf, 0.1)
+        imgsz = to_int(cfg.imgsz, 640)
+        device = to_yolo_device(
+            str(context.device_binding.backend or ""),
+            str(context.device_binding.device_spec or ""),
+        )
+
+        best_path = workspace.artifacts_dir / "best.pt"
+        fallback_model = await self._config_service.resolve_model_ref(workspace=workspace, params=cfg)
+        model_path = str(best_path if best_path.exists() else fallback_model)
+        return await asyncio.to_thread(
+            self._predict_samples_sync,
+            model_path=model_path,
+            samples=samples,
+            conf=conf,
+            imgsz=imgsz,
+            device=device,
+        )
+
     def _score_unlabeled_sync(
         self,
         *,
@@ -121,6 +150,7 @@ class YoloPredictService:
             device=device,
             stop_flag=self._stop_flag,
             get_model=lambda: self._get_or_load_model(model_path=model_path, device=device),
+            predict_single_image=self._predict_single_image,
             predict_with_aug=self._predict_with_aug,
             extract_predictions=self._extract_predictions,
             build_detection_boxes=build_detection_boxes,
@@ -130,6 +160,52 @@ class YoloPredictService:
             random_seed=random_seed,
             round_index=round_index,
         )
+
+    def _predict_samples_sync(
+        self,
+        *,
+        model_path: str,
+        samples: list[dict[str, Any]],
+        conf: float,
+        imgsz: int,
+        device: Any,
+    ) -> list[dict[str, Any]]:
+        model = self._get_or_load_model(model_path=model_path, device=device)
+        rows: list[dict[str, Any]] = []
+        for sample in samples:
+            if self._stop_flag.is_set():
+                raise RuntimeError("prediction stopped")
+            sample_id = str(sample.get("id") or "")
+            local_path = str(sample.get("local_path") or "")
+            if not sample_id or not local_path:
+                continue
+            image_path = Path(local_path)
+            if not image_path.exists():
+                continue
+            predictions = self._predict_single_image(
+                model=model,
+                image_path=image_path,
+                conf=conf,
+                imgsz=imgsz,
+                device=device,
+            )
+            max_conf = max((float(item.get("confidence") or 0.0) for item in predictions), default=0.0)
+            rows.append(
+                {
+                    "sample_id": sample_id,
+                    "score": float(max_conf),
+                    "reason": {
+                        "mode": "predict",
+                        "pred_count": len(predictions),
+                        "max_conf": float(max_conf),
+                    },
+                    "prediction_snapshot": {
+                        "pred_count": len(predictions),
+                        "base_predictions": predictions[:30],
+                    },
+                }
+            )
+        return rows
 
     def _get_or_load_model(self, *, model_path: str, device: Any) -> Any:
         model_key = (str(model_path or "").strip(), str(device).strip().lower())
@@ -145,6 +221,32 @@ class YoloPredictService:
     def _ensure_image_deps(self) -> None:
         if Image is None or np is None:
             raise RuntimeError("numpy and pillow are required for yolo_det_v1 plugin")
+
+    def _load_predict_source(self, image_path: Path) -> Any:
+        self._ensure_image_deps()
+        with Image.open(image_path) as img:
+            rgb = img.convert("RGB")
+            return np.array(rgb)  # type: ignore[union-attr]
+
+    def _predict_single_image(
+        self,
+        *,
+        model: Any,
+        image_path: Path,
+        conf: float,
+        imgsz: int,
+        device: Any,
+    ) -> list[dict[str, Any]]:
+        source = self._load_predict_source(image_path)
+        predicts = model.predict(
+            source=source,
+            conf=conf,
+            imgsz=imgsz,
+            device=device,
+            verbose=False,
+        )
+        first = predicts[0] if predicts else None
+        return self._extract_predictions(first)
 
     def _predict_with_aug(
         self,

@@ -209,7 +209,7 @@ async def _run_train_like(
     return str(result_path)
 
 
-async def _run_predict(
+async def _run_predict_unlabeled_batch(
     *,
     plugin: ExecutorPlugin,
     payload: dict[str, Any],
@@ -227,6 +227,31 @@ async def _run_predict(
         workspace=workspace,
         unlabeled_samples=samples,
         strategy=strategy,
+        params=params,
+        context=execution_context,
+    )
+    candidates = normalize_prediction_candidates(list(candidates or []))
+    result_path = Path(str(payload.get("result_path") or ""))
+    protocol.write_json(result_path, {"candidates": candidates})
+    return str(result_path)
+
+
+async def _run_predict_samples_batch(
+    *,
+    plugin: ExecutorPlugin,
+    payload: dict[str, Any],
+    execution_context: ExecutionBindingContext,
+) -> str:
+    workspace = _build_workspace(str(payload.get("workspace_root") or ""))
+    samples = protocol.read_json(Path(str(payload.get("samples_path") or "")))
+    params = protocol.read_json(Path(str(payload.get("params_path") or "")))
+    if not isinstance(samples, list):
+        samples = []
+    if not isinstance(params, dict):
+        params = {}
+    candidates = await plugin.predict_samples_batch(
+        workspace=workspace,
+        samples=samples,
         params=params,
         context=execution_context,
     )
@@ -362,7 +387,7 @@ def _run_loop(plugin: ExecutorPlugin, args: argparse.Namespace) -> int:
                     rep_socket.send_json(envelope.to_dict())
                     continue
 
-                if action in {"train", "eval", "predict"}:
+                if action in {"train", "eval"}:
                     workspace = _build_workspace(str(payload.get("workspace_root") or ""))
                     with _bind_plugin_log_bridge(
                         pub_socket=pub_socket,
@@ -407,7 +432,37 @@ def _run_loop(plugin: ExecutorPlugin, args: argparse.Namespace) -> int:
                         _await(plugin.on_start(args.task_id, workspace))
                         try:
                             result_path = _await(
-                                _run_predict(
+                                _run_predict_unlabeled_batch(
+                                    plugin=plugin,
+                                    payload=payload,
+                                    execution_context=execution_context,
+                                )
+                            )
+                            rep_socket.send_json(
+                                protocol.WorkerReplyEnvelope(
+                                    request_id=cmd.request_id,
+                                    ok=True,
+                                    error_code="",
+                                    error_message="",
+                                    result_path=result_path,
+                                ).to_dict()
+                            )
+                        finally:
+                            _await(plugin.on_stop(args.task_id, workspace))
+                    continue
+
+                if action == "predict_samples_batch":
+                    workspace = _build_workspace(str(payload.get("workspace_root") or ""))
+                    with _bind_plugin_log_bridge(
+                        pub_socket=pub_socket,
+                        task_id=args.task_id,
+                        plugin_id=args.plugin_id,
+                        request_id=cmd.request_id,
+                    ):
+                        _await(plugin.on_start(args.task_id, workspace))
+                        try:
+                            result_path = _await(
+                                _run_predict_samples_batch(
                                     plugin=plugin,
                                     payload=payload,
                                     execution_context=execution_context,

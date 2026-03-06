@@ -190,22 +190,6 @@ class SubprocessPluginProxy(ExecutorPlugin):
             context=context,
         )
 
-    async def predict(
-        self,
-        workspace: WorkspaceProtocol,
-        params: dict[str, Any],
-        emit: EventCallback,
-        *,
-        context: ExecutionBindingContext,
-    ) -> TrainOutput:
-        return await self._run_train_output_action(
-            action="predict",
-            workspace=workspace,
-            params=params,
-            emit=emit,
-            context=context,
-        )
-
     async def _run_train_output_action(
         self,
         *,
@@ -289,6 +273,43 @@ class SubprocessPluginProxy(ExecutorPlugin):
         output_payload = protocol.read_json(output_path)
         if not isinstance(output_payload, dict):
             raise RuntimeError("invalid worker predict result payload")
+        rows = output_payload.get("candidates")
+        if not isinstance(rows, list):
+            return []
+        return [item for item in rows if isinstance(item, dict)]
+
+    async def predict_samples_batch(
+        self,
+        workspace: WorkspaceProtocol,
+        samples: list[dict[str, Any]],
+        params: dict[str, Any],
+        *,
+        context: ExecutionBindingContext,
+    ) -> list[dict[str, Any]]:
+        await self._worker.start()
+        payload_dir = self._payload_dir(workspace)
+        samples_path = payload_dir / "predict_direct_samples.json"
+        params_path = payload_dir / "predict_direct_params.json"
+        result_path = payload_dir / f"predict_direct_result_{uuid.uuid4().hex}.json"
+        protocol.write_json(samples_path, samples)
+        protocol.write_json(params_path, params)
+
+        reply = await self._worker.request(
+            action="predict_samples_batch",
+            payload={
+                "workspace_root": str(workspace.root),
+                "samples_path": str(samples_path),
+                "params_path": str(params_path),
+                "result_path": str(result_path),
+            },
+            execution_binding_context=context,
+        )
+        output_path = Path(reply.result_path or str(result_path))
+        if not output_path.exists():
+            raise RuntimeError(f"worker predict_samples_batch result file not found: {output_path}")
+        output_payload = protocol.read_json(output_path)
+        if not isinstance(output_payload, dict):
+            raise RuntimeError("invalid worker predict_samples_batch result payload")
         rows = output_payload.get("candidates")
         if not isinstance(rows, list):
             return []

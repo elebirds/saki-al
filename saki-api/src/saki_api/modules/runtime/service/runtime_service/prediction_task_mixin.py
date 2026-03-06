@@ -345,11 +345,7 @@ class PredictionTaskMixin:
             snapshot = dict(snapshot_raw) if isinstance(snapshot_raw, dict) else {}
             prediction_entries = self._prediction_entries_from_snapshot(snapshot)
             if not prediction_entries:
-                raise PredictionResolveError(
-                    code="PREDICTION_LABEL_UNRESOLVED",
-                    message="prediction_snapshot.base_predictions/predictions is empty",
-                    sample_id=str(candidate.sample_id),
-                )
+                continue
             primary_prediction = prediction_entries[0]
             decision = resolver.resolve(
                 snapshot=snapshot,
@@ -480,6 +476,10 @@ class PredictionTaskMixin:
 
         params = payload.get("params") if isinstance(payload.get("params"), dict) else {}
         persisted_params = dict(params)
+        if "sampling" in payload:
+            raise BadRequestAppException("predict does not support sampling parameters")
+        if "sampling" in params:
+            raise BadRequestAppException("predict does not support sampling parameters")
 
         step_params = dict(params)
         plugin_params = step_params.get("plugin")
@@ -487,27 +487,15 @@ class PredictionTaskMixin:
         plugin_params["model_source"] = "custom_url"
         plugin_params["model_custom_ref"] = model_download_url
         plugin_params["artifact_name"] = artifact_name
-        if predict_conf is not None:
-            plugin_params["predict_conf"] = float(predict_conf)
         step_params["plugin"] = plugin_params
 
-        sampling = step_params.get("sampling")
-        sampling = dict(sampling) if isinstance(sampling, dict) else {}
-        disallowed_sampling_keys = {"topk", "review_pool_size", "review_pool_multiplier"}
-        if any(key in sampling for key in disallowed_sampling_keys) or any(
-            key in step_params for key in disallowed_sampling_keys
-        ):
-            raise BadRequestAppException(
-                "predict does not support topk/review_pool parameters; remove sampling.topk and sampling.review_pool_*"
-            )
-        strategy = str(
-            sampling.get("strategy")
-            or "uncertainty_1_minus_max_conf"
-        ).strip() or "uncertainty_1_minus_max_conf"
-        sampling["strategy"] = strategy
-        sampling.setdefault("topk", 0)
-        step_params["sampling"] = sampling
-        step_params["skip_sampling"] = False
+        predict_params = step_params.get("predict")
+        predict_params = dict(predict_params) if isinstance(predict_params, dict) else {}
+        if predict_conf is not None:
+            predict_params["predict_conf"] = float(predict_conf)
+        if predict_params:
+            step_params["predict"] = predict_params
+            persisted_params["predict"] = dict(predict_params)
 
         task_meta = {
             "plugin_id": plugin_id,

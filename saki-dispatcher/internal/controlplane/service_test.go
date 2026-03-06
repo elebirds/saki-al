@@ -84,6 +84,23 @@ func TestRuntimeTaskTypeFromTaskType(t *testing.T) {
 	}
 }
 
+func TestResolveTaskPayloadQueryStrategyPredictAlwaysEmpty(t *testing.T) {
+	params, err := structpb.NewStruct(map[string]any{
+		"sampling": map[string]any{
+			"strategy": "uncertainty_1_minus_max_conf",
+		},
+	})
+	if err != nil {
+		t.Fatalf("build struct failed: %v", err)
+	}
+	if got := resolveTaskPayloadQueryStrategy("PREDICT", params); got != "" {
+		t.Fatalf("predict query strategy should be empty, got=%q", got)
+	}
+	if got := resolveTaskPayloadQueryStrategy("score", params); got != "uncertainty_1_minus_max_conf" {
+		t.Fatalf("score query strategy mismatch, got=%q", got)
+	}
+}
+
 func TestIsTaskStatusDispatchable(t *testing.T) {
 	dispatchable := []string{
 		"PENDING",

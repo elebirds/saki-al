@@ -272,11 +272,19 @@ func (s *Service) dispatchStepByID(ctx context.Context, stepID uuid.UUID) (bool,
 		return false, tx.Commit(ctx)
 	}
 
+	dispatchTaskID := stepPayload.StepID
+	if mappedTaskID, ok, mapErr := s.resolveTaskIDForStepTx(ctx, tx, stepPayload.StepID); mapErr != nil {
+		return false, mapErr
+	} else if ok {
+		dispatchTaskID = mappedTaskID
+	}
+
 	resolvedParams, err := s.buildDispatchResolvedParamsTx(ctx, tx, stepPayload)
 	if err != nil {
 		if !s.strictModelHandoff {
 			s.logger.Warn().
 				Err(err).
+				Str("task_id", dispatchTaskID.String()).
 				Str("step_id", stepPayload.StepID.String()).
 				Str("step_type", strings.ToLower(string(stepPayload.StepType))).
 				Msg("训练模型交接失败，STRICT_TRAIN_MODEL_HANDOFF=false，回退旧行为")
@@ -293,6 +301,7 @@ func (s *Service) dispatchStepByID(ctx context.Context, stepID uuid.UUID) (bool,
 				return false, refreshErr
 			}
 			s.logger.Warn().
+				Str("task_id", dispatchTaskID.String()).
 				Str("step_id", stepPayload.StepID.String()).
 				Str("step_type", strings.ToLower(string(stepPayload.StepType))).
 				Msgf("训练模型交接失败，步骤已标记 FAILED: %s", reason)
@@ -312,12 +321,6 @@ func (s *Service) dispatchStepByID(ctx context.Context, stepID uuid.UUID) (bool,
 	inputCommitID := ""
 	if stepPayload.InputCommitID != nil {
 		inputCommitID = stepPayload.InputCommitID.String()
-	}
-	dispatchTaskID := stepPayload.StepID
-	if mappedTaskID, ok, mapErr := s.resolveTaskIDForStepTx(ctx, tx, stepPayload.StepID); mapErr != nil {
-		return false, mapErr
-	} else if ok {
-		dispatchTaskID = mappedTaskID
 	}
 	dependsOnTaskIDs, err := s.resolveTaskIDsForStepDependenciesTx(ctx, tx, stepPayload.DependsOnStepIDs)
 	if err != nil {

@@ -263,7 +263,7 @@ class RoundEventQueryResponse(BaseModel):
     has_more: bool = False
 
 
-class StepMetricPointRead(BaseModel):
+class TaskMetricPointRead(BaseModel):
     step: int
     epoch: Optional[int]
     metric_name: str
@@ -271,7 +271,7 @@ class StepMetricPointRead(BaseModel):
     ts: datetime
 
 
-class StepCandidateRead(BaseModel):
+class TaskCandidateRead(BaseModel):
     sample_id: uuid.UUID
     rank: int
     score: float
@@ -292,10 +292,10 @@ class RoundSelectionRead(BaseModel):
     attempt_index: int
     topk: int
     review_pool_size: int
-    auto_selected: List[StepCandidateRead] = Field(default_factory=list)
-    score_pool: List[StepCandidateRead] = Field(default_factory=list)
+    auto_selected: List[TaskCandidateRead] = Field(default_factory=list)
+    score_pool: List[TaskCandidateRead] = Field(default_factory=list)
     overrides: List[RoundSelectionOverrideRead] = Field(default_factory=list)
-    effective_selected: List[StepCandidateRead] = Field(default_factory=list)
+    effective_selected: List[TaskCandidateRead] = Field(default_factory=list)
     selected_count: int = 0
     include_count: int = 0
     exclude_count: int = 0
@@ -312,7 +312,7 @@ class RoundSelectionApplyResponse(BaseModel):
     selected_count: int
     include_count: int
     exclude_count: int
-    effective_selected: List[StepCandidateRead] = Field(default_factory=list)
+    effective_selected: List[TaskCandidateRead] = Field(default_factory=list)
 
 
 class TaskArtifactRead(BaseModel):

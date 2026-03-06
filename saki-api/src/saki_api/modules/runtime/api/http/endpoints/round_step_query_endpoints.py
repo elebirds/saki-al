@@ -20,11 +20,11 @@ from saki_api.modules.runtime.api.round_step import (
     RoundRead,
     RoundSelectionRead,
     StepRead,
+    TaskCandidateRead,
     TaskArtifactDownloadResponse,
     TaskArtifactsResponse,
-    StepCandidateRead,
     TaskEventQueryResponse,
-    StepMetricPointRead,
+    TaskMetricPointRead,
 )
 from saki_api.modules.access.domain.rbac import Permissions
 
@@ -248,7 +248,7 @@ async def get_task_events(
     return TaskEventQueryResponse.model_validate(payload)
 
 
-@router.get("/tasks/{task_id}/metrics/series", response_model=List[StepMetricPointRead])
+@router.get("/tasks/{task_id}/metrics/series", response_model=List[TaskMetricPointRead])
 async def get_task_metric_series(
     *,
     task_id: uuid.UUID,
@@ -266,7 +266,7 @@ async def get_task_metric_series(
     )
     points = await runtime_service.list_task_metric_series(task_id, limit=limit)
     return [
-        StepMetricPointRead(
+        TaskMetricPointRead(
             step=item.metric_step,
             epoch=item.epoch,
             metric_name=item.metric_name,
@@ -278,7 +278,7 @@ async def get_task_metric_series(
     ]
 
 
-@router.get("/tasks/{task_id}/candidates", response_model=List[StepCandidateRead])
+@router.get("/tasks/{task_id}/candidates", response_model=List[TaskCandidateRead])
 async def get_task_candidates(
     *,
     task_id: uuid.UUID,
@@ -296,7 +296,7 @@ async def get_task_candidates(
     )
     rows = await runtime_service.list_task_candidates(task_id, limit=limit)
     return [
-        StepCandidateRead(
+        TaskCandidateRead(
             sample_id=item.sample_id,
             rank=item.rank,
             score=item.score,

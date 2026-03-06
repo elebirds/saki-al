@@ -1,26 +1,3 @@
--- name: ListPendingStepIDs :many
-SELECT s.id AS id
-FROM step s
-LEFT JOIN task t ON t.id = s.task_id
-JOIN round r ON r.id = s.round_id
-JOIN loop l ON l.id = r.loop_id
-WHERE COALESCE(t.status::text, s.state::text)::stepstatus = 'PENDING'::stepstatus
-  AND l.lifecycle = 'RUNNING'::looplifecycle
-ORDER BY s.created_at ASC
-LIMIT sqlc.arg(limit_count);
-
--- name: ListReadyStepIDsForUpdateSkipLocked :many
-SELECT s.id AS id
-FROM step s
-LEFT JOIN task t ON t.id = s.task_id
-JOIN round r ON r.id = s.round_id
-JOIN loop l ON l.id = r.loop_id
-WHERE COALESCE(t.status::text, s.state::text)::stepstatus = 'READY'::stepstatus
-  AND l.lifecycle = 'RUNNING'::looplifecycle
-ORDER BY s.created_at ASC
-LIMIT sqlc.arg(limit_count)
-FOR UPDATE OF s SKIP LOCKED;
-
 -- name: ListReadyTaskIDsForDispatch :many
 SELECT t.id AS id
 FROM task t
@@ -47,28 +24,6 @@ OR (
 ORDER BY t.created_at ASC
 LIMIT sqlc.arg(limit_count)
 FOR UPDATE OF t SKIP LOCKED;
-
--- name: ListRetryingStepIDsDueForUpdateSkipLocked :many
-SELECT s.id AS id
-FROM step s
-LEFT JOIN task t ON t.id = s.task_id
-JOIN round r ON r.id = s.round_id
-JOIN loop l ON l.id = r.loop_id
-WHERE COALESCE(t.status::text, s.state::text)::stepstatus = 'RETRYING'::stepstatus
-  AND l.lifecycle = 'RUNNING'::looplifecycle
-  AND COALESCE(t.updated_at, s.updated_at) <= now() - (
-    CASE
-      WHEN COALESCE(t.attempt, s.attempt) <= 1 THEN interval '1 second'
-      WHEN COALESCE(t.attempt, s.attempt) = 2 THEN interval '2 seconds'
-      WHEN COALESCE(t.attempt, s.attempt) = 3 THEN interval '4 seconds'
-      WHEN COALESCE(t.attempt, s.attempt) = 4 THEN interval '8 seconds'
-      WHEN COALESCE(t.attempt, s.attempt) = 5 THEN interval '16 seconds'
-      ELSE interval '30 seconds'
-    END
-  )
-ORDER BY COALESCE(t.updated_at, s.updated_at) ASC
-LIMIT sqlc.arg(limit_count)
-FOR UPDATE OF s SKIP LOCKED;
 
 -- name: GetStepPayloadByIDForUpdate :one
 SELECT

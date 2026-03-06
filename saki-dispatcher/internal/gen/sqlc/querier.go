@@ -64,10 +64,7 @@ type Querier interface {
 	InsertTaskMetricPoint(ctx context.Context, arg InsertTaskMetricPointParams) error
 	ListLoopStoppableSteps(ctx context.Context, loopID uuid.UUID) ([]ListLoopStoppableStepsRow, error)
 	ListOrphanDispatchingStepIDs(ctx context.Context, arg ListOrphanDispatchingStepIDsParams) ([]uuid.UUID, error)
-	ListPendingStepIDs(ctx context.Context, limitCount int32) ([]uuid.UUID, error)
-	ListReadyStepIDsForUpdateSkipLocked(ctx context.Context, limitCount int32) ([]uuid.UUID, error)
 	ListReadyTaskIDsForDispatch(ctx context.Context, limitCount int32) ([]uuid.UUID, error)
-	ListRetryingStepIDsDueForUpdateSkipLocked(ctx context.Context, limitCount int32) ([]uuid.UUID, error)
 	ListRoundActiveStepIDs(ctx context.Context, roundID uuid.UUID) ([]uuid.UUID, error)
 	ListStepTaskBindingsByStepIDs(ctx context.Context, stepIds []uuid.UUID) ([]ListStepTaskBindingsByStepIDsRow, error)
 	ListTaskCandidatesByTaskID(ctx context.Context, arg ListTaskCandidatesByTaskIDParams) ([]ListTaskCandidatesByTaskIDRow, error)

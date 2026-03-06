@@ -608,21 +608,9 @@ class RuntimeQueryMixin:
             "has_more": len(items) >= safe_limit,
         }
 
-    async def list_step_metric_series(self, step_id: uuid.UUID, limit: int = 5000):
-        step = await self.step_repo.get_by_id_or_raise(step_id)
-        if not step.task_id:
-            return []
-        return await self.task_metric_repo.list_by_task(step.task_id, limit=max(1, min(limit, 100000)))
-
     async def list_task_metric_series(self, task_id: uuid.UUID, limit: int = 5000):
         await self.task_repo.get_by_id_or_raise(task_id)
         return await self.task_metric_repo.list_by_task(task_id, limit=max(1, min(limit, 100000)))
-
-    async def list_step_candidates(self, step_id: uuid.UUID, limit: int = 200) -> List[TaskCandidateItem]:
-        step = await self.step_repo.get_by_id_or_raise(step_id)
-        if not step.task_id:
-            return []
-        return await self.task_candidate_repo.list_topk_by_task(step.task_id, limit=max(1, min(limit, 5000)))
 
     async def list_task_candidates(self, task_id: uuid.UUID, limit: int = 200) -> List[TaskCandidateItem]:
         await self.task_repo.get_by_id_or_raise(task_id)
@@ -645,10 +633,6 @@ class RuntimeQueryMixin:
                 )
             )
         return artifacts
-
-    async def list_step_artifacts(self, step_id: uuid.UUID) -> list[StepArtifactRead]:
-        step = await self.step_repo.get_by_id_or_raise(step_id)
-        return self._extract_downloadable_step_artifacts(step)
 
     async def list_task_artifacts(self, task_id: uuid.UUID) -> list[StepArtifactRead]:
         await self.task_repo.get_by_id_or_raise(task_id)
@@ -738,20 +722,6 @@ class RuntimeQueryMixin:
             return uri
 
         raise BadRequestAppException(f"Unsupported artifact URI: {uri}")
-
-    async def get_step_artifact_download_url(
-        self,
-        *,
-        step_id: uuid.UUID,
-        artifact_name: str,
-        expires_in_hours: int = 2,
-    ) -> str:
-        step = await self.step_repo.get_by_id_or_raise(step_id)
-        return self._resolve_artifact_download_url_from_step(
-            step=step,
-            artifact_name=artifact_name,
-            expires_in_hours=expires_in_hours,
-        )
 
     async def get_task_artifact_download_url(
         self,

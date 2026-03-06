@@ -321,12 +321,6 @@ class StepArtifactRead(BaseModel):
     uri: str
     meta: Dict[str, Any] = Field(default_factory=dict)
 
-
-class StepArtifactsResponse(BaseModel):
-    step_id: uuid.UUID
-    artifacts: List[StepArtifactRead]
-
-
 class RoundArtifactRead(BaseModel):
     step_id: uuid.UUID
     task_id: Optional[uuid.UUID] = None
@@ -435,13 +429,6 @@ class PredictionApplyResponse(BaseModel):
     prediction_id: uuid.UUID
     applied_count: int = 0
     status: str
-
-class StepArtifactDownloadResponse(BaseModel):
-    step_id: uuid.UUID
-    artifact_name: str
-    download_url: str
-    expires_in_hours: int = Field(default=2, ge=1, le=24)
-
 
 class TaskArtifactDownloadResponse(BaseModel):
     task_id: uuid.UUID

@@ -2606,7 +2606,7 @@ async def test_list_loop_rounds_returns_split_metric_views(loop_api_env, monkeyp
 
 
 @pytest.mark.anyio
-async def test_get_step_metric_series_ignores_non_positive_step_points(loop_api_env, monkeypatch):
+async def test_get_task_metric_series_ignores_non_positive_step_points(loop_api_env, monkeypatch):
     session_local = loop_api_env
 
     async def _allow(*args, **kwargs) -> None:
@@ -2698,8 +2698,8 @@ async def test_get_step_metric_series_ignores_non_positive_step_points(loop_api_
             )
             await session.commit()
 
-            series = await round_step_query_endpoint.get_step_metric_series(
-                step_id=step.id,
+            series = await round_step_query_endpoint.get_task_metric_series(
+                task_id=step.task_id,
                 limit=5000,
                 runtime_service=service,
                 session=session,

@@ -6,7 +6,7 @@ from typing import Any
 from saki_executor.steps.state import TaskStatus
 
 SUPPORTED_LOOP_MODES = {"active_learning", "simulation", "manual"}
-SAMPLING_REQUIRED_STEP_TYPES = {"score", "custom"}
+SAMPLING_REQUIRED_TASK_TYPES = {"score", "custom"}
 
 
 @dataclass(frozen=True)
@@ -60,7 +60,7 @@ class TaskExecutionRequest:
         )
         if mode == "manual" and has_sampling and task_type != "predict":
             raise ValueError("manual mode does not allow sampling params")
-        if mode in {"active_learning", "simulation"} and task_type in SAMPLING_REQUIRED_STEP_TYPES:
+        if mode in {"active_learning", "simulation"} and task_type in SAMPLING_REQUIRED_TASK_TYPES:
             strategy = str(sampling_cfg.get("strategy") or query_strategy or "").strip()
             fallback_topk = 200 if strategy else 0
             topk_raw = sampling_cfg.get("topk", resolved_params.get("topk", fallback_topk))

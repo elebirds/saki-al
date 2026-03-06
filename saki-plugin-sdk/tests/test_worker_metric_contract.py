@@ -27,14 +27,14 @@ class _FakePubSocket:
         self.frames.append(list(frames))
 
 
-def _execution_context(step_type: str) -> ExecutionBindingContext:
+def _execution_context(task_type: str) -> ExecutionBindingContext:
     return ExecutionBindingContext(
         task_context=TaskRuntimeContext(
             task_id="step-contract",
             round_id="round-contract",
             round_index=1,
             attempt=1,
-            task_type=step_type,
+            task_type=task_type,
             mode="active_learning",
             split_seed=1,
             train_seed=2,

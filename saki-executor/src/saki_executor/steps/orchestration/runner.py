@@ -26,8 +26,8 @@ if TYPE_CHECKING:
 
 class TaskPipelineRunner:
     _SUPPORTED_MODES = SUPPORTED_LOOP_MODES
-    _ORCHESTRATOR_ONLY_STEP_TYPES = {"select"}
-    _TRAINING_PIPELINE_STEP_TYPES = {"train", "score", "eval", "predict", "custom"}
+    _ORCHESTRATOR_ONLY_TASK_TYPES = {"select"}
+    _TRAINING_PIPELINE_TASK_TYPES = {"train", "score", "eval", "predict", "custom"}
 
     def __init__(self, *, manager: TaskManager, request: TaskExecutionRequest) -> None:
         self._manager = manager
@@ -82,11 +82,11 @@ class TaskPipelineRunner:
                 raise RuntimeError(f"unsupported mode: {self._request.mode}")
             if self._request.dispatch_kind == "orchestrator":
                 raise RuntimeError(f"orchestrator task should not be dispatched to executor: {self._request.task_id}")
-            if self._request.task_type in self._ORCHESTRATOR_ONLY_STEP_TYPES:
+            if self._request.task_type in self._ORCHESTRATOR_ONLY_TASK_TYPES:
                 raise RuntimeError(
                     f"task_type '{self._request.task_type}' must be handled by dispatcher orchestrator"
                 )
-            if self._request.task_type not in self._TRAINING_PIPELINE_STEP_TYPES:
+            if self._request.task_type not in self._TRAINING_PIPELINE_TASK_TYPES:
                 raise RuntimeError(f"unsupported task_type for executor pipeline: {self._request.task_type}")
         except Exception as exc:
             raise wrap_task_error(

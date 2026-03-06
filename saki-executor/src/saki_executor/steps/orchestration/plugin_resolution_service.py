@@ -31,7 +31,7 @@ class PluginResolutionService:
         }
         if supported_task_types and request.task_type not in supported_task_types:
             raise TaskPipelineError(
-                code=TaskErrorCode.PLUGIN_UNSUPPORTED_STEP_TYPE,
+                code=TaskErrorCode.PLUGIN_UNSUPPORTED_TASK_TYPE,
                 stage=TaskStage.PLUGIN_RESOLUTION,
                 message=(
                     f"plugin {request.plugin_id} does not support task_type={request.task_type}; "

@@ -19,11 +19,11 @@ class PluginManifest(BaseModel):
     display_name: str = ""
     sdk_version: str = ">=4.0.0"
 
-    supported_step_types: list[str] = Field(default_factory=list)
+    supported_task_types: list[str] = Field(default_factory=list)
     supported_strategies: list[str] = Field(default_factory=list)
     supported_accelerators: list[str] = Field(default_factory=lambda: ["cpu"])
     supports_auto_fallback: bool = True
-    step_runtime_requirements: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    task_runtime_requirements: dict[str, dict[str, Any]] = Field(default_factory=dict)
     runtime_profiles: list[dict[str, Any]] = Field(default_factory=list)
 
     config_schema: dict[str, Any] = Field(default_factory=dict)

@@ -284,7 +284,7 @@ def build_register_message(
             pb.PluginCapability(
                 plugin_id=str(item.get("plugin_id") or ""),
                 version=str(item.get("version") or ""),
-                supported_step_types=[str(v) for v in (item.get("supported_step_types") or [])],
+                supported_task_types=[str(v) for v in (item.get("supported_task_types") or [])],
                 supported_strategies=[str(v) for v in (item.get("supported_strategies") or [])],
                 display_name=str(item.get("display_name") or item.get("plugin_id") or ""),
                 request_config_schema=dict_to_struct(item.get("request_config_schema") or {}),

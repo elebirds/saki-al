@@ -3,7 +3,7 @@ version: "3.0.0"
 display_name: "YOLO Detection"
 sdk_version: ">=4.0.0"
 
-supported_step_types:
+supported_task_types:
   - train
   - score
   - predict

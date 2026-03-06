@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from saki_plugin_sdk import StepRuntimeRequirements, parse_runtime_profiles, resolve_step_runtime_requirements
+from saki_plugin_sdk import StepRuntimeRequirements, parse_runtime_profiles, resolve_task_runtime_requirements
 from saki_plugin_sdk.manifest import PluginManifest
 
 
@@ -42,8 +42,8 @@ class ExternalPluginDescriptor:
         return self._manifest.display_name
 
     @property
-    def supported_step_types(self) -> list[str]:
-        return list(self._manifest.supported_step_types)
+    def supported_task_types(self) -> list[str]:
+        return list(self._manifest.supported_task_types)
 
     @property
     def supported_strategies(self) -> list[str]:
@@ -108,6 +108,6 @@ class ExternalPluginDescriptor:
             validate=True,
         )
 
-    def get_step_runtime_requirements(self, step_type: str) -> StepRuntimeRequirements:
-        requirements_map = getattr(self._manifest, "step_runtime_requirements", {}) or {}
-        return resolve_step_runtime_requirements(step_type, requirements_map)
+    def get_task_runtime_requirements(self, task_type: str) -> StepRuntimeRequirements:
+        requirements_map = getattr(self._manifest, "task_runtime_requirements", {}) or {}
+        return resolve_task_runtime_requirements(task_type, requirements_map)

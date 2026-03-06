@@ -453,7 +453,7 @@ def parse_register(message: pb.Register) -> RuntimeRegisterDTO:
             RuntimePluginCapabilityDTO(
                 plugin_id=str(item.plugin_id),
                 version=str(item.version),
-                supported_step_types=[str(v) for v in item.supported_step_types],
+                supported_task_types=[str(v) for v in item.supported_task_types],
                 supported_strategies=[str(v) for v in item.supported_strategies],
                 display_name=str(item.display_name),
                 request_config_schema=struct_to_dict(item.request_config_schema),

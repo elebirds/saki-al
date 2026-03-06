@@ -57,8 +57,8 @@ class SubprocessPluginProxy(ExecutorPlugin):
         return self._metadata.display_name
 
     @property
-    def supported_step_types(self) -> list[str]:
-        return list(self._metadata.supported_step_types)
+    def supported_task_types(self) -> list[str]:
+        return list(self._metadata.supported_task_types)
 
     @property
     def supported_strategies(self) -> list[str]:
@@ -88,8 +88,8 @@ class SubprocessPluginProxy(ExecutorPlugin):
     ) -> None:
         self._metadata.validate_params(params, context=context)
 
-    def get_step_runtime_requirements(self, step_type: str) -> StepRuntimeRequirements:
-        return self._metadata.get_step_runtime_requirements(step_type)
+    def get_task_runtime_requirements(self, task_type: str) -> StepRuntimeRequirements:
+        return self._metadata.get_task_runtime_requirements(task_type)
 
     async def probe_runtime_capability(
         self,

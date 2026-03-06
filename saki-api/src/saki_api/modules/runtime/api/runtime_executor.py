@@ -66,7 +66,7 @@ class RuntimePluginRead(BaseModel):
     plugin_id: str
     display_name: str
     version: str
-    supported_step_types: list[str] = Field(default_factory=list)
+    supported_task_types: list[str] = Field(default_factory=list)
     supported_strategies: list[str] = Field(default_factory=list)
     supported_accelerators: list[str] = Field(default_factory=list)
     supports_auto_fallback: bool = True

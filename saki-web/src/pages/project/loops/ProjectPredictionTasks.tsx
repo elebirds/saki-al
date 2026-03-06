@@ -59,7 +59,7 @@ const ProjectPredictionTasks: React.FC = () => {
 
     const predictPluginIds = useMemo(
         () => plugins
-            .filter((item) => (item.supportedStepTypes || []).map((v) => String(v).toLowerCase()).includes('predict'))
+            .filter((item) => (item.supportedTaskTypes || []).map((v) => String(v).toLowerCase()).includes('predict'))
             .map((item) => item.pluginId),
         [plugins],
     );

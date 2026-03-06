@@ -142,7 +142,7 @@ class AgentClient:
                     "plugin_id": plugin.plugin_id,
                     "version": plugin.version,
                     "display_name": plugin.display_name,
-                    "supported_step_types": plugin.supported_step_types,
+                    "supported_task_types": plugin.supported_task_types,
                     "supported_strategies": plugin.supported_strategies,
                     "supported_accelerators": plugin.supported_accelerators,
                     "supports_auto_fallback": plugin.supports_auto_fallback,

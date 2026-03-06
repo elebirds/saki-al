@@ -727,7 +727,7 @@ export interface RuntimePluginCatalogItem {
     pluginId: string;
     displayName: string;
     version: string;
-    supportedStepTypes: string[];
+    supportedTaskTypes: string[];
     supportedStrategies: string[];
     supportedAccelerators: ('cpu' | 'cuda' | 'mps')[];
     supportsAutoFallback: boolean;
@@ -749,7 +749,7 @@ export interface RuntimeExecutorPluginCapability {
     pluginId: string;
     displayName: string;
     version: string;
-    supportedStepTypes: string[];
+    supportedTaskTypes: string[];
     supportedStrategies: string[];
     supportedAccelerators: ('cpu' | 'cuda' | 'mps')[];
     supportsAutoFallback: boolean;

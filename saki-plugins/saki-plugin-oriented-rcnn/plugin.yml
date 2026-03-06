@@ -3,7 +3,7 @@ version: "1.0.0"
 display_name: "Oriented R-CNN"
 sdk_version: ">=4.0.0"
 
-supported_step_types:
+supported_task_types:
   - train
   - score
   - predict
@@ -21,7 +21,7 @@ supported_accelerators:
 
 supports_auto_fallback: true
 
-step_runtime_requirements:
+task_runtime_requirements:
   train:
     requires_prepare_data: true
     requires_trained_model: false

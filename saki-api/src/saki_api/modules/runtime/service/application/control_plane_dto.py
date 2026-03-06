@@ -32,7 +32,7 @@ class RuntimeUploadTicketRequestDTO:
 class RuntimePluginCapabilityDTO:
     plugin_id: str
     version: str = ""
-    supported_step_types: list[str] = field(default_factory=list)
+    supported_task_types: list[str] = field(default_factory=list)
     supported_strategies: list[str] = field(default_factory=list)
     display_name: str = ""
     request_config_schema: dict[str, Any] = field(default_factory=dict)

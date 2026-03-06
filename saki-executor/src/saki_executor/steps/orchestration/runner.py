@@ -50,7 +50,7 @@ class StepPipelineRunner:
             bound_plan = await self._prepare_execution_binding(plan=plan, plugin=plugin, emitter=emitter)
             await self._emit_running_status(emitter)
 
-            runtime_requirements = plugin.get_step_runtime_requirements(self._request.task_type)
+            runtime_requirements = plugin.get_task_runtime_requirements(self._request.task_type)
             await self._pipeline_stage_service.prepare_trained_model_if_needed(
                 workspace=workspace,
                 emitter=emitter,

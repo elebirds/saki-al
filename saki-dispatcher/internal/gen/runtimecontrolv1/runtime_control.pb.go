@@ -604,7 +604,7 @@ type PluginCapability struct {
 	state                 protoimpl.MessageState `protogen:"open.v1"`
 	PluginId              string                 `protobuf:"bytes,1,opt,name=plugin_id,json=pluginId,proto3" json:"plugin_id,omitempty"`
 	Version               string                 `protobuf:"bytes,2,opt,name=version,proto3" json:"version,omitempty"`
-	SupportedStepTypes    []string               `protobuf:"bytes,3,rep,name=supported_step_types,json=supportedStepTypes,proto3" json:"supported_step_types,omitempty"`
+	SupportedTaskTypes    []string               `protobuf:"bytes,3,rep,name=supported_task_types,json=supportedTaskTypes,proto3" json:"supported_task_types,omitempty"`
 	SupportedStrategies   []string               `protobuf:"bytes,4,rep,name=supported_strategies,json=supportedStrategies,proto3" json:"supported_strategies,omitempty"`
 	DisplayName           string                 `protobuf:"bytes,5,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
 	RequestConfigSchema   *structpb.Struct       `protobuf:"bytes,6,opt,name=request_config_schema,json=requestConfigSchema,proto3" json:"request_config_schema,omitempty"`
@@ -659,9 +659,9 @@ func (x *PluginCapability) GetVersion() string {
 	return ""
 }
 
-func (x *PluginCapability) GetSupportedStepTypes() []string {
+func (x *PluginCapability) GetSupportedTaskTypes() []string {
 	if x != nil {
-		return x.SupportedStepTypes
+		return x.SupportedTaskTypes
 	}
 	return nil
 }
@@ -3076,7 +3076,7 @@ const file_runtime_control_proto_rawDesc = "" +
 	"\x10PluginCapability\x12\x1b\n" +
 	"\tplugin_id\x18\x01 \x01(\tR\bpluginId\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x120\n" +
-	"\x14supported_step_types\x18\x03 \x03(\tR\x12supportedStepTypes\x121\n" +
+	"\x14supported_task_types\x18\x03 \x03(\tR\x12supportedTaskTypes\x121\n" +
 	"\x14supported_strategies\x18\x04 \x03(\tR\x13supportedStrategies\x12!\n" +
 	"\fdisplay_name\x18\x05 \x01(\tR\vdisplayName\x12K\n" +
 	"\x15request_config_schema\x18\x06 \x01(\v2\x17.google.protobuf.StructR\x13requestConfigSchema\x12M\n" +

@@ -27,7 +27,7 @@ class _DummyPlugin(ExecutorPlugin):
                 "plugin_id": "dummy_v2",
                 "version": "3.0.0",
                 "display_name": "Dummy V3",
-                "supported_step_types": ["train", "score"],
+                "supported_task_types": ["train", "score"],
                 "supported_strategies": ["random_baseline"],
                 "runtime_profiles": [
                     {
@@ -49,7 +49,7 @@ class _DummyPlugin(ExecutorPlugin):
                     "epochs": 5,
                     "batch": 8,
                 },
-                "step_runtime_requirements": {
+                "task_runtime_requirements": {
                     "score": {
                         "requires_prepare_data": True,
                         "requires_trained_model": True,
@@ -152,8 +152,8 @@ def test_executor_plugin_validate_params_uses_schema():
 
 def test_executor_plugin_runtime_requirements_use_manifest_overrides():
     plugin = _DummyPlugin()
-    score = plugin.get_step_runtime_requirements("score")
-    train = plugin.get_step_runtime_requirements("train")
+    score = plugin.get_task_runtime_requirements("score")
+    train = plugin.get_task_runtime_requirements("train")
     assert score.requires_prepare_data is True
     assert score.requires_trained_model is True
     assert score.primary_model_artifact_name == "score.pt"

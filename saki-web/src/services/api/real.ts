@@ -401,7 +401,7 @@ function normalizeRuntimePluginCatalog(response: RuntimePluginCatalogResponse): 
         ...response,
         items: (response.items || []).map((item: any) => ({
             ...item,
-            supportedStepTypes: item.supportedStepTypes ?? [],
+            supportedTaskTypes: item.supportedTaskTypes ?? [],
         })),
     };
 }
@@ -411,7 +411,7 @@ function normalizeRuntimeExecutor(executor: RuntimeExecutorRead): RuntimeExecuto
     const plugins = Array.isArray(pluginIds.plugins)
         ? pluginIds.plugins.map((plugin: any) => ({
             ...plugin,
-            supportedStepTypes: plugin.supportedStepTypes ?? [],
+            supportedTaskTypes: plugin.supportedTaskTypes ?? [],
         }))
         : pluginIds.plugins;
     return {

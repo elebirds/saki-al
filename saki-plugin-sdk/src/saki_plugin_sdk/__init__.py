@@ -6,8 +6,8 @@ from saki_plugin_sdk.base import (
     TrainArtifact,
     TrainOutput,
     StepRuntimeRequirements,
-    default_step_runtime_requirements,
-    resolve_step_runtime_requirements,
+    default_task_runtime_requirements,
+    resolve_task_runtime_requirements,
 )
 from saki_plugin_sdk.types import TaskRuntimeContext
 from saki_plugin_sdk.capability_types import HostCapabilitySnapshot, RuntimeCapabilitySnapshot, GpuDeviceCapability
@@ -56,8 +56,8 @@ __all__ = [
     "TrainArtifact",
     "TrainOutput",
     "StepRuntimeRequirements",
-    "default_step_runtime_requirements",
-    "resolve_step_runtime_requirements",
+    "default_task_runtime_requirements",
+    "resolve_task_runtime_requirements",
     "TaskRuntimeContext",
     "HostCapabilitySnapshot",
     "RuntimeCapabilitySnapshot",

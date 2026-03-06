@@ -39,8 +39,8 @@ class StepRuntimeRequirements:
     primary_model_artifact_name: str = "best.pt"
 
 
-def default_step_runtime_requirements(step_type: str) -> StepRuntimeRequirements:
-    normalized = str(step_type or "").strip().lower()
+def default_task_runtime_requirements(task_type: str) -> StepRuntimeRequirements:
+    normalized = str(task_type or "").strip().lower()
     if normalized == "train":
         return StepRuntimeRequirements(
             requires_prepare_data=True,
@@ -78,18 +78,18 @@ def default_step_runtime_requirements(step_type: str) -> StepRuntimeRequirements
     )
 
 
-def resolve_step_runtime_requirements(
-    step_type: str,
+def resolve_task_runtime_requirements(
+    task_type: str,
     requirements_map: Mapping[str, Any] | None = None,
 ) -> StepRuntimeRequirements:
-    default = default_step_runtime_requirements(step_type)
+    default = default_task_runtime_requirements(task_type)
     if not isinstance(requirements_map, Mapping):
         return default
 
-    normalized = str(step_type or "").strip().lower()
+    normalized = str(task_type or "").strip().lower()
     raw = requirements_map.get(normalized)
     if raw is None:
-        raw = requirements_map.get(step_type)
+        raw = requirements_map.get(task_type)
     if not isinstance(raw, Mapping):
         return default
 
@@ -223,14 +223,14 @@ class ExecutorPlugin(ABC):
         return self.plugin_id
 
     @property
-    def supported_step_types(self) -> list[str]:
-        """List of supported step types.
+    def supported_task_types(self) -> list[str]:
+        """List of supported task types.
 
         Default implementation reads from manifest.
         """
         manifest = self.manifest
         if manifest:
-            return manifest.supported_step_types
+            return manifest.supported_task_types
         return []
 
     @property
@@ -464,10 +464,10 @@ class ExecutorPlugin(ABC):
         del context
         return RuntimeCapabilitySnapshot.empty(framework="")
 
-    def get_step_runtime_requirements(self, step_type: str) -> StepRuntimeRequirements:
+    def get_task_runtime_requirements(self, task_type: str) -> StepRuntimeRequirements:
         manifest = self.manifest
-        requirements_map = getattr(manifest, "step_runtime_requirements", {}) if manifest is not None else {}
-        return resolve_step_runtime_requirements(step_type, requirements_map)
+        requirements_map = getattr(manifest, "task_runtime_requirements", {}) if manifest is not None else {}
+        return resolve_task_runtime_requirements(task_type, requirements_map)
 
     async def prepare_data(
             self,
@@ -514,7 +514,7 @@ class ExecutorPlugin(ABC):
     ) -> TrainOutput:
         """Execute evaluation step.
 
-        Plugins that declare ``eval`` in ``supported_step_types`` should override.
+        Plugins that declare ``eval`` in ``supported_task_types`` should override.
         """
         del workspace, params, emit, context
         raise NotImplementedError("eval step is not implemented by this plugin")
@@ -529,7 +529,7 @@ class ExecutorPlugin(ABC):
     ) -> TrainOutput:
         """Execute predict step.
 
-        Plugins that declare ``predict`` in ``supported_step_types`` should override.
+        Plugins that declare ``predict`` in ``supported_task_types`` should override.
         """
         del workspace, params, emit, context
         raise NotImplementedError("predict step is not implemented by this plugin")

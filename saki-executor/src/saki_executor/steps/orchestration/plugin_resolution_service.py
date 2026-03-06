@@ -24,18 +24,18 @@ class PluginResolutionService:
             )
 
         manager.plugin_registry.ensure_worker_loadable(request.plugin_id)
-        supported_step_types = {
+        supported_task_types = {
             str(item).strip().lower()
-            for item in (getattr(metadata_plugin, "supported_step_types", []) or [])
+            for item in (getattr(metadata_plugin, "supported_task_types", []) or [])
             if str(item).strip()
         }
-        if supported_step_types and request.task_type not in supported_step_types:
+        if supported_task_types and request.task_type not in supported_task_types:
             raise StepPipelineError(
                 code=StepErrorCode.PLUGIN_UNSUPPORTED_STEP_TYPE,
                 stage=StepStage.PLUGIN_RESOLUTION,
                 message=(
                     f"plugin {request.plugin_id} does not support task_type={request.task_type}; "
-                    f"supported={sorted(supported_step_types)}"
+                    f"supported={sorted(supported_task_types)}"
                 ),
             )
 

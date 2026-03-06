@@ -304,7 +304,7 @@ func pluginCapabilitiesToMaps(plugins []*runtimecontrolv1.PluginCapability) []ma
 			"plugin_id":              pluginID,
 			"display_name":           strings.TrimSpace(item.GetDisplayName()),
 			"version":                strings.TrimSpace(item.GetVersion()),
-			"supported_step_types":   normalizeStringSlice(item.GetSupportedStepTypes()),
+			"supported_task_types":   normalizeStringSlice(item.GetSupportedTaskTypes()),
 			"supported_strategies":   normalizeStringSlice(item.GetSupportedStrategies()),
 			"supported_accelerators": supportedAccelerators,
 			"supports_auto_fallback": item.GetSupportsAutoFallback(),

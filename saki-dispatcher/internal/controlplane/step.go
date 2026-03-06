@@ -63,12 +63,6 @@ func (s *Service) dispatchPending(ctx context.Context, limit int) (int, error) {
 		}
 	}
 
-	if _, err := s.promotePendingStepsToReady(ctx, max(64, limit*2)); err != nil {
-		return claimed, err
-	}
-	if _, err := s.promoteRetryingStepsToReady(ctx, max(64, limit*2)); err != nil {
-		return claimed, err
-	}
 	taskIDs, err := s.listReadyTaskIDs(ctx, limit)
 	if err != nil {
 		return claimed, err
@@ -93,100 +87,6 @@ func (s *Service) dispatchPending(ctx context.Context, limit int) (int, error) {
 	return claimed + sent, nil
 }
 
-func (s *Service) promotePendingStepsToReady(ctx context.Context, limit int) (int, error) {
-	stepIDs, err := s.listPendingStepIDs(ctx, limit)
-	if err != nil {
-		return 0, err
-	}
-	count := 0
-	for _, stepID := range stepIDs {
-		promoted, err := s.promotePendingStepIfReady(ctx, stepID)
-		if err != nil {
-			return count, err
-		}
-		if promoted {
-			count++
-		}
-	}
-	return count, nil
-}
-
-func (s *Service) promoteRetryingStepsToReady(ctx context.Context, limit int) (int, error) {
-	stepIDs, err := s.listRetryingStepIDsDue(ctx, limit)
-	if err != nil {
-		return 0, err
-	}
-	count := 0
-	for _, stepID := range stepIDs {
-		promoted, err := s.promoteRetryingStepToReady(ctx, stepID)
-		if err != nil {
-			return count, err
-		}
-		if promoted {
-			count++
-		}
-	}
-	return count, nil
-}
-
-func (s *Service) promoteRetryingStepToReady(ctx context.Context, stepID uuid.UUID) (bool, error) {
-	tx, err := s.beginTx(ctx)
-	if err != nil {
-		return false, err
-	}
-	defer tx.Rollback(ctx)
-
-	updated, err := s.promoteRetryingStepToReadyTx(ctx, tx, stepID)
-	if err != nil {
-		return false, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return false, err
-	}
-	return updated, nil
-}
-
-func (s *Service) promotePendingStepIfReady(ctx context.Context, stepID uuid.UUID) (bool, error) {
-	tx, err := s.beginTx(ctx)
-	if err != nil {
-		return false, err
-	}
-	defer tx.Rollback(ctx)
-
-	stepPayload, ok, err := s.getStepPayloadByIDTx(ctx, tx, stepID)
-	if err != nil {
-		return false, err
-	}
-	if !ok || stepPayload.Status != stepPending {
-		return false, tx.Commit(ctx)
-	}
-	loopLifecycle, err := s.qtx(tx).GetLoopLifecycle(ctx, stepPayload.LoopID)
-	if err != nil {
-		if err == pgx.ErrNoRows {
-			return false, tx.Commit(ctx)
-		}
-		return false, err
-	}
-	if loopLifecycle != db.LooplifecycleRUNNING {
-		return false, tx.Commit(ctx)
-	}
-	depsOK, err := s.dependenciesSatisfiedTx(ctx, tx, stepPayload.DependsOnTaskIDs)
-	if err != nil {
-		return false, err
-	}
-	if !depsOK {
-		return false, tx.Commit(ctx)
-	}
-	updated, err := s.promoteStepToReadyTx(ctx, tx, stepPayload.StepID)
-	if err != nil {
-		return false, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return false, err
-	}
-	return updated, nil
-}
-
 func (s *Service) dispatchStepByID(ctx context.Context, stepID uuid.UUID) (bool, error) {
 	tx, err := s.beginTx(ctx)
 	if err != nil {
@@ -202,7 +102,7 @@ func (s *Service) dispatchStepByID(ctx context.Context, stepID uuid.UUID) (bool,
 		return false, tx.Commit(ctx)
 	}
 
-	if stepPayload.Status == stepPending {
+	if stepPayload.Status == stepPending || stepPayload.Status == stepRetrying {
 		loopLifecycle, err := s.qtx(tx).GetLoopLifecycle(ctx, stepPayload.LoopID)
 		if err != nil {
 			if err == pgx.ErrNoRows {
@@ -220,7 +120,14 @@ func (s *Service) dispatchStepByID(ctx context.Context, stepID uuid.UUID) (bool,
 		if !depsOK {
 			return false, tx.Commit(ctx)
 		}
-		promoted, err := s.promoteStepToReadyTx(ctx, tx, stepPayload.StepID)
+		promoteToReady := s.promoteStepToReadyTx
+		if stepPayload.Status == stepRetrying {
+			if !isRetryDue(time.Now().UTC(), stepPayload.UpdatedAt, stepPayload.Attempt) {
+				return false, tx.Commit(ctx)
+			}
+			promoteToReady = s.promoteRetryingStepToReadyTx
+		}
+		promoted, err := promoteToReady(ctx, tx, stepPayload.StepID)
 		if err != nil {
 			return false, err
 		}
@@ -1126,16 +1033,8 @@ func (s *Service) persistTaskResultTx(
 	return nil
 }
 
-func (s *Service) listPendingStepIDs(ctx context.Context, limit int) ([]uuid.UUID, error) {
-	return s.queries.ListPendingStepIDs(ctx, int32(max(1, limit)))
-}
-
 func (s *Service) listReadyTaskIDs(ctx context.Context, limit int) ([]uuid.UUID, error) {
 	return s.queries.ListReadyTaskIDsForDispatch(ctx, int32(max(1, limit)))
-}
-
-func (s *Service) listRetryingStepIDsDue(ctx context.Context, limit int) ([]uuid.UUID, error) {
-	return s.queries.ListRetryingStepIDsDueForUpdateSkipLocked(ctx, int32(max(1, limit)))
 }
 
 func runtimeTaskTypeFromTaskType(taskType string) runtimecontrolv1.RuntimeTaskType {
@@ -1189,6 +1088,31 @@ func toIntValue(raw any, fallback int) int {
 		}
 	}
 	return fallback
+}
+
+func retryBackoffDelay(attempt int) time.Duration {
+	switch {
+	case attempt <= 1:
+		return time.Second
+	case attempt == 2:
+		return 2 * time.Second
+	case attempt == 3:
+		return 4 * time.Second
+	case attempt == 4:
+		return 8 * time.Second
+	case attempt == 5:
+		return 16 * time.Second
+	default:
+		return 30 * time.Second
+	}
+}
+
+func isRetryDue(now time.Time, updatedAt *time.Time, attempt int) bool {
+	if updatedAt == nil {
+		return true
+	}
+	dueAt := updatedAt.UTC().Add(retryBackoffDelay(attempt))
+	return !now.Before(dueAt)
 }
 
 func stringifyUUIDs(values []uuid.UUID) []string {

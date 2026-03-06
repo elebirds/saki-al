@@ -216,7 +216,6 @@ const ProjectPredictionTasks: React.FC = () => {
         taskId: String(task.taskId || task.id),
         taskIndex: 1,
         taskType: 'predict',
-        stepId: String(task.taskId || task.id),
         stage: 'custom',
     }), []);
 

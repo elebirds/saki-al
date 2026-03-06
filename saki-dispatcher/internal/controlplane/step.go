@@ -271,7 +271,7 @@ func (s *Service) dispatchTaskByID(ctx context.Context, taskID uuid.UUID) (bool,
 		if err := tx.Commit(ctx); err != nil {
 			return false, err
 		}
-		return s.dispatchPredictionTaskByID(ctx, taskID)
+		return s.dispatchStandaloneTaskByID(ctx, taskID)
 	}
 	if taskKind != "STEP" {
 		return false, tx.Commit(ctx)
@@ -290,7 +290,7 @@ func (s *Service) dispatchTaskByID(ctx context.Context, taskID uuid.UUID) (bool,
 	return s.dispatchStepByID(ctx, stepID)
 }
 
-func (s *Service) dispatchPredictionTaskByID(ctx context.Context, taskID uuid.UUID) (bool, error) {
+func (s *Service) dispatchStandaloneTaskByID(ctx context.Context, taskID uuid.UUID) (bool, error) {
 	tx, err := s.beginTx(ctx)
 	if err != nil {
 		return false, err

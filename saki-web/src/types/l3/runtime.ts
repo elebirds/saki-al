@@ -251,7 +251,6 @@ export interface RuntimeRoundEvent {
     taskId: string;
     taskIndex: number;
     taskType: RuntimeTaskType;
-    stepId?: string;
     stage: 'train' | 'eval' | 'score' | 'select' | 'custom';
     seq: number;
     ts: string;

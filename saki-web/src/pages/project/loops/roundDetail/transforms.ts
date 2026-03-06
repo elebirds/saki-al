@@ -146,7 +146,7 @@ export const buildArtifactFromRoundEvent = (event: RuntimeRoundEvent): RuntimeRo
     const sizeValue = Number(sizeRaw);
     const taskId = String(event.taskId || '').trim();
     if (!taskId) return null;
-    const stepId = String(event.stepId || '').trim();
+    const stepId = String(payload.stepId ?? payload.step_id ?? '').trim();
     return {
         stepId,
         taskId,

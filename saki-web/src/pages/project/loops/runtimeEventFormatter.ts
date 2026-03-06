@@ -211,7 +211,6 @@ export function normalizeRuntimeRoundEvent(raw: unknown): RuntimeRoundEvent | nu
 
     const taskTypeText = String(row.taskType ?? row.task_type ?? 'custom').trim().toLowerCase();
     const taskType = TASK_TYPES.has(taskTypeText) ? taskTypeText : 'custom';
-    const stepId = String(row.stepId ?? row.step_id ?? '').trim() || undefined;
 
     const stageText = String(row.stage ?? '').trim().toLowerCase();
     const stage = ROUND_STAGES.has(stageText)
@@ -225,7 +224,6 @@ export function normalizeRuntimeRoundEvent(raw: unknown): RuntimeRoundEvent | nu
         taskId,
         taskIndex,
         taskType: taskType as RuntimeRoundEvent['taskType'],
-        stepId,
         stage,
     };
 }

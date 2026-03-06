@@ -2713,6 +2713,117 @@ async def test_get_task_metric_series_ignores_non_positive_step_points(loop_api_
 
 
 @pytest.mark.anyio
+async def test_list_round_steps_returns_depends_on_task_ids(loop_api_env, monkeypatch):
+    session_local = loop_api_env
+
+    async def _allow(*args, **kwargs) -> None:
+        del args, kwargs
+        return None
+
+    monkeypatch.setattr(round_step_query_endpoint, "ensure_project_permission", _allow)
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        service = RuntimeService(session)
+        current_user_id = uuid.uuid4()
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-step-task-deps",
+                    branch_id=branch.id,
+                    mode=LoopMode.ACTIVE_LEARNING,
+                    model_arch="yolo_det_v1",
+                    config=_loop_config({"sampling": {"strategy": "random_baseline", "topk": 20}}),
+                    lifecycle=LoopLifecycle.RUNNING,
+                ),
+            )
+            round_row = Round(
+                project_id=project.id,
+                loop_id=loop.id,
+                round_index=1,
+                mode=LoopMode.ACTIVE_LEARNING,
+                state=RoundStatus.RUNNING,
+                step_counts={},
+                round_type="loop_round",
+                plugin_id=loop.model_arch,
+                resolved_params={"sampling": {"strategy": "random_baseline"}},
+                resources={},
+                input_commit_id=branch.head_commit_id,
+                final_metrics={},
+                final_artifacts={},
+                strategy_params={"sampling": {"strategy": "random_baseline"}},
+            )
+            session.add(round_row)
+            await session.flush()
+
+            train_step = Step(
+                round_id=round_row.id,
+                step_type=StepType.TRAIN,
+                dispatch_kind=StepDispatchKind.DISPATCHABLE,
+                state=StepStatus.RUNNING,
+                round_index=1,
+                step_index=1,
+                depends_on_step_ids=[],
+                resolved_params={},
+                metrics={},
+                artifacts={},
+                input_commit_id=branch.head_commit_id,
+                attempt=1,
+                max_attempts=3,
+            )
+            eval_step = Step(
+                round_id=round_row.id,
+                step_type=StepType.EVAL,
+                dispatch_kind=StepDispatchKind.DISPATCHABLE,
+                state=StepStatus.PENDING,
+                round_index=1,
+                step_index=2,
+                depends_on_step_ids=[str(train_step.id)] if train_step.id else [],
+                resolved_params={},
+                metrics={},
+                artifacts={},
+                input_commit_id=branch.head_commit_id,
+                attempt=1,
+                max_attempts=3,
+            )
+            session.add(train_step)
+            session.add(eval_step)
+            await session.flush()
+
+            train_task = await _attach_step_task(
+                session,
+                project_id=project.id,
+                step=train_step,
+                plugin_id=loop.model_arch,
+            )
+            eval_task = await _attach_step_task(
+                session,
+                project_id=project.id,
+                step=eval_step,
+                plugin_id=loop.model_arch,
+            )
+            eval_task.depends_on_task_ids = [str(train_task.id)]
+            session.add(eval_task)
+            await session.commit()
+
+            rows = await round_step_query_endpoint.list_round_steps(
+                round_id=round_row.id,
+                limit=100,
+                runtime_service=service,
+                session=session,
+                current_user_id=current_user_id,
+            )
+            by_index = {int(row.step_index): row for row in rows}
+            assert by_index[1].depends_on_task_ids == []
+            assert by_index[2].depends_on_task_ids == [str(train_task.id)]
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
 async def test_create_simulation_loop_normalizes_mode_without_seeds_or_random_baseline(
     loop_api_env,
     monkeypatch,

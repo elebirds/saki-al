@@ -75,7 +75,7 @@ def test_active_learning_round_completed_keeps_completed_state():
     assert update.ended_at is not None
 
 
-def test_round_final_metrics_prefer_eval_over_tail_non_eval_steps():
+def test_round_final_metrics_are_delegated_to_task_pipeline_even_if_steps_have_metrics():
     project_id = uuid.uuid4()
     loop_id = uuid.uuid4()
     round_id = uuid.uuid4()
@@ -159,10 +159,10 @@ def test_round_final_metrics_prefer_eval_over_tail_non_eval_steps():
     ]
 
     update = build_round_update_from_steps(round_row=round_row, steps=steps)
-    assert update.final_metrics == {"map50": 0.71, "precision": 0.83}
+    assert update.final_metrics == {}
 
 
-def test_round_final_metrics_fallback_to_latest_non_empty_when_no_eval_or_train():
+def test_round_final_metrics_remain_empty_when_only_non_train_eval_steps_have_metrics():
     project_id = uuid.uuid4()
     loop_id = uuid.uuid4()
     round_id = uuid.uuid4()
@@ -216,7 +216,7 @@ def test_round_final_metrics_fallback_to_latest_non_empty_when_no_eval_or_train(
     ]
 
     update = build_round_update_from_steps(round_row=round_row, steps=steps)
-    assert update.final_metrics == {"selected_count": 25.0}
+    assert update.final_metrics == {}
 
 
 def test_round_with_pre_run_stage_keeps_running_state():
@@ -318,7 +318,7 @@ def test_round_final_metrics_empty_when_all_steps_have_no_metrics():
     assert update.final_metrics == {}
 
 
-def test_round_final_artifacts_merge_all_steps_and_override_by_later_step():
+def test_round_final_artifacts_are_delegated_to_task_pipeline():
     project_id = uuid.uuid4()
     loop_id = uuid.uuid4()
     round_id = uuid.uuid4()
@@ -396,7 +396,4 @@ def test_round_final_artifacts_merge_all_steps_and_override_by_later_step():
 
     update = build_round_update_from_steps(round_row=round_row, steps=steps)
     assert update.state == RoundStatus.COMPLETED
-    assert update.final_artifacts == {
-        "best.pt": {"kind": "weights", "uri": "s3://bucket/runtime/train/best.pt"},
-        "metrics.json": {"kind": "report", "uri": "s3://bucket/runtime/eval/metrics.json"},
-    }
+    assert update.final_artifacts == {}

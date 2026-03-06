@@ -25,6 +25,7 @@ def test_step_read_normalizes_none_json_fields() -> None:
         "metrics": None,
         "artifacts": None,
         "input_commit_id": None,
+        "task_id": uuid.uuid4(),
         "assigned_executor_id": None,
         "attempt": 1,
         "max_attempts": 1,
@@ -41,3 +42,4 @@ def test_step_read_normalizes_none_json_fields() -> None:
     assert model.resolved_params == {}
     assert model.metrics == {}
     assert model.artifacts == {}
+    assert model.task_id == payload["task_id"]

@@ -39,7 +39,7 @@
 ## 4. 收尾实施步骤（下一阶段）
 1. 集成回归
 - 在执行器真实流程中串行验证 `prepare -> train -> eval -> score/predict`。
-- 验证 `step_runtime_requirements` 与 runtime profile 选择是否符合预期。
+- 验证 `task_runtime_requirements` 与 runtime profile 选择是否符合预期。
 
 2. 测试补强
 - 增加 `predict_service` 关键算法单测：

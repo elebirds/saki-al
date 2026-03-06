@@ -186,7 +186,7 @@ class CommandServer:
             logger.info("当前未加载任何插件。")
             return
         plugin_lines = [
-            f"  - {plugin.plugin_id} v{plugin.version} | step_types={plugin.supported_step_types} | strategies={plugin.supported_strategies}"
+            f"  - {plugin.plugin_id} v{plugin.version} | task_types={plugin.supported_task_types} | strategies={plugin.supported_strategies}"
             for plugin in plugins
         ]
         logger.info("已加载插件:\n{}", "\n".join(plugin_lines))

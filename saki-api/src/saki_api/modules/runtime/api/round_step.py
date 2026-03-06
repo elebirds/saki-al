@@ -208,7 +208,7 @@ class StepCommandResponse(BaseModel):
     status: str
 
 
-class StepEventRead(BaseModel):
+class TaskEventRead(BaseModel):
     task_id: uuid.UUID
     seq: int
     ts: datetime
@@ -227,20 +227,16 @@ class StepEventRead(BaseModel):
     line_count: int = 1
 
 
-class StepEventFacetsRead(BaseModel):
+class TaskEventFacetsRead(BaseModel):
     event_types: Dict[str, int] = Field(default_factory=dict)
     levels: Dict[str, int] = Field(default_factory=dict)
     tags: Dict[str, int] = Field(default_factory=dict)
 
 
-class StepEventQueryResponse(BaseModel):
-    items: List[StepEventRead] = Field(default_factory=list)
+class TaskEventQueryResponse(BaseModel):
+    items: List[TaskEventRead] = Field(default_factory=list)
     next_after_seq: Optional[int] = None
-    facets: Optional[StepEventFacetsRead] = None
-
-
-class TaskEventQueryResponse(StepEventQueryResponse):
-    pass
+    facets: Optional[TaskEventFacetsRead] = None
 
 
 class RoundEventRead(BaseModel):

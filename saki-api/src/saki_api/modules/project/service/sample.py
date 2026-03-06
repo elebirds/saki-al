@@ -589,7 +589,7 @@ class SampleService(CrudServiceBase[Sample, SampleRepository, SampleRead, Sample
         }
         transient_refs = {
             "annotation_draft": draft_count,
-            "step_candidate_item": candidate_count,
+            "task_candidate_item": candidate_count,
             "working_snapshots": len(working_keys),
         }
         has_committed_refs = (
@@ -630,7 +630,7 @@ class SampleService(CrudServiceBase[Sample, SampleRepository, SampleRead, Sample
         }
         transient_deleted = {
             "annotation_draft": 0,
-            "step_candidate_item": 0,
+            "task_candidate_item": 0,
             "working_snapshots": 0,
         }
 
@@ -651,7 +651,7 @@ class SampleService(CrudServiceBase[Sample, SampleRepository, SampleRead, Sample
             Annotation,
             sample_id,
         )
-        transient_deleted["step_candidate_item"] = await self._delete_rows_for_sample(
+        transient_deleted["task_candidate_item"] = await self._delete_rows_for_sample(
             TaskCandidateItem,
             sample_id,
         )

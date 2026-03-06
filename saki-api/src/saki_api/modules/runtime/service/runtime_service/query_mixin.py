@@ -218,7 +218,7 @@ class RuntimeQueryMixin:
         return tags
 
     @staticmethod
-    def _derive_step_event_message_key_and_params(
+    def _derive_task_event_message_key_and_params(
         *,
         event_type: str,
         payload: dict[str, Any],
@@ -271,7 +271,7 @@ class RuntimeQueryMixin:
         return None, {}
 
     @staticmethod
-    def _derive_step_event_message_text(
+    def _derive_task_event_message_text(
         *,
         event_type: str,
         payload: dict[str, Any],
@@ -317,7 +317,7 @@ class RuntimeQueryMixin:
         except Exception:
             return str(payload)
 
-    def _normalize_step_event(self, event: Any) -> dict[str, Any]:
+    def _normalize_task_event(self, event: Any) -> dict[str, Any]:
         payload = event.payload if isinstance(event.payload, dict) else {}
         event_type = str(event.event_type or "").strip().lower() or "unknown"
         level = None
@@ -357,7 +357,7 @@ class RuntimeQueryMixin:
         tags = self._derive_business_tags(payload=payload)
 
         if not message_key:
-            derived_key, derived_params = self._derive_step_event_message_key_and_params(
+            derived_key, derived_params = self._derive_task_event_message_key_and_params(
                 event_type=event_type,
                 payload=payload,
                 status=status,
@@ -366,7 +366,7 @@ class RuntimeQueryMixin:
             if not message_params and derived_params:
                 message_params = derived_params
 
-        message_text = self._derive_step_event_message_text(
+        message_text = self._derive_task_event_message_text(
             event_type=event_type,
             payload=payload,
             status=status,
@@ -482,7 +482,7 @@ class RuntimeQueryMixin:
         )
         items: list[dict[str, Any]] = []
         for row in rows:
-            item = self._normalize_step_event(row)
+            item = self._normalize_task_event(row)
             item["task_id"] = row.task_id
             if normalized_levels:
                 level = str(item.get("level") or "").upper()
@@ -589,7 +589,7 @@ class RuntimeQueryMixin:
             if event.task_id not in step_lookup:
                 continue
             step = step_lookup[event.task_id]
-            item = self._normalize_step_event(event)
+            item = self._normalize_task_event(event)
             item["task_id"] = event.task_id
             item["task_index"] = int(step.step_index or 0)
             item["task_type"] = str(step.step_type.value if hasattr(step.step_type, "value") else step.step_type)

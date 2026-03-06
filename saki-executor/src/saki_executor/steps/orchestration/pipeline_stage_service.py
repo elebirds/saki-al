@@ -71,7 +71,7 @@ class PipelineStageService:
 
         message = (
             f"trained model is required but unavailable: "
-            f"artifact={artifact_name} step_type={self._request.task_type}"
+            f"artifact={artifact_name} task_type={self._request.task_type}"
         )
         if self._manager.strict_train_model_handoff:
             raise wrap_stage_error(
@@ -100,7 +100,7 @@ class PipelineStageService:
     ) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], list[str]]:
         try:
             if self._request.task_type in {"score", "predict"}:
-                profile = self._inference_profile_for_step(self._request.task_type)
+                profile = self._inference_profile_for_task(self._request.task_type)
                 return await self._run_inference_pipeline(
                     plugin=plugin,
                     workspace=workspace,
@@ -140,13 +140,13 @@ class PipelineStageService:
                     bound_plan=bound_plan,
                 )
 
-            raise RuntimeError(f"step_type routing is not implemented: {self._request.task_type}")
+            raise RuntimeError(f"task_type routing is not implemented: {self._request.task_type}")
         except Exception as exc:
             raise wrap_stage_error(
                 stage=StepStage.EXECUTE,
                 default_code=StepErrorCode.EXECUTION_FAILED,
                 exc=exc,
-                message=f"step execution failed task_id={self._request.task_id}: {exc}",
+                message=f"task execution failed task_id={self._request.task_id}: {exc}",
             ) from exc
 
     async def _run_training_pipeline(
@@ -480,8 +480,8 @@ class PipelineStageService:
         return output.metrics, artifacts, [], optional_upload_failures
 
     @staticmethod
-    def _inference_profile_for_step(step_type: str) -> _InferenceTaskProfile:
-        normalized = str(step_type or "").strip().lower()
+    def _inference_profile_for_task(task_type: str) -> _InferenceTaskProfile:
+        normalized = str(task_type or "").strip().lower()
         if normalized == "predict":
             return _InferenceTaskProfile(
                 name="predict",

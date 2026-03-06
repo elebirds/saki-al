@@ -714,8 +714,6 @@ class RuntimeQueryMixin:
 
             artifacts = self._extract_downloadable_task_artifacts(task)
             if not artifacts:
-                artifacts = self._extract_downloadable_step_artifacts(step)
-            if not artifacts:
                 continue
             for artifact in artifacts:
                 size_raw = (artifact.meta or {}).get("size") if isinstance(artifact.meta, dict) else None

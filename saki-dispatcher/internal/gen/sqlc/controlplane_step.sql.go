@@ -379,6 +379,50 @@ func (q *Queries) ListReadyStepIDsForUpdateSkipLocked(ctx context.Context, limit
 	return items, nil
 }
 
+const listReadyTaskIDsForDispatch = `-- name: ListReadyTaskIDsForDispatch :many
+SELECT t.id AS id
+FROM task t
+LEFT JOIN step s ON s.task_id = t.id
+LEFT JOIN round r ON r.id = s.round_id
+LEFT JOIN loop l ON l.id = r.loop_id
+WHERE (
+  t.kind = 'PREDICTION'::taskkind
+  AND t.status IN (
+    'PENDING'::taskstatus,
+    'READY'::taskstatus,
+    'RETRYING'::taskstatus
+  )
+)
+OR (
+  t.kind = 'STEP'::taskkind
+  AND s.state = 'READY'::stepstatus
+  AND l.lifecycle = 'RUNNING'::looplifecycle
+)
+ORDER BY t.created_at ASC
+LIMIT $1
+FOR UPDATE OF t SKIP LOCKED
+`
+
+func (q *Queries) ListReadyTaskIDsForDispatch(ctx context.Context, limitCount int32) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listReadyTaskIDsForDispatch, limitCount)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRetryingStepIDsDueForUpdateSkipLocked = `-- name: ListRetryingStepIDsDueForUpdateSkipLocked :many
 SELECT s.id AS id
 FROM step s

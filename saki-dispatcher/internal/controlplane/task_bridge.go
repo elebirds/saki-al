@@ -32,8 +32,7 @@ func (s *Service) resolveStepIDForTaskTx(
 	tx pgx.Tx,
 	taskID uuid.UUID,
 ) (uuid.UUID, bool, error) {
-	var mappedStepID uuid.UUID
-	err := tx.QueryRow(ctx, "SELECT id FROM step WHERE task_id = $1 LIMIT 1", taskID).Scan(&mappedStepID)
+	mappedStepID, err := s.qtx(tx).GetStepIDByTaskID(ctx, taskID)
 	if err == nil {
 		return mappedStepID, true, nil
 	}
@@ -48,8 +47,7 @@ func (s *Service) resolveTaskIDForStepTx(
 	tx pgx.Tx,
 	stepID uuid.UUID,
 ) (uuid.UUID, bool, error) {
-	var taskID *uuid.UUID
-	err := tx.QueryRow(ctx, "SELECT task_id FROM step WHERE id = $1", stepID).Scan(&taskID)
+	taskID, err := s.qtx(tx).GetTaskIDByStepID(ctx, stepID)
 	if err == nil {
 		if taskID == nil {
 			return uuid.Nil, false, nil
@@ -71,29 +69,16 @@ func (s *Service) resolveTaskIDsForStepDependenciesTx(
 		return nil, nil
 	}
 
-	rows, err := tx.Query(
-		ctx,
-		"SELECT id, task_id FROM step WHERE id = ANY($1::uuid[])",
-		dependencyStepIDs,
-	)
+	rows, err := s.qtx(tx).ListStepTaskBindingsByStepIDs(ctx, dependencyStepIDs)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
 	taskByStepID := make(map[uuid.UUID]uuid.UUID, len(dependencyStepIDs))
-	for rows.Next() {
-		var stepID uuid.UUID
-		var taskID *uuid.UUID
-		if scanErr := rows.Scan(&stepID, &taskID); scanErr != nil {
-			return nil, scanErr
+	for _, row := range rows {
+		if row.TaskID != nil {
+			taskByStepID[row.StepID] = *row.TaskID
 		}
-		if taskID != nil {
-			taskByStepID[stepID] = *taskID
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
 	}
 
 	dependencyTaskIDs := make([]string, 0, len(dependencyStepIDs))
@@ -124,32 +109,30 @@ func (s *Service) ensureTaskBindingForStepTx(
 	}
 	pluginID = strings.TrimSpace(pluginID)
 
-	_, err := tx.Exec(
-		ctx,
-		`INSERT INTO task(
-		  created_at, updated_at, id, project_id, kind, task_type, status,
-		  plugin_id, input_commit_id, resolved_params, assigned_executor_id,
-		  attempt, max_attempts, started_at, ended_at, last_error
-		) VALUES (
-		  now(), now(), $1, $2, 'STEP'::taskkind, $3::tasktype, 'PENDING'::taskstatus,
-		  $4, $5, $6::jsonb, NULL, 1, $7, NULL, NULL, NULL
-		)`,
-		taskID,
-		projectID,
-		string(stepType),
-		pluginID,
-		inputCommitID,
-		resolvedParams,
-		maxAttempts,
-	)
+	err := s.qtx(tx).InsertStepTask(ctx, db.InsertStepTaskParams{
+		TaskID:         taskID,
+		ProjectID:      projectID,
+		TaskType:       db.Runtimetasktype(string(stepType)),
+		PluginID:       pluginID,
+		InputCommitID:  inputCommitID,
+		ResolvedParams: resolvedParams,
+		MaxAttempts:    int32(maxAttempts),
+	})
 	if err != nil {
 		return uuid.Nil, err
 	}
 
-	_, err = tx.Exec(ctx, "UPDATE step SET task_id = $1 WHERE id = $2", taskID, stepID)
+	bound, err := s.qtx(tx).BindTaskToStep(ctx, db.BindTaskToStepParams{
+		TaskID: taskID,
+		StepID: stepID,
+	})
 	if err != nil {
-		_, _ = tx.Exec(ctx, "DELETE FROM task WHERE id = $1", taskID)
+		_, _ = s.qtx(tx).DeleteTaskByID(ctx, taskID)
 		return uuid.Nil, err
+	}
+	if bound == 0 {
+		_, _ = s.qtx(tx).DeleteTaskByID(ctx, taskID)
+		return uuid.Nil, fmt.Errorf("step not found when binding task: step_id=%s", stepID.String())
 	}
 	return taskID, nil
 }
@@ -172,42 +155,22 @@ func (s *Service) getTaskForUpdateTx(
 	tx pgx.Tx,
 	taskID uuid.UUID,
 ) (runtimeTaskRow, bool, error) {
-	row := runtimeTaskRow{}
-	err := tx.QueryRow(
-		ctx,
-		`SELECT
-		  id,
-		  project_id,
-		  kind::text,
-		  task_type::text,
-		  status::text,
-		  plugin_id,
-		  input_commit_id,
-		  COALESCE(resolved_params, '{}'::jsonb),
-		  attempt,
-		  max_attempts,
-		  COALESCE(assigned_executor_id, ''),
-		  COALESCE(last_error, '')
-		FROM task
-		WHERE id = $1
-		FOR UPDATE`,
-		taskID,
-	).Scan(
-		&row.ID,
-		&row.ProjectID,
-		&row.Kind,
-		&row.TaskType,
-		&row.Status,
-		&row.PluginID,
-		&row.InputCommitID,
-		&row.ResolvedParamsJSON,
-		&row.Attempt,
-		&row.MaxAttempts,
-		&row.AssignedExecutorID,
-		&row.LastError,
-	)
+	record, err := s.qtx(tx).GetTaskForUpdate(ctx, taskID)
 	if err == nil {
-		return row, true, nil
+		return runtimeTaskRow{
+			ID:                 record.ID,
+			ProjectID:          record.ProjectID,
+			Kind:               record.Kind,
+			TaskType:           record.TaskType,
+			Status:             record.Status,
+			PluginID:           record.PluginID,
+			InputCommitID:      record.InputCommitID,
+			ResolvedParamsJSON: record.ResolvedParamsJson,
+			Attempt:            int(record.Attempt),
+			MaxAttempts:        int(record.MaxAttempts),
+			AssignedExecutorID: record.AssignedExecutorID,
+			LastError:          record.LastError,
+		}, true, nil
 	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		return runtimeTaskRow{}, false, nil

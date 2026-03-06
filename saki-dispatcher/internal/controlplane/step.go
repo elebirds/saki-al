@@ -69,25 +69,12 @@ func (s *Service) dispatchPending(ctx context.Context, limit int) (int, error) {
 	if _, err := s.promoteRetryingStepsToReady(ctx, max(64, limit*2)); err != nil {
 		return claimed, err
 	}
-	stepIDs, err := s.listReadyStepIDs(ctx, limit)
-	if err != nil {
-		return claimed, err
-	}
-	for _, stepID := range stepIDs {
-		dispatched, err := s.dispatchStepByID(ctx, stepID)
-		if err != nil {
-			return claimed, err
-		}
-		if dispatched {
-			claimed++
-		}
-	}
-	taskIDs, err := s.listReadyPredictionTaskIDs(ctx, limit)
+	taskIDs, err := s.listReadyTaskIDs(ctx, limit)
 	if err != nil {
 		return claimed, err
 	}
 	for _, taskID := range taskIDs {
-		dispatched, err := s.dispatchPredictionTaskByID(ctx, taskID)
+		dispatched, err := s.dispatchTaskByID(ctx, taskID)
 		if err != nil {
 			return claimed, err
 		}
@@ -444,19 +431,15 @@ func (s *Service) dispatchPredictionTaskByID(ctx context.Context, taskID uuid.UU
 	}
 
 	requestID := uuid.NewString()
-	_, err = tx.Exec(
-		ctx,
-		`UPDATE task
-		 SET status = 'DISPATCHING'::taskstatus,
-		     assigned_executor_id = $2,
-		     last_error = NULL,
-		     updated_at = now()
-		 WHERE id = $1`,
-		taskRow.ID,
-		executorID,
-	)
+	affected, err := s.qtx(tx).MarkTaskDispatching(ctx, db.MarkTaskDispatchingParams{
+		AssignedExecutorID: toPGText(executorID),
+		TaskID:             taskRow.ID,
+	})
 	if err != nil {
 		return false, err
+	}
+	if affected == 0 {
+		return false, tx.Commit(ctx)
 	}
 
 	payload := &runtimecontrolv1.TaskPayload{
@@ -477,16 +460,7 @@ func (s *Service) dispatchPredictionTaskByID(ctx context.Context, taskID uuid.UU
 		DependsOnTaskIds: []string{},
 	}
 	if !s.dispatcher.DispatchTask(executorID, requestID, payload) {
-		_, _ = tx.Exec(
-			ctx,
-			`UPDATE task
-			 SET status = 'READY'::taskstatus,
-			     assigned_executor_id = NULL,
-			     last_error = 'executor unavailable or queue full',
-			     updated_at = now()
-			 WHERE id = $1`,
-			taskRow.ID,
-		)
+		_, _ = s.qtx(tx).ResetTaskToReadyQueueFull(ctx, taskRow.ID)
 		return false, tx.Commit(ctx)
 	}
 	return true, tx.Commit(ctx)
@@ -520,6 +494,9 @@ func (s *Service) executeOrchestratorStepTx(
 	if started == 0 {
 		return false, nil
 	}
+	if err := s.syncStepStateToTaskTx(ctx, tx, stepPayload.StepID, stepRunning, "", ""); err != nil {
+		return false, err
+	}
 
 	resultStatus := stepSucceeded
 	lastError := ""
@@ -534,6 +511,9 @@ func (s *Service) executeOrchestratorStepTx(
 				return false, retryErr
 			}
 			if retried {
+				if err := s.syncStepStateToTaskTx(ctx, tx, stepPayload.StepID, stepRetrying, lastError, ""); err != nil {
+					return false, err
+				}
 				if _, refreshErr := s.refreshRoundAggregateTx(ctx, tx, stepPayload.RoundID); refreshErr != nil {
 					return false, refreshErr
 				}
@@ -555,6 +535,9 @@ func (s *Service) executeOrchestratorStepTx(
 	}
 	if affected == 0 {
 		return false, nil
+	}
+	if err := s.syncStepStateToTaskTx(ctx, tx, stepPayload.StepID, resultStatus, lastError, ""); err != nil {
+		return false, err
 	}
 
 	if _, err := s.refreshRoundAggregateTx(ctx, tx, stepPayload.RoundID); err != nil {
@@ -720,7 +703,7 @@ func (s *Service) OnTaskEvent(ctx context.Context, event *runtimecontrolv1.TaskE
 			targetTaskStatus := normalizeTaskEnumText(string(statusValue))
 			if targetTaskStatus != "" && targetTaskStatus != "PENDING" {
 				reason := strings.TrimSpace(event.GetStatusEvent().GetReason())
-				if err := s.updateStandaloneTaskStatusTx(ctx, tx, taskID, targetTaskStatus, reason); err != nil {
+				if err := s.updateTaskStatusTx(ctx, tx, taskID, targetTaskStatus, reason); err != nil {
 					return err
 				}
 			}
@@ -746,6 +729,16 @@ func (s *Service) OnTaskEvent(ctx context.Context, event *runtimecontrolv1.TaskE
 		}
 		if affected == 0 {
 			return fmt.Errorf("运行时事件导致非法步骤迁移: task_id=%s step_id=%s target=%s", taskID, stepID, targetState)
+		}
+		if err := s.syncStepStateToTaskTx(
+			ctx,
+			tx,
+			stepID,
+			targetState,
+			strings.TrimSpace(event.GetStatusEvent().GetReason()),
+			"",
+		); err != nil {
+			return err
 		}
 
 	case "metric":
@@ -817,7 +810,7 @@ func (s *Service) OnTaskResult(ctx context.Context, result *runtimecontrolv1.Tas
 	if err != nil {
 		return err
 	}
-	if err := s.persistStandaloneTaskResultTx(
+	if err := s.persistTaskResultTx(
 		ctx,
 		tx,
 		taskID,
@@ -938,7 +931,38 @@ func taskStatusFromStepStatus(status db.Stepstatus) string {
 	}
 }
 
-func (s *Service) updateStandaloneTaskStatusTx(
+func runtimeTaskStatusFromText(raw string) (db.Runtimetaskstatus, bool) {
+	switch normalizeTaskEnumText(raw) {
+	case "PENDING":
+		return db.RuntimetaskstatusPENDING, true
+	case "READY":
+		return db.RuntimetaskstatusREADY, true
+	case "DISPATCHING":
+		return db.RuntimetaskstatusDISPATCHING, true
+	case "SYNCING_ENV":
+		return db.RuntimetaskstatusSYNCINGENV, true
+	case "PROBING_RUNTIME":
+		return db.RuntimetaskstatusPROBINGRUNTIME, true
+	case "BINDING_DEVICE":
+		return db.RuntimetaskstatusBINDINGDEVICE, true
+	case "RUNNING":
+		return db.RuntimetaskstatusRUNNING, true
+	case "RETRYING":
+		return db.RuntimetaskstatusRETRYING, true
+	case "SUCCEEDED":
+		return db.RuntimetaskstatusSUCCEEDED, true
+	case "FAILED":
+		return db.RuntimetaskstatusFAILED, true
+	case "CANCELLED":
+		return db.RuntimetaskstatusCANCELLED, true
+	case "SKIPPED":
+		return db.RuntimetaskstatusSKIPPED, true
+	default:
+		return "", false
+	}
+}
+
+func (s *Service) updateTaskStatusTx(
 	ctx context.Context,
 	tx pgx.Tx,
 	taskID uuid.UUID,
@@ -950,43 +974,69 @@ func (s *Service) updateStandaloneTaskStatusTx(
 		return nil
 	}
 	reason = strings.TrimSpace(reason)
-	var lastError any = nil
-	if targetStatus == "FAILED" || targetStatus == "CANCELLED" || targetStatus == "SKIPPED" {
-		lastError = reason
+	taskStatus, ok := runtimeTaskStatusFromText(targetStatus)
+	if !ok {
+		return nil
 	}
-	_, err := tx.Exec(
-		ctx,
-		`UPDATE task
-		 SET status = $2::taskstatus,
-		     started_at = CASE
-		       WHEN $2::taskstatus IN (
-		         'RUNNING'::taskstatus,
-		         'SUCCEEDED'::taskstatus,
-		         'FAILED'::taskstatus,
-		         'CANCELLED'::taskstatus,
-		         'SKIPPED'::taskstatus
-		       ) THEN COALESCE(started_at, now())
-		       ELSE started_at
-		     END,
-		     ended_at = CASE
-		       WHEN $2::taskstatus IN (
-		         'SUCCEEDED'::taskstatus,
-		         'FAILED'::taskstatus,
-		         'CANCELLED'::taskstatus,
-		         'SKIPPED'::taskstatus
-		       ) THEN COALESCE(ended_at, now())
-		       ELSE ended_at
-		     END,
-		     last_error = $3::text,
-		     updated_at = now()
-		 WHERE id = $1`,
-		taskID,
-		targetStatus,
-		lastError,
-	)
+	lastError := toNullablePGText("")
+	if targetStatus == "FAILED" || targetStatus == "CANCELLED" || targetStatus == "SKIPPED" || targetStatus == "RETRYING" {
+		lastError = toNullablePGText(reason)
+	}
+	_, err := s.qtx(tx).UpdateTaskStatusLifecycle(ctx, db.UpdateTaskStatusLifecycleParams{
+		Status:    taskStatus,
+		LastError: lastError,
+		TaskID:    taskID,
+	})
 	if err != nil {
 		return err
 	}
+	return nil
+}
+
+func (s *Service) syncStepStateToTaskTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	stepID uuid.UUID,
+	stepState db.Stepstatus,
+	reason string,
+	assignedExecutorID string,
+) error {
+	taskID, mapped, err := s.resolveTaskIDForStepTx(ctx, tx, stepID)
+	if err != nil {
+		return err
+	}
+	if !mapped {
+		return nil
+	}
+
+	targetTaskStatus := taskStatusFromStepStatus(stepState)
+	if targetTaskStatus == "" {
+		return nil
+	}
+	if err := s.updateTaskStatusTx(ctx, tx, taskID, targetTaskStatus, reason); err != nil {
+		return err
+	}
+
+	switch stepState {
+	case stepDispatching:
+		executorID := strings.TrimSpace(assignedExecutorID)
+		if executorID == "" {
+			return nil
+		}
+		_, err = s.qtx(tx).SetTaskAssignedExecutor(ctx, db.SetTaskAssignedExecutorParams{
+			AssignedExecutorID: toPGText(executorID),
+			TaskID:             taskID,
+		})
+		if err != nil {
+			return err
+		}
+	case stepPending, stepReady, stepRetrying, stepSucceeded, stepFailed, stepCancelled, stepSkipped:
+		_, err = s.qtx(tx).ClearTaskAssignedExecutor(ctx, taskID)
+		if err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -1010,7 +1060,7 @@ func buildTaskResultCandidateRows(candidates []*runtimecontrolv1.QueryCandidate)
 	return rows
 }
 
-func (s *Service) persistStandaloneTaskResultTx(
+func (s *Service) persistTaskResultTx(
 	ctx context.Context,
 	tx pgx.Tx,
 	taskID uuid.UUID,
@@ -1056,37 +1106,23 @@ func (s *Service) persistStandaloneTaskResultTx(
 	if err != nil {
 		return err
 	}
-	targetTaskStatus := taskStatusFromStepStatus(targetState)
-	if targetTaskStatus == "" {
-		targetTaskStatus = "FAILED"
+	targetTaskStatusText := taskStatusFromStepStatus(targetState)
+	targetTaskStatus, ok := runtimeTaskStatusFromText(targetTaskStatusText)
+	if !ok {
+		targetTaskStatus = db.RuntimetaskstatusFAILED
 	}
-	var lastError any = nil
-	if targetTaskStatus == "FAILED" || targetTaskStatus == "CANCELLED" || targetTaskStatus == "SKIPPED" {
-		lastError = errorMessage
+	lastError := toNullablePGText("")
+	if targetTaskStatus == db.RuntimetaskstatusFAILED ||
+		targetTaskStatus == db.RuntimetaskstatusCANCELLED ||
+		targetTaskStatus == db.RuntimetaskstatusSKIPPED {
+		lastError = toNullablePGText(errorMessage)
 	}
-	_, err = tx.Exec(
-		ctx,
-		`UPDATE task
-		 SET status = $2::taskstatus,
-		     resolved_params = $3::jsonb,
-		     started_at = COALESCE(started_at, now()),
-		     ended_at = CASE
-		       WHEN $2::taskstatus IN (
-		         'SUCCEEDED'::taskstatus,
-		         'FAILED'::taskstatus,
-		         'CANCELLED'::taskstatus,
-		         'SKIPPED'::taskstatus
-		       ) THEN COALESCE(ended_at, now())
-		       ELSE ended_at
-		     END,
-		     last_error = $4::text,
-		     updated_at = now()
-		 WHERE id = $1`,
-		taskID,
-		targetTaskStatus,
-		resolvedParamsJSON,
-		lastError,
-	)
+	_, err = s.qtx(tx).UpdateTaskResult(ctx, db.UpdateTaskResultParams{
+		Status:         targetTaskStatus,
+		ResolvedParams: []byte(resolvedParamsJSON),
+		LastError:      lastError,
+		TaskID:         taskID,
+	})
 	if err != nil {
 		return err
 	}
@@ -1097,46 +1133,12 @@ func (s *Service) listPendingStepIDs(ctx context.Context, limit int) ([]uuid.UUI
 	return s.queries.ListPendingStepIDs(ctx, int32(max(1, limit)))
 }
 
-func (s *Service) listReadyStepIDs(ctx context.Context, limit int) ([]uuid.UUID, error) {
-	return s.queries.ListReadyStepIDsForUpdateSkipLocked(ctx, int32(max(1, limit)))
+func (s *Service) listReadyTaskIDs(ctx context.Context, limit int) ([]uuid.UUID, error) {
+	return s.queries.ListReadyTaskIDsForDispatch(ctx, int32(max(1, limit)))
 }
 
 func (s *Service) listRetryingStepIDsDue(ctx context.Context, limit int) ([]uuid.UUID, error) {
 	return s.queries.ListRetryingStepIDsDueForUpdateSkipLocked(ctx, int32(max(1, limit)))
-}
-
-func (s *Service) listReadyPredictionTaskIDs(ctx context.Context, limit int) ([]uuid.UUID, error) {
-	rows, err := s.pool.Query(
-		ctx,
-		`SELECT id
-		FROM task
-		WHERE kind = 'PREDICTION'::taskkind
-		  AND status IN (
-		    'PENDING'::taskstatus,
-		    'READY'::taskstatus,
-		    'RETRYING'::taskstatus
-		  )
-		ORDER BY created_at ASC
-		LIMIT $1`,
-		max(1, limit),
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	ids := make([]uuid.UUID, 0, max(1, limit))
-	for rows.Next() {
-		var taskID uuid.UUID
-		if scanErr := rows.Scan(&taskID); scanErr != nil {
-			return nil, scanErr
-		}
-		ids = append(ids, taskID)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return ids, nil
 }
 
 func runtimeTaskTypeFromTaskType(taskType string) runtimecontrolv1.RuntimeTaskType {
@@ -1466,6 +1468,9 @@ func (s *Service) failStepDispatchPreflightTx(
 		}
 		return fmt.Errorf("预派发失败后状态更新冲突: step_id=%s", stepID)
 	}
+	if err := s.syncStepStateToTaskTx(ctx, tx, stepID, stepFailed, reason, ""); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -1484,7 +1489,13 @@ func (s *Service) markStepDispatchingTx(
 	if err != nil {
 		return false, err
 	}
-	return updated > 0, nil
+	if updated == 0 {
+		return false, nil
+	}
+	if err := s.syncStepStateToTaskTx(ctx, tx, stepID, stepDispatching, "", executorID); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (s *Service) promoteStepToReadyTx(ctx context.Context, tx pgx.Tx, stepID uuid.UUID) (bool, error) {
@@ -1492,7 +1503,13 @@ func (s *Service) promoteStepToReadyTx(ctx context.Context, tx pgx.Tx, stepID uu
 	if err != nil {
 		return false, err
 	}
-	return updated > 0, nil
+	if updated == 0 {
+		return false, nil
+	}
+	if err := s.syncStepStateToTaskTx(ctx, tx, stepID, stepReady, "", ""); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (s *Service) promoteRetryingStepToReadyTx(ctx context.Context, tx pgx.Tx, stepID uuid.UUID) (bool, error) {
@@ -1500,7 +1517,13 @@ func (s *Service) promoteRetryingStepToReadyTx(ctx context.Context, tx pgx.Tx, s
 	if err != nil {
 		return false, err
 	}
-	return updated > 0, nil
+	if updated == 0 {
+		return false, nil
+	}
+	if err := s.syncStepStateToTaskTx(ctx, tx, stepID, stepReady, "", ""); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (s *Service) findRoundIDByStep(ctx context.Context, tx pgx.Tx, stepID uuid.UUID) (*uuid.UUID, error) {
@@ -1603,10 +1626,18 @@ func (s *Service) cancelStepIDsTx(
 	if len(stepIDs) == 0 {
 		return nil
 	}
-	return s.qtx(tx).CancelStepsByIDs(ctx, db.CancelStepsByIDsParams{
+	if err := s.qtx(tx).CancelStepsByIDs(ctx, db.CancelStepsByIDsParams{
 		LastError: toPGText(reason),
 		StepIds:   stepIDs,
-	})
+	}); err != nil {
+		return err
+	}
+	for _, stepID := range stepIDs {
+		if err := s.syncStepStateToTaskTx(ctx, tx, stepID, stepCancelled, reason, ""); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Service) loopHasActiveStepsTx(ctx context.Context, tx pgx.Tx, loopID uuid.UUID) (bool, error) {
@@ -1812,12 +1843,27 @@ func (s *Service) recoverDispatchOutbox(ctx context.Context, limit int) error {
 		return err
 	}
 	for _, stepID := range stepIDs {
-		_, err = s.queries.RecoverStaleDispatchingStepToReady(ctx, db.RecoverStaleDispatchingStepToReadyParams{
+		updated, err := s.queries.RecoverStaleDispatchingStepToReady(ctx, db.RecoverStaleDispatchingStepToReadyParams{
 			LastError: toPGText("已恢复孤儿派发记录"),
 			StepID:    stepID,
 		})
 		if err != nil {
 			return err
+		}
+		if updated == 0 {
+			continue
+		}
+		tx, txErr := s.beginTx(ctx)
+		if txErr != nil {
+			return txErr
+		}
+		if syncErr := s.syncStepStateToTaskTx(ctx, tx, stepID, stepReady, "已恢复孤儿派发记录", ""); syncErr != nil {
+			_ = tx.Rollback(ctx)
+			return syncErr
+		}
+		if commitErr := tx.Commit(ctx); commitErr != nil {
+			_ = tx.Rollback(ctx)
+			return commitErr
 		}
 	}
 

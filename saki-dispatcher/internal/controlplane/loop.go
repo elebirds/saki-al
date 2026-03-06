@@ -436,10 +436,7 @@ func (s *Service) StopRound(ctx context.Context, commandID string, roundID strin
 		if err != nil {
 			return "", "", err
 		}
-		if err := s.qtx(tx).CancelStepsByRound(ctx, db.CancelStepsByRoundParams{
-			LastError: toPGText(reason),
-			RoundID:   roundPGID,
-		}); err != nil {
+		if err := s.cancelStepIDsTx(ctx, tx, stepIDs, reason); err != nil {
 			return "", "", err
 		}
 		for _, stepID := range stepIDs {
@@ -577,17 +574,10 @@ func (s *Service) StopTask(ctx context.Context, commandID string, taskID string,
 			if isTerminalTaskStatus(taskRow.Status) {
 				return "applied", "task already in terminal state", nil
 			}
-			_, updateErr := tx.Exec(
-				ctx,
-				`UPDATE task
-				 SET status = 'CANCELLED'::taskstatus,
-				     last_error = $2::text,
-				     ended_at = COALESCE(ended_at, now()),
-				     updated_at = now()
-				 WHERE id = $1`,
-				taskPGID,
-				reason,
-			)
+			_, updateErr := s.qtx(tx).CancelTaskByID(ctx, db.CancelTaskByIDParams{
+				LastError: toPGText(reason),
+				TaskID:    taskPGID,
+			})
 			if updateErr != nil {
 				return "", "", updateErr
 			}
@@ -604,10 +594,7 @@ func (s *Service) StopTask(ctx context.Context, commandID string, taskID string,
 		if currentState == stepSucceeded || currentState == stepFailed || currentState == stepCancelled || currentState == stepSkipped {
 			return "applied", "task already in terminal state", nil
 		}
-		if err := s.qtx(tx).CancelStepByID(ctx, db.CancelStepByIDParams{
-			LastError: toPGText(reason),
-			StepID:    stepPGID,
-		}); err != nil {
+		if err := s.cancelStepIDsTx(ctx, tx, []uuid.UUID{stepPGID}, reason); err != nil {
 			return "", "", err
 		}
 		s.dispatcher.StopTask(taskPGID.String(), reason)

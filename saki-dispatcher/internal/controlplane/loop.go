@@ -545,60 +545,6 @@ func (s *Service) RetryRound(
 	})
 }
 
-func (s *Service) StopStep(ctx context.Context, commandID string, stepID string, reason string) (CommandResult, error) {
-	reason = strings.TrimSpace(reason)
-	if reason == "" {
-		reason = "user requested stop"
-	}
-	return s.withCommand(ctx, commandID, func(tx pgx.Tx, _ string) (string, string, error) {
-		stepPGID, err := parseUUID(stepID)
-		if err != nil {
-			return "rejected", "step not found", nil
-		}
-		currentLifecycleRaw, err := s.qtx(tx).GetStepState(ctx, stepPGID)
-		currentLifecycle := currentLifecycleRaw
-		if err != nil {
-			if err == pgx.ErrNoRows {
-				return "rejected", "step not found", nil
-			}
-			return "", "", err
-		}
-		if currentLifecycle == stepSucceeded || currentLifecycle == stepFailed || currentLifecycle == stepCancelled || currentLifecycle == stepSkipped {
-			return "applied", "step already in terminal state", nil
-		}
-
-		if err := s.qtx(tx).CancelStepByID(ctx, db.CancelStepByIDParams{
-			LastError: toPGText(reason),
-			StepID:    stepPGID,
-		}); err != nil {
-			return "", "", err
-		}
-		s.dispatcher.StopTask(stepPGID.String(), reason)
-		return "applied", "stop_step applied", nil
-	})
-}
-
-func (s *Service) DispatchStep(ctx context.Context, commandID string, stepID string) (CommandResult, error) {
-	return s.withCommand(ctx, commandID, func(tx pgx.Tx, _ string) (string, string, error) {
-		stepPGID, err := parseUUID(stepID)
-		if err != nil {
-			return "rejected", "step not found", nil
-		}
-		currentState, err := s.qtx(tx).GetStepState(ctx, stepPGID)
-		if err != nil {
-			if err == pgx.ErrNoRows {
-				return "rejected", "step not found", nil
-			}
-			return "", "", err
-		}
-		if currentState == stepSucceeded || currentState == stepFailed || currentState == stepCancelled || currentState == stepSkipped {
-			return "rejected", "step is in terminal state", nil
-		}
-		s.dispatcher.QueueStep(stepPGID.String())
-		return "applied", "dispatch_step queued", nil
-	})
-}
-
 func (s *Service) StopTask(ctx context.Context, commandID string, taskID string, reason string) (CommandResult, error) {
 	reason = strings.TrimSpace(reason)
 	if reason == "" {

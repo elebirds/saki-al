@@ -26,7 +26,6 @@ from saki_api.modules.shared.modeling.enums import (
     SnapshotPartition,
     SnapshotUpdateMode,
     SnapshotValPolicy,
-    StepStatus,
 )
 
 
@@ -548,23 +547,6 @@ class SnapshotPolicyMixin:
         ]
         encoded = json.dumps(payload, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
-
-    @staticmethod
-    def _task_status_from_step(step_state: StepStatus | None) -> str:
-        if step_state in {
-            StepStatus.DISPATCHING,
-            StepStatus.SYNCING_ENV,
-            StepStatus.PROBING_RUNTIME,
-            StepStatus.BINDING_DEVICE,
-            StepStatus.RUNNING,
-            StepStatus.RETRYING,
-        }:
-            return "running"
-        if step_state in {StepStatus.FAILED, StepStatus.CANCELLED, StepStatus.SKIPPED}:
-            return "failed"
-        if step_state == StepStatus.SUCCEEDED:
-            return "materializing"
-        return "queued"
 
     @staticmethod
     def _attach_task_projection(prediction: Prediction, step: Step | None) -> Prediction:

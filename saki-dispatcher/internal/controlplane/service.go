@@ -35,6 +35,9 @@ type Service struct {
 	dispatchLockKey         int64
 	simCooldown             time.Duration
 	stopForceCancelAfter    time.Duration
+	heartbeatTimeout        time.Duration
+	inFlightPreRunTimeout   time.Duration
+	inFlightRunningTimeout  time.Duration
 	predictionTTLDays       int
 	predictionTTLKeepRounds int
 	roundAffinityWait       time.Duration
@@ -51,6 +54,9 @@ func NewService(
 	dispatchLockKey int64,
 	simulationCooldownSec int,
 	stoppingForceCancelSec int,
+	heartbeatTimeoutSec int,
+	inFlightPreRunTimeoutSec int,
+	inFlightRunningTimeoutSec int,
 	predictionTTLDays int,
 	predictionTTLKeepRounds int,
 	roundAffinityWaitSec int,
@@ -62,6 +68,15 @@ func NewService(
 	}
 	if stoppingForceCancelSec < 0 {
 		stoppingForceCancelSec = 0
+	}
+	if heartbeatTimeoutSec <= 0 {
+		heartbeatTimeoutSec = 30
+	}
+	if inFlightPreRunTimeoutSec <= 0 {
+		inFlightPreRunTimeoutSec = 120
+	}
+	if inFlightRunningTimeoutSec <= 0 {
+		inFlightRunningTimeoutSec = 120
 	}
 	if predictionTTLDays < 0 {
 		predictionTTLDays = 0
@@ -89,6 +104,9 @@ func NewService(
 		dispatchLockKey:         dispatchLockKey,
 		simCooldown:             time.Duration(simulationCooldownSec) * time.Second,
 		stopForceCancelAfter:    time.Duration(stoppingForceCancelSec) * time.Second,
+		heartbeatTimeout:        time.Duration(heartbeatTimeoutSec) * time.Second,
+		inFlightPreRunTimeout:   time.Duration(inFlightPreRunTimeoutSec) * time.Second,
+		inFlightRunningTimeout:  time.Duration(inFlightRunningTimeoutSec) * time.Second,
 		predictionTTLDays:       predictionTTLDays,
 		predictionTTLKeepRounds: predictionTTLKeepRounds,
 		roundAffinityWait:       time.Duration(roundAffinityWaitSec) * time.Second,

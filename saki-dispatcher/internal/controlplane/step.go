@@ -47,6 +47,9 @@ func (s *Service) dispatchPending(ctx context.Context, limit int) (int, error) {
 	if err := s.recoverDispatchOutbox(ctx, max(64, limit*2)); err != nil {
 		return 0, err
 	}
+	if err := s.recoverStaleInFlightTasks(ctx, max(64, limit*2)); err != nil {
+		return 0, err
+	}
 
 	claimed := 0
 	for _, queuedTaskID := range s.dispatcher.DrainQueuedTaskIDs() {
@@ -1765,8 +1768,11 @@ func (s *Service) OnExecutorDisconnected(ctx context.Context, executorID string,
 		return nil
 	}
 
-	return s.queries.UpdateRuntimeExecutorDisconnected(ctx, db.UpdateRuntimeExecutorDisconnectedParams{
+	if err := s.queries.UpdateRuntimeExecutorDisconnected(ctx, db.UpdateRuntimeExecutorDisconnectedParams{
 		Reason:     toNullablePGText(reason),
 		ExecutorID: executorID,
-	})
+	}); err != nil {
+		return err
+	}
+	return s.recoverInFlightTasksByExecutor(ctx, executorID, "executor disconnected")
 }

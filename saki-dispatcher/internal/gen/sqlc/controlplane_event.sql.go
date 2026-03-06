@@ -50,3 +50,41 @@ func (q *Queries) InsertTaskEvent(ctx context.Context, arg InsertTaskEventParams
 	}
 	return result.RowsAffected(), nil
 }
+
+const insertTaskStatusSystemEvent = `-- name: InsertTaskStatusSystemEvent :execrows
+INSERT INTO task_event(id, task_id, seq, ts, event_type, payload, created_at, updated_at)
+SELECT
+  $1::uuid,
+  $2::uuid,
+  COALESCE((
+    SELECT MAX(e.seq) + 1
+    FROM task_event e
+    WHERE e.task_id = $2::uuid
+  ), 1),
+  $3,
+  'status',
+  $4::jsonb,
+  now(),
+  now()
+ON CONFLICT (task_id, seq) DO NOTHING
+`
+
+type InsertTaskStatusSystemEventParams struct {
+	EventID uuid.UUID
+	TaskID  uuid.UUID
+	Ts      pgtype.Timestamptz
+	Payload []byte
+}
+
+func (q *Queries) InsertTaskStatusSystemEvent(ctx context.Context, arg InsertTaskStatusSystemEventParams) (int64, error) {
+	result, err := q.db.Exec(ctx, insertTaskStatusSystemEvent,
+		arg.EventID,
+		arg.TaskID,
+		arg.Ts,
+		arg.Payload,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}

@@ -34,6 +34,15 @@ type PendingAssign struct {
 	CreatedAt  time.Time
 }
 
+type AssignTaskAckContext struct {
+	RequestID  string
+	TaskID     string
+	ExecutorID string
+	Status     runtimecontrolv1.AckStatus
+	Reason     runtimecontrolv1.AckReason
+	Detail     string
+}
+
 type Dispatcher struct {
 	mu sync.RWMutex
 
@@ -162,7 +171,10 @@ func (d *Dispatcher) HandleHeartbeat(heartbeat *runtimecontrolv1.Heartbeat) erro
 	return nil
 }
 
-func (d *Dispatcher) HandleAck(ack *runtimecontrolv1.Ack) {
+func (d *Dispatcher) HandleAck(ack *runtimecontrolv1.Ack) *AssignTaskAckContext {
+	if ack == nil {
+		return nil
+	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -178,10 +190,19 @@ func (d *Dispatcher) HandleAck(ack *runtimecontrolv1.Ack) {
 					session.Status = "idle"
 				}
 			}
+			return &AssignTaskAckContext{
+				RequestID:  pending.RequestID,
+				TaskID:     pending.TaskID,
+				ExecutorID: pending.ExecutorID,
+				Status:     ack.GetStatus(),
+				Reason:     ack.GetReason(),
+				Detail:     strings.TrimSpace(ack.GetDetail()),
+			}
 		}
 	case runtimecontrolv1.AckType_ACK_TYPE_STOP_TASK:
 		delete(d.pendingStop, ack.GetAckFor())
 	}
+	return nil
 }
 
 func (d *Dispatcher) GetQueue(executorID string) <-chan *runtimecontrolv1.RuntimeMessage {

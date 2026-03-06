@@ -229,6 +229,130 @@ WHERE id = sqlc.arg(task_id)::uuid
     'BINDING_DEVICE'::runtimetaskstatus
   );
 
+-- name: ResetDispatchingTaskToReadyByAck :execrows
+UPDATE task
+SET status = 'READY'::runtimetaskstatus,
+    assigned_executor_id = NULL,
+    ended_at = NULL,
+    last_error = sqlc.arg(last_error),
+    updated_at = now()
+WHERE id = sqlc.arg(task_id)::uuid
+  AND status = 'DISPATCHING'::runtimetaskstatus
+  AND assigned_executor_id = sqlc.arg(assigned_executor_id);
+
+-- name: RetryDispatchingTaskByAck :execrows
+UPDATE task
+SET status = 'RETRYING'::runtimetaskstatus,
+    attempt = attempt + 1,
+    assigned_executor_id = NULL,
+    ended_at = NULL,
+    last_error = sqlc.arg(last_error),
+    updated_at = now()
+WHERE id = sqlc.arg(task_id)::uuid
+  AND status = 'DISPATCHING'::runtimetaskstatus
+  AND assigned_executor_id = sqlc.arg(assigned_executor_id)
+  AND attempt < max_attempts;
+
+-- name: FailDispatchingTaskByAck :execrows
+UPDATE task
+SET status = 'FAILED'::runtimetaskstatus,
+    assigned_executor_id = NULL,
+    started_at = COALESCE(started_at, now()),
+    ended_at = COALESCE(ended_at, now()),
+    last_error = sqlc.arg(last_error),
+    updated_at = now()
+WHERE id = sqlc.arg(task_id)::uuid
+  AND status = 'DISPATCHING'::runtimetaskstatus
+  AND assigned_executor_id = sqlc.arg(assigned_executor_id);
+
+-- name: RecoverPreRunTaskToReady :execrows
+UPDATE task
+SET status = 'READY'::runtimetaskstatus,
+    assigned_executor_id = NULL,
+    ended_at = NULL,
+    last_error = sqlc.arg(last_error),
+    updated_at = now()
+WHERE id = sqlc.arg(task_id)::uuid
+  AND status IN (
+    'DISPATCHING'::runtimetaskstatus,
+    'SYNCING_ENV'::runtimetaskstatus,
+    'PROBING_RUNTIME'::runtimetaskstatus,
+    'BINDING_DEVICE'::runtimetaskstatus
+  )
+  AND (
+    sqlc.arg(assigned_executor_id) = ''
+    OR assigned_executor_id = sqlc.arg(assigned_executor_id)
+  );
+
+-- name: RecoverRunningTaskToRetrying :execrows
+UPDATE task
+SET status = 'RETRYING'::runtimetaskstatus,
+    attempt = attempt + 1,
+    assigned_executor_id = NULL,
+    ended_at = NULL,
+    last_error = sqlc.arg(last_error),
+    updated_at = now()
+WHERE id = sqlc.arg(task_id)::uuid
+  AND status = 'RUNNING'::runtimetaskstatus
+  AND attempt < max_attempts
+  AND (
+    sqlc.arg(assigned_executor_id) = ''
+    OR assigned_executor_id = sqlc.arg(assigned_executor_id)
+  );
+
+-- name: RecoverRunningTaskToFailed :execrows
+UPDATE task
+SET status = 'FAILED'::runtimetaskstatus,
+    assigned_executor_id = NULL,
+    started_at = COALESCE(started_at, now()),
+    ended_at = COALESCE(ended_at, now()),
+    last_error = sqlc.arg(last_error),
+    updated_at = now()
+WHERE id = sqlc.arg(task_id)::uuid
+  AND status = 'RUNNING'::runtimetaskstatus
+  AND (
+    sqlc.arg(assigned_executor_id) = ''
+    OR assigned_executor_id = sqlc.arg(assigned_executor_id)
+  );
+
+-- name: ListInFlightTaskRecoveryCandidates :many
+SELECT
+  t.id AS task_id,
+  t.kind::text AS task_kind,
+  t.status AS task_status,
+  t.attempt AS attempt,
+  t.max_attempts AS max_attempts,
+  COALESCE(t.assigned_executor_id, '') AS assigned_executor_id,
+  t.updated_at AS task_updated_at,
+  COALESCE(r.is_online, FALSE) AS executor_online,
+  r.last_seen_at AS executor_last_seen_at,
+  COALESCE(r.current_task_id, '') AS executor_current_task_id
+FROM task t
+LEFT JOIN runtime_executor r ON r.executor_id = t.assigned_executor_id
+WHERE t.status IN (
+  'DISPATCHING'::runtimetaskstatus,
+  'SYNCING_ENV'::runtimetaskstatus,
+  'PROBING_RUNTIME'::runtimetaskstatus,
+  'BINDING_DEVICE'::runtimetaskstatus,
+  'RUNNING'::runtimetaskstatus
+)
+ORDER BY t.updated_at ASC
+LIMIT sqlc.arg(limit_count);
+
+-- name: ListInFlightTaskIDsByExecutor :many
+SELECT id
+FROM task
+WHERE assigned_executor_id = sqlc.arg(executor_id)
+  AND status IN (
+    'DISPATCHING'::runtimetaskstatus,
+    'SYNCING_ENV'::runtimetaskstatus,
+    'PROBING_RUNTIME'::runtimetaskstatus,
+    'BINDING_DEVICE'::runtimetaskstatus,
+    'RUNNING'::runtimetaskstatus
+  )
+ORDER BY updated_at ASC
+LIMIT sqlc.arg(limit_count);
+
 -- name: ProjectStepFromTask :execrows
 UPDATE step s
 SET state = t.status::text::stepstatus,

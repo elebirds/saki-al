@@ -181,7 +181,16 @@ func (s *Server) handleIncoming(
 		)), executorID, nil
 
 	case *runtimecontrolv1.RuntimeMessage_Ack:
-		s.dispatcher.HandleAck(payload.Ack)
+		ackContext := s.dispatcher.HandleAck(payload.Ack)
+		if s.controlPlane != nil && ackContext != nil {
+			if err := s.controlPlane.OnAssignTaskAck(context.Background(), ackContext); err != nil {
+				s.logger.Warn().
+					Err(err).
+					Str("task_id", strings.TrimSpace(ackContext.TaskID)).
+					Str("request_id", strings.TrimSpace(ackContext.RequestID)).
+					Msg("持久化 assign_task ack 失败")
+			}
+		}
 		return nil, currentExecutorID, nil
 
 	case *runtimecontrolv1.RuntimeMessage_TaskEvent:

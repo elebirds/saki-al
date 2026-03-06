@@ -74,9 +74,7 @@ _ACK_TYPE_TO_TEXT: dict[int, str] = {
 _TEXT_TO_ACK_TYPE: dict[str, int] = {
     "register": pb.ACK_TYPE_REGISTER,
     "assign_task": pb.ACK_TYPE_ASSIGN_TASK,
-    "assign_step": pb.ACK_TYPE_ASSIGN_TASK,
     "stop_task": pb.ACK_TYPE_STOP_TASK,
-    "stop_step": pb.ACK_TYPE_STOP_TASK,
     "request": pb.ACK_TYPE_REQUEST,
 }
 
@@ -94,7 +92,6 @@ _TEXT_TO_ACK_REASON: dict[str, int] = {
     "executor_busy": pb.ACK_REASON_EXECUTOR_BUSY,
     "stopping": pb.ACK_REASON_STOPPING,
     "task_not_running": pb.ACK_REASON_TASK_NOT_RUNNING,
-    "step_not_running": pb.ACK_REASON_TASK_NOT_RUNNING,
     "rejected": pb.ACK_REASON_REJECTED,
 }
 
@@ -334,7 +331,7 @@ def build_error_message(
 
 
 def build_assign_task_message(*, request_id: str, payload: Mapping[str, Any]) -> pb.RuntimeMessage:
-    task_type = text_to_task_type(str(payload.get("task_type") or payload.get("step_type") or "custom"))
+    task_type = text_to_task_type(str(payload.get("task_type") or "custom"))
     dispatch_kind = text_to_dispatch_kind(str(payload.get("dispatch_kind") or "dispatchable"))
     loop_mode = text_to_loop_mode(str(payload.get("mode") or "active_learning"))
     task_id = str(payload.get("task_id") or "")

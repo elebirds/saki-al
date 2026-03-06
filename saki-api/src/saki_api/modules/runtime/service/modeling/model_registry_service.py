@@ -34,7 +34,7 @@ class _ArtifactCandidate:
     uri: str
     meta: dict[str, Any]
     step_id: uuid.UUID
-    task_id: uuid.UUID | None
+    task_id: uuid.UUID
     step_index: int
     step_type: str
 
@@ -102,8 +102,7 @@ class ModelService:
     def _build_artifact_payload(candidate: _ArtifactCandidate) -> dict[str, Any]:
         meta = dict(candidate.meta or {})
         meta.setdefault("step_id", str(candidate.step_id))
-        if candidate.task_id is not None:
-            meta.setdefault("task_id", str(candidate.task_id))
+        meta.setdefault("task_id", str(candidate.task_id))
         meta.setdefault("step_type", candidate.step_type)
         meta.setdefault("step_index", int(candidate.step_index))
         return {
@@ -134,16 +133,17 @@ class ModelService:
         task_by_id = {task.id: task for task in task_rows}
         collected: dict[str, _ArtifactCandidate] = {}
         for step in step_rows:
+            if step.task_id is None:
+                continue
             step_type = self._normalize_step_type(step.step_type)
             artifact_map: dict[str, Any] = {}
-            if step.task_id is not None:
-                task = task_by_id.get(step.task_id)
-                params = task.resolved_params if task and isinstance(task.resolved_params, dict) else {}
-                task_result_artifacts = params.get("_result_artifacts")
-                if isinstance(task_result_artifacts, dict):
-                    artifact_map = task_result_artifacts
+            task = task_by_id.get(step.task_id)
+            params = task.resolved_params if task and isinstance(task.resolved_params, dict) else {}
+            task_result_artifacts = params.get("_result_artifacts")
+            if isinstance(task_result_artifacts, dict):
+                artifact_map = task_result_artifacts
             if not artifact_map:
-                artifact_map = step.artifacts if isinstance(step.artifacts, dict) else {}
+                continue
             for raw_name, raw_payload in artifact_map.items():
                 name = self._normalize_text(raw_name)
                 if not name:
@@ -356,7 +356,7 @@ class ModelService:
             "round_index": int(round_row.round_index or 0),
             "attempt_index": int(round_row.attempt_index or 1),
             "primary_artifact_name": primary.name,
-            "primary_task_id": str(primary.task_id) if primary.task_id is not None else "",
+            "primary_task_id": str(primary.task_id),
             "included_artifacts": sorted(artifact_map.keys()),
             "published_at": datetime.now(UTC).isoformat(),
         }

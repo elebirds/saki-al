@@ -1009,12 +1009,11 @@ func (ns NullStepstatus) Value() (driver.Value, error) {
 type Steptype string
 
 const (
-	SteptypeTRAIN   Steptype = "TRAIN"
-	SteptypeEVAL    Steptype = "EVAL"
-	SteptypeSCORE   Steptype = "SCORE"
-	SteptypeSELECT  Steptype = "SELECT"
-	SteptypePREDICT Steptype = "PREDICT"
-	SteptypeCUSTOM  Steptype = "CUSTOM"
+	SteptypeTRAIN  Steptype = "TRAIN"
+	SteptypeEVAL   Steptype = "EVAL"
+	SteptypeSCORE  Steptype = "SCORE"
+	SteptypeSELECT Steptype = "SELECT"
+	SteptypeCUSTOM Steptype = "CUSTOM"
 )
 
 func (e *Steptype) Scan(src interface{}) error {

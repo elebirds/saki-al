@@ -330,7 +330,6 @@ CREATE TYPE public.steptype AS ENUM (
     'EVAL',
     'SCORE',
     'SELECT',
-    'PREDICT',
     'CUSTOM'
 );
 
@@ -534,27 +533,6 @@ CREATE TABLE public.dataset (
     allow_duplicate_sample_names boolean NOT NULL,
     is_public boolean NOT NULL,
     owner_id uuid NOT NULL
-);
-
-
---
--- Name: task_dispatch_outbox; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.task_dispatch_outbox (
-    created_at timestamp with time zone NOT NULL,
-    updated_at timestamp with time zone NOT NULL,
-    id uuid NOT NULL,
-    task_id uuid NOT NULL,
-    executor_id character varying(128) NOT NULL,
-    request_id character varying(128) NOT NULL,
-    payload jsonb,
-    status character varying(32) NOT NULL,
-    attempt_count integer NOT NULL,
-    next_attempt_at timestamp with time zone NOT NULL,
-    locked_at timestamp with time zone,
-    sent_at timestamp with time zone,
-    last_error character varying(4000)
 );
 
 
@@ -1085,6 +1063,27 @@ CREATE TABLE public.task_candidate_item (
 
 
 --
+-- Name: task_dispatch_outbox; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.task_dispatch_outbox (
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    id uuid NOT NULL,
+    task_id uuid NOT NULL,
+    executor_id character varying(128) NOT NULL,
+    request_id character varying(128) NOT NULL,
+    payload jsonb,
+    status character varying(32) NOT NULL,
+    attempt_count integer NOT NULL,
+    next_attempt_at timestamp with time zone NOT NULL,
+    locked_at timestamp with time zone,
+    sent_at timestamp with time zone,
+    last_error character varying(4000)
+);
+
+
+--
 -- Name: task_event; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1228,14 +1227,6 @@ ALTER TABLE ONLY public.commit_sample_state
 
 ALTER TABLE ONLY public.dataset
     ADD CONSTRAINT dataset_pkey PRIMARY KEY (id);
-
-
---
--- Name: task_dispatch_outbox task_dispatch_outbox_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.task_dispatch_outbox
-    ADD CONSTRAINT task_dispatch_outbox_pkey PRIMARY KEY (id);
 
 
 --
@@ -1444,6 +1435,14 @@ ALTER TABLE ONLY public.system_setting
 
 ALTER TABLE ONLY public.task_candidate_item
     ADD CONSTRAINT task_candidate_item_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: task_dispatch_outbox task_dispatch_outbox_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.task_dispatch_outbox
+    ADD CONSTRAINT task_dispatch_outbox_pkey PRIMARY KEY (id);
 
 
 --
@@ -1842,27 +1841,6 @@ CREATE INDEX ix_commit_sample_state_state ON public.commit_sample_state USING bt
 --
 
 CREATE INDEX ix_dataset_owner_id ON public.dataset USING btree (owner_id);
-
-
---
--- Name: ix_task_dispatch_outbox_request_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX ix_task_dispatch_outbox_request_id ON public.task_dispatch_outbox USING btree (request_id);
-
-
---
--- Name: ix_task_dispatch_outbox_status_next_attempt_at; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX ix_task_dispatch_outbox_status_next_attempt_at ON public.task_dispatch_outbox USING btree (status, next_attempt_at);
-
-
---
--- Name: ix_task_dispatch_outbox_task_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX ix_task_dispatch_outbox_task_id ON public.task_dispatch_outbox USING btree (task_id);
 
 
 --
@@ -2573,6 +2551,27 @@ CREATE INDEX ix_task_candidate_item_task_id ON public.task_candidate_item USING 
 
 
 --
+-- Name: ix_task_dispatch_outbox_request_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX ix_task_dispatch_outbox_request_id ON public.task_dispatch_outbox USING btree (request_id);
+
+
+--
+-- Name: ix_task_dispatch_outbox_status_next_attempt_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_task_dispatch_outbox_status_next_attempt_at ON public.task_dispatch_outbox USING btree (status, next_attempt_at);
+
+
+--
+-- Name: ix_task_dispatch_outbox_task_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_task_dispatch_outbox_task_id ON public.task_dispatch_outbox USING btree (task_id);
+
+
+--
 -- Name: ix_task_event_event_type; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2878,14 +2877,6 @@ ALTER TABLE ONLY public.commit_sample_state
 
 ALTER TABLE ONLY public.dataset
     ADD CONSTRAINT dataset_owner_id_fkey FOREIGN KEY (owner_id) REFERENCES public."user"(id);
-
-
---
--- Name: task_dispatch_outbox task_dispatch_outbox_task_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.task_dispatch_outbox
-    ADD CONSTRAINT task_dispatch_outbox_task_id_fkey FOREIGN KEY (task_id) REFERENCES public.task(id);
 
 
 --
@@ -3302,6 +3293,14 @@ ALTER TABLE ONLY public.task_candidate_item
 
 ALTER TABLE ONLY public.task_candidate_item
     ADD CONSTRAINT task_candidate_item_task_id_fkey FOREIGN KEY (task_id) REFERENCES public.task(id);
+
+
+--
+-- Name: task_dispatch_outbox task_dispatch_outbox_task_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.task_dispatch_outbox
+    ADD CONSTRAINT task_dispatch_outbox_task_id_fkey FOREIGN KEY (task_id) REFERENCES public.task(id);
 
 
 --

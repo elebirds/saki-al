@@ -265,7 +265,6 @@ class StepType(str, Enum):
     EVAL = "eval"
     SCORE = "score"
     SELECT = "select"
-    PREDICT = "predict"
     CUSTOM = "custom"
 
 

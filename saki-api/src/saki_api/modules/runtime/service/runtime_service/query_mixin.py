@@ -15,7 +15,7 @@ from saki_api.core.exceptions import BadRequestAppException, NotFoundAppExceptio
 from saki_api.core.config import settings
 from saki_api.modules.runtime.api.round_step import (
     RoundArtifactRead,
-    StepArtifactRead,
+    TaskArtifactRead,
 )
 from saki_api.modules.runtime.domain.round import Round
 from saki_api.modules.runtime.domain.step import Step
@@ -616,8 +616,8 @@ class RuntimeQueryMixin:
         await self.task_repo.get_by_id_or_raise(task_id)
         return await self.task_candidate_repo.list_topk_by_task(task_id, limit=max(1, min(limit, 5000)))
 
-    def _extract_downloadable_step_artifacts(self, step: Step) -> list[StepArtifactRead]:
-        artifacts: list[StepArtifactRead] = []
+    def _extract_downloadable_step_artifacts(self, step: Step) -> list[TaskArtifactRead]:
+        artifacts: list[TaskArtifactRead] = []
         for name, value in (step.artifacts or {}).items():
             if not isinstance(value, dict):
                 continue
@@ -625,7 +625,7 @@ class RuntimeQueryMixin:
             if not self._is_downloadable_uri(uri):
                 continue
             artifacts.append(
-                StepArtifactRead(
+                TaskArtifactRead(
                     name=name,
                     kind=str(value.get("kind", "artifact")),
                     uri=uri,
@@ -634,7 +634,7 @@ class RuntimeQueryMixin:
             )
         return artifacts
 
-    async def list_task_artifacts(self, task_id: uuid.UUID) -> list[StepArtifactRead]:
+    async def list_task_artifacts(self, task_id: uuid.UUID) -> list[TaskArtifactRead]:
         await self.task_repo.get_by_id_or_raise(task_id)
         step = await self.step_repo.get_by_task_id(task_id)
         if step is None:

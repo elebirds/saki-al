@@ -315,7 +315,7 @@ class RoundSelectionApplyResponse(BaseModel):
     effective_selected: List[StepCandidateRead] = Field(default_factory=list)
 
 
-class StepArtifactRead(BaseModel):
+class TaskArtifactRead(BaseModel):
     name: str
     kind: str
     uri: str
@@ -341,7 +341,7 @@ class RoundArtifactsResponse(BaseModel):
 
 class TaskArtifactsResponse(BaseModel):
     task_id: uuid.UUID
-    artifacts: List[StepArtifactRead]
+    artifacts: List[TaskArtifactRead]
 
 
 class RoundMissingSamplesDatasetStatRead(BaseModel):

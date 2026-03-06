@@ -240,8 +240,6 @@ func toRuntimeTaskType(raw db.Steptype) runtimecontrolv1.RuntimeTaskType {
 		return runtimecontrolv1.RuntimeTaskType_SCORE
 	case db.SteptypeSELECT:
 		return runtimecontrolv1.RuntimeTaskType_SELECT
-	case db.SteptypePREDICT:
-		return runtimecontrolv1.RuntimeTaskType_PREDICT
 	case db.SteptypeCUSTOM:
 		return runtimecontrolv1.RuntimeTaskType_CUSTOM
 	default:

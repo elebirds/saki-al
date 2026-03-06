@@ -48,17 +48,19 @@ func TestToRuntimeTaskDispatchKind(t *testing.T) {
 
 func TestToRuntimeTaskType(t *testing.T) {
 	cases := map[db.Steptype]runtimecontrolv1.RuntimeTaskType{
-		db.SteptypeTRAIN:   runtimecontrolv1.RuntimeTaskType_TRAIN,
-		db.SteptypeSCORE:   runtimecontrolv1.RuntimeTaskType_SCORE,
-		db.SteptypeSELECT:  runtimecontrolv1.RuntimeTaskType_SELECT,
-		db.SteptypeEVAL:    runtimecontrolv1.RuntimeTaskType_EVAL,
-		db.SteptypePREDICT: runtimecontrolv1.RuntimeTaskType_PREDICT,
-		db.SteptypeCUSTOM:  runtimecontrolv1.RuntimeTaskType_CUSTOM,
+		db.SteptypeTRAIN:  runtimecontrolv1.RuntimeTaskType_TRAIN,
+		db.SteptypeSCORE:  runtimecontrolv1.RuntimeTaskType_SCORE,
+		db.SteptypeSELECT: runtimecontrolv1.RuntimeTaskType_SELECT,
+		db.SteptypeEVAL:   runtimecontrolv1.RuntimeTaskType_EVAL,
+		db.SteptypeCUSTOM: runtimecontrolv1.RuntimeTaskType_CUSTOM,
 	}
 	for stepType, want := range cases {
 		if got := toRuntimeTaskType(stepType); got != want {
 			t.Fatalf("step type mapping mismatch: %s -> %v, want %v", stepType, got, want)
 		}
+	}
+	if got := toRuntimeTaskType(db.SteptypePREDICT); got != runtimecontrolv1.RuntimeTaskType_RUNTIME_TASK_TYPE_UNSPECIFIED {
+		t.Fatalf("predict step type should be unsupported: %v", got)
 	}
 	if got := toRuntimeTaskType(db.Steptype("UNKNOWN")); got != runtimecontrolv1.RuntimeTaskType_RUNTIME_TASK_TYPE_UNSPECIFIED {
 		t.Fatalf("unknown step type fallback mismatch: %v", got)

@@ -634,8 +634,34 @@ class RuntimeQueryMixin:
             )
         return artifacts
 
+    def _extract_downloadable_task_artifacts(self, task: Any) -> list[TaskArtifactRead]:
+        params = task.resolved_params if isinstance(getattr(task, "resolved_params", None), dict) else {}
+        artifacts_raw = params.get("_result_artifacts")
+        if not isinstance(artifacts_raw, dict):
+            return []
+
+        artifacts: list[TaskArtifactRead] = []
+        for name, value in artifacts_raw.items():
+            if not isinstance(value, dict):
+                continue
+            uri = str(value.get("uri", ""))
+            if not self._is_downloadable_uri(uri):
+                continue
+            artifacts.append(
+                TaskArtifactRead(
+                    name=name,
+                    kind=str(value.get("kind", "artifact")),
+                    uri=uri,
+                    meta=value.get("meta") or {},
+                )
+            )
+        return artifacts
+
     async def list_task_artifacts(self, task_id: uuid.UUID) -> list[TaskArtifactRead]:
-        await self.task_repo.get_by_id_or_raise(task_id)
+        task = await self.task_repo.get_by_id_or_raise(task_id)
+        task_artifacts = self._extract_downloadable_task_artifacts(task)
+        if task_artifacts:
+            return task_artifacts
         step = await self.step_repo.get_by_task_id(task_id)
         if step is None:
             return []
@@ -708,6 +734,18 @@ class RuntimeQueryMixin:
         if not uri:
             raise BadRequestAppException("Artifact URI is empty")
 
+        return self._resolve_artifact_download_url_from_uri(uri=uri, expires_in_hours=expires_in_hours)
+
+    def _resolve_artifact_download_url_from_uri(
+        self,
+        *,
+        uri: str,
+        expires_in_hours: int = 2,
+    ) -> str:
+        uri = str(uri or "").strip()
+        if not uri:
+            raise BadRequestAppException("Artifact URI is empty")
+
         if uri.startswith("s3://"):
             _, _, bucket_and_path = uri.partition("s3://")
             _, _, object_path = bucket_and_path.partition("/")
@@ -730,7 +768,17 @@ class RuntimeQueryMixin:
         artifact_name: str,
         expires_in_hours: int = 2,
     ) -> str:
-        await self.task_repo.get_by_id_or_raise(task_id)
+        task = await self.task_repo.get_by_id_or_raise(task_id)
+        params = task.resolved_params if isinstance(getattr(task, "resolved_params", None), dict) else {}
+        artifacts_raw = params.get("_result_artifacts")
+        if isinstance(artifacts_raw, dict):
+            artifact = artifacts_raw.get(artifact_name)
+            if isinstance(artifact, dict):
+                return self._resolve_artifact_download_url_from_uri(
+                    uri=str(artifact.get("uri") or ""),
+                    expires_in_hours=expires_in_hours,
+                )
+
         step = await self.step_repo.get_by_task_id(task_id)
         if step is None:
             raise NotFoundAppException(f"Task {task_id} has no mapped artifacts (step projection missing)")

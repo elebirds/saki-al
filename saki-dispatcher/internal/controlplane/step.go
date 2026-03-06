@@ -692,16 +692,16 @@ func (s *Service) OnTaskEvent(ctx context.Context, event *runtimecontrolv1.TaskE
 		// Duplicate event by (task_id, seq), skip side effects.
 		return tx.Commit(ctx)
 	}
-	if !found {
-		if eventType == "status" {
-			targetTaskStatus := normalizeTaskEnumText(string(statusValue))
-			if targetTaskStatus != "" && targetTaskStatus != "PENDING" {
-				reason := strings.TrimSpace(event.GetStatusEvent().GetReason())
-				if err := s.updateTaskStatusTx(ctx, tx, taskID, targetTaskStatus, reason); err != nil {
-					return err
-				}
+	statusReason := strings.TrimSpace(event.GetStatusEvent().GetReason())
+	if eventType == "status" {
+		targetTaskStatus := normalizeTaskEnumText(string(statusValue))
+		if targetTaskStatus != "" && targetTaskStatus != "PENDING" {
+			if err := s.updateTaskStatusTx(ctx, tx, taskID, targetTaskStatus, statusReason); err != nil {
+				return err
 			}
 		}
+	}
+	if !found {
 		return tx.Commit(ctx)
 	}
 
@@ -722,17 +722,12 @@ func (s *Service) OnTaskEvent(ctx context.Context, event *runtimecontrolv1.TaskE
 			return err
 		}
 		if affected == 0 {
-			return fmt.Errorf("运行时事件导致非法步骤迁移: task_id=%s step_id=%s target=%s", taskID, stepID, targetState)
-		}
-		if err := s.syncStepStateToTaskTx(
-			ctx,
-			tx,
-			stepID,
-			targetState,
-			strings.TrimSpace(event.GetStatusEvent().GetReason()),
-			"",
-		); err != nil {
-			return err
+			s.logger.Warn().
+				Str("task_id", taskID.String()).
+				Str("step_id", stepID.String()).
+				Str("target_state", string(targetState)).
+				Msg("任务状态事件的步骤投影冲突，已保留 task 主干状态")
+			break
 		}
 
 	case "metric":
@@ -825,7 +820,12 @@ func (s *Service) OnTaskResult(ctx context.Context, result *runtimecontrolv1.Tas
 		return err
 	}
 	if affected == 0 {
-		return fmt.Errorf("步骤结果导致非法状态迁移: task_id=%s step_id=%s target=%s", taskID, stepID, targetState)
+		s.logger.Warn().
+			Str("task_id", taskID.String()).
+			Str("step_id", stepID.String()).
+			Str("target_state", string(targetState)).
+			Msg("任务结果的步骤投影冲突，已保留 task 主干结果")
+		return tx.Commit(ctx)
 	}
 
 	roundID, err := s.findRoundIDByStep(ctx, tx, stepID)

@@ -40,6 +40,7 @@ from saki_api.modules.shared.modeling.enums import (
 from saki_api.modules.project.domain.branch import Branch
 from saki_api.modules.project.domain.commit import Commit
 from saki_api.modules.project.domain.commit_sample_state import CommitSampleState
+from saki_api.modules.project.domain.label import Label
 from saki_api.modules.project.domain.project import Project, ProjectDataset
 from saki_api.modules.runtime.domain.al_snapshot_sample import ALSnapshotSample
 from saki_api.modules.runtime.domain.round import Round
@@ -160,6 +161,28 @@ async def _seed_project_samples(session: AsyncSession, *, project: Project, coun
         sample_ids.append(sample.id)
     await session.commit()
     return sample_ids
+
+
+async def _seed_project_labels(
+    session: AsyncSession,
+    *,
+    project: Project,
+    names: list[str],
+) -> list[Label]:
+    labels: list[Label] = []
+    for idx, name in enumerate(names, start=1):
+        label = Label(
+            project_id=project.id,
+            name=name,
+            color="#1890ff",
+            sort_order=idx,
+        )
+        session.add(label)
+        labels.append(label)
+    await session.commit()
+    for label in labels:
+        await session.refresh(label)
+    return labels
 
 
 async def _create_project_commit(
@@ -820,6 +843,212 @@ async def test_update_loop_rejects_finalize_train_change_after_non_draft(loop_ap
                                     "oracle_commit_id": str(branch.head_commit_id),
                                     "finalize_train": False,
                                 },
+                            }
+                        )
+                    ),
+                )
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_create_loop_persists_training_include_label_ids(loop_api_env):
+    session_local = loop_api_env
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        labels = await _seed_project_labels(session, project=project, names=["label-a", "label-b"])
+        service = RuntimeService(session)
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-training-labels",
+                    branch_id=branch.id,
+                    mode=LoopMode.ACTIVE_LEARNING,
+                    model_arch="yolo_det_v1",
+                    config=_loop_config(
+                        {
+                            "sampling": {"strategy": "random_baseline", "topk": 200},
+                            "training": {
+                                "include_label_ids": [
+                                    str(labels[1].id),
+                                    str(labels[0].id),
+                                    str(labels[0].id),
+                                ]
+                            },
+                        }
+                    ),
+                    lifecycle=LoopLifecycle.DRAFT,
+                ),
+            )
+            training_cfg = loop.config.get("training") if isinstance(loop.config, dict) else {}
+            include_ids = training_cfg.get("include_label_ids") if isinstance(training_cfg, dict) else []
+            assert include_ids == sorted({str(labels[0].id), str(labels[1].id)})
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_create_loop_rejects_training_include_label_ids_outside_project(loop_api_env):
+    session_local = loop_api_env
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        labels = await _seed_project_labels(session, project=project, names=["label-a"])
+        service = RuntimeService(session)
+
+        token = _session_ctx.set(session)
+        try:
+            with pytest.raises(
+                BadRequestAppException,
+                match="config.training.include_label_ids contains labels outside project",
+            ):
+                await service.create_loop(
+                    project.id,
+                    LoopCreateRequest(
+                        name="loop-training-labels-invalid",
+                        branch_id=branch.id,
+                        mode=LoopMode.ACTIVE_LEARNING,
+                        model_arch="yolo_det_v1",
+                        config=_loop_config(
+                            {
+                                "sampling": {"strategy": "random_baseline", "topk": 200},
+                                "training": {
+                                    "include_label_ids": [
+                                        str(labels[0].id),
+                                        str(uuid.uuid4()),
+                                    ]
+                                },
+                            }
+                        ),
+                        lifecycle=LoopLifecycle.DRAFT,
+                    ),
+                )
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_create_loop_rejects_invalid_training_include_label_ids_format(loop_api_env):
+    session_local = loop_api_env
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        service = RuntimeService(session)
+
+        token = _session_ctx.set(session)
+        try:
+            with pytest.raises(
+                BadRequestAppException,
+                match="invalid config.training.include_label_ids item",
+            ):
+                await service.create_loop(
+                    project.id,
+                    LoopCreateRequest(
+                        name="loop-training-labels-invalid-format",
+                        branch_id=branch.id,
+                        mode=LoopMode.ACTIVE_LEARNING,
+                        model_arch="yolo_det_v1",
+                        config=_loop_config(
+                            {
+                                "sampling": {"strategy": "random_baseline", "topk": 200},
+                                "training": {"include_label_ids": ["not-a-uuid"]},
+                            }
+                        ),
+                        lifecycle=LoopLifecycle.DRAFT,
+                    ),
+                )
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_update_loop_rejects_training_include_label_ids_change_after_non_draft(loop_api_env):
+    session_local = loop_api_env
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        labels = await _seed_project_labels(session, project=project, names=["label-a", "label-b"])
+        service = RuntimeService(session)
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-training-labels-locked",
+                    branch_id=branch.id,
+                    mode=LoopMode.ACTIVE_LEARNING,
+                    model_arch="yolo_det_v1",
+                    config=_loop_config(
+                        {
+                            "sampling": {"strategy": "random_baseline", "topk": 200},
+                            "training": {"include_label_ids": [str(labels[0].id)]},
+                        }
+                    ),
+                    lifecycle=LoopLifecycle.RUNNING,
+                ),
+            )
+            with pytest.raises(
+                BadRequestAppException,
+                match="config.training.include_label_ids is immutable once lifecycle is not draft",
+            ):
+                await service.update_loop(
+                    loop.id,
+                    LoopUpdateRequest(
+                        config=_loop_config(
+                            {
+                                "sampling": {"strategy": "random_baseline", "topk": 200},
+                                "training": {"include_label_ids": [str(labels[1].id)]},
+                            }
+                        )
+                    ),
+                )
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_update_loop_rejects_training_include_label_ids_outside_project(loop_api_env):
+    session_local = loop_api_env
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        labels = await _seed_project_labels(session, project=project, names=["label-a"])
+        service = RuntimeService(session)
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-training-labels-update-invalid",
+                    branch_id=branch.id,
+                    mode=LoopMode.ACTIVE_LEARNING,
+                    model_arch="yolo_det_v1",
+                    config=_loop_config(
+                        {
+                            "sampling": {"strategy": "random_baseline", "topk": 200},
+                            "training": {"include_label_ids": [str(labels[0].id)]},
+                        }
+                    ),
+                    lifecycle=LoopLifecycle.DRAFT,
+                ),
+            )
+            with pytest.raises(
+                BadRequestAppException,
+                match="config.training.include_label_ids contains labels outside project",
+            ):
+                await service.update_loop(
+                    loop.id,
+                    LoopUpdateRequest(
+                        config=_loop_config(
+                            {
+                                "sampling": {"strategy": "random_baseline", "topk": 200},
+                                "training": {"include_label_ids": [str(uuid.uuid4())]},
                             }
                         )
                     ),

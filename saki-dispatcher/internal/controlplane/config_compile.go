@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/spf13/cast"
@@ -19,6 +20,7 @@ func compileRoundConfig(loop loopRow, roundIndex int) map[string]any {
 	modeConfig := ensureMap(loopConfig["mode"])
 	reproConfig := ensureMap(loopConfig["reproducibility"])
 	executionConfig := ensureMap(loopConfig["execution"])
+	trainingConfig := compileTrainingConfig(loopConfig["training"])
 
 	globalSeed := strings.TrimSpace(toString(reproConfig["global_seed"]))
 	if globalSeed == "" {
@@ -52,6 +54,9 @@ func compileRoundConfig(loop loopRow, roundIndex int) map[string]any {
 	if loop.Mode != modeManual {
 		payload["sampling"] = compileSamplingConfig(loop, loopConfig)
 	}
+	if len(trainingConfig) > 0 {
+		payload["training"] = trainingConfig
+	}
 	return payload
 }
 
@@ -60,16 +65,27 @@ func compileStepConfig(roundConfig map[string]any, stepType db.Steptype, mode db
 	stepConfig["task_type"] = strings.ToLower(string(stepType))
 	if mode == modeManual {
 		delete(stepConfig, "sampling")
-		return stepConfig
+	} else {
+		switch stepType {
+		case db.SteptypeTRAIN, db.SteptypeSCORE, db.SteptypeCUSTOM:
+			// 保留 sampling 配置
+		default:
+			// 非采样步骤避免无意义配置噪音
+			delete(stepConfig, "sampling")
+		}
 	}
 	switch stepType {
-	case db.SteptypeTRAIN, db.SteptypeSCORE, db.SteptypeCUSTOM:
-		return stepConfig
+	case db.SteptypeTRAIN, db.SteptypeEVAL:
+		trainingConfig := compileTrainingConfig(stepConfig["training"])
+		if len(trainingConfig) == 0 {
+			delete(stepConfig, "training")
+		} else {
+			stepConfig["training"] = trainingConfig
+		}
 	default:
-		// 非采样步骤避免无意义配置噪音
-		delete(stepConfig, "sampling")
-		return stepConfig
+		delete(stepConfig, "training")
 	}
+	return stepConfig
 }
 
 func extractSamplingStrategyFromStruct(params *structpb.Struct) string {
@@ -130,6 +146,38 @@ func compileSamplingConfig(loop loopRow, loopConfig map[string]any) map[string]a
 		"min_candidates_required": minCandidatesRequired,
 		"review_pool_multiplier":  reviewPoolMultiplier,
 		"review_pool_size":        reviewPoolSize,
+	}
+}
+
+func compileTrainingConfig(raw any) map[string]any {
+	training := ensureMap(raw)
+	includeRaw, ok := training["include_label_ids"]
+	if !ok {
+		return map[string]any{}
+	}
+	values := cast.ToStringSlice(includeRaw)
+	if len(values) == 0 {
+		return map[string]any{}
+	}
+	seen := make(map[string]struct{}, len(values))
+	normalized := make([]string, 0, len(values))
+	for _, item := range values {
+		labelID := strings.TrimSpace(item)
+		if labelID == "" {
+			continue
+		}
+		if _, exists := seen[labelID]; exists {
+			continue
+		}
+		seen[labelID] = struct{}{}
+		normalized = append(normalized, labelID)
+	}
+	if len(normalized) == 0 {
+		return map[string]any{}
+	}
+	sort.Strings(normalized)
+	return map[string]any{
+		"include_label_ids": normalized,
 	}
 }
 

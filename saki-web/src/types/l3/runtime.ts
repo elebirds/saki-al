@@ -91,12 +91,17 @@ export interface LoopExecutionConfig {
     retryMaxAttempts?: number;
 }
 
+export interface LoopTrainingConfig {
+    includeLabelIds?: string[];
+}
+
 export interface LoopRuntimeConfig {
     plugin: Record<string, any>;
     sampling?: LoopSamplingConfig;
     mode?: LoopModeConfig;
     reproducibility: LoopReproducibilityConfig;
     execution?: LoopExecutionConfig;
+    training?: LoopTrainingConfig;
 }
 
 export interface Loop {

@@ -64,12 +64,49 @@ class TrainingDataService:
             request.input_commit_id,
         )
 
+        task_type = str(request.task_type or "").strip().lower()
+        apply_label_filter = task_type in {"train", "eval"}
+        include_label_ids = (
+            self._extract_training_include_label_ids(request.resolved_params)
+            if apply_label_filter
+            else set()
+        )
+        original_label_count = len(labels)
+        original_annotation_count = len(annotations)
+        if include_label_ids:
+            labels = [
+                item
+                for item in labels
+                if str(item.get("id") or "").strip() in include_label_ids
+            ]
+
         # `model` means unconfirmed assistant boxes and must never enter training.
         train_annotations = [
             item
             for item in annotations
             if str(item.get("source") or "").strip().lower() != "model"
         ]
+        if include_label_ids:
+            train_annotations = [
+                item
+                for item in train_annotations
+                if str(item.get("category_id") or item.get("label_id") or "").strip() in include_label_ids
+            ]
+        if include_label_ids:
+            await emit(
+                "log",
+                {
+                    "level": "INFO",
+                    "message": (
+                        "training label filter applied "
+                        f"include_label_count={len(include_label_ids)} "
+                        f"labels_kept={len(labels)} labels_filtered={max(0, original_label_count - len(labels))} "
+                        f"annotations_kept={len(train_annotations)} "
+                        f"annotations_filtered={max(0, original_annotation_count - len(train_annotations))}"
+                    ),
+                },
+            )
+
         labeled_sample_ids = {
             str(item.get("sample_id") or "")
             for item in train_annotations
@@ -80,6 +117,11 @@ class TrainingDataService:
             for item in samples
             if str(item.get("id") or "") in labeled_sample_ids
         ]
+        if include_label_ids and not supervised_samples:
+            raise RuntimeError(
+                "training label filter produced empty supervised dataset: "
+                f"include_label_ids={sorted(include_label_ids)}"
+            )
         try:
             split_seed = max(0, int(runtime_context.split_seed))
         except Exception:
@@ -184,6 +226,21 @@ class TrainingDataService:
             protected=protected,
             splits=splits,
         )
+
+    @staticmethod
+    def _extract_training_include_label_ids(resolved_params: dict[str, Any] | None) -> set[str]:
+        payload = resolved_params if isinstance(resolved_params, dict) else {}
+        training = payload.get("training")
+        training_cfg = training if isinstance(training, dict) else {}
+        include_label_ids = training_cfg.get("include_label_ids")
+        if not isinstance(include_label_ids, list):
+            return set()
+        normalized = {
+            str(item or "").strip()
+            for item in include_label_ids
+            if str(item or "").strip()
+        }
+        return normalized
 
     @staticmethod
     def _split_samples_from_snapshot(

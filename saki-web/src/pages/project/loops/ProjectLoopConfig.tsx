@@ -18,7 +18,7 @@ import {useNavigate, useParams} from 'react-router-dom';
 import {DynamicConfigForm} from '../../../components/common';
 import {useResourcePermission} from '../../../hooks';
 import {api} from '../../../services/api';
-import {CommitHistoryItem, Loop, Project, RuntimePluginCatalogItem} from '../../../types';
+import {CommitHistoryItem, Loop, Project, ProjectLabel, RuntimePluginCatalogItem} from '../../../types';
 import {toPluginConfigSchema} from './loopFormSchemaAdapter';
 import {
     buildLoopUpdatePayload,
@@ -40,6 +40,7 @@ const ProjectLoopConfig: React.FC = () => {
     const [saving, setSaving] = useState(false);
     const [loop, setLoop] = useState<Loop | null>(null);
     const [project, setProject] = useState<Project | null>(null);
+    const [labels, setLabels] = useState<ProjectLabel[]>([]);
     const [plugins, setPlugins] = useState<RuntimePluginCatalogItem[]>([]);
     const [commits, setCommits] = useState<CommitHistoryItem[]>([]);
     const [configForm] = Form.useForm<LoopEditorFormValues>();
@@ -73,17 +74,19 @@ const ProjectLoopConfig: React.FC = () => {
 
     const refreshLoopData = useCallback(async () => {
         if (!loopId || !projectId) return;
-        const [loopRow, pluginCatalog, projectRow, commitRows] = await Promise.all([
+        const [loopRow, pluginCatalog, projectRow, commitRows, labelsRows] = await Promise.all([
             api.getLoopById(loopId),
             api.getRuntimePlugins(),
             api.getProject(projectId),
             api.getProjectCommits(projectId),
+            api.getProjectLabels(projectId),
         ]);
 
         const nextPlugins = pluginCatalog.items || [];
         setLoop(loopRow);
         setPlugins(nextPlugins);
         setProject(projectRow);
+        setLabels(labelsRows);
         setCommits(commitRows);
 
         const plugin = nextPlugins.find((item) => item.pluginId === loopRow.modelArch);
@@ -121,6 +124,9 @@ const ProjectLoopConfig: React.FC = () => {
                     valPolicy: String(loopSnapshotInit.valPolicy || 'anchor_only'),
                 },
             },
+            trainingLabelIds: Array.isArray(loopConfig.training?.includeLabelIds)
+                ? loopConfig.training.includeLabelIds
+                : [],
         });
     }, [loopId, projectId, configForm]);
 
@@ -277,6 +283,28 @@ const ProjectLoopConfig: React.FC = () => {
                                 />
                             </Form.Item>
                         ) : null}
+                        <Form.Item
+                            name="trainingLabelIds"
+                            label={t('project.loopConfig.form.trainingLabelScope')}
+                            extra={
+                                loop.lifecycle === 'draft'
+                                    ? t('project.loopConfig.form.trainingLabelScopeHint')
+                                    : t('project.loopConfig.form.trainingLabelScopeImmutable')
+                            }
+                        >
+                            <Select
+                                mode="multiple"
+                                allowClear
+                                showSearch
+                                optionFilterProp="label"
+                                placeholder={t('project.loopConfig.form.trainingLabelScopePlaceholder')}
+                                options={labels.map((item) => ({
+                                    label: item.name,
+                                    value: item.id,
+                                }))}
+                                disabled={loop.lifecycle !== 'draft'}
+                            />
+                        </Form.Item>
                     </div>
 
                     <div className="grid grid-cols-1 gap-x-4 md:grid-cols-3">

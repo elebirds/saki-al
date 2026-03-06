@@ -90,6 +90,31 @@ def _normalize_simulation_snapshot_init(raw: Any) -> dict[str, Any]:
     }
 
 
+def _normalize_training_include_label_ids(raw: Any) -> list[str]:
+    if not isinstance(raw, list):
+        return []
+    normalized: set[str] = set()
+    for item in raw:
+        text = str(item or "").strip()
+        if not text:
+            continue
+        try:
+            normalized.add(str(uuid.UUID(text)))
+        except Exception as exc:
+            raise BadRequestAppException(
+                f"invalid config.training.include_label_ids item: {text}"
+            ) from exc
+    return sorted(normalized)
+
+
+def _normalize_training_config(raw: Any) -> dict[str, Any]:
+    payload = raw if isinstance(raw, dict) else {}
+    include_label_ids = _normalize_training_include_label_ids(payload.get("include_label_ids"))
+    if not include_label_ids:
+        return {}
+    return {"include_label_ids": include_label_ids}
+
+
 def normalize_loop_config(raw_config: dict[str, Any] | None, *, mode: str) -> dict[str, Any]:
     config = dict(raw_config or {})
     plugin = config.get("plugin")
@@ -97,6 +122,7 @@ def normalize_loop_config(raw_config: dict[str, Any] | None, *, mode: str) -> di
     mode_config = config.get("mode")
     reproducibility = config.get("reproducibility")
     execution = config.get("execution")
+    training = config.get("training")
 
     normalized_plugin = dict(plugin) if isinstance(plugin, dict) else {}
     normalized_sampling = dict(sampling) if isinstance(sampling, dict) else {}
@@ -109,6 +135,7 @@ def normalize_loop_config(raw_config: dict[str, Any] | None, *, mode: str) -> di
         ),
     }
     normalized_execution = dict(execution) if isinstance(execution, dict) else {}
+    normalized_training = _normalize_training_config(training)
 
     normalized_sampling["strategy"] = str(normalized_sampling.get("strategy") or "").strip()
     normalized_sampling["topk"] = max(1, to_int(normalized_sampling.get("topk"), 200))
@@ -162,6 +189,8 @@ def normalize_loop_config(raw_config: dict[str, Any] | None, *, mode: str) -> di
     }
     if normalized_sampling:
         normalized["sampling"] = normalized_sampling
+    if normalized_training:
+        normalized["training"] = normalized_training
     validate_loop_config(normalized, mode=mode)
     return normalized
 
@@ -256,3 +285,10 @@ def get_loop_global_seed(raw_config: dict[str, Any] | None) -> str:
     reproducibility = config.get("reproducibility")
     reproducibility_map = reproducibility if isinstance(reproducibility, dict) else {}
     return str(reproducibility_map.get("global_seed") or "").strip()
+
+
+def extract_training_include_label_ids(raw_config: dict[str, Any] | None) -> list[str]:
+    config = dict(raw_config or {})
+    training = config.get("training")
+    training_map = training if isinstance(training, dict) else {}
+    return _normalize_training_include_label_ids(training_map.get("include_label_ids"))

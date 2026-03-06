@@ -49,6 +49,26 @@ class LoopCommandMixin:
         simulation = self._extract_simulation_config(dict(config or {}))
         return bool(simulation.finalize_train)
 
+    def _extract_config_training_include_label_ids(self, config: dict[str, Any] | None) -> list[str]:
+        return self._extract_training_include_label_ids(dict(config or {}))
+
+    async def _validate_training_include_labels(
+        self,
+        *,
+        project_id: uuid.UUID,
+        config: dict[str, Any] | None,
+    ) -> None:
+        include_label_ids = self._extract_config_training_include_label_ids(config)
+        if not include_label_ids:
+            return
+        labels = await self.project_gateway.label_repo.get_by_project(project_id)
+        allowed = {str(label.id) for label in labels}
+        missing = [label_id for label_id in include_label_ids if label_id not in allowed]
+        if missing:
+            raise BadRequestAppException(
+                f"config.training.include_label_ids contains labels outside project: {missing}"
+            )
+
     async def _validate_simulation_oracle_commit(
         self,
         *,
@@ -86,6 +106,10 @@ class LoopCommandMixin:
         await self._validate_simulation_oracle_commit(
             project_id=project_id,
             mode=payload.mode,
+            config=normalized_config,
+        )
+        await self._validate_training_include_labels(
+            project_id=project_id,
             config=normalized_config,
         )
 
@@ -182,6 +206,20 @@ class LoopCommandMixin:
                 raise BadRequestAppException(
                     "config.mode.finalize_train is immutable once lifecycle is not draft"
                 )
+            current_training_include_label_ids = self._extract_config_training_include_label_ids(loop.config or {})
+            next_training_include_label_ids = self._extract_config_training_include_label_ids(normalized_config)
+            if (
+                str(loop.lifecycle.value if hasattr(loop.lifecycle, "value") else loop.lifecycle).strip().lower()
+                != "draft"
+                and current_training_include_label_ids != next_training_include_label_ids
+            ):
+                raise BadRequestAppException(
+                    "config.training.include_label_ids is immutable once lifecycle is not draft"
+                )
+            await self._validate_training_include_labels(
+                project_id=loop.project_id,
+                config=normalized_config,
+            )
 
             current_oracle_commit_id = await self._validate_simulation_oracle_commit(
                 project_id=loop.project_id,

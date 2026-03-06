@@ -23,6 +23,7 @@ import {
     CommitHistoryItem,
     Loop,
     Project,
+    ProjectLabel,
     ProjectBranch,
     RuntimePluginCatalogItem,
 } from '../../../types';
@@ -52,6 +53,7 @@ const ProjectLoopCreate: React.FC = () => {
     const [plugins, setPlugins] = useState<RuntimePluginCatalogItem[]>([]);
     const [commits, setCommits] = useState<CommitHistoryItem[]>([]);
     const [project, setProject] = useState<Project | null>(null);
+    const [labels, setLabels] = useState<ProjectLabel[]>([]);
     const [createForm] = Form.useForm<LoopEditorFormValues>();
 
     const selectedMode = Form.useWatch('mode', createForm) || 'active_learning';
@@ -91,12 +93,13 @@ const ProjectLoopCreate: React.FC = () => {
         if (!projectId || !canManageLoops) return;
         setLoading(true);
         try {
-            const [loopRows, branchRows, pluginCatalog, commitRows, projectRow] = await Promise.all([
+            const [loopRows, branchRows, pluginCatalog, commitRows, projectRow, labelsRows] = await Promise.all([
                 api.getProjectLoops(projectId),
                 api.getProjectBranches(projectId),
                 api.getRuntimePlugins(),
                 api.getProjectCommits(projectId),
                 api.getProject(projectId),
+                api.getProjectLabels(projectId),
             ]);
             const nextPlugins = pluginCatalog.items || [];
             setLoops(loopRows);
@@ -104,6 +107,7 @@ const ProjectLoopCreate: React.FC = () => {
             setPlugins(nextPlugins);
             setCommits(commitRows);
             setProject(projectRow);
+            setLabels(labelsRows);
 
             const bound = new Set(loopRows.map((item) => item.branchId));
             const openBranches = branchRows.filter((branch) => !bound.has(branch.id));
@@ -131,6 +135,7 @@ const ProjectLoopCreate: React.FC = () => {
                         valPolicy: 'anchor_only',
                     },
                 },
+                trainingLabelIds: [],
             });
         } catch (error: any) {
             message.error(error?.message || t('project.loopCreate.messages.loadFailed'));
@@ -359,6 +364,23 @@ const ProjectLoopCreate: React.FC = () => {
                                 </Form.Item>
                             </>
                         ) : null}
+                        <Form.Item
+                            name="trainingLabelIds"
+                            label={t('project.loopCreate.form.trainingLabelScope')}
+                            extra={t('project.loopCreate.form.trainingLabelScopeHint')}
+                        >
+                            <Select
+                                mode="multiple"
+                                allowClear
+                                showSearch
+                                optionFilterProp="label"
+                                placeholder={t('project.loopCreate.form.trainingLabelScopePlaceholder')}
+                                options={labels.map((item) => ({
+                                    label: item.name,
+                                    value: item.id,
+                                }))}
+                            />
+                        </Form.Item>
                     </div>
 
                     {selectedMode === 'simulation' ? (

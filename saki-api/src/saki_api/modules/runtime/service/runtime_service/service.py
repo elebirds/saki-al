@@ -31,6 +31,7 @@ from saki_api.modules.runtime.repo.prediction_query import PredictionQueryReposi
 from saki_api.modules.runtime.service.config.loop_config_service import (
     derive_loop_max_rounds,
     derive_query_batch_size,
+    extract_training_include_label_ids,
     extract_model_request_config,
     get_loop_global_seed,
     merge_model_request_config,
@@ -73,6 +74,7 @@ class RuntimeService(
     _merge_model_request_config = staticmethod(merge_model_request_config)
     _extract_model_request_config = staticmethod(extract_model_request_config)
     _get_loop_global_seed = staticmethod(get_loop_global_seed)
+    _extract_training_include_label_ids = staticmethod(extract_training_include_label_ids)
 
     def __init__(self, session: AsyncSession):
         super().__init__(Round, RoundRepository, session)

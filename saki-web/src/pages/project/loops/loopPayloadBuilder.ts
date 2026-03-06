@@ -20,6 +20,7 @@ export type LoopEditorFormValues = {
     deterministicLevel?: DeterministicLevel;
     samplingStrategy?: string;
     queryBatchSize?: number;
+    trainingLabelIds?: string[];
     pluginConfig?: Record<string, any>;
     simulationConfig?: {
         oracleInputMode?: OracleInputMode;
@@ -112,6 +113,16 @@ export const buildLoopRuntimeConfig = (
                 testRatio: clampRatio(values.simulationConfig?.snapshotInit?.testRatio, 0.1),
                 valPolicy: normalizeSnapshotValPolicy(values.simulationConfig?.snapshotInit?.valPolicy),
             },
+        };
+    }
+
+    const trainingLabelIds = Array.from(new Set((values.trainingLabelIds || [])
+        .map((item) => normalizeText(item))
+        .filter((item) => !!item)))
+        .sort();
+    if (trainingLabelIds.length > 0) {
+        config.training = {
+            includeLabelIds: trainingLabelIds,
         };
     }
 

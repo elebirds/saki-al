@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/spf13/cast"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	runtimecontrolv1 "github.com/elebirds/saki/saki-dispatcher/internal/gen/runtimecontrolv1"
@@ -293,6 +294,65 @@ func TestCompileRoundConfigStrongDeterministicLevel(t *testing.T) {
 	}
 	if config["strong_deterministic"] != true {
 		t.Fatalf("strong_deterministic should be true when deterministic_level=strong_deterministic: %v", config["strong_deterministic"])
+	}
+}
+
+func TestCompileRoundConfigIncludesTrainingLabelFilter(t *testing.T) {
+	loop := loopRow{
+		ID:             mustUUID("f1fa6112-6ea6-4367-a83a-e6f993790acd"),
+		Mode:           modeAL,
+		QueryBatchSize: 128,
+		ModelArch:      "yolo_det_v1",
+		Config: []byte(`{
+			"sampling": {"strategy": "random_baseline", "topk": 32},
+			"reproducibility": {"global_seed": "seed-fixed"},
+			"training": {"include_label_ids": ["label-b", "label-a", "label-a", ""]}
+		}`),
+	}
+	config := compileRoundConfig(loop, 1)
+	training, ok := config["training"].(map[string]any)
+	if !ok {
+		t.Fatalf("training config should be propagated to round config: %T", config["training"])
+	}
+	got := cast.ToStringSlice(training["include_label_ids"])
+	want := []string{"label-a", "label-b"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("training include_label_ids mismatch: got=%v want=%v", got, want)
+	}
+}
+
+func TestCompileStepConfigKeepsTrainingOnlyForTrainEval(t *testing.T) {
+	roundConfig := map[string]any{
+		"sampling": map[string]any{
+			"strategy": "random_baseline",
+			"topk":     32,
+		},
+		"training": map[string]any{
+			"include_label_ids": []string{"label-b", "label-a"},
+		},
+	}
+
+	trainConfig := compileStepConfig(roundConfig, db.SteptypeTRAIN, modeAL)
+	evalConfig := compileStepConfig(roundConfig, db.SteptypeEVAL, modeAL)
+	scoreConfig := compileStepConfig(roundConfig, db.SteptypeSCORE, modeAL)
+
+	trainTraining, ok := trainConfig["training"].(map[string]any)
+	if !ok {
+		t.Fatalf("train step should keep training config: %T", trainConfig["training"])
+	}
+	evalTraining, ok := evalConfig["training"].(map[string]any)
+	if !ok {
+		t.Fatalf("eval step should keep training config: %T", evalConfig["training"])
+	}
+	if _, ok := scoreConfig["training"]; ok {
+		t.Fatal("score step should not keep training config")
+	}
+	want := []string{"label-a", "label-b"}
+	if got := cast.ToStringSlice(trainTraining["include_label_ids"]); !reflect.DeepEqual(got, want) {
+		t.Fatalf("train include_label_ids mismatch: got=%v want=%v", got, want)
+	}
+	if got := cast.ToStringSlice(evalTraining["include_label_ids"]); !reflect.DeepEqual(got, want) {
+		t.Fatalf("eval include_label_ids mismatch: got=%v want=%v", got, want)
 	}
 }
 

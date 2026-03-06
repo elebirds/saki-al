@@ -209,25 +209,6 @@ async def get_round_missing_samples(
     return RoundMissingSamplesResponse.model_validate(payload)
 
 
-@router.get("/steps/{step_id}", response_model=StepRead)
-async def get_step(
-    *,
-    step_id: uuid.UUID,
-    runtime_service: RuntimeServiceDep,
-    session: AsyncSession = Depends(get_session),
-    current_user_id: uuid.UUID = Depends(get_current_user_id),
-):
-    step = await runtime_service.get_step_by_id_or_raise(step_id)
-    round_item = await runtime_service.get_by_id_or_raise(step.round_id)
-    await ensure_project_permission(
-        session=session,
-        current_user_id=current_user_id,
-        project_id=round_item.project_id,
-        required_permission=Permissions.ROUND_READ,
-    )
-    return StepRead.model_validate(step)
-
-
 @router.get("/tasks/{task_id}/events", response_model=TaskEventQueryResponse)
 async def get_task_events(
     *,

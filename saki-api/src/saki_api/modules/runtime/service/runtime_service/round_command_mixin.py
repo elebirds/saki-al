@@ -8,14 +8,10 @@ from saki_api.modules.access.domain.rbac import AuditAction
 from saki_api.modules.access.service.audit import log_audit
 from saki_api.core.exceptions import BadRequestAppException, NotFoundAppException
 from saki_api.infra.db.transaction import transactional
-from saki_api.modules.runtime.domain.step import Step
 from saki_api.modules.shared.modeling.enums import StepType
 
 
 class RoundCommandMixin:
-    async def get_step_by_id_or_raise(self, step_id: uuid.UUID) -> Step:
-        return await self.step_repo.get_by_id_or_raise(step_id)
-
     @transactional
     async def cleanup_round_predictions(
         self,

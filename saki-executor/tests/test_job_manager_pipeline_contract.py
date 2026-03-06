@@ -66,6 +66,37 @@ def test_job_execution_request_requires_task_type_and_dispatch_kind():
         )
 
 
+def test_predict_task_allows_missing_round_index():
+    request = TaskExecutionRequest.from_payload(
+        {
+            "task_id": "predict-1",
+            "round_id": "",
+            "plugin_id": "demo_det_v1",
+            "mode": "manual",
+            "task_type": "predict",
+            "dispatch_kind": "dispatchable",
+            "resolved_params": {},
+        }
+    )
+    assert request.task_type == "predict"
+    assert request.round_index == 0
+
+
+def test_non_predict_task_still_requires_positive_round_index():
+    with pytest.raises(ValueError, match="round_index is required and must be a positive integer"):
+        TaskExecutionRequest.from_payload(
+            {
+                "task_id": "train-1",
+                "round_id": "round-1",
+                "plugin_id": "demo_det_v1",
+                "mode": "simulation",
+                "task_type": "train",
+                "dispatch_kind": "dispatchable",
+                "resolved_params": {},
+            }
+        )
+
+
 def test_sampling_params_required_only_for_sampling_steps():
     # train step in AL mode should not require sampling.strategy/topk
     train_request = TaskExecutionRequest.from_payload(

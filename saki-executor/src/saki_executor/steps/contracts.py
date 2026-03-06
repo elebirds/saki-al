@@ -28,19 +28,27 @@ class TaskExecutionRequest:
 
     @classmethod
     def from_payload(cls, payload: dict[str, Any]) -> "TaskExecutionRequest":
-        raw_round_index = payload.get("round_index")
-        try:
-            round_index = int(raw_round_index)
-        except Exception as exc:
-            raise ValueError("round_index is required and must be a positive integer") from exc
-        if round_index <= 0:
-            raise ValueError("round_index is required and must be a positive integer")
-
-        query_strategy = str(payload.get("query_strategy") or "").strip() or None
-
         task_type = str(payload.get("task_type") or "").strip().lower()
         if not task_type:
             raise ValueError("task_type is required")
+
+        raw_round_index = payload.get("round_index")
+        round_index = 0
+        if raw_round_index is None or str(raw_round_index).strip() == "":
+            if task_type != "predict":
+                raise ValueError("round_index is required and must be a positive integer")
+        else:
+            try:
+                round_index = int(raw_round_index)
+            except Exception as exc:
+                raise ValueError("round_index is required and must be a positive integer") from exc
+        if task_type == "predict":
+            if round_index < 0:
+                raise ValueError("round_index must be >= 0 for predict task")
+        elif round_index <= 0:
+            raise ValueError("round_index is required and must be a positive integer")
+
+        query_strategy = str(payload.get("query_strategy") or "").strip() or None
 
         dispatch_kind = str(payload.get("dispatch_kind") or "").strip().lower()
         if not dispatch_kind:

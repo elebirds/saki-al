@@ -1,3 +1,3 @@
-from saki_plugin_sdk import StepReporter
+from saki_plugin_sdk import TaskReporter
 
-__all__ = ["StepReporter"]
+__all__ = ["TaskReporter"]

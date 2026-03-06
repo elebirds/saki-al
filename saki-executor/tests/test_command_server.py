@@ -9,7 +9,7 @@ from saki_executor.commands.server import CommandServer
 from saki_plugin_sdk import HostCapabilitySnapshot
 
 
-class _StepManagerStub:
+class _TaskManagerStub:
     def __init__(self) -> None:
         self.refresh_calls = 0
 
@@ -30,13 +30,13 @@ class _StepManagerStub:
 
 @pytest.mark.anyio
 async def test_refresh_hw_command_triggers_manual_capability_refresh():
-    step_manager = _StepManagerStub()
+    task_manager = _TaskManagerStub()
     server = CommandServer(
-        step_manager=step_manager,  # type: ignore[arg-type]
+        task_manager=task_manager,  # type: ignore[arg-type]
         plugin_registry=SimpleNamespace(all=lambda: []),  # type: ignore[arg-type]
         client=SimpleNamespace(connect=lambda: None, disconnect=lambda force=False: force),  # type: ignore[arg-type]
         shutdown_event=asyncio.Event(),
     )
 
     await server.execute("refresh-hw")
-    assert step_manager.refresh_calls == 1
+    assert task_manager.refresh_calls == 1

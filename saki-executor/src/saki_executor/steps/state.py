@@ -11,7 +11,7 @@ class ExecutorState(str, Enum):
     ERROR_RECOVERY = "error_recovery"
 
 
-class StepStatus(str, Enum):
+class TaskStatus(str, Enum):
     PENDING = "pending"
     DISPATCHING = "dispatching"
     SYNCING_ENV = "syncing_env"

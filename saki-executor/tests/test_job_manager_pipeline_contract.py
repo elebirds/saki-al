@@ -6,15 +6,15 @@ import pytest
 from saki_executor.cache.asset_cache import AssetCache
 from saki_executor.grpc_gen import runtime_control_pb2 as pb
 from saki_executor.steps.contracts import ArtifactUploadTicket, FetchedPage, TaskExecutionRequest
-from saki_executor.steps.manager import StepManager
+from saki_executor.steps.manager import TaskManager
 from saki_executor.plugins.registry import PluginRegistry
 from runtime_data_test_helper import build_data_response_message
 
 
-def _build_manager(tmp_path: Path) -> StepManager:
+def _build_manager(tmp_path: Path) -> TaskManager:
     registry = PluginRegistry()
     cache = AssetCache(root_dir=str(tmp_path / "cache"), max_bytes=1024 * 1024)
-    return StepManager(runs_dir=str(tmp_path / "runs"), cache=cache, plugin_registry=registry)
+    return TaskManager(runs_dir=str(tmp_path / "runs"), cache=cache, plugin_registry=registry)
 
 
 def test_job_execution_request_from_payload_requires_explicit_fields():

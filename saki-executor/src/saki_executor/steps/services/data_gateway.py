@@ -173,7 +173,7 @@ class DataGateway:
     def _required_request_message(self) -> RequestFn:
         request_message = self._request_message_getter()
         if request_message is None:
-            raise RuntimeError("step manager request transport is not configured")
+            raise RuntimeError("task manager request transport is not configured")
         return request_message
 
 

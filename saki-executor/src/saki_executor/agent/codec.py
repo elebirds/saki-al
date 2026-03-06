@@ -7,34 +7,34 @@ from google.protobuf.json_format import MessageToDict
 from google.protobuf.struct_pb2 import Struct
 
 from saki_executor.grpc_gen import runtime_control_pb2 as pb
-from saki_executor.steps.state import StepStatus
+from saki_executor.steps.state import TaskStatus
 
-_STATUS_TO_ENUM: dict[str, int] = {
-    StepStatus.PENDING.value: pb.PENDING,
-    StepStatus.DISPATCHING.value: pb.DISPATCHING,
-    StepStatus.SYNCING_ENV.value: pb.SYNCING_ENV,
-    StepStatus.PROBING_RUNTIME.value: pb.PROBING_RUNTIME,
-    StepStatus.BINDING_DEVICE.value: pb.BINDING_DEVICE,
-    StepStatus.RUNNING.value: pb.RUNNING,
-    StepStatus.RETRYING.value: pb.RETRYING,
-    StepStatus.SUCCEEDED.value: pb.SUCCEEDED,
-    StepStatus.FAILED.value: pb.FAILED,
-    StepStatus.CANCELLED.value: pb.CANCELLED,
-    StepStatus.SKIPPED.value: pb.SKIPPED,
+_TASK_STATUS_TO_ENUM: dict[str, int] = {
+    TaskStatus.PENDING.value: pb.PENDING,
+    TaskStatus.DISPATCHING.value: pb.DISPATCHING,
+    TaskStatus.SYNCING_ENV.value: pb.SYNCING_ENV,
+    TaskStatus.PROBING_RUNTIME.value: pb.PROBING_RUNTIME,
+    TaskStatus.BINDING_DEVICE.value: pb.BINDING_DEVICE,
+    TaskStatus.RUNNING.value: pb.RUNNING,
+    TaskStatus.RETRYING.value: pb.RETRYING,
+    TaskStatus.SUCCEEDED.value: pb.SUCCEEDED,
+    TaskStatus.FAILED.value: pb.FAILED,
+    TaskStatus.CANCELLED.value: pb.CANCELLED,
+    TaskStatus.SKIPPED.value: pb.SKIPPED,
 }
 
-_ENUM_TO_STATUS: dict[int, str] = {
-    pb.PENDING: StepStatus.PENDING.value,
-    pb.DISPATCHING: StepStatus.DISPATCHING.value,
-    pb.SYNCING_ENV: StepStatus.SYNCING_ENV.value,
-    pb.PROBING_RUNTIME: StepStatus.PROBING_RUNTIME.value,
-    pb.BINDING_DEVICE: StepStatus.BINDING_DEVICE.value,
-    pb.RUNNING: StepStatus.RUNNING.value,
-    pb.RETRYING: StepStatus.RETRYING.value,
-    pb.SUCCEEDED: StepStatus.SUCCEEDED.value,
-    pb.FAILED: StepStatus.FAILED.value,
-    pb.CANCELLED: StepStatus.CANCELLED.value,
-    pb.SKIPPED: StepStatus.SKIPPED.value,
+_ENUM_TO_TASK_STATUS: dict[int, str] = {
+    pb.PENDING: TaskStatus.PENDING.value,
+    pb.DISPATCHING: TaskStatus.DISPATCHING.value,
+    pb.SYNCING_ENV: TaskStatus.SYNCING_ENV.value,
+    pb.PROBING_RUNTIME: TaskStatus.PROBING_RUNTIME.value,
+    pb.BINDING_DEVICE: TaskStatus.BINDING_DEVICE.value,
+    pb.RUNNING: TaskStatus.RUNNING.value,
+    pb.RETRYING: TaskStatus.RETRYING.value,
+    pb.SUCCEEDED: TaskStatus.SUCCEEDED.value,
+    pb.FAILED: TaskStatus.FAILED.value,
+    pb.CANCELLED: TaskStatus.CANCELLED.value,
+    pb.SKIPPED: TaskStatus.SKIPPED.value,
 }
 
 _TASK_TYPE_TO_TEXT: dict[int, str] = {
@@ -123,13 +123,13 @@ def struct_to_dict(payload: Struct | None) -> dict[str, Any]:
     return dict(MessageToDict(payload, preserving_proto_field_name=True))
 
 
-def step_status_to_enum(status: str | StepStatus) -> int:
-    raw = status.value if isinstance(status, StepStatus) else str(status or "").lower()
-    return _STATUS_TO_ENUM.get(raw, pb.PENDING)
+def task_status_to_enum(status: str | TaskStatus) -> int:
+    raw = status.value if isinstance(status, TaskStatus) else str(status or "").lower()
+    return _TASK_STATUS_TO_ENUM.get(raw, pb.PENDING)
 
 
 def status_enum_to_text(status: int) -> str:
-    return _ENUM_TO_STATUS.get(int(status), StepStatus.PENDING.value)
+    return _ENUM_TO_TASK_STATUS.get(int(status), TaskStatus.PENDING.value)
 
 
 def text_to_query_type(query_type: str | None) -> int:
@@ -414,7 +414,7 @@ def build_task_event_message(
     )
 
     if event_type == "status":
-        task_event.status_event.status = step_status_to_enum(str(payload.get("status") or ""))
+        task_event.status_event.status = task_status_to_enum(str(payload.get("status") or ""))
         if payload.get("reason") is not None:
             task_event.status_event.reason = str(payload.get("reason"))
     elif event_type == "log":
@@ -463,7 +463,7 @@ def build_task_result_message(
     *,
     request_id: str,
     task_id: str,
-    status: str | StepStatus,
+    status: str | TaskStatus,
     metrics: Mapping[str, Any],
     artifacts: Mapping[str, Any],
     candidates: list[dict[str, Any]],
@@ -473,7 +473,7 @@ def build_task_result_message(
     task_result = pb.TaskResult(
         request_id=request_id,
         task_id=task_id,
-        status=step_status_to_enum(status),
+        status=task_status_to_enum(status),
         error_message=str(error_message or ""),
     )
     for metric_name, metric_value in (metrics or {}).items():

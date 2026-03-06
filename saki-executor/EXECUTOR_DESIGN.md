@@ -20,7 +20,7 @@
    - `StepRuntimeContext`
    - `ExecutionBindingContext`
    - IPC 协议与 worker 框架
-   - `StepReporter`
+   - `TaskReporter`
    - 策略算法、profile/binding 纯规则、split 工具
 2. `saki-executor`
    - 编排与宿主运行时
@@ -30,13 +30,13 @@
 
 ## 3. 关键执行链路
 
-1. `StepPipelineRunner` 先构造 `StepRuntimeContext`，再完成 Host/Runtime capability 采集
+1. `TaskPipelineRunner` 先构造 `StepRuntimeContext`，再完成 Host/Runtime capability 采集
 2. 基于 `runtime_profiles` 选择 profile 并创建/复用 `.venv-<profile_id>`
 3. 通过 `DeviceBindingResolver` 生成 `ExecutionBindingContext`
 4. 通过 `SubprocessPluginProxy` 调用插件 worker
 5. 统一以 `execution_binding_context + params` 传递运行时信息
-4. `StepEventEmitter` 通过 SDK `StepReporter` 生成事件
-5. `StepManager` 负责终态与制品上传
+4. `TaskEventEmitter` 通过 SDK `TaskReporter` 生成事件
+5. `TaskManager` 负责终态与制品上传
 
 V3 已移除 executor 中对插件特化参数的注入逻辑（例如 `splits.yolo_task` 注入）。
 

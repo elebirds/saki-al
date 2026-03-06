@@ -5,17 +5,17 @@ from typing import Any, Awaitable, Callable
 
 from loguru import logger
 
-from saki_executor.steps.state import StepStatus
-from saki_plugin_sdk import StepReporter
+from saki_executor.steps.state import TaskStatus
+from saki_plugin_sdk import TaskReporter
 
 PushEventFn = Callable[[dict[str, Any]], Awaitable[None]]
 
 
-class StepEventEmitter:
+class TaskEventEmitter:
     def __init__(
         self,
         *,
-        reporter: StepReporter,
+        reporter: TaskReporter,
         stop_event: asyncio.Event,
         push_event: PushEventFn,
     ) -> None:
@@ -29,7 +29,7 @@ class StepEventEmitter:
         event = self._build_event(event_type, payload)
         await self._push_event(event)
 
-    async def emit_status(self, status: StepStatus, reason: str) -> None:
+    async def emit_status(self, status: TaskStatus, reason: str) -> None:
         await self.emit("status", {"status": status.value, "reason": reason})
 
     async def emit_stage_start(self, *, stage: str, message: str) -> None:
@@ -135,7 +135,7 @@ class StepEventEmitter:
             )
         if event_type == "status":
             return self._reporter.status(
-                status=str(payload.get("status", StepStatus.RUNNING.value)),
+                status=str(payload.get("status", TaskStatus.RUNNING.value)),
                 reason=payload.get("reason"),
             )
         return self._reporter.log("WARN", f"unknown event type: {event_type}")

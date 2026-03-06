@@ -18,15 +18,15 @@ from saki_executor.agent import codec as runtime_codec
 from saki_executor.core.config import settings
 from saki_executor.grpc_gen import runtime_control_pb2 as pb
 from saki_executor.grpc_gen import runtime_control_pb2_grpc as pb_grpc
-from saki_executor.steps.manager import StepManager
+from saki_executor.steps.manager import TaskManager
 from saki_executor.steps.state import ExecutorState
 from saki_executor.plugins.registry import PluginRegistry
 
 
 class AgentClient:
-    def __init__(self, plugin_registry: PluginRegistry, step_manager: StepManager):
+    def __init__(self, plugin_registry: PluginRegistry, task_manager: TaskManager):
         self.plugin_registry = plugin_registry
-        self.step_manager = step_manager
+        self.task_manager = task_manager
 
         self._outbox: asyncio.Queue[pb.RuntimeMessage] = asyncio.Queue()
         self._pending: dict[str, asyncio.Future[pb.RuntimeMessage | list[pb.RuntimeMessage]]] = {}
@@ -100,20 +100,20 @@ class AgentClient:
         logger.info("已启用连接，executor 将自动尝试连接 dispatcher。")
 
     async def disconnect(self, *, force: bool = False) -> bool:
-        if self.step_manager.busy and not force:
+        if self.task_manager.busy and not force:
             logger.warning("当前任务运行中，默认拒绝断开。若确认中断，请使用 disconnect --force。")
             return False
 
-        if self.step_manager.busy and force:
-            if self.step_manager.current_task_id:
-                logger.warning("收到强制断连请求，先尝试停止任务 task_id={}。", self.step_manager.current_task_id)
-                await self.step_manager.stop_task(self.step_manager.current_task_id)
+        if self.task_manager.busy and force:
+            if self.task_manager.current_task_id:
+                logger.warning("收到强制断连请求，先尝试停止任务 task_id={}。", self.task_manager.current_task_id)
+                await self.task_manager.stop_task(self.task_manager.current_task_id)
             wait_sec = max(0, int(settings.DISCONNECT_FORCE_WAIT_SEC))
             if wait_sec > 0:
                 deadline = time.monotonic() + wait_sec
-                while self.step_manager.busy and time.monotonic() < deadline:
+                while self.task_manager.busy and time.monotonic() < deadline:
                     await asyncio.sleep(0.2)
-            if self.step_manager.busy:
+            if self.task_manager.busy:
                 logger.warning("强制断连等待超时，仍有任务运行，继续断开连接。")
             else:
                 logger.info("任务已停止，继续断开连接。")
@@ -132,7 +132,7 @@ class AgentClient:
         return True
 
     def _resource_payload(self) -> dict[str, Any]:
-        return self.step_manager.get_host_resource_payload()
+        return self.task_manager.get_host_resource_payload()
 
     def _register_message(self) -> pb.RuntimeMessage:
         plugins = []
@@ -162,8 +162,8 @@ class AgentClient:
         return runtime_codec.build_heartbeat_message(
             request_id=str(uuid.uuid4()),
             executor_id=settings.EXECUTOR_ID,
-            busy=self.step_manager.busy,
-            current_task_id=self.step_manager.current_task_id,
+            busy=self.task_manager.busy,
+            current_task_id=self.task_manager.current_task_id,
             resources=self._resource_payload(),
         )
 
@@ -172,7 +172,7 @@ class AgentClient:
             await asyncio.sleep(settings.HEARTBEAT_INTERVAL_SEC)
             self._last_heartbeat_ts = int(time.time())
             await self.send_message(self._heartbeat_message())
-            logger.debug("已发送心跳 current_task_id={}", self.step_manager.current_task_id)
+            logger.debug("已发送心跳 current_task_id={}", self.task_manager.current_task_id)
 
     async def _request_iterator(self):
         while self._running:
@@ -264,9 +264,9 @@ class AgentClient:
                 int(ack.status) == pb.OK
                 and int(ack.type) == pb.ACK_TYPE_REGISTER
                 and int(ack.reason) == pb.ACK_REASON_REGISTERED
-                and not self.step_manager.busy
+                and not self.task_manager.busy
             ):
-                self.step_manager.executor_state = ExecutorState.IDLE
+                self.task_manager.executor_state = ExecutorState.IDLE
                 self._connected = True
                 logger.info(
                     "已与 dispatcher 建立连接并注册成功 executor_id={} target={}",
@@ -290,7 +290,7 @@ class AgentClient:
             ack_detail = "executor busy"
             accepted = False
             try:
-                accepted = await self.step_manager.assign_task(request_id, task_payload)
+                accepted = await self.task_manager.assign_task(request_id, task_payload)
                 if accepted:
                     ack_reason = "accepted"
                     ack_detail = "accepted"
@@ -321,7 +321,7 @@ class AgentClient:
 
             task_id = str(stop.task_id or "")
             logger.info("收到任务停止请求 request_id={} task_id={}", request_id, task_id)
-            stopped = await self.step_manager.stop_task(task_id)
+            stopped = await self.task_manager.stop_task(task_id)
             ack_message = runtime_codec.build_ack_message(
                 request_id=str(uuid.uuid4()),
                 ack_for=request_id,
@@ -354,14 +354,14 @@ class AgentClient:
         backoff = 1
         while not stop_event.is_set():
             while not stop_event.is_set() and not self._connect_enabled:
-                self.step_manager.executor_state = ExecutorState.OFFLINE
+                self.task_manager.executor_state = ExecutorState.OFFLINE
                 await asyncio.sleep(0.2)
             if stop_event.is_set():
                 break
 
             self._drain_outbox()
             self._handled_control_acks.clear()
-            self.step_manager.executor_state = ExecutorState.CONNECTING
+            self.task_manager.executor_state = ExecutorState.CONNECTING
             self._running = True
             disconnect_reason = "stream closed by dispatcher"
             heartbeat_task = None
@@ -392,7 +392,7 @@ class AgentClient:
 
                 backoff = 1
             except grpc.aio.AioRpcError as exc:
-                self.step_manager.executor_state = ExecutorState.ERROR_RECOVERY
+                self.task_manager.executor_state = ExecutorState.ERROR_RECOVERY
                 reason = self._format_rpc_error(exc)
                 disconnect_reason = reason
                 if not self._connect_enabled or stop_event.is_set():
@@ -403,7 +403,7 @@ class AgentClient:
                 await self._sleep_with_interrupt(backoff, stop_event)
                 backoff = min(backoff * 2, 30)
             except Exception as exc:
-                self.step_manager.executor_state = ExecutorState.ERROR_RECOVERY
+                self.task_manager.executor_state = ExecutorState.ERROR_RECOVERY
                 reason = str(exc) or exc.__class__.__name__
                 disconnect_reason = reason
                 if not self._connect_enabled or stop_event.is_set():
@@ -421,12 +421,12 @@ class AgentClient:
                     heartbeat_task.cancel()
                 self._fail_pending("grpc session ended")
                 self._drain_outbox()
-                if not self.step_manager.busy:
-                    self.step_manager.executor_state = ExecutorState.OFFLINE
+                if not self.task_manager.busy:
+                    self.task_manager.executor_state = ExecutorState.OFFLINE
                 logger.info(
                     "已断开与 dispatcher 的 gRPC 连接 target={} reason={} executor_state={} connect_enabled={}",
                     settings.API_GRPC_TARGET,
                     disconnect_reason,
-                    self.step_manager.executor_state.value,
+                    self.task_manager.executor_state.value,
                     self._connect_enabled,
                 )

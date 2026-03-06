@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 
-class StepReporter:
+class TaskReporter:
     """Serializes step events to a local ``events.jsonl`` file."""
 
     def __init__(self, task_id: str, events_path: Path):

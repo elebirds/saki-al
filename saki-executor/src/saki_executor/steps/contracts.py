@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from saki_executor.steps.state import StepStatus
+from saki_executor.steps.state import TaskStatus
 
 SUPPORTED_LOOP_MODES = {"active_learning", "simulation", "manual"}
 SAMPLING_REQUIRED_STEP_TYPES = {"score", "custom"}
@@ -160,7 +160,7 @@ class ArtifactUploadTicket:
 @dataclass(frozen=True)
 class TaskFinalResult:
     task_id: str
-    status: StepStatus
+    status: TaskStatus
     metrics: dict[str, Any]
     artifacts: dict[str, Any]
     candidates: list[dict[str, Any]]

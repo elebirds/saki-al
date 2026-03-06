@@ -33,45 +33,45 @@ class TrainOutput:
 
 
 @dataclass(frozen=True)
-class StepRuntimeRequirements:
+class TaskRuntimeRequirements:
     requires_prepare_data: bool
     requires_trained_model: bool
     primary_model_artifact_name: str = "best.pt"
 
 
-def default_task_runtime_requirements(task_type: str) -> StepRuntimeRequirements:
+def default_task_runtime_requirements(task_type: str) -> TaskRuntimeRequirements:
     normalized = str(task_type or "").strip().lower()
     if normalized == "train":
-        return StepRuntimeRequirements(
+        return TaskRuntimeRequirements(
             requires_prepare_data=True,
             requires_trained_model=False,
             primary_model_artifact_name="best.pt",
         )
     if normalized == "score":
-        return StepRuntimeRequirements(
+        return TaskRuntimeRequirements(
             requires_prepare_data=False,
             requires_trained_model=True,
             primary_model_artifact_name="best.pt",
         )
     if normalized == "eval":
-        return StepRuntimeRequirements(
+        return TaskRuntimeRequirements(
             requires_prepare_data=True,
             requires_trained_model=True,
             primary_model_artifact_name="best.pt",
         )
     if normalized == "predict":
-        return StepRuntimeRequirements(
+        return TaskRuntimeRequirements(
             requires_prepare_data=False,
             requires_trained_model=True,
             primary_model_artifact_name="best.pt",
         )
     if normalized == "custom":
-        return StepRuntimeRequirements(
+        return TaskRuntimeRequirements(
             requires_prepare_data=True,
             requires_trained_model=False,
             primary_model_artifact_name="best.pt",
         )
-    return StepRuntimeRequirements(
+    return TaskRuntimeRequirements(
         requires_prepare_data=True,
         requires_trained_model=False,
         primary_model_artifact_name="best.pt",
@@ -81,7 +81,7 @@ def default_task_runtime_requirements(task_type: str) -> StepRuntimeRequirements
 def resolve_task_runtime_requirements(
     task_type: str,
     requirements_map: Mapping[str, Any] | None = None,
-) -> StepRuntimeRequirements:
+) -> TaskRuntimeRequirements:
     default = default_task_runtime_requirements(task_type)
     if not isinstance(requirements_map, Mapping):
         return default
@@ -97,7 +97,7 @@ def resolve_task_runtime_requirements(
         raw.get("primary_model_artifact_name", default.primary_model_artifact_name)
         or default.primary_model_artifact_name
     ).strip()
-    return StepRuntimeRequirements(
+    return TaskRuntimeRequirements(
         requires_prepare_data=bool(raw.get("requires_prepare_data", default.requires_prepare_data)),
         requires_trained_model=bool(raw.get("requires_trained_model", default.requires_trained_model)),
         primary_model_artifact_name=artifact_name,
@@ -316,7 +316,7 @@ class ExecutorPlugin(ABC):
         pass
 
     async def on_start(self, task_id: str, workspace: WorkspaceProtocol) -> None:
-        """Called before step execution begins.
+        """Called before task execution begins.
 
         Override to initialize step-specific resources.
         The default implementation updates task_id tracking.
@@ -334,7 +334,7 @@ class ExecutorPlugin(ABC):
             logger.task_id = task_id
 
     async def on_stop(self, task_id: str, workspace: WorkspaceProtocol) -> None:
-        """Called after step execution completes (success or failure).
+        """Called after task execution completes (success or failure).
 
         Override to cleanup step-specific resources.
         The default implementation does nothing.
@@ -464,7 +464,7 @@ class ExecutorPlugin(ABC):
         del context
         return RuntimeCapabilitySnapshot.empty(framework="")
 
-    def get_task_runtime_requirements(self, task_type: str) -> StepRuntimeRequirements:
+    def get_task_runtime_requirements(self, task_type: str) -> TaskRuntimeRequirements:
         manifest = self.manifest
         requirements_map = getattr(manifest, "task_runtime_requirements", {}) if manifest is not None else {}
         return resolve_task_runtime_requirements(task_type, requirements_map)

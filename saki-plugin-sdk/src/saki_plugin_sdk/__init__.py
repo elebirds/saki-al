@@ -5,7 +5,7 @@ from saki_plugin_sdk.base import (
     ExecutorPlugin,
     TrainArtifact,
     TrainOutput,
-    StepRuntimeRequirements,
+    TaskRuntimeRequirements,
     default_task_runtime_requirements,
     resolve_task_runtime_requirements,
 )
@@ -25,7 +25,7 @@ from saki_plugin_sdk.config import (
 )
 from saki_plugin_sdk.workspace import Workspace
 from saki_plugin_sdk.workspace_protocol import WorkspaceProtocol
-from saki_plugin_sdk.reporter import StepReporter
+from saki_plugin_sdk.reporter import TaskReporter
 from saki_plugin_sdk.manifest import PluginManifest
 from saki_plugin_sdk.logger import PluginLogger
 from saki_plugin_sdk.exceptions import (
@@ -55,7 +55,7 @@ __all__ = [
     "ExecutorPlugin",
     "TrainArtifact",
     "TrainOutput",
-    "StepRuntimeRequirements",
+    "TaskRuntimeRequirements",
     "default_task_runtime_requirements",
     "resolve_task_runtime_requirements",
     "TaskRuntimeContext",
@@ -79,7 +79,7 @@ __all__ = [
     # Workspace & reporting
     "Workspace",
     "WorkspaceProtocol",
-    "StepReporter",
+    "TaskReporter",
     "PluginManifest",
     # Logging
     "PluginLogger",

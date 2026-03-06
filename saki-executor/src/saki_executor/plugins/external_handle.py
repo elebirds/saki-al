@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from saki_plugin_sdk import StepRuntimeRequirements, parse_runtime_profiles, resolve_task_runtime_requirements
+from saki_plugin_sdk import TaskRuntimeRequirements, parse_runtime_profiles, resolve_task_runtime_requirements
 from saki_plugin_sdk.manifest import PluginManifest
 
 
@@ -108,6 +108,6 @@ class ExternalPluginDescriptor:
             validate=True,
         )
 
-    def get_task_runtime_requirements(self, task_type: str) -> StepRuntimeRequirements:
+    def get_task_runtime_requirements(self, task_type: str) -> TaskRuntimeRequirements:
         requirements_map = getattr(self._manifest, "task_runtime_requirements", {}) or {}
         return resolve_task_runtime_requirements(task_type, requirements_map)

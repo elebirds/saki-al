@@ -6,7 +6,7 @@ from typing import Any
 from saki_executor.runtime.profile.profile_selector import ProfileSelectorStrategy
 from saki_executor.steps.contracts import TaskExecutionRequest
 from saki_executor.steps.orchestration.error_codes import StepErrorCode, StepPipelineError, StepStage, wrap_stage_error
-from saki_executor.steps.orchestration.models import StepExecutionPlan
+from saki_executor.steps.orchestration.models import TaskExecutionPlan
 from saki_plugin_sdk import RuntimeProfileSpec, TaskRuntimeContext, parse_runtime_profiles
 
 
@@ -14,7 +14,7 @@ class PluginResolutionService:
     def __init__(self) -> None:
         self._profile_selector = ProfileSelectorStrategy()
 
-    def resolve(self, *, manager: Any, request: TaskExecutionRequest) -> StepExecutionPlan:
+    def resolve(self, *, manager: Any, request: TaskExecutionRequest) -> TaskExecutionPlan:
         metadata_plugin = manager.plugin_registry.get(request.plugin_id)
         if metadata_plugin is None:
             raise StepPipelineError(
@@ -110,7 +110,7 @@ class PluginResolutionService:
                 ),
             ) from exc
 
-        return StepExecutionPlan(
+        return TaskExecutionPlan(
             request=request,
             metadata_plugin=metadata_plugin,
             host_capability=host_capability,

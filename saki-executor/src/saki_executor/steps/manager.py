@@ -14,19 +14,19 @@ from saki_executor.grpc_gen import runtime_control_pb2 as pb
 from saki_executor.runtime.capability.host_capability_cache import HostCapabilityCache
 from saki_executor.steps.contracts import ArtifactUploadTicket, FetchedPage, TaskExecutionRequest
 from saki_executor.steps.orchestration.error_codes import StepErrorCode, StepPipelineError, StepStage
-from saki_executor.steps.orchestration.runner import StepPipelineRunner
+from saki_executor.steps.orchestration.runner import TaskPipelineRunner
 from saki_executor.steps.services import ArtifactUploader, DataGateway, SamplingService
-from saki_executor.steps.state import ExecutorState, StepStatus
+from saki_executor.steps.state import ExecutorState, TaskStatus
 from saki_executor.steps.workspace import Workspace
 from saki_executor.plugins.registry import PluginRegistry
-from saki_plugin_sdk import ExecutionBindingContext, ExecutorPlugin, HostCapabilitySnapshot, StepReporter, WorkspaceProtocol
+from saki_plugin_sdk import ExecutionBindingContext, ExecutorPlugin, HostCapabilitySnapshot, TaskReporter, WorkspaceProtocol
 
 SendFn = Callable[[pb.RuntimeMessage], Awaitable[None]]
 RequestFn = Callable[[pb.RuntimeMessage], Awaitable[pb.RuntimeMessage | list[pb.RuntimeMessage]]]
 HttpClientFactory = Callable[..., Any]
 
 
-class StepManager:
+class TaskManager:
     def __init__(
         self,
         runs_dir: str,
@@ -55,7 +55,7 @@ class StepManager:
         self.executor_state = ExecutorState.IDLE
         self.current_task_id: str | None = None
         self.last_task_id: str | None = None
-        self.last_step_status: StepStatus | None = None
+        self.last_task_status: TaskStatus | None = None
         self._active_plugin: ExecutorPlugin | None = None
         self._task: asyncio.Task | None = None
         self._stop_event = asyncio.Event()
@@ -82,7 +82,7 @@ class StepManager:
             "busy": self.busy,
             "current_task_id": self.current_task_id,
             "last_task_id": self.last_task_id,
-            "last_step_status": self.last_step_status.value if self.last_step_status else None,
+            "last_task_status": self.last_task_status.value if self.last_task_status else None,
             "host_capability_last_probe_ts": self._host_capability_cache.last_probe_ts if self._host_capability_cache else None,
         }
 
@@ -110,7 +110,7 @@ class StepManager:
 
     async def send_runtime_message(self, message: pb.RuntimeMessage) -> None:
         if self._send_message is None:
-            raise RuntimeError("step manager send transport is not configured")
+            raise RuntimeError("task manager send transport is not configured")
         await self._send_message(message)
 
     async def push_task_event(self, task_id: str, event: dict[str, Any]) -> None:
@@ -208,11 +208,11 @@ class StepManager:
     async def stop_task(self, task_id: str) -> bool:
         async with self._lock:
             if not self.busy or self.current_task_id != task_id:
-                if self.last_task_id == task_id and self.last_step_status in {
-                    StepStatus.SUCCEEDED,
-                    StepStatus.FAILED,
-                    StepStatus.CANCELLED,
-                    StepStatus.SKIPPED,
+                if self.last_task_id == task_id and self.last_task_status in {
+                    TaskStatus.SUCCEEDED,
+                    TaskStatus.FAILED,
+                    TaskStatus.CANCELLED,
+                    TaskStatus.SKIPPED,
                 }:
                     return True
                 return False
@@ -228,8 +228,8 @@ class StepManager:
 
     async def _run_task(self, request: TaskExecutionRequest) -> None:
         if self._send_message is None or self._request_message is None:
-            raise RuntimeError("step manager transport is not configured")
-        final_status = StepStatus.FAILED
+            raise RuntimeError("task manager transport is not configured")
+        final_status = TaskStatus.FAILED
         logger.info(
             "任务开始执行 task_id={} plugin_id={} mode={} sampling_strategy={}",
             request.task_id,
@@ -238,7 +238,7 @@ class StepManager:
             (request.resolved_params.get("sampling") or {}).get("strategy") if isinstance(request.resolved_params.get("sampling"), dict) else request.query_strategy,
         )
         try:
-            result = await StepPipelineRunner(manager=self, request=request).run()
+            result = await TaskPipelineRunner(manager=self, request=request).run()
             final_status = result.status
         except asyncio.CancelledError:
             final_status = await self._publish_cancelled_result(request)
@@ -250,7 +250,7 @@ class StepManager:
         finally:
             await self._reset_after_task(request.task_id, final_status)
 
-    def _ensure_reporter(self, request: TaskExecutionRequest) -> StepReporter:
+    def _ensure_reporter(self, request: TaskExecutionRequest) -> TaskReporter:
         workspace = Workspace(
             self.runs_dir,
             request.task_id,
@@ -260,22 +260,22 @@ class StepManager:
         workspace.ensure()
         if not workspace.config_path.exists():
             workspace.write_config(request.raw_payload)
-        return StepReporter(request.task_id, workspace.events_path)
+        return TaskReporter(request.task_id, workspace.events_path)
 
-    async def _publish_cancelled_result(self, request: TaskExecutionRequest) -> StepStatus:
+    async def _publish_cancelled_result(self, request: TaskExecutionRequest) -> TaskStatus:
         if self._send_message is None:
-            raise RuntimeError("step manager send transport is not configured")
+            raise RuntimeError("task manager send transport is not configured")
         self.executor_state = ExecutorState.FINALIZING
         reporter = self._ensure_reporter(request)
         await self._push_event(
             request.task_id,
-            reporter.status(StepStatus.CANCELLED.value, "step cancelled"),
+            reporter.status(TaskStatus.CANCELLED.value, "task cancelled"),
         )
         await self._send_message(
             runtime_codec.build_task_result_message(
                 request_id=str(uuid.uuid4()),
                 task_id=request.task_id,
-                status=StepStatus.CANCELLED.value,
+                status=TaskStatus.CANCELLED.value,
                 metrics={},
                 artifacts={},
                 candidates=[],
@@ -283,11 +283,11 @@ class StepManager:
             )
         )
         logger.warning("任务被取消 task_id={}", request.task_id)
-        return StepStatus.CANCELLED
+        return TaskStatus.CANCELLED
 
-    async def _publish_failed_result(self, request: TaskExecutionRequest, exc: Exception) -> StepStatus:
+    async def _publish_failed_result(self, request: TaskExecutionRequest, exc: Exception) -> TaskStatus:
         if self._send_message is None:
-            raise RuntimeError("step manager send transport is not configured")
+            raise RuntimeError("task manager send transport is not configured")
         self.executor_state = ExecutorState.FINALIZING
         if isinstance(exc, StepPipelineError):
             error_message = exc.to_user_message()
@@ -299,13 +299,13 @@ class StepManager:
         reporter = self._ensure_reporter(request)
         await self._push_event(
             request.task_id,
-            reporter.status(StepStatus.FAILED.value, error_message),
+            reporter.status(TaskStatus.FAILED.value, error_message),
         )
         await self._send_message(
             runtime_codec.build_task_result_message(
                 request_id=str(uuid.uuid4()),
                 task_id=request.task_id,
-                status=StepStatus.FAILED.value,
+                status=TaskStatus.FAILED.value,
                 metrics={},
                 artifacts={},
                 candidates=[],
@@ -313,13 +313,13 @@ class StepManager:
             )
         )
         logger.exception("任务执行失败 task_id={} error={}", request.task_id, error_message)
-        return StepStatus.FAILED
+        return TaskStatus.FAILED
 
-    async def _reset_after_task(self, task_id: str, final_status: StepStatus) -> None:
+    async def _reset_after_task(self, task_id: str, final_status: TaskStatus) -> None:
         async with self._lock:
             self.executor_state = ExecutorState.IDLE
             self.last_task_id = task_id
-            self.last_step_status = final_status
+            self.last_task_status = final_status
             self.current_task_id = None
             self._task = None
             self._stop_event.clear()
@@ -354,7 +354,7 @@ class StepManager:
 
     async def _push_event(self, task_id: str, event: dict[str, Any]) -> None:
         if self._send_message is None:
-            raise RuntimeError("step manager send transport is not configured")
+            raise RuntimeError("task manager send transport is not configured")
         await self._send_message(
             runtime_codec.build_task_event_message(
                 request_id=str(uuid.uuid4()),

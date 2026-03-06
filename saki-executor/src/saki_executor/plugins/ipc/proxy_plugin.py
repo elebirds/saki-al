@@ -13,7 +13,7 @@ from saki_plugin_sdk import (
     ExecutorPlugin,
     RuntimeCapabilitySnapshot,
     TaskRuntimeContext,
-    StepRuntimeRequirements,
+    TaskRuntimeRequirements,
     TrainOutput,
     WorkspaceProtocol,
 )
@@ -88,7 +88,7 @@ class SubprocessPluginProxy(ExecutorPlugin):
     ) -> None:
         self._metadata.validate_params(params, context=context)
 
-    def get_task_runtime_requirements(self, task_type: str) -> StepRuntimeRequirements:
+    def get_task_runtime_requirements(self, task_type: str) -> TaskRuntimeRequirements:
         return self._metadata.get_task_runtime_requirements(task_type)
 
     async def probe_runtime_capability(

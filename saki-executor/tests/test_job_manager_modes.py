@@ -7,7 +7,7 @@ import pytest
 from saki_executor.cache.asset_cache import AssetCache
 from saki_executor.grpc_gen import runtime_control_pb2 as pb
 from saki_executor.plugins.external_handle import ExternalPluginDescriptor
-from saki_executor.steps.manager import StepManager
+from saki_executor.steps.manager import TaskManager
 from saki_executor.plugins.registry import PluginRegistry
 from runtime_data_test_helper import build_data_response_message
 from saki_plugin_sdk import ExecutionBindingContext, ExecutorPlugin, PluginManifest, TaskRuntimeContext, TrainOutput
@@ -501,11 +501,11 @@ class _SlowTrainPlugin(ExecutorPlugin):
         return
 
 
-def _build_manager(tmp_path: Path, plugin: ExecutorPlugin) -> StepManager:
+def _build_manager(tmp_path: Path, plugin: ExecutorPlugin) -> TaskManager:
     registry = PluginRegistry()
     registry.register(plugin)
     cache = AssetCache(root_dir=str(tmp_path / "cache"), max_bytes=1024 * 1024)
-    manager = StepManager(
+    manager = TaskManager(
         runs_dir=str(tmp_path / "runs"),
         cache=cache,
         plugin_registry=registry,
@@ -754,7 +754,7 @@ async def test_external_handle_validation_fails_before_proxy_start(tmp_path: Pat
     )
     registry = PluginRegistry()
     registry.register(handle)
-    manager = StepManager(
+    manager = TaskManager(
         runs_dir=str(tmp_path / "runs"),
         cache=AssetCache(root_dir=str(tmp_path / "cache"), max_bytes=1024 * 1024),
         plugin_registry=registry,
@@ -1041,7 +1041,7 @@ async def test_score_step_strict_model_handoff_fails_without_model_ref(tmp_path:
     registry = PluginRegistry()
     registry.register(plugin)
     cache = AssetCache(root_dir=str(tmp_path / "cache"), max_bytes=1024 * 1024)
-    manager = StepManager(
+    manager = TaskManager(
         runs_dir=str(tmp_path / "runs"),
         cache=cache,
         plugin_registry=registry,

@@ -5,21 +5,21 @@ from pathlib import Path
 
 import pytest
 
-from saki_executor.steps.orchestration.event_emitter import StepEventEmitter
-from saki_plugin_sdk import StepReporter
+from saki_executor.steps.orchestration.event_emitter import TaskEventEmitter
+from saki_plugin_sdk import TaskReporter
 
 
 @pytest.mark.anyio
 async def test_stage_events_use_structured_step_stage_key(tmp_path: Path):
     events_path = tmp_path / "events.jsonl"
     events_path.parent.mkdir(parents=True, exist_ok=True)
-    reporter = StepReporter("step-stage-1", events_path)
+    reporter = TaskReporter("step-stage-1", events_path)
     captured: list[dict] = []
 
     async def _push(event: dict) -> None:
         captured.append(event)
 
-    emitter = StepEventEmitter(
+    emitter = TaskEventEmitter(
         reporter=reporter,
         stop_event=asyncio.Event(),
         push_event=_push,

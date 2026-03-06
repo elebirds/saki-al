@@ -8,7 +8,7 @@
 2. 执行方法必须接收 `context: ExecutionBindingContext`。
 3. IPC 协议固定为 v3（`protocol_version=3`）。
 4. 共享能力统一由 SDK 提供：
-   - `StepReporter`
+   - `TaskReporter`
    - `ipc.protocol` / `ipc.worker`
    - `strategies` / `aug_iou`
    - `capability_types` / `profile_spec` / `binding_policy`（纯规则与类型）

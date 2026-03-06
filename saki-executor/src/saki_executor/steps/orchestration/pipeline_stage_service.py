@@ -10,7 +10,7 @@ from saki_ir import normalize_prediction_candidates
 from saki_executor.steps.orchestration.error_codes import StepErrorCode, StepStage, wrap_stage_error
 from saki_executor.steps.orchestration.models import BoundExecutionPlan
 from saki_executor.steps.orchestration.training_data_service import TrainingDataService
-from saki_plugin_sdk import StepReporter, StepRuntimeRequirements, WorkspaceProtocol
+from saki_plugin_sdk import TaskReporter, TaskRuntimeRequirements, WorkspaceProtocol
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,7 +33,7 @@ class PipelineStageService:
         *,
         workspace: WorkspaceProtocol,
         emitter: Any,
-        runtime_requirements: StepRuntimeRequirements,
+        runtime_requirements: TaskRuntimeRequirements,
         bound_plan: BoundExecutionPlan,
     ) -> None:
         if not runtime_requirements.requires_trained_model:
@@ -94,8 +94,8 @@ class PipelineStageService:
         plugin: Any,
         workspace: WorkspaceProtocol,
         emitter: Any,
-        reporter: StepReporter,
-        runtime_requirements: StepRuntimeRequirements,
+        reporter: TaskReporter,
+        runtime_requirements: TaskRuntimeRequirements,
         bound_plan: BoundExecutionPlan,
     ) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], list[str]]:
         try:
@@ -155,7 +155,7 @@ class PipelineStageService:
         plugin: Any,
         workspace: WorkspaceProtocol,
         emitter: Any,
-        runtime_requirements: StepRuntimeRequirements,
+        runtime_requirements: TaskRuntimeRequirements,
         bound_plan: BoundExecutionPlan,
     ) -> tuple[Any, set[str]]:
         protected = await self._prepare_data_for_step(
@@ -249,7 +249,7 @@ class PipelineStageService:
         plugin: Any,
         workspace: WorkspaceProtocol,
         emitter: Any,
-        runtime_requirements: StepRuntimeRequirements,
+        runtime_requirements: TaskRuntimeRequirements,
         bound_plan: BoundExecutionPlan,
     ) -> set[str]:
         if not runtime_requirements.requires_prepare_data:
@@ -346,7 +346,7 @@ class PipelineStageService:
         *,
         workspace: WorkspaceProtocol,
         emitter: Any,
-        runtime_requirements: StepRuntimeRequirements,
+        runtime_requirements: TaskRuntimeRequirements,
         output_artifacts: list[Any],
     ) -> None:
         if not self._manager.round_shared_cache_enabled or not self._request.round_id:
@@ -397,8 +397,8 @@ class PipelineStageService:
         plugin: Any,
         workspace: WorkspaceProtocol,
         emitter: Any,
-        reporter: StepReporter,
-        runtime_requirements: StepRuntimeRequirements,
+        reporter: TaskReporter,
+        runtime_requirements: TaskRuntimeRequirements,
         bound_plan: BoundExecutionPlan,
     ) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], list[str]]:
         output, protected = await self._run_training_pipeline(
@@ -427,8 +427,8 @@ class PipelineStageService:
         plugin: Any,
         workspace: WorkspaceProtocol,
         emitter: Any,
-        reporter: StepReporter,
-        runtime_requirements: StepRuntimeRequirements,
+        reporter: TaskReporter,
+        runtime_requirements: TaskRuntimeRequirements,
         bound_plan: BoundExecutionPlan,
     ) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], list[str]]:
         output, _protected = await self._run_training_pipeline(
@@ -456,8 +456,8 @@ class PipelineStageService:
         plugin: Any,
         workspace: WorkspaceProtocol,
         emitter: Any,
-        reporter: StepReporter,
-        runtime_requirements: StepRuntimeRequirements,
+        reporter: TaskReporter,
+        runtime_requirements: TaskRuntimeRequirements,
         bound_plan: BoundExecutionPlan,
     ) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], list[str]]:
         await self._prepare_data_for_step(
@@ -506,7 +506,7 @@ class PipelineStageService:
         plugin: Any,
         workspace: WorkspaceProtocol,
         emitter: Any,
-        runtime_requirements: StepRuntimeRequirements,
+        runtime_requirements: TaskRuntimeRequirements,
         profile: _InferenceTaskProfile,
         bound_plan: BoundExecutionPlan,
     ) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], list[str]]:
@@ -608,7 +608,7 @@ class PipelineStageService:
         self,
         *,
         output_artifacts: list[Any],
-        reporter: StepReporter,
+        reporter: TaskReporter,
     ) -> tuple[dict[str, Any], list[str]]:
         artifacts: dict[str, Any] = {}
         optional_upload_failures: list[str] = []

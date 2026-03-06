@@ -6,7 +6,7 @@ from saki_executor.agent.client import AgentClient
 from saki_executor.cache.asset_cache import AssetCache
 from saki_executor.plugins.registry import PluginRegistry
 from saki_executor.runtime.capability.host_capability_cache import HostCapabilityCache
-from saki_executor.steps.manager import StepManager
+from saki_executor.steps.manager import TaskManager
 from saki_plugin_sdk import HostCapabilitySnapshot
 
 
@@ -48,10 +48,10 @@ class _FakeProbeService:
         }
 
 
-def _build_manager(tmp_path: Path, *, cache: HostCapabilityCache) -> StepManager:
+def _build_manager(tmp_path: Path, *, cache: HostCapabilityCache) -> TaskManager:
     registry = PluginRegistry()
     asset_cache = AssetCache(root_dir=str(tmp_path / "cache"), max_bytes=1024 * 1024)
-    return StepManager(
+    return TaskManager(
         runs_dir=str(tmp_path / "runs"),
         cache=asset_cache,
         plugin_registry=registry,
@@ -67,7 +67,7 @@ def test_host_capability_cache_reuses_snapshot_until_manual_refresh(tmp_path: Pa
         probe_service=probe,  # type: ignore[arg-type]
     )
     manager = _build_manager(tmp_path, cache=capability_cache)
-    client = AgentClient(plugin_registry=manager.plugin_registry, step_manager=manager)
+    client = AgentClient(plugin_registry=manager.plugin_registry, task_manager=manager)
 
     first = client._resource_payload()  # noqa: SLF001
     second = client._resource_payload()  # noqa: SLF001

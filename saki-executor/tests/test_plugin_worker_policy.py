@@ -8,14 +8,14 @@ import pytest
 from saki_executor.cache.asset_cache import AssetCache
 from saki_executor.grpc_gen import runtime_control_pb2 as pb
 from saki_executor.plugins.registry import PluginRegistry
-from saki_executor.steps.manager import StepManager
+from saki_executor.steps.manager import TaskManager
 
 
-def _build_manager(tmp_path: Path) -> StepManager:
+def _build_manager(tmp_path: Path) -> TaskManager:
     registry = PluginRegistry()
     # intentionally empty — no plugins registered
     cache = AssetCache(root_dir=str(tmp_path / "cache"), max_bytes=1024 * 1024)
-    return StepManager(runs_dir=str(tmp_path / "runs"), cache=cache, plugin_registry=registry)
+    return TaskManager(runs_dir=str(tmp_path / "runs"), cache=cache, plugin_registry=registry)
 
 
 @pytest.mark.anyio

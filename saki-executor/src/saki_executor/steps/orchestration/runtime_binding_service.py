@@ -6,7 +6,7 @@ from typing import Any
 from saki_executor.plugins.venv_manager import ensure_plugin_venv_for_profile
 from saki_executor.runtime.binding.device_binding_resolver import DeviceBindingResolver
 from saki_executor.steps.orchestration.error_codes import StepErrorCode, StepStage, wrap_stage_error
-from saki_executor.steps.orchestration.models import BoundExecutionPlan, StepExecutionPlan
+from saki_executor.steps.orchestration.models import BoundExecutionPlan, TaskExecutionPlan
 from saki_plugin_sdk import ExecutionBindingContext, RuntimeCapabilitySnapshot
 
 
@@ -17,9 +17,9 @@ class RuntimeBindingService:
     def ensure_profile_environment(
         self,
         *,
-        plan: StepExecutionPlan,
+        plan: TaskExecutionPlan,
         auto_sync: bool,
-    ) -> StepExecutionPlan:
+    ) -> TaskExecutionPlan:
         metadata_plugin = plan.metadata_plugin
         selected_profile = plan.selected_profile
         try:
@@ -58,7 +58,7 @@ class RuntimeBindingService:
     async def probe_runtime_capability(
         self,
         *,
-        plan: StepExecutionPlan,
+        plan: TaskExecutionPlan,
         plugin: Any,
     ) -> RuntimeCapabilitySnapshot:
         try:
@@ -80,7 +80,7 @@ class RuntimeBindingService:
     async def bind_execution_context(
         self,
         *,
-        plan: StepExecutionPlan,
+        plan: TaskExecutionPlan,
         plugin: Any,
         runtime_capability: RuntimeCapabilitySnapshot,
     ) -> BoundExecutionPlan:

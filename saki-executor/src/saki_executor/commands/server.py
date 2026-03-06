@@ -13,7 +13,7 @@ from saki_executor.core.logging import set_log_level, get_log_level
 
 if TYPE_CHECKING:
     from saki_executor.agent.client import AgentClient
-    from saki_executor.steps.manager import StepManager
+    from saki_executor.steps.manager import TaskManager
     from saki_executor.plugins.registry import PluginRegistry
 
 
@@ -21,12 +21,12 @@ class CommandServer:
     def __init__(
             self,
             *,
-            step_manager: "StepManager",
+            task_manager: "TaskManager",
             plugin_registry: "PluginRegistry",
             client: "AgentClient",
             shutdown_event: asyncio.Event,
     ) -> None:
-        self.step_manager = step_manager
+        self.task_manager = task_manager
         self.plugin_registry = plugin_registry
         self.client = client
         self.shutdown_event = shutdown_event
@@ -133,7 +133,7 @@ class CommandServer:
         )
 
     def _print_status(self) -> None:
-        runtime_status = self.step_manager.status_snapshot()
+        runtime_status = self.task_manager.status_snapshot()
         transport_status = self.client.transport_snapshot()
         logger.info(
             "执行器状态:\n"
@@ -141,7 +141,7 @@ class CommandServer:
             "  busy={}\n"
             "  current_task_id={}\n"
             "  last_task_id={}\n"
-            "  last_step_status={}\n"
+            "  last_task_status={}\n"
             "  running={}\n"
             "  connected={}\n"
             "  connect_enabled={}\n"
@@ -154,7 +154,7 @@ class CommandServer:
             runtime_status["busy"],
             runtime_status["current_task_id"],
             runtime_status["last_task_id"],
-            runtime_status["last_step_status"],
+            runtime_status["last_task_status"],
             transport_status["running"],
             transport_status["connected"],
             transport_status["connect_enabled"],
@@ -166,7 +166,7 @@ class CommandServer:
         )
 
     async def _refresh_hardware(self) -> None:
-        snapshot = await asyncio.to_thread(self.step_manager.refresh_host_capability)
+        snapshot = await asyncio.to_thread(self.task_manager.refresh_host_capability)
         backends = ["cpu"]
         if snapshot.gpus:
             backends.insert(0, "cuda")
@@ -192,11 +192,11 @@ class CommandServer:
         logger.info("已加载插件:\n{}", "\n".join(plugin_lines))
 
     async def _stop_task(self, args: list[str]) -> None:
-        task_id = args[0] if args else self.step_manager.current_task_id
+        task_id = args[0] if args else self.task_manager.current_task_id
         if not task_id:
             logger.warning("当前没有可停止的任务，请提供 task_id。")
             return
-        stopped = await self.step_manager.stop_task(str(task_id))
+        stopped = await self.task_manager.stop_task(str(task_id))
         if stopped:
             logger.info("已发送停止请求，task_id={}", task_id)
         else:

@@ -15,7 +15,7 @@ from saki_plugin_sdk import (
 
 
 @dataclass(frozen=True, slots=True)
-class StepExecutionPlan:
+class TaskExecutionPlan:
     request: TaskExecutionRequest
     metadata_plugin: Any
     host_capability: HostCapabilitySnapshot
@@ -32,7 +32,7 @@ class StepExecutionPlan:
         worker_python: str | Path | None,
         entrypoint_module: str | None,
         extra_env: dict[str, str] | None,
-    ) -> StepExecutionPlan:
+    ) -> TaskExecutionPlan:
         return replace(
             self,
             worker_python=worker_python,
@@ -40,13 +40,13 @@ class StepExecutionPlan:
             extra_env=dict(extra_env or {}),
         )
 
-    def with_runtime_context(self, runtime_context: TaskRuntimeContext) -> StepExecutionPlan:
+    def with_runtime_context(self, runtime_context: TaskRuntimeContext) -> TaskExecutionPlan:
         return replace(self, runtime_context=runtime_context)
 
 
 @dataclass(frozen=True, slots=True)
 class BoundExecutionPlan:
-    plan: StepExecutionPlan
+    plan: TaskExecutionPlan
     runtime_capability: RuntimeCapabilitySnapshot
     execution_context: ExecutionBindingContext
     effective_plugin_params: dict[str, Any]

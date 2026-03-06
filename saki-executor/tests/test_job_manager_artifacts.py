@@ -7,7 +7,7 @@ import pytest
 
 from saki_executor.cache.asset_cache import AssetCache
 from saki_executor.grpc_gen import runtime_control_pb2 as pb
-from saki_executor.steps.manager import StepManager
+from saki_executor.steps.manager import TaskManager
 from saki_executor.steps.services.artifact_uploader import ArtifactUploader
 import saki_executor.steps.services.artifact_uploader as uploader_module
 from saki_executor.plugins.registry import PluginRegistry
@@ -219,11 +219,11 @@ class _ArtifactPlugin(ExecutorPlugin):
         del task_id
 
 
-def _build_manager(tmp_path: Path) -> StepManager:
+def _build_manager(tmp_path: Path) -> TaskManager:
     registry = PluginRegistry()
     registry.register(_ArtifactPlugin())
     cache = AssetCache(root_dir=str(tmp_path / "cache"), max_bytes=1024 * 1024)
-    return StepManager(runs_dir=str(tmp_path / "runs"), cache=cache, plugin_registry=registry)
+    return TaskManager(runs_dir=str(tmp_path / "runs"), cache=cache, plugin_registry=registry)
 
 
 def _mock_data_items(query_type: int) -> list[pb.DataItem]:
@@ -271,7 +271,7 @@ def _make_fake_request(upload_headers: dict[str, dict[str, str]] | None = None):
     return fake_request
 
 
-def _install_async_client_mock(manager: StepManager):
+def _install_async_client_mock(manager: TaskManager):
     state = {
         "attempts": {},
         "uploaded_bytes": {},

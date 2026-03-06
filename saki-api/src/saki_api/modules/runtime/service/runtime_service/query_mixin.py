@@ -89,13 +89,13 @@ class RuntimeQueryMixin:
         step: Step,
         task_metrics_by_task_id: dict[uuid.UUID, dict[str, Any]] | None = None,
     ) -> dict[str, Any] | None:
-        if step.task_id is not None and task_metrics_by_task_id:
-            task_metrics = task_metrics_by_task_id.get(step.task_id)
-            if task_metrics:
-                return dict(task_metrics)
-        metrics = step.metrics if isinstance(step.metrics, dict) else {}
-        if metrics:
-            return dict(metrics)
+        if step.task_id is None:
+            return None
+        if not task_metrics_by_task_id:
+            return None
+        task_metrics = task_metrics_by_task_id.get(step.task_id)
+        if task_metrics:
+            return dict(task_metrics)
         return None
 
     def _pick_latest_step_type_metrics(
@@ -836,11 +836,13 @@ class RuntimeQueryMixin:
 
         round_ids = [round_item.id for round_item in rounds]
         steps = await self.step_repo.list_by_round_ids(round_ids)
+        task_metrics_by_task_id = await self._build_task_result_metrics_map(steps)
         latest_round = rounds[-1]
         steps_by_round = self._group_steps_by_round(steps)
         latest_round_metric_view = self.derive_round_metric_view(
             round_item=latest_round,
             steps=steps_by_round.get(latest_round.id, []),
+            task_metrics_by_task_id=task_metrics_by_task_id,
         )
 
         logical_round_ids = {int(item.round_index) for item in rounds}

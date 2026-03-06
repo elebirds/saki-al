@@ -221,6 +221,7 @@ async def list_loop_rounds(
     rounds = await runtime_service.list_rounds(loop_id, limit=limit)
     round_ids = [item.id for item in rounds]
     steps = await runtime_service.step_repo.list_by_round_ids(round_ids) if round_ids else []
+    task_metrics_by_task_id = await runtime_service._build_task_result_metrics_map(steps)
     steps_by_round = runtime_service._group_steps_by_round(steps)
     latest_round = rounds[0] if rounds else None
     loop_phase_text = loop.phase.value
@@ -230,6 +231,7 @@ async def list_loop_rounds(
         metric_view = runtime_service.derive_round_metric_view(
             round_item=row,
             steps=steps_by_round.get(row.id, []),
+            task_metrics_by_task_id=task_metrics_by_task_id,
         )
         awaiting_confirm = (
             loop_mode_text == "active_learning"

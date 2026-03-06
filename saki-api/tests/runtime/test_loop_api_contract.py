@@ -249,6 +249,29 @@ async def _attach_step_task(
     return task
 
 
+async def _attach_step_task_with_result_metrics(
+    session: AsyncSession,
+    *,
+    project_id: uuid.UUID,
+    step: Step,
+    plugin_id: str,
+    result_metrics: dict[str, float] | None = None,
+) -> Task:
+    task = await _attach_step_task(
+        session,
+        project_id=project_id,
+        step=step,
+        plugin_id=plugin_id,
+    )
+    if isinstance(result_metrics, dict):
+        params = dict(task.resolved_params or {})
+        params["_result_metrics"] = dict(result_metrics)
+        task.resolved_params = params
+        session.add(task)
+        await session.flush()
+    return task
+
+
 @pytest.mark.anyio
 async def test_loop_read_builder_injects_realtime_stage(loop_api_env):
     session_local = loop_api_env
@@ -2035,54 +2058,73 @@ async def test_get_round_prefers_eval_metrics_as_final_metrics(loop_api_env, mon
             session.add(round_row)
             await session.flush()
 
-            session.add_all(
-                [
-                    Step(
-                        round_id=round_row.id,
-                        step_type=StepType.TRAIN,
-                        dispatch_kind=StepDispatchKind.DISPATCHABLE,
-                        state=StepStatus.SUCCEEDED,
-                        round_index=1,
-                        step_index=1,
-                        depends_on_step_ids=[],
-                        resolved_params={},
-                        metrics={"loss": 0.52, "invalid_label_count": 8.0},
-                        artifacts={},
-                        input_commit_id=branch.head_commit_id,
-                        attempt=1,
-                        max_attempts=3,
-                    ),
-                    Step(
-                        round_id=round_row.id,
-                        step_type=StepType.EVAL,
-                        dispatch_kind=StepDispatchKind.DISPATCHABLE,
-                        state=StepStatus.SUCCEEDED,
-                        round_index=1,
-                        step_index=2,
-                        depends_on_step_ids=[],
-                        resolved_params={},
-                        metrics={"map50": 0.83, "precision": 0.91, "recall": 0.78},
-                        artifacts={},
-                        input_commit_id=branch.head_commit_id,
-                        attempt=1,
-                        max_attempts=3,
-                    ),
-                    Step(
-                        round_id=round_row.id,
-                        step_type=StepType.SELECT,
-                        dispatch_kind=StepDispatchKind.ORCHESTRATOR,
-                        state=StepStatus.SUCCEEDED,
-                        round_index=1,
-                        step_index=3,
-                        depends_on_step_ids=[],
-                        resolved_params={},
-                        metrics={},
-                        artifacts={},
-                        input_commit_id=branch.head_commit_id,
-                        attempt=1,
-                        max_attempts=3,
-                    ),
-                ]
+            train_step = Step(
+                round_id=round_row.id,
+                step_type=StepType.TRAIN,
+                dispatch_kind=StepDispatchKind.DISPATCHABLE,
+                state=StepStatus.SUCCEEDED,
+                round_index=1,
+                step_index=1,
+                depends_on_step_ids=[],
+                resolved_params={},
+                metrics={"loss": 0.52, "invalid_label_count": 8.0},
+                artifacts={},
+                input_commit_id=branch.head_commit_id,
+                attempt=1,
+                max_attempts=3,
+            )
+            eval_step = Step(
+                round_id=round_row.id,
+                step_type=StepType.EVAL,
+                dispatch_kind=StepDispatchKind.DISPATCHABLE,
+                state=StepStatus.SUCCEEDED,
+                round_index=1,
+                step_index=2,
+                depends_on_step_ids=[],
+                resolved_params={},
+                metrics={"map50": 0.83, "precision": 0.91, "recall": 0.78},
+                artifacts={},
+                input_commit_id=branch.head_commit_id,
+                attempt=1,
+                max_attempts=3,
+            )
+            select_step = Step(
+                round_id=round_row.id,
+                step_type=StepType.SELECT,
+                dispatch_kind=StepDispatchKind.ORCHESTRATOR,
+                state=StepStatus.SUCCEEDED,
+                round_index=1,
+                step_index=3,
+                depends_on_step_ids=[],
+                resolved_params={},
+                metrics={},
+                artifacts={},
+                input_commit_id=branch.head_commit_id,
+                attempt=1,
+                max_attempts=3,
+            )
+            session.add_all([train_step, eval_step, select_step])
+            await session.flush()
+            await _attach_step_task_with_result_metrics(
+                session,
+                project_id=project.id,
+                step=train_step,
+                plugin_id=loop.model_arch,
+                result_metrics={"loss": 0.52, "invalid_label_count": 8.0},
+            )
+            await _attach_step_task_with_result_metrics(
+                session,
+                project_id=project.id,
+                step=eval_step,
+                plugin_id=loop.model_arch,
+                result_metrics={"map50": 0.83, "precision": 0.91, "recall": 0.78},
+            )
+            await _attach_step_task_with_result_metrics(
+                session,
+                project_id=project.id,
+                step=select_step,
+                plugin_id=loop.model_arch,
+                result_metrics=None,
             )
             await session.commit()
 
@@ -2194,30 +2236,33 @@ async def test_get_round_falls_back_to_train_when_eval_step_metrics_empty(loop_a
             )
             session.add_all([train_step, eval_step, select_step])
             await session.flush()
-            await _attach_step_task(
+            train_task = await _attach_step_task_with_result_metrics(
                 session,
                 project_id=project.id,
                 step=train_step,
                 plugin_id=loop.model_arch,
+                result_metrics={"loss": 0.61, "invalid_label_count": 7.0},
             )
-            await _attach_step_task(
+            eval_task = await _attach_step_task_with_result_metrics(
                 session,
                 project_id=project.id,
                 step=eval_step,
                 plugin_id=loop.model_arch,
+                result_metrics=None,
             )
-            await _attach_step_task(
+            await _attach_step_task_with_result_metrics(
                 session,
                 project_id=project.id,
                 step=select_step,
                 plugin_id=loop.model_arch,
+                result_metrics=None,
             )
 
             now = datetime.now(UTC)
             session.add_all(
                 [
                     TaskMetricPoint(
-                        task_id=eval_step.task_id,
+                            task_id=eval_task.id,
                         metric_step=0,
                         epoch=0,
                         metric_name="map50",
@@ -2225,7 +2270,7 @@ async def test_get_round_falls_back_to_train_when_eval_step_metrics_empty(loop_a
                         ts=now,
                     ),
                     TaskMetricPoint(
-                        task_id=eval_step.task_id,
+                            task_id=eval_task.id,
                         metric_step=1,
                         epoch=1,
                         metric_name="map50",
@@ -2233,7 +2278,7 @@ async def test_get_round_falls_back_to_train_when_eval_step_metrics_empty(loop_a
                         ts=now,
                     ),
                     TaskMetricPoint(
-                        task_id=eval_step.task_id,
+                            task_id=eval_task.id,
                         metric_step=1,
                         epoch=1,
                         metric_name="precision",
@@ -2241,7 +2286,7 @@ async def test_get_round_falls_back_to_train_when_eval_step_metrics_empty(loop_a
                         ts=now,
                     ),
                     TaskMetricPoint(
-                        task_id=eval_step.task_id,
+                            task_id=eval_task.id,
                         metric_step=2,
                         epoch=2,
                         metric_name="map50",
@@ -2425,54 +2470,73 @@ async def test_get_loop_summary_returns_split_metric_views(loop_api_env, monkeyp
             session.add(round_row)
             await session.flush()
 
-            session.add_all(
-                [
-                    Step(
-                        round_id=round_row.id,
-                        step_type=StepType.TRAIN,
-                        dispatch_kind=StepDispatchKind.DISPATCHABLE,
-                        state=StepStatus.SUCCEEDED,
-                        round_index=1,
-                        step_index=1,
-                        depends_on_step_ids=[],
-                        resolved_params={},
-                        metrics={"map50": 0.71, "loss": 0.43},
-                        artifacts={},
-                        input_commit_id=branch.head_commit_id,
-                        attempt=1,
-                        max_attempts=3,
-                    ),
-                    Step(
-                        round_id=round_row.id,
-                        step_type=StepType.EVAL,
-                        dispatch_kind=StepDispatchKind.DISPATCHABLE,
-                        state=StepStatus.SUCCEEDED,
-                        round_index=1,
-                        step_index=2,
-                        depends_on_step_ids=[],
-                        resolved_params={},
-                        metrics={"map50": 0.82, "precision": 0.9},
-                        artifacts={},
-                        input_commit_id=branch.head_commit_id,
-                        attempt=1,
-                        max_attempts=3,
-                    ),
-                    Step(
-                        round_id=round_row.id,
-                        step_type=StepType.SELECT,
-                        dispatch_kind=StepDispatchKind.ORCHESTRATOR,
-                        state=StepStatus.SUCCEEDED,
-                        round_index=1,
-                        step_index=3,
-                        depends_on_step_ids=[],
-                        resolved_params={},
-                        metrics={},
-                        artifacts={},
-                        input_commit_id=branch.head_commit_id,
-                        attempt=1,
-                        max_attempts=3,
-                    ),
-                ]
+            train_step = Step(
+                round_id=round_row.id,
+                step_type=StepType.TRAIN,
+                dispatch_kind=StepDispatchKind.DISPATCHABLE,
+                state=StepStatus.SUCCEEDED,
+                round_index=1,
+                step_index=1,
+                depends_on_step_ids=[],
+                resolved_params={},
+                metrics={"map50": 0.71, "loss": 0.43},
+                artifacts={},
+                input_commit_id=branch.head_commit_id,
+                attempt=1,
+                max_attempts=3,
+            )
+            eval_step = Step(
+                round_id=round_row.id,
+                step_type=StepType.EVAL,
+                dispatch_kind=StepDispatchKind.DISPATCHABLE,
+                state=StepStatus.SUCCEEDED,
+                round_index=1,
+                step_index=2,
+                depends_on_step_ids=[],
+                resolved_params={},
+                metrics={"map50": 0.82, "precision": 0.9},
+                artifacts={},
+                input_commit_id=branch.head_commit_id,
+                attempt=1,
+                max_attempts=3,
+            )
+            select_step = Step(
+                round_id=round_row.id,
+                step_type=StepType.SELECT,
+                dispatch_kind=StepDispatchKind.ORCHESTRATOR,
+                state=StepStatus.SUCCEEDED,
+                round_index=1,
+                step_index=3,
+                depends_on_step_ids=[],
+                resolved_params={},
+                metrics={},
+                artifacts={},
+                input_commit_id=branch.head_commit_id,
+                attempt=1,
+                max_attempts=3,
+            )
+            session.add_all([train_step, eval_step, select_step])
+            await session.flush()
+            await _attach_step_task_with_result_metrics(
+                session,
+                project_id=project.id,
+                step=train_step,
+                plugin_id=loop.model_arch,
+                result_metrics={"map50": 0.71, "loss": 0.43},
+            )
+            await _attach_step_task_with_result_metrics(
+                session,
+                project_id=project.id,
+                step=eval_step,
+                plugin_id=loop.model_arch,
+                result_metrics={"map50": 0.82, "precision": 0.9},
+            )
+            await _attach_step_task_with_result_metrics(
+                session,
+                project_id=project.id,
+                step=select_step,
+                plugin_id=loop.model_arch,
+                result_metrics=None,
             )
             await session.commit()
 
@@ -2537,54 +2601,73 @@ async def test_list_loop_rounds_returns_split_metric_views(loop_api_env, monkeyp
             session.add(round_row)
             await session.flush()
 
-            session.add_all(
-                [
-                    Step(
-                        round_id=round_row.id,
-                        step_type=StepType.TRAIN,
-                        dispatch_kind=StepDispatchKind.DISPATCHABLE,
-                        state=StepStatus.SUCCEEDED,
-                        round_index=1,
-                        step_index=1,
-                        depends_on_step_ids=[],
-                        resolved_params={},
-                        metrics={"map50": 0.74, "loss": 0.39},
-                        artifacts={},
-                        input_commit_id=branch.head_commit_id,
-                        attempt=1,
-                        max_attempts=3,
-                    ),
-                    Step(
-                        round_id=round_row.id,
-                        step_type=StepType.EVAL,
-                        dispatch_kind=StepDispatchKind.DISPATCHABLE,
-                        state=StepStatus.SUCCEEDED,
-                        round_index=1,
-                        step_index=2,
-                        depends_on_step_ids=[],
-                        resolved_params={},
-                        metrics={"map50": 0.86, "precision": 0.91},
-                        artifacts={},
-                        input_commit_id=branch.head_commit_id,
-                        attempt=1,
-                        max_attempts=3,
-                    ),
-                    Step(
-                        round_id=round_row.id,
-                        step_type=StepType.SELECT,
-                        dispatch_kind=StepDispatchKind.ORCHESTRATOR,
-                        state=StepStatus.SUCCEEDED,
-                        round_index=1,
-                        step_index=3,
-                        depends_on_step_ids=[],
-                        resolved_params={},
-                        metrics={},
-                        artifacts={},
-                        input_commit_id=branch.head_commit_id,
-                        attempt=1,
-                        max_attempts=3,
-                    ),
-                ]
+            train_step = Step(
+                round_id=round_row.id,
+                step_type=StepType.TRAIN,
+                dispatch_kind=StepDispatchKind.DISPATCHABLE,
+                state=StepStatus.SUCCEEDED,
+                round_index=1,
+                step_index=1,
+                depends_on_step_ids=[],
+                resolved_params={},
+                metrics={"map50": 0.74, "loss": 0.39},
+                artifacts={},
+                input_commit_id=branch.head_commit_id,
+                attempt=1,
+                max_attempts=3,
+            )
+            eval_step = Step(
+                round_id=round_row.id,
+                step_type=StepType.EVAL,
+                dispatch_kind=StepDispatchKind.DISPATCHABLE,
+                state=StepStatus.SUCCEEDED,
+                round_index=1,
+                step_index=2,
+                depends_on_step_ids=[],
+                resolved_params={},
+                metrics={"map50": 0.86, "precision": 0.91},
+                artifacts={},
+                input_commit_id=branch.head_commit_id,
+                attempt=1,
+                max_attempts=3,
+            )
+            select_step = Step(
+                round_id=round_row.id,
+                step_type=StepType.SELECT,
+                dispatch_kind=StepDispatchKind.ORCHESTRATOR,
+                state=StepStatus.SUCCEEDED,
+                round_index=1,
+                step_index=3,
+                depends_on_step_ids=[],
+                resolved_params={},
+                metrics={},
+                artifacts={},
+                input_commit_id=branch.head_commit_id,
+                attempt=1,
+                max_attempts=3,
+            )
+            session.add_all([train_step, eval_step, select_step])
+            await session.flush()
+            await _attach_step_task_with_result_metrics(
+                session,
+                project_id=project.id,
+                step=train_step,
+                plugin_id=loop.model_arch,
+                result_metrics={"map50": 0.74, "loss": 0.39},
+            )
+            await _attach_step_task_with_result_metrics(
+                session,
+                project_id=project.id,
+                step=eval_step,
+                plugin_id=loop.model_arch,
+                result_metrics={"map50": 0.86, "precision": 0.91},
+            )
+            await _attach_step_task_with_result_metrics(
+                session,
+                project_id=project.id,
+                step=select_step,
+                plugin_id=loop.model_arch,
+                result_metrics=None,
             )
             await session.commit()
 

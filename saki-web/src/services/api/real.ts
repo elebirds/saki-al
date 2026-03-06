@@ -1167,6 +1167,16 @@ export class RealApiService implements ApiService {
         return normalizeTaskEventQueryResponse(response.data);
     }
 
+    async getTaskMetricSeries(taskId: string, limit: number = 5000): Promise<RuntimeStepMetricPoint[]> {
+        const response = await this.client.get<RuntimeStepMetricPoint[]>(`/tasks/${taskId}/metrics/series`, {params: {limit}});
+        return response.data;
+    }
+
+    async getTaskCandidates(taskId: string, limit: number = 200): Promise<RuntimeStepCandidate[]> {
+        const response = await this.client.get<RuntimeStepCandidate[]>(`/tasks/${taskId}/candidates`, {params: {limit}});
+        return response.data;
+    }
+
     async getStepMetricSeries(stepId: string, limit: number = 5000): Promise<RuntimeStepMetricPoint[]> {
         const response = await this.client.get<RuntimeStepMetricPoint[]>(`/steps/${stepId}/metrics/series`, {params: {limit}});
         return response.data;

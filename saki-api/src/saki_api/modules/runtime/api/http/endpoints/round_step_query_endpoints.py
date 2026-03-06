@@ -267,6 +267,65 @@ async def get_task_events(
     return TaskEventQueryResponse.model_validate(payload)
 
 
+@router.get("/tasks/{task_id}/metrics/series", response_model=List[StepMetricPointRead])
+async def get_task_metric_series(
+    *,
+    task_id: uuid.UUID,
+    limit: int = Query(default=5000, ge=1, le=100000),
+    runtime_service: RuntimeServiceDep,
+    session: AsyncSession = Depends(get_session),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
+):
+    task = await runtime_service.task_repo.get_by_id_or_raise(task_id)
+    await ensure_project_permission(
+        session=session,
+        current_user_id=current_user_id,
+        project_id=task.project_id,
+        required_permission=Permissions.ROUND_READ,
+    )
+    points = await runtime_service.list_task_metric_series(task_id, limit=limit)
+    return [
+        StepMetricPointRead(
+            step=item.metric_step,
+            epoch=item.epoch,
+            metric_name=item.metric_name,
+            metric_value=item.metric_value,
+            ts=item.ts,
+        )
+        for item in points
+        if int(item.metric_step or 0) > 0
+    ]
+
+
+@router.get("/tasks/{task_id}/candidates", response_model=List[StepCandidateRead])
+async def get_task_candidates(
+    *,
+    task_id: uuid.UUID,
+    limit: int = Query(default=200, ge=1, le=5000),
+    runtime_service: RuntimeServiceDep,
+    session: AsyncSession = Depends(get_session),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
+):
+    task = await runtime_service.task_repo.get_by_id_or_raise(task_id)
+    await ensure_project_permission(
+        session=session,
+        current_user_id=current_user_id,
+        project_id=task.project_id,
+        required_permission=Permissions.ROUND_READ,
+    )
+    rows = await runtime_service.list_task_candidates(task_id, limit=limit)
+    return [
+        StepCandidateRead(
+            sample_id=item.sample_id,
+            rank=item.rank,
+            score=item.score,
+            reason=item.reason or {},
+            prediction_snapshot=item.prediction_snapshot or {},
+        )
+        for item in rows
+    ]
+
+
 @router.get("/steps/{step_id}/metrics/series", response_model=List[StepMetricPointRead])
 async def get_step_metric_series(
     *,

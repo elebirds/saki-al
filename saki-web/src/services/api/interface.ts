@@ -289,6 +289,8 @@ export interface ApiService {
     getRoundEvents(roundId: string, query?: RoundEventQuery): Promise<RoundEventQueryResponse>;
 
     getTaskEvents(taskId: string, query?: TaskEventQuery): Promise<TaskEventQueryResponse>;
+    getTaskMetricSeries(taskId: string, limit?: number): Promise<RuntimeStepMetricPoint[]>;
+    getTaskCandidates(taskId: string, limit?: number): Promise<RuntimeStepCandidate[]>;
 
     getStepMetricSeries(stepId: string, limit?: number): Promise<RuntimeStepMetricPoint[]>;
 

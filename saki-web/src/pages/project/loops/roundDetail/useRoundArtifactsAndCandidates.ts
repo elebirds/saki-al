@@ -69,8 +69,11 @@ export const useRoundArtifactsAndCandidates = ({
         let cancelled = false;
 
         const run = async () => {
-            const trainPromise = trainStep?.id
-                ? api.getStepMetricSeries(trainStep.id, 5000).catch(() => [])
+            const trainTaskId = String(trainStep?.taskId || '').trim();
+            const selectTaskId = String(selectStep?.taskId || '').trim();
+            const scoreTaskId = String(scoreStep?.taskId || '').trim();
+            const trainPromise = trainTaskId
+                ? api.getTaskMetricSeries(trainTaskId, 5000).catch(() => [])
                 : Promise.resolve([]);
 
             const roundArtifactsPromise = api.getRoundArtifacts(round.id, 2000).catch(() => ({
@@ -109,17 +112,17 @@ export const useRoundArtifactsAndCandidates = ({
                     // latest round/phase constraints may reject history round, fallback below
                 }
             }
-            if (!selectionResolved && rows.length === 0 && selectStep?.id) {
+            if (!selectionResolved && rows.length === 0 && selectTaskId) {
                 try {
-                    rows = await api.getStepCandidates(selectStep.id, 500);
+                    rows = await api.getTaskCandidates(selectTaskId, 500);
                     source = 'SELECT Step';
                 } catch {
                     // ignore
                 }
             }
-            if (!selectionResolved && rows.length === 0 && scoreStep?.id) {
+            if (!selectionResolved && rows.length === 0 && scoreTaskId) {
                 try {
-                    rows = await api.getStepCandidates(scoreStep.id, 500);
+                    rows = await api.getTaskCandidates(scoreTaskId, 500);
                     source = 'SCORE Step';
                 } catch {
                     // ignore
@@ -139,12 +142,12 @@ export const useRoundArtifactsAndCandidates = ({
         canManageLoops,
         round?.id,
         round?.mode,
-        trainStep?.id,
+        trainStep?.taskId,
         trainStep?.updatedAt,
-        selectStep?.id,
+        selectStep?.taskId,
         selectStep?.updatedAt,
         selectStep?.state,
-        scoreStep?.id,
+        scoreStep?.taskId,
         scoreStep?.updatedAt,
         scoreStep?.state,
         ensureArtifactUrls,

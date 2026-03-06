@@ -185,6 +185,7 @@ export type RuntimeStepDispatchKind = 'dispatchable' | 'orchestrator';
 
 export interface RuntimeStep {
     id: string;
+    taskId?: string | null;
     roundId: string;
     stepType: RuntimeTaskType;
     dispatchKind: RuntimeStepDispatchKind;

@@ -174,6 +174,7 @@ class StepRead(BaseModel):
     round_index: int
     step_index: int
     depends_on_step_ids: List[str]
+    depends_on_task_ids: List[str] = Field(default_factory=list)
     resolved_params: Dict[str, Any]
     metrics: Dict[str, Any]
     artifacts: Dict[str, Any]
@@ -191,6 +192,13 @@ class StepRead(BaseModel):
     @field_validator("depends_on_step_ids", mode="before")
     @classmethod
     def _normalize_depends_on_step_ids(cls, value: Any) -> List[str]:
+        if value is None:
+            return []
+        return value
+
+    @field_validator("depends_on_task_ids", mode="before")
+    @classmethod
+    def _normalize_depends_on_task_ids(cls, value: Any) -> List[str]:
         if value is None:
             return []
         return value

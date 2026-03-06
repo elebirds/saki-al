@@ -95,7 +95,19 @@ async def list_round_steps(
         required_permission=Permissions.ROUND_READ,
     )
     steps = await runtime_service.list_steps(round_id, limit=limit)
-    return [StepRead.model_validate(item) for item in steps]
+    task_ids = [item.task_id for item in steps if item.task_id is not None]
+    tasks = await runtime_service.task_repo.get_by_ids(task_ids) if task_ids else []
+    task_depends_map: dict[uuid.UUID, list[str]] = {}
+    for task in tasks:
+        values = [str(value).strip() for value in (task.depends_on_task_ids or []) if str(value).strip()]
+        task_depends_map[task.id] = values
+
+    result: list[StepRead] = []
+    for item in steps:
+        payload = StepRead.model_validate(item).model_dump()
+        payload["depends_on_task_ids"] = task_depends_map.get(item.task_id, []) if item.task_id is not None else []
+        result.append(StepRead.model_validate(payload))
+    return result
 
 
 @router.get("/rounds/{round_id}/selection", response_model=RoundSelectionRead)

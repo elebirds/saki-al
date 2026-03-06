@@ -635,24 +635,6 @@ class RuntimeQueryMixin:
         await self.task_repo.get_by_id_or_raise(task_id)
         return await self.task_candidate_repo.list_topk_by_task(task_id, limit=max(1, min(limit, 5000)))
 
-    def _extract_downloadable_step_artifacts(self, step: Step) -> list[TaskArtifactRead]:
-        artifacts: list[TaskArtifactRead] = []
-        for name, value in (step.artifacts or {}).items():
-            if not isinstance(value, dict):
-                continue
-            uri = str(value.get("uri", ""))
-            if not self._is_downloadable_uri(uri):
-                continue
-            artifacts.append(
-                TaskArtifactRead(
-                    name=name,
-                    kind=str(value.get("kind", "artifact")),
-                    uri=uri,
-                    meta=value.get("meta") or {},
-                )
-            )
-        return artifacts
-
     def _extract_downloadable_task_artifacts(self, task: Any) -> list[TaskArtifactRead]:
         params = task.resolved_params if isinstance(getattr(task, "resolved_params", None), dict) else {}
         artifacts_raw = params.get("_result_artifacts")

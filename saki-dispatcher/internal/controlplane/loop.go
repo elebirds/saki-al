@@ -637,7 +637,7 @@ func (s *Service) DispatchTask(ctx context.Context, commandID string, taskID str
 				return "rejected", "task is in terminal state", nil
 			}
 			if normalizeTaskEnumText(taskRow.Kind) != "PREDICTION" {
-				return "rejected", "task has no mapped step", nil
+				return "rejected", "task is not dispatchable", nil
 			}
 			switch normalizeTaskEnumText(taskRow.Status) {
 			case "PENDING", "READY", "RETRYING":

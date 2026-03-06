@@ -48,11 +48,6 @@ INSERT INTO task(
   NULL
 );
 
--- name: BindTaskToStep :execrows
-UPDATE step
-SET task_id = sqlc.arg(task_id)::uuid
-WHERE id = sqlc.arg(step_id)::uuid;
-
 -- name: DeleteTaskByID :execrows
 DELETE FROM task
 WHERE id = sqlc.arg(task_id)::uuid;
@@ -82,6 +77,33 @@ SET status = 'DISPATCHING'::runtimetaskstatus,
     last_error = NULL,
     updated_at = now()
 WHERE id = sqlc.arg(task_id)::uuid;
+
+-- name: PromoteTaskToReady :execrows
+UPDATE task
+SET status = 'READY'::runtimetaskstatus,
+    last_error = NULL,
+    ended_at = NULL,
+    updated_at = now()
+WHERE id = sqlc.arg(task_id)::uuid
+  AND status = 'PENDING'::runtimetaskstatus;
+
+-- name: PromoteRetryingTaskToReady :execrows
+UPDATE task
+SET status = 'READY'::runtimetaskstatus,
+    last_error = NULL,
+    ended_at = NULL,
+    updated_at = now()
+WHERE id = sqlc.arg(task_id)::uuid
+  AND status = 'RETRYING'::runtimetaskstatus;
+
+-- name: MarkTaskDispatchingFromReady :execrows
+UPDATE task
+SET status = 'DISPATCHING'::runtimetaskstatus,
+    assigned_executor_id = sqlc.arg(assigned_executor_id),
+    last_error = NULL,
+    updated_at = now()
+WHERE id = sqlc.arg(task_id)::uuid
+  AND status = 'READY'::runtimetaskstatus;
 
 -- name: ResetTaskToReadyQueueFull :execrows
 UPDATE task
@@ -117,17 +139,54 @@ SET status = sqlc.arg(status)::runtimetaskstatus,
     updated_at = now()
 WHERE id = sqlc.arg(task_id)::uuid;
 
--- name: SetTaskAssignedExecutor :execrows
+-- name: MarkOrchestratorTaskRunning :execrows
 UPDATE task
-SET assigned_executor_id = sqlc.arg(assigned_executor_id),
+SET status = 'RUNNING'::runtimetaskstatus,
+    started_at = COALESCE(started_at, now()),
+    last_error = NULL,
     updated_at = now()
-WHERE id = sqlc.arg(task_id)::uuid;
+WHERE id = sqlc.arg(task_id)::uuid
+  AND status = 'READY'::runtimetaskstatus;
 
--- name: ClearTaskAssignedExecutor :execrows
+-- name: MarkOrchestratorTaskRetrying :execrows
 UPDATE task
-SET assigned_executor_id = NULL,
+SET status = 'RETRYING'::runtimetaskstatus,
+    attempt = attempt + 1,
+    last_error = sqlc.arg(last_error),
+    assigned_executor_id = NULL,
+    ended_at = NULL,
     updated_at = now()
-WHERE id = sqlc.arg(task_id)::uuid;
+WHERE id = sqlc.arg(task_id)::uuid
+  AND status = 'RUNNING'::runtimetaskstatus
+  AND attempt < max_attempts;
+
+-- name: UpdateTaskExecutionResultGuarded :execrows
+UPDATE task
+SET status = sqlc.arg(status)::runtimetaskstatus,
+    started_at = COALESCE(started_at, now()),
+    ended_at = CASE
+      WHEN sqlc.arg(status)::runtimetaskstatus IN (
+        'SUCCEEDED'::runtimetaskstatus,
+        'FAILED'::runtimetaskstatus,
+        'CANCELLED'::runtimetaskstatus,
+        'SKIPPED'::runtimetaskstatus
+      ) THEN COALESCE(ended_at, now())
+      ELSE ended_at
+    END,
+    last_error = sqlc.narg(last_error)::text,
+    assigned_executor_id = CASE
+      WHEN sqlc.arg(status)::runtimetaskstatus IN (
+        'SUCCEEDED'::runtimetaskstatus,
+        'FAILED'::runtimetaskstatus,
+        'CANCELLED'::runtimetaskstatus,
+        'SKIPPED'::runtimetaskstatus,
+        'RETRYING'::runtimetaskstatus
+      ) THEN NULL
+      ELSE assigned_executor_id
+    END,
+    updated_at = now()
+WHERE id = sqlc.arg(task_id)::uuid
+  AND status = sqlc.arg(from_status)::runtimetaskstatus;
 
 -- name: UpdateTaskResult :execrows
 UPDATE task
@@ -155,15 +214,52 @@ SET status = 'CANCELLED'::runtimetaskstatus,
     updated_at = now()
 WHERE id = sqlc.arg(task_id)::uuid;
 
--- name: SyncTaskAttemptFromStep :execrows
-UPDATE task t
-SET attempt = s.attempt,
-    max_attempts = s.max_attempts,
+-- name: RecoverStaleDispatchingTaskToReady :execrows
+UPDATE task
+SET status = 'READY'::runtimetaskstatus,
+    assigned_executor_id = NULL,
+    last_error = sqlc.arg(last_error),
+    ended_at = NULL,
     updated_at = now()
-FROM step s
-WHERE s.id = sqlc.arg(step_id)::uuid
-  AND t.id = s.task_id
-  AND (
-    t.attempt <> s.attempt
-    OR t.max_attempts <> s.max_attempts
+WHERE id = sqlc.arg(task_id)::uuid
+  AND status IN (
+    'DISPATCHING'::runtimetaskstatus,
+    'SYNCING_ENV'::runtimetaskstatus,
+    'PROBING_RUNTIME'::runtimetaskstatus,
+    'BINDING_DEVICE'::runtimetaskstatus
   );
+
+-- name: ProjectStepFromTask :execrows
+UPDATE step s
+SET state = t.status::text::stepstatus,
+    state_version = CASE
+      WHEN s.state IS DISTINCT FROM t.status::text::stepstatus THEN s.state_version + 1
+      ELSE s.state_version
+    END,
+    attempt = t.attempt,
+    max_attempts = t.max_attempts,
+    assigned_executor_id = t.assigned_executor_id,
+    started_at = CASE
+      WHEN t.status IN (
+        'RUNNING'::runtimetaskstatus,
+        'SUCCEEDED'::runtimetaskstatus,
+        'FAILED'::runtimetaskstatus,
+        'CANCELLED'::runtimetaskstatus,
+        'SKIPPED'::runtimetaskstatus
+      ) THEN COALESCE(s.started_at, t.started_at, now())
+      ELSE s.started_at
+    END,
+    ended_at = CASE
+      WHEN t.status IN (
+        'SUCCEEDED'::runtimetaskstatus,
+        'FAILED'::runtimetaskstatus,
+        'CANCELLED'::runtimetaskstatus,
+        'SKIPPED'::runtimetaskstatus
+      ) THEN COALESCE(s.ended_at, t.ended_at, now())
+      ELSE s.ended_at
+    END,
+    last_error = t.last_error,
+    updated_at = now()
+FROM task t
+WHERE t.id = sqlc.arg(task_id)::uuid
+  AND s.task_id = t.id;

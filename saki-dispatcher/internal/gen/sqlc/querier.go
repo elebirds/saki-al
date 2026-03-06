@@ -12,13 +12,8 @@ import (
 )
 
 type Querier interface {
-	BindTaskToStep(ctx context.Context, arg BindTaskToStepParams) (int64, error)
-	CancelStepByID(ctx context.Context, arg CancelStepByIDParams) error
-	CancelStepsByIDs(ctx context.Context, arg CancelStepsByIDsParams) error
-	CancelStepsByRound(ctx context.Context, arg CancelStepsByRoundParams) error
 	CancelTaskByID(ctx context.Context, arg CancelTaskByIDParams) (int64, error)
 	ClaimDispatchOutboxDue(ctx context.Context, limitCount int32) ([]ClaimDispatchOutboxDueRow, error)
-	ClearTaskAssignedExecutor(ctx context.Context, taskID uuid.UUID) (int64, error)
 	CopyTaskCandidateItems(ctx context.Context, arg []CopyTaskCandidateItemsParams) (int64, error)
 	CopyTaskMetricPoints(ctx context.Context, arg []CopyTaskMetricPointsParams) (int64, error)
 	CountCommitAnnotationsByCommit(ctx context.Context, commitID uuid.UUID) (int64, error)
@@ -47,9 +42,7 @@ type Querier interface {
 	GetRoundState(ctx context.Context, roundID uuid.UUID) (Roundstatus, error)
 	GetStepArtifactsForUpdate(ctx context.Context, stepID uuid.UUID) ([]byte, error)
 	GetStepIDByTaskID(ctx context.Context, taskID uuid.UUID) (uuid.UUID, error)
-	GetStepPayloadByIDForUpdate(ctx context.Context, stepID uuid.UUID) (GetStepPayloadByIDForUpdateRow, error)
-	GetStepState(ctx context.Context, stepID uuid.UUID) (Stepstatus, error)
-	GetStepStateForUpdate(ctx context.Context, stepID uuid.UUID) (Stepstatus, error)
+	GetStepPayloadByTaskIDForUpdate(ctx context.Context, taskID uuid.UUID) (GetStepPayloadByTaskIDForUpdateRow, error)
 	GetSucceededScoreStepIDByRound(ctx context.Context, roundID uuid.UUID) (uuid.UUID, error)
 	GetTaskForUpdate(ctx context.Context, taskID uuid.UUID) (GetTaskForUpdateRow, error)
 	GetTaskIDByStepID(ctx context.Context, stepID uuid.UUID) (*uuid.UUID, error)
@@ -63,28 +56,26 @@ type Querier interface {
 	InsertTaskEvent(ctx context.Context, arg InsertTaskEventParams) (int64, error)
 	InsertTaskMetricPoint(ctx context.Context, arg InsertTaskMetricPointParams) error
 	ListLoopStoppableSteps(ctx context.Context, loopID uuid.UUID) ([]ListLoopStoppableStepsRow, error)
-	ListOrphanDispatchingStepIDs(ctx context.Context, arg ListOrphanDispatchingStepIDsParams) ([]uuid.UUID, error)
+	ListOrphanDispatchingTaskIDs(ctx context.Context, arg ListOrphanDispatchingTaskIDsParams) ([]uuid.UUID, error)
 	ListReadyTaskIDsForDispatch(ctx context.Context, limitCount int32) ([]uuid.UUID, error)
 	ListRoundActiveStepIDs(ctx context.Context, roundID uuid.UUID) ([]uuid.UUID, error)
 	ListTaskCandidatesByTaskID(ctx context.Context, arg ListTaskCandidatesByTaskIDParams) ([]ListTaskCandidatesByTaskIDRow, error)
 	ListTickLoopIDs(ctx context.Context, limitCount int32) ([]uuid.UUID, error)
 	MarkDispatchOutboxRetry(ctx context.Context, arg MarkDispatchOutboxRetryParams) (int64, error)
 	MarkDispatchOutboxSent(ctx context.Context, outboxID uuid.UUID) (int64, error)
-	MarkOrchestratorStepRetrying(ctx context.Context, arg MarkOrchestratorStepRetryingParams) (int64, error)
-	MarkOrchestratorStepRunning(ctx context.Context, stepID uuid.UUID) (int64, error)
+	MarkOrchestratorTaskRetrying(ctx context.Context, arg MarkOrchestratorTaskRetryingParams) (int64, error)
+	MarkOrchestratorTaskRunning(ctx context.Context, taskID uuid.UUID) (int64, error)
 	MarkRoundConfirmed(ctx context.Context, arg MarkRoundConfirmedParams) (int64, error)
-	MarkStepDispatching(ctx context.Context, arg MarkStepDispatchingParams) (int64, error)
 	MarkTaskDispatching(ctx context.Context, arg MarkTaskDispatchingParams) (int64, error)
-	PromoteRetryingStepToReady(ctx context.Context, stepID uuid.UUID) (int64, error)
-	PromoteStepToReady(ctx context.Context, stepID uuid.UUID) (int64, error)
-	RecoverStaleDispatchingStepToReady(ctx context.Context, arg RecoverStaleDispatchingStepToReadyParams) (int64, error)
+	MarkTaskDispatchingFromReady(ctx context.Context, arg MarkTaskDispatchingFromReadyParams) (int64, error)
+	ProjectStepFromTask(ctx context.Context, taskID uuid.UUID) (int64, error)
+	PromoteRetryingTaskToReady(ctx context.Context, taskID uuid.UUID) (int64, error)
+	PromoteTaskToReady(ctx context.Context, taskID uuid.UUID) (int64, error)
+	RecoverStaleDispatchingTaskToReady(ctx context.Context, arg RecoverStaleDispatchingTaskToReadyParams) (int64, error)
 	ReleaseDispatchAdvisoryLock(ctx context.Context, lockKey int64) (bool, error)
 	ReleaseStaleSendingOutbox(ctx context.Context, cutoff pgtype.Timestamptz) (int64, error)
-	ResetStepToReadyQueueFull(ctx context.Context, stepID uuid.UUID) (int64, error)
 	ResetTaskToReadyQueueFull(ctx context.Context, taskID uuid.UUID) (int64, error)
 	ResolveBranchHeadFromDB(ctx context.Context, branchID uuid.UUID) (ResolveBranchHeadFromDBRow, error)
-	SetTaskAssignedExecutor(ctx context.Context, arg SetTaskAssignedExecutorParams) (int64, error)
-	SyncTaskAttemptFromStep(ctx context.Context, stepID uuid.UUID) (int64, error)
 	TryDispatchAdvisoryLock(ctx context.Context, lockKey int64) (bool, error)
 	TryLoopAdvisoryXactLock(ctx context.Context, lockKey int64) (bool, error)
 	UpdateCommandLogStatusDetail(ctx context.Context, arg UpdateCommandLogStatusDetailParams) error
@@ -100,9 +91,8 @@ type Querier interface {
 	UpdateRoundStateWithReasonGuarded(ctx context.Context, arg UpdateRoundStateWithReasonGuardedParams) (int64, error)
 	UpdateRuntimeExecutorDisconnected(ctx context.Context, arg UpdateRuntimeExecutorDisconnectedParams) error
 	UpdateStepArtifacts(ctx context.Context, arg UpdateStepArtifactsParams) error
-	UpdateStepExecutionResultGuarded(ctx context.Context, arg UpdateStepExecutionResultGuardedParams) (int64, error)
-	UpdateStepResultGuarded(ctx context.Context, arg UpdateStepResultGuardedParams) (int64, error)
-	UpdateStepStatusFromEventGuarded(ctx context.Context, arg UpdateStepStatusFromEventGuardedParams) (int64, error)
+	UpdateStepResultProjection(ctx context.Context, arg UpdateStepResultProjectionParams) (int64, error)
+	UpdateTaskExecutionResultGuarded(ctx context.Context, arg UpdateTaskExecutionResultGuardedParams) (int64, error)
 	UpdateTaskResult(ctx context.Context, arg UpdateTaskResultParams) (int64, error)
 	UpdateTaskStatusLifecycle(ctx context.Context, arg UpdateTaskStatusLifecycleParams) (int64, error)
 	UpsertRuntimeExecutorOnHeartbeat(ctx context.Context, arg UpsertRuntimeExecutorOnHeartbeatParams) error

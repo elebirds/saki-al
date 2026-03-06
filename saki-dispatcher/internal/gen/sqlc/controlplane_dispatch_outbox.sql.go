@@ -138,34 +138,33 @@ func (q *Queries) InsertDispatchOutbox(ctx context.Context, arg InsertDispatchOu
 	return result.RowsAffected(), nil
 }
 
-const listOrphanDispatchingStepIDs = `-- name: ListOrphanDispatchingStepIDs :many
-SELECT s.id AS id
-FROM step s
-WHERE s.state IN (
-  'DISPATCHING'::stepstatus,
-  'SYNCING_ENV'::stepstatus,
-  'PROBING_RUNTIME'::stepstatus,
-  'BINDING_DEVICE'::stepstatus
+const listOrphanDispatchingTaskIDs = `-- name: ListOrphanDispatchingTaskIDs :many
+SELECT t.id AS id
+FROM task t
+WHERE t.status IN (
+  'DISPATCHING'::runtimetaskstatus,
+  'SYNCING_ENV'::runtimetaskstatus,
+  'PROBING_RUNTIME'::runtimetaskstatus,
+  'BINDING_DEVICE'::runtimetaskstatus
 )
-  AND s.task_id IS NOT NULL
-  AND s.updated_at < $1
+  AND t.updated_at < $1
   AND NOT EXISTS (
     SELECT 1
     FROM task_dispatch_outbox o
-    WHERE o.task_id = s.task_id
+    WHERE o.task_id = t.id
       AND o.status IN ('PENDING', 'SENDING')
   )
-ORDER BY s.updated_at ASC
+ORDER BY t.updated_at ASC
 LIMIT $2
 `
 
-type ListOrphanDispatchingStepIDsParams struct {
+type ListOrphanDispatchingTaskIDsParams struct {
 	Cutoff     pgtype.Timestamptz
 	LimitCount int32
 }
 
-func (q *Queries) ListOrphanDispatchingStepIDs(ctx context.Context, arg ListOrphanDispatchingStepIDsParams) ([]uuid.UUID, error) {
-	rows, err := q.db.Query(ctx, listOrphanDispatchingStepIDs, arg.Cutoff, arg.LimitCount)
+func (q *Queries) ListOrphanDispatchingTaskIDs(ctx context.Context, arg ListOrphanDispatchingTaskIDsParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listOrphanDispatchingTaskIDs, arg.Cutoff, arg.LimitCount)
 	if err != nil {
 		return nil, err
 	}

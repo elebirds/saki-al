@@ -87,14 +87,14 @@ func (s *Service) dispatchPending(ctx context.Context, limit int) (int, error) {
 	return claimed + sent, nil
 }
 
-func (s *Service) dispatchStepByID(ctx context.Context, stepID uuid.UUID) (bool, error) {
+func (s *Service) dispatchStepTaskByID(ctx context.Context, taskID uuid.UUID) (bool, error) {
 	tx, err := s.beginTx(ctx)
 	if err != nil {
 		return false, err
 	}
 	defer tx.Rollback(ctx)
 
-	stepPayload, ok, err := s.getStepPayloadByIDTx(ctx, tx, stepID)
+	stepPayload, ok, err := s.getStepPayloadByIDTx(ctx, tx, taskID)
 	if err != nil {
 		return false, err
 	}
@@ -120,14 +120,14 @@ func (s *Service) dispatchStepByID(ctx context.Context, stepID uuid.UUID) (bool,
 		if !depsOK {
 			return false, tx.Commit(ctx)
 		}
-		promoteToReady := s.promoteStepToReadyTx
+		promoteToReady := s.promoteTaskToReadyTx
 		if stepPayload.Status == stepRetrying {
 			if !isRetryDue(time.Now().UTC(), stepPayload.UpdatedAt, stepPayload.Attempt) {
 				return false, tx.Commit(ctx)
 			}
-			promoteToReady = s.promoteRetryingStepToReadyTx
+			promoteToReady = s.promoteRetryingTaskToReadyTx
 		}
-		promoted, err := promoteToReady(ctx, tx, stepPayload.StepID)
+		promoted, err := promoteToReady(ctx, tx, taskID)
 		if err != nil {
 			return false, err
 		}
@@ -146,7 +146,7 @@ func (s *Service) dispatchStepByID(ctx context.Context, stepID uuid.UUID) (bool,
 		return false, err
 	}
 	if isOrchestratorDispatchKind(stepPayload.DispatchKind) {
-		executed, err := s.executeOrchestratorStepTx(ctx, tx, stepPayload)
+		executed, err := s.executeOrchestratorStepTx(ctx, tx, taskID, stepPayload)
 		if err != nil {
 			return false, err
 		}
@@ -166,17 +166,12 @@ func (s *Service) dispatchStepByID(ctx context.Context, stepID uuid.UUID) (bool,
 		return false, tx.Commit(ctx)
 	}
 
-	if stepPayload.TaskID == nil {
-		return false, fmt.Errorf("task binding missing for step dispatch: step_id=%s", stepPayload.StepID)
-	}
-	dispatchTaskID := *stepPayload.TaskID
-
 	resolvedParams, err := s.buildDispatchResolvedParamsTx(ctx, tx, stepPayload)
 	if err != nil {
 		if !s.strictModelHandoff {
 			s.logger.Warn().
 				Err(err).
-				Str("task_id", dispatchTaskID.String()).
+				Str("task_id", taskID.String()).
 				Str("step_id", stepPayload.StepID.String()).
 				Str("task_type", strings.ToLower(string(stepPayload.StepType))).
 				Msg("训练模型交接失败，STRICT_TRAIN_MODEL_HANDOFF=false，回退旧行为")
@@ -186,14 +181,14 @@ func (s *Service) dispatchStepByID(ctx context.Context, stepID uuid.UUID) (bool,
 			if reason == "" {
 				reason = "训练模型交接失败"
 			}
-			if failErr := s.failStepDispatchPreflightTx(ctx, tx, stepPayload.StepID, reason); failErr != nil {
+			if failErr := s.failTaskDispatchPreflightTx(ctx, tx, taskID, reason); failErr != nil {
 				return false, failErr
 			}
 			if _, refreshErr := s.refreshRoundAggregateTx(ctx, tx, stepPayload.RoundID); refreshErr != nil {
 				return false, refreshErr
 			}
 			s.logger.Warn().
-				Str("task_id", dispatchTaskID.String()).
+				Str("task_id", taskID.String()).
 				Str("step_id", stepPayload.StepID.String()).
 				Str("task_type", strings.ToLower(string(stepPayload.StepType))).
 				Msgf("训练模型交接失败，步骤已标记 FAILED: %s", reason)
@@ -202,7 +197,7 @@ func (s *Service) dispatchStepByID(ctx context.Context, stepID uuid.UUID) (bool,
 	}
 
 	requestID := uuid.NewString()
-	updated, err := s.markStepDispatchingTx(ctx, tx, stepPayload.StepID, executorID, requestID)
+	updated, err := s.markTaskDispatchingTx(ctx, tx, taskID, executorID, requestID)
 	if err != nil {
 		return false, err
 	}
@@ -215,7 +210,7 @@ func (s *Service) dispatchStepByID(ctx context.Context, stepID uuid.UUID) (bool,
 		inputCommitID = stepPayload.InputCommitID.String()
 	}
 	message := &runtimecontrolv1.TaskPayload{
-		TaskId:           dispatchTaskID.String(),
+		TaskId:           taskID.String(),
 		RoundId:          stepPayload.RoundID.String(),
 		LoopId:           stepPayload.LoopID.String(),
 		ProjectId:        stepPayload.ProjectID.String(),
@@ -238,7 +233,7 @@ func (s *Service) dispatchStepByID(ctx context.Context, stepID uuid.UUID) (bool,
 	outboxID := uuid.New()
 	inserted, err := s.qtx(tx).InsertDispatchOutbox(ctx, db.InsertDispatchOutboxParams{
 		OutboxID:   outboxID,
-		TaskID:     dispatchTaskID,
+		TaskID:     taskID,
 		ExecutorID: executorID,
 		RequestID:  requestID,
 		Payload:    payloadRaw,
@@ -277,7 +272,7 @@ func (s *Service) dispatchTaskByID(ctx context.Context, taskID uuid.UUID) (bool,
 		return false, tx.Commit(ctx)
 	}
 
-	stepID, mapped, err := s.resolveStepIDForTaskTx(ctx, tx, taskID)
+	_, mapped, err := s.resolveStepIDForTaskTx(ctx, tx, taskID)
 	if err != nil {
 		return false, err
 	}
@@ -295,7 +290,7 @@ func (s *Service) dispatchTaskByID(ctx context.Context, taskID uuid.UUID) (bool,
 	if err := tx.Commit(ctx); err != nil {
 		return false, err
 	}
-	return s.dispatchStepByID(ctx, stepID)
+	return s.dispatchStepTaskByID(ctx, taskID)
 }
 
 func (s *Service) dispatchPredictionTaskByID(ctx context.Context, taskID uuid.UUID) (bool, error) {
@@ -392,20 +387,21 @@ func isOrchestratorDispatchKind(dispatchKind db.Stepdispatchkind) bool {
 func (s *Service) executeOrchestratorStepTx(
 	ctx context.Context,
 	tx pgx.Tx,
+	taskID uuid.UUID,
 	stepPayload stepDispatchPayload,
 ) (bool, error) {
-	started, err := s.qtx(tx).MarkOrchestratorStepRunning(ctx, stepPayload.StepID)
+	started, err := s.qtx(tx).MarkOrchestratorTaskRunning(ctx, taskID)
 	if err != nil {
 		return false, err
 	}
 	if started == 0 {
 		return false, nil
 	}
-	if err := s.syncStepStateToTaskTx(ctx, tx, stepPayload.StepID, stepRunning, "", ""); err != nil {
+	if err := s.projectTaskToStepTx(ctx, tx, taskID); err != nil {
 		return false, err
 	}
 
-	resultStatus := stepSucceeded
+	resultTaskStatus := db.RuntimetaskstatusSUCCEEDED
 	lastError := ""
 	if err := s.runOrchestratorStepTx(ctx, tx, stepPayload); err != nil {
 		lastError = strings.TrimSpace(err.Error())
@@ -413,12 +409,12 @@ func (s *Service) executeOrchestratorStepTx(
 			lastError = "编排步骤执行失败"
 		}
 		if runtime_domain_client.IsTransientError(err) {
-			retried, retryErr := s.markOrchestratorStepRetryingTx(ctx, tx, stepPayload.StepID, lastError)
+			retried, retryErr := s.markOrchestratorTaskRetryingTx(ctx, tx, taskID, lastError)
 			if retryErr != nil {
 				return false, retryErr
 			}
 			if retried {
-				if err := s.syncStepStateToTaskTx(ctx, tx, stepPayload.StepID, stepRetrying, lastError, ""); err != nil {
+				if err := s.projectTaskToStepTx(ctx, tx, taskID); err != nil {
 					return false, err
 				}
 				if _, refreshErr := s.refreshRoundAggregateTx(ctx, tx, stepPayload.RoundID); refreshErr != nil {
@@ -428,14 +424,14 @@ func (s *Service) executeOrchestratorStepTx(
 			}
 			lastError = fmt.Sprintf("临时错误且超过最大重试次数: %s", lastError)
 		}
-		resultStatus = stepFailed
+		resultTaskStatus = db.RuntimetaskstatusFAILED
 	}
 
-	affected, err := s.qtx(tx).UpdateStepExecutionResultGuarded(ctx, db.UpdateStepExecutionResultGuardedParams{
-		State:     resultStatus,
-		LastError: toNullablePGText(lastError),
-		StepID:    stepPayload.StepID,
-		FromState: db.StepstatusRUNNING,
+	affected, err := s.qtx(tx).UpdateTaskExecutionResultGuarded(ctx, db.UpdateTaskExecutionResultGuardedParams{
+		Status:     resultTaskStatus,
+		LastError:  toNullablePGText(lastError),
+		TaskID:     taskID,
+		FromStatus: db.RuntimetaskstatusRUNNING,
 	})
 	if err != nil {
 		return false, err
@@ -443,7 +439,7 @@ func (s *Service) executeOrchestratorStepTx(
 	if affected == 0 {
 		return false, nil
 	}
-	if err := s.syncStepStateToTaskTx(ctx, tx, stepPayload.StepID, resultStatus, lastError, ""); err != nil {
+	if err := s.projectTaskToStepTx(ctx, tx, taskID); err != nil {
 		return false, err
 	}
 
@@ -453,15 +449,15 @@ func (s *Service) executeOrchestratorStepTx(
 	return true, nil
 }
 
-func (s *Service) markOrchestratorStepRetryingTx(
+func (s *Service) markOrchestratorTaskRetryingTx(
 	ctx context.Context,
 	tx pgx.Tx,
-	stepID uuid.UUID,
+	taskID uuid.UUID,
 	reason string,
 ) (bool, error) {
-	affected, err := s.qtx(tx).MarkOrchestratorStepRetrying(ctx, db.MarkOrchestratorStepRetryingParams{
+	affected, err := s.qtx(tx).MarkOrchestratorTaskRetrying(ctx, db.MarkOrchestratorTaskRetryingParams{
 		LastError: toPGText(reason),
-		StepID:    stepID,
+		TaskID:    taskID,
 	})
 	if err != nil {
 		return false, err
@@ -612,6 +608,11 @@ func (s *Service) OnTaskEvent(ctx context.Context, event *runtimecontrolv1.TaskE
 			if err := s.updateTaskStatusTx(ctx, tx, taskID, targetTaskStatus, statusReason); err != nil {
 				return err
 			}
+			if found && statusValue != stepPending && shouldApplyRuntimeStatus(statusValue) {
+				if err := s.projectTaskToStepTx(ctx, tx, taskID); err != nil {
+					return err
+				}
+			}
 		}
 	}
 	if !found {
@@ -619,30 +620,6 @@ func (s *Service) OnTaskEvent(ctx context.Context, event *runtimecontrolv1.TaskE
 	}
 
 	switch eventType {
-	case "status":
-		targetState := statusValue
-		if targetState == stepPending || !shouldApplyRuntimeStatus(targetState) {
-			break
-		}
-		affected, err := s.updateStepStatusFromEventGuardedTx(
-			ctx,
-			tx,
-			stepID,
-			targetState,
-			strings.TrimSpace(event.GetStatusEvent().GetReason()),
-		)
-		if err != nil {
-			return err
-		}
-		if affected == 0 {
-			s.logger.Warn().
-				Str("task_id", taskID.String()).
-				Str("step_id", stepID.String()).
-				Str("target_state", string(targetState)).
-				Msg("任务状态事件的步骤投影冲突，已保留 task 主干状态")
-			break
-		}
-
 	case "metric":
 		metricPayload := event.GetMetricEvent()
 		if metricPayload != nil {
@@ -663,7 +640,11 @@ func (s *Service) OnTaskEvent(ctx context.Context, event *runtimecontrolv1.TaskE
 		artifactPayload := event.GetArtifactEvent()
 		if artifactPayload != nil {
 			if err := s.mergeArtifactIntoStepTx(ctx, tx, stepID, artifactPayload.GetArtifact()); err != nil {
-				return err
+				s.logger.Warn().
+					Err(err).
+					Str("task_id", taskID.String()).
+					Str("step_id", stepID.String()).
+					Msg("任务制品事件写入 step 投影失败，已保留 task 主干状态")
 			}
 		}
 	}
@@ -728,7 +709,14 @@ func (s *Service) OnTaskResult(ctx context.Context, result *runtimecontrolv1.Tas
 		return tx.Commit(ctx)
 	}
 
-	affected, err := s.updateStepResultGuardedTx(ctx, tx, stepID, targetState, []byte(metricsJSON), []byte(artifactsJSON), strings.TrimSpace(result.GetErrorMessage()))
+	if err := s.projectTaskToStepTx(ctx, tx, taskID); err != nil {
+		return err
+	}
+	affected, err := s.qtx(tx).UpdateStepResultProjection(ctx, db.UpdateStepResultProjectionParams{
+		Metrics:   []byte(metricsJSON),
+		Artifacts: []byte(artifactsJSON),
+		StepID:    stepID,
+	})
 	if err != nil {
 		return err
 	}
@@ -737,7 +725,7 @@ func (s *Service) OnTaskResult(ctx context.Context, result *runtimecontrolv1.Tas
 			Str("task_id", taskID.String()).
 			Str("step_id", stepID.String()).
 			Str("target_state", string(targetState)).
-			Msg("任务结果的步骤投影冲突，已保留 task 主干结果")
+			Msg("任务结果的步骤内容投影冲突，已保留 task 主干结果")
 		return tx.Commit(ctx)
 	}
 
@@ -751,78 +739,6 @@ func (s *Service) OnTaskResult(ctx context.Context, result *runtimecontrolv1.Tas
 		}
 	}
 	return tx.Commit(ctx)
-}
-
-func (s *Service) updateStepStatusFromEventGuardedTx(
-	ctx context.Context,
-	tx pgx.Tx,
-	stepID uuid.UUID,
-	target db.Stepstatus,
-	reason string,
-) (int64, error) {
-	for _, fromState := range stepFromCandidatesForTarget(target) {
-		if !canStepTransition(fromState, target) {
-			continue
-		}
-		affected, err := s.qtx(tx).UpdateStepStatusFromEventGuarded(ctx, db.UpdateStepStatusFromEventGuardedParams{
-			State:     target,
-			Reason:    toNullablePGText(reason),
-			StepID:    stepID,
-			FromState: fromState,
-		})
-		if err != nil {
-			return 0, err
-		}
-		if affected > 0 {
-			return affected, nil
-		}
-	}
-	current, err := s.qtx(tx).GetStepStateForUpdate(ctx, stepID)
-	if err != nil {
-		return 0, err
-	}
-	if current == target {
-		return 1, nil
-	}
-	return 0, nil
-}
-
-func (s *Service) updateStepResultGuardedTx(
-	ctx context.Context,
-	tx pgx.Tx,
-	stepID uuid.UUID,
-	target db.Stepstatus,
-	metrics []byte,
-	artifacts []byte,
-	errorMessage string,
-) (int64, error) {
-	for _, fromState := range stepFromCandidatesForResultTarget(target) {
-		if !canStepTransition(fromState, target) {
-			continue
-		}
-		affected, err := s.qtx(tx).UpdateStepResultGuarded(ctx, db.UpdateStepResultGuardedParams{
-			State:        target,
-			Metrics:      metrics,
-			Artifacts:    artifacts,
-			ErrorMessage: toNullablePGText(errorMessage),
-			StepID:       stepID,
-			FromState:    fromState,
-		})
-		if err != nil {
-			return 0, err
-		}
-		if affected > 0 {
-			return affected, nil
-		}
-	}
-	current, err := s.qtx(tx).GetStepStateForUpdate(ctx, stepID)
-	if err != nil {
-		return 0, err
-	}
-	if current == target {
-		return 1, nil
-	}
-	return 0, nil
 }
 
 func taskStatusFromStepStatus(status db.Stepstatus) string {
@@ -897,56 +813,6 @@ func (s *Service) updateTaskStatusTx(
 	if err != nil {
 		return err
 	}
-	return nil
-}
-
-func (s *Service) syncStepStateToTaskTx(
-	ctx context.Context,
-	tx pgx.Tx,
-	stepID uuid.UUID,
-	stepState db.Stepstatus,
-	reason string,
-	assignedExecutorID string,
-) error {
-	taskID, mapped, err := s.resolveTaskIDForStepTx(ctx, tx, stepID)
-	if err != nil {
-		return err
-	}
-	if !mapped {
-		return nil
-	}
-
-	targetTaskStatus := taskStatusFromStepStatus(stepState)
-	if targetTaskStatus == "" {
-		return nil
-	}
-	if err := s.updateTaskStatusTx(ctx, tx, taskID, targetTaskStatus, reason); err != nil {
-		return err
-	}
-	if _, err := s.qtx(tx).SyncTaskAttemptFromStep(ctx, stepID); err != nil {
-		return err
-	}
-
-	switch stepState {
-	case stepDispatching:
-		executorID := strings.TrimSpace(assignedExecutorID)
-		if executorID == "" {
-			return nil
-		}
-		_, err = s.qtx(tx).SetTaskAssignedExecutor(ctx, db.SetTaskAssignedExecutorParams{
-			AssignedExecutorID: toPGText(executorID),
-			TaskID:             taskID,
-		})
-		if err != nil {
-			return err
-		}
-	case stepPending, stepReady, stepRetrying, stepSucceeded, stepFailed, stepCancelled, stepSkipped:
-		_, err = s.qtx(tx).ClearTaskAssignedExecutor(ctx, taskID)
-		if err != nil {
-			return err
-		}
-	}
-
 	return nil
 }
 
@@ -1391,47 +1257,32 @@ func (s *Service) buildDispatchResolvedParamsTx(
 	return resolvedParams, nil
 }
 
-func (s *Service) failStepDispatchPreflightTx(
+func (s *Service) failTaskDispatchPreflightTx(
 	ctx context.Context,
 	tx pgx.Tx,
-	stepID uuid.UUID,
+	taskID uuid.UUID,
 	reason string,
 ) error {
-	affected, err := s.updateStepResultGuardedTx(
-		ctx,
-		tx,
-		stepID,
-		stepFailed,
-		[]byte(`{}`),
-		[]byte(`{}`),
-		reason,
-	)
-	if err != nil {
+	if err := s.updateTaskStatusTx(ctx, tx, taskID, "FAILED", reason); err != nil {
 		return err
 	}
-	if affected == 0 {
-		if taskID, ok, mapErr := s.resolveTaskIDForStepTx(ctx, tx, stepID); mapErr == nil && ok {
-			return fmt.Errorf("预派发失败后状态更新冲突: task_id=%s step_id=%s", taskID, stepID)
-		}
-		return fmt.Errorf("预派发失败后状态更新冲突: step_id=%s", stepID)
-	}
-	if err := s.syncStepStateToTaskTx(ctx, tx, stepID, stepFailed, reason, ""); err != nil {
+	if err := s.projectTaskToStepTx(ctx, tx, taskID); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (s *Service) markStepDispatchingTx(
+func (s *Service) markTaskDispatchingTx(
 	ctx context.Context,
 	tx pgx.Tx,
-	stepID uuid.UUID,
+	taskID uuid.UUID,
 	executorID string,
 	requestID string,
 ) (bool, error) {
 	_ = requestID
-	updated, err := s.qtx(tx).MarkStepDispatching(ctx, db.MarkStepDispatchingParams{
+	updated, err := s.qtx(tx).MarkTaskDispatchingFromReady(ctx, db.MarkTaskDispatchingFromReadyParams{
 		AssignedExecutorID: toPGText(executorID),
-		StepID:             stepID,
+		TaskID:             taskID,
 	})
 	if err != nil {
 		return false, err
@@ -1439,38 +1290,51 @@ func (s *Service) markStepDispatchingTx(
 	if updated == 0 {
 		return false, nil
 	}
-	if err := s.syncStepStateToTaskTx(ctx, tx, stepID, stepDispatching, "", executorID); err != nil {
+	if err := s.projectTaskToStepTx(ctx, tx, taskID); err != nil {
 		return false, err
 	}
 	return true, nil
 }
 
-func (s *Service) promoteStepToReadyTx(ctx context.Context, tx pgx.Tx, stepID uuid.UUID) (bool, error) {
-	updated, err := s.qtx(tx).PromoteStepToReady(ctx, stepID)
+func (s *Service) promoteTaskToReadyTx(ctx context.Context, tx pgx.Tx, taskID uuid.UUID) (bool, error) {
+	updated, err := s.qtx(tx).PromoteTaskToReady(ctx, taskID)
 	if err != nil {
 		return false, err
 	}
 	if updated == 0 {
 		return false, nil
 	}
-	if err := s.syncStepStateToTaskTx(ctx, tx, stepID, stepReady, "", ""); err != nil {
+	if err := s.projectTaskToStepTx(ctx, tx, taskID); err != nil {
 		return false, err
 	}
 	return true, nil
 }
 
-func (s *Service) promoteRetryingStepToReadyTx(ctx context.Context, tx pgx.Tx, stepID uuid.UUID) (bool, error) {
-	updated, err := s.qtx(tx).PromoteRetryingStepToReady(ctx, stepID)
+func (s *Service) promoteRetryingTaskToReadyTx(ctx context.Context, tx pgx.Tx, taskID uuid.UUID) (bool, error) {
+	updated, err := s.qtx(tx).PromoteRetryingTaskToReady(ctx, taskID)
 	if err != nil {
 		return false, err
 	}
 	if updated == 0 {
 		return false, nil
 	}
-	if err := s.syncStepStateToTaskTx(ctx, tx, stepID, stepReady, "", ""); err != nil {
+	if err := s.projectTaskToStepTx(ctx, tx, taskID); err != nil {
 		return false, err
 	}
 	return true, nil
+}
+
+func (s *Service) projectTaskToStepTx(ctx context.Context, tx pgx.Tx, taskID uuid.UUID) error {
+	projected, err := s.qtx(tx).ProjectStepFromTask(ctx, taskID)
+	if err != nil {
+		return err
+	}
+	if projected == 0 {
+		s.logger.Warn().
+			Str("task_id", taskID.String()).
+			Msg("task->step 投影缺失，已保留 task 主干状态")
+	}
+	return nil
 }
 
 func (s *Service) findRoundIDByStep(ctx context.Context, tx pgx.Tx, stepID uuid.UUID) (*uuid.UUID, error) {
@@ -1484,8 +1348,8 @@ func (s *Service) findRoundIDByStep(ctx context.Context, tx pgx.Tx, stepID uuid.
 	return &roundID, nil
 }
 
-func (s *Service) getStepPayloadByIDTx(ctx context.Context, tx pgx.Tx, stepID uuid.UUID) (stepDispatchPayload, bool, error) {
-	record, err := s.qtx(tx).GetStepPayloadByIDForUpdate(ctx, stepID)
+func (s *Service) getStepPayloadByIDTx(ctx context.Context, tx pgx.Tx, taskID uuid.UUID) (stepDispatchPayload, bool, error) {
+	record, err := s.qtx(tx).GetStepPayloadByTaskIDForUpdate(ctx, taskID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return stepDispatchPayload{}, false, nil
@@ -1573,14 +1437,21 @@ func (s *Service) cancelStepIDsTx(
 	if len(stepIDs) == 0 {
 		return nil
 	}
-	if err := s.qtx(tx).CancelStepsByIDs(ctx, db.CancelStepsByIDsParams{
-		LastError: toPGText(reason),
-		StepIds:   stepIDs,
-	}); err != nil {
-		return err
-	}
 	for _, stepID := range stepIDs {
-		if err := s.syncStepStateToTaskTx(ctx, tx, stepID, stepCancelled, reason, ""); err != nil {
+		taskID, mapped, err := s.resolveTaskIDForStepTx(ctx, tx, stepID)
+		if err != nil {
+			return err
+		}
+		if !mapped {
+			return fmt.Errorf("step 缺失 task 绑定: step_id=%s", stepID)
+		}
+		if _, err := s.qtx(tx).CancelTaskByID(ctx, db.CancelTaskByIDParams{
+			LastError: toPGText(reason),
+			TaskID:    taskID,
+		}); err != nil {
+			return err
+		}
+		if err := s.projectTaskToStepTx(ctx, tx, taskID); err != nil {
 			return err
 		}
 	}
@@ -1782,17 +1653,17 @@ func (s *Service) recoverDispatchOutbox(ctx context.Context, limit int) error {
 	}
 
 	orphanCutoff := toPGTimestamp(time.Now().UTC().Add(-2 * time.Minute))
-	stepIDs, err := s.queries.ListOrphanDispatchingStepIDs(ctx, db.ListOrphanDispatchingStepIDsParams{
+	taskIDs, err := s.queries.ListOrphanDispatchingTaskIDs(ctx, db.ListOrphanDispatchingTaskIDsParams{
 		Cutoff:     orphanCutoff,
 		LimitCount: int32(max(1, limit)),
 	})
 	if err != nil {
 		return err
 	}
-	for _, stepID := range stepIDs {
-		updated, err := s.queries.RecoverStaleDispatchingStepToReady(ctx, db.RecoverStaleDispatchingStepToReadyParams{
+	for _, taskID := range taskIDs {
+		updated, err := s.queries.RecoverStaleDispatchingTaskToReady(ctx, db.RecoverStaleDispatchingTaskToReadyParams{
 			LastError: toPGText("已恢复孤儿派发记录"),
-			StepID:    stepID,
+			TaskID:    taskID,
 		})
 		if err != nil {
 			return err
@@ -1800,17 +1671,12 @@ func (s *Service) recoverDispatchOutbox(ctx context.Context, limit int) error {
 		if updated == 0 {
 			continue
 		}
-		tx, txErr := s.beginTx(ctx)
-		if txErr != nil {
-			return txErr
-		}
-		if syncErr := s.syncStepStateToTaskTx(ctx, tx, stepID, stepReady, "已恢复孤儿派发记录", ""); syncErr != nil {
-			_ = tx.Rollback(ctx)
-			return syncErr
-		}
-		if commitErr := tx.Commit(ctx); commitErr != nil {
-			_ = tx.Rollback(ctx)
-			return commitErr
+		if projected, projErr := s.queries.ProjectStepFromTask(ctx, taskID); projErr != nil {
+			return projErr
+		} else if projected == 0 {
+			s.logger.Warn().
+				Str("task_id", taskID.String()).
+				Msg("恢复孤儿派发记录后未找到step投影")
 		}
 	}
 

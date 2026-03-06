@@ -25,21 +25,21 @@ ORDER BY t.created_at ASC
 LIMIT sqlc.arg(limit_count)
 FOR UPDATE OF t SKIP LOCKED;
 
--- name: GetStepPayloadByIDForUpdate :one
+-- name: GetStepPayloadByTaskIDForUpdate :one
 SELECT
   t.id AS step_id,
-  t.task_id AS task_id,
+  k.id AS task_id,
   t.round_id AS round_id,
-  COALESCE(k.status::text, t.state::text)::stepstatus AS status,
+  k.status::text::stepstatus AS status,
   t.step_type AS step_type,
   t.dispatch_kind AS dispatch_kind,
   t.round_index,
-  COALESCE(k.attempt, t.attempt) AS attempt,
+  k.attempt AS attempt,
   t.state_version,
-  COALESCE(k.updated_at, t.updated_at) AS updated_at,
+  k.updated_at AS updated_at,
   COALESCE(k.depends_on_task_ids, '[]'::jsonb) AS depends_on_task_raw,
-  t.resolved_params AS params_raw,
-  t.input_commit_id AS input_commit_id,
+  k.resolved_params AS params_raw,
+  COALESCE(k.input_commit_id, t.input_commit_id) AS input_commit_id,
   j.loop_id AS loop_id,
   j.project_id AS project_id,
   j.plugin_id,
@@ -47,11 +47,11 @@ SELECT
   j.resolved_params AS round_params_raw,
   j.resources AS resources_raw,
   j.input_commit_id AS round_input_commit_id
-FROM step t
+FROM task k
+JOIN step t ON t.task_id = k.id
 JOIN round j ON j.id = t.round_id
-LEFT JOIN task k ON k.id = t.task_id
-WHERE t.id = sqlc.arg(step_id)::uuid
-FOR UPDATE SKIP LOCKED;
+WHERE k.id = sqlc.arg(task_id)::uuid
+FOR UPDATE OF k SKIP LOCKED;
 
 -- name: GetDependencyTaskStatusesByIDs :many
 SELECT status
@@ -64,95 +64,6 @@ FROM task
 WHERE id = ANY(sqlc.arg(task_ids)::uuid[])
 ORDER BY array_position(sqlc.arg(task_ids)::uuid[], id) DESC
 LIMIT 1;
-
--- name: PromoteStepToReady :execrows
-UPDATE step
-SET state = 'READY'::stepstatus,
-    state_version = state_version + 1,
-    updated_at = now()
-WHERE id = sqlc.arg(step_id)::uuid
-  AND state = 'PENDING'::stepstatus;
-
--- name: PromoteRetryingStepToReady :execrows
-UPDATE step
-SET state = 'READY'::stepstatus,
-    state_version = state_version + 1,
-    updated_at = now()
-WHERE id = sqlc.arg(step_id)::uuid
-  AND state = 'RETRYING'::stepstatus;
-
--- name: MarkStepDispatching :execrows
-UPDATE step
-SET state = 'DISPATCHING'::stepstatus,
-    assigned_executor_id = sqlc.arg(assigned_executor_id),
-    state_version = state_version + 1,
-    updated_at = now()
-WHERE id = sqlc.arg(step_id)::uuid
-  AND state = 'READY'::stepstatus;
-
--- name: ResetStepToReadyQueueFull :execrows
-UPDATE step
-SET state = 'READY'::stepstatus,
-    assigned_executor_id = NULL,
-    last_error = '派发队列已满',
-    state_version = state_version + 1,
-    updated_at = now()
-WHERE id = sqlc.arg(step_id)::uuid
-  AND state IN (
-    'DISPATCHING'::stepstatus,
-    'SYNCING_ENV'::stepstatus,
-    'PROBING_RUNTIME'::stepstatus,
-    'BINDING_DEVICE'::stepstatus
-  );
-
--- name: RecoverStaleDispatchingStepToReady :execrows
-UPDATE step
-SET state = 'READY'::stepstatus,
-    assigned_executor_id = NULL,
-    last_error = sqlc.arg(last_error),
-    state_version = state_version + 1,
-    updated_at = now()
-WHERE id = sqlc.arg(step_id)::uuid
-  AND state IN (
-    'DISPATCHING'::stepstatus,
-    'SYNCING_ENV'::stepstatus,
-    'PROBING_RUNTIME'::stepstatus,
-    'BINDING_DEVICE'::stepstatus
-  );
-
--- name: MarkOrchestratorStepRunning :execrows
-UPDATE step
-SET state = 'RUNNING'::stepstatus,
-    started_at = COALESCE(started_at, now()),
-    state_version = state_version + 1,
-    updated_at = now()
-WHERE id = sqlc.arg(step_id)::uuid
-  AND state = 'READY'::stepstatus;
-
--- name: MarkOrchestratorStepRetrying :execrows
-UPDATE step
-SET state = 'RETRYING'::stepstatus,
-    attempt = attempt + 1,
-    last_error = sqlc.arg(last_error),
-    state_version = state_version + 1,
-    updated_at = now()
-WHERE id = sqlc.arg(step_id)::uuid
-  AND state = 'RUNNING'::stepstatus
-  AND attempt < max_attempts;
-
--- name: UpdateStepExecutionResultGuarded :execrows
-UPDATE step
-SET state = sqlc.arg(state)::stepstatus,
-    last_error = sqlc.narg(last_error)::text,
-    ended_at = CASE
-      WHEN sqlc.arg(state)::stepstatus IN ('SUCCEEDED'::stepstatus, 'FAILED'::stepstatus, 'CANCELLED'::stepstatus, 'SKIPPED'::stepstatus)
-      THEN COALESCE(ended_at, now())
-      ELSE ended_at
-    END,
-    state_version = state_version + 1,
-    updated_at = now()
-WHERE id = sqlc.arg(step_id)::uuid
-  AND state = sqlc.arg(from_state)::stepstatus;
 
 -- name: GetLoopQueryBatchSize :one
 SELECT query_batch_size
@@ -215,35 +126,12 @@ INSERT INTO task_candidate_item(
   $1, $2, $3, $4, $5, $6, $7, $8, $9
 );
 
--- name: GetStepStateForUpdate :one
-SELECT state
-FROM step
-WHERE id = sqlc.arg(step_id)::uuid
-FOR UPDATE;
-
--- name: UpdateStepStatusFromEventGuarded :execrows
+-- name: UpdateStepResultProjection :execrows
 UPDATE step
-SET state = sqlc.arg(state)::stepstatus,
-    started_at = CASE WHEN sqlc.arg(state)::stepstatus = 'RUNNING'::stepstatus THEN COALESCE(started_at, now()) ELSE started_at END,
-    ended_at = CASE WHEN sqlc.arg(state)::stepstatus IN ('SUCCEEDED'::stepstatus, 'FAILED'::stepstatus, 'CANCELLED'::stepstatus, 'SKIPPED'::stepstatus) THEN COALESCE(ended_at, now()) ELSE ended_at END,
-    last_error = CASE WHEN sqlc.arg(state)::stepstatus IN ('SUCCEEDED'::stepstatus, 'FAILED'::stepstatus, 'CANCELLED'::stepstatus, 'SKIPPED'::stepstatus) THEN sqlc.narg(reason)::text ELSE last_error END,
-    state_version = state_version + 1,
-    updated_at = now()
-WHERE id = sqlc.arg(step_id)::uuid
-  AND state = sqlc.arg(from_state)::stepstatus;
-
--- name: UpdateStepResultGuarded :execrows
-UPDATE step
-SET state = sqlc.arg(state)::stepstatus,
-    metrics = sqlc.arg(metrics)::jsonb,
+SET metrics = sqlc.arg(metrics)::jsonb,
     artifacts = sqlc.arg(artifacts)::jsonb,
-    last_error = sqlc.narg(error_message)::text,
-    started_at = COALESCE(started_at, now()),
-    ended_at = CASE WHEN sqlc.arg(state)::stepstatus IN ('SUCCEEDED'::stepstatus, 'FAILED'::stepstatus, 'CANCELLED'::stepstatus, 'SKIPPED'::stepstatus) THEN COALESCE(ended_at, now()) ELSE ended_at END,
-    state_version = state_version + 1,
     updated_at = now()
-WHERE id = sqlc.arg(step_id)::uuid
-  AND state = sqlc.arg(from_state)::stepstatus;
+WHERE id = sqlc.arg(step_id)::uuid;
 
 -- name: InsertTaskMetricPoint :exec
 INSERT INTO task_metric_point(

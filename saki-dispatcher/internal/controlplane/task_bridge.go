@@ -3,7 +3,6 @@ package controlplane
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 
 	"github.com/google/uuid"
@@ -60,10 +59,9 @@ func (s *Service) resolveTaskIDForStepTx(
 	return uuid.Nil, false, err
 }
 
-func (s *Service) ensureTaskBindingForStepTx(
+func (s *Service) createStepTaskTx(
 	ctx context.Context,
 	tx pgx.Tx,
-	stepID uuid.UUID,
 	projectID uuid.UUID,
 	stepType db.Steptype,
 	pluginID string,
@@ -84,32 +82,18 @@ func (s *Service) ensureTaskBindingForStepTx(
 	if err != nil {
 		return uuid.Nil, err
 	}
-
 	err = s.qtx(tx).InsertStepTask(ctx, db.InsertStepTaskParams{
-		TaskID:            taskID,
-		ProjectID:         projectID,
-		TaskType:          db.Runtimetasktype(string(stepType)),
-		PluginID:          pluginID,
-		DependsOnTaskIds:  []byte(dependencyTaskIDsJSON),
-		InputCommitID:     inputCommitID,
-		ResolvedParams:    resolvedParams,
-		MaxAttempts:       int32(maxAttempts),
+		TaskID:           taskID,
+		ProjectID:        projectID,
+		TaskType:         db.Runtimetasktype(string(stepType)),
+		PluginID:         pluginID,
+		DependsOnTaskIds: []byte(dependencyTaskIDsJSON),
+		InputCommitID:    inputCommitID,
+		ResolvedParams:   resolvedParams,
+		MaxAttempts:      int32(maxAttempts),
 	})
 	if err != nil {
 		return uuid.Nil, err
-	}
-
-	bound, err := s.qtx(tx).BindTaskToStep(ctx, db.BindTaskToStepParams{
-		TaskID: taskID,
-		StepID: stepID,
-	})
-	if err != nil {
-		_, _ = s.qtx(tx).DeleteTaskByID(ctx, taskID)
-		return uuid.Nil, err
-	}
-	if bound == 0 {
-		_, _ = s.qtx(tx).DeleteTaskByID(ctx, taskID)
-		return uuid.Nil, fmt.Errorf("step not found when binding task: step_id=%s", stepID.String())
 	}
 	return taskID, nil
 }

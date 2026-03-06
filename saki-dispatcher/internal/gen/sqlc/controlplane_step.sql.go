@@ -131,21 +131,21 @@ func (q *Queries) GetStepArtifactsForUpdate(ctx context.Context, stepID uuid.UUI
 	return artifacts, err
 }
 
-const getStepPayloadByIDForUpdate = `-- name: GetStepPayloadByIDForUpdate :one
+const getStepPayloadByTaskIDForUpdate = `-- name: GetStepPayloadByTaskIDForUpdate :one
 SELECT
   t.id AS step_id,
-  t.task_id AS task_id,
+  k.id AS task_id,
   t.round_id AS round_id,
-  COALESCE(k.status::text, t.state::text)::stepstatus AS status,
+  k.status::text::stepstatus AS status,
   t.step_type AS step_type,
   t.dispatch_kind AS dispatch_kind,
   t.round_index,
-  COALESCE(k.attempt, t.attempt) AS attempt,
+  k.attempt AS attempt,
   t.state_version,
-  COALESCE(k.updated_at, t.updated_at) AS updated_at,
+  k.updated_at AS updated_at,
   COALESCE(k.depends_on_task_ids, '[]'::jsonb) AS depends_on_task_raw,
-  t.resolved_params AS params_raw,
-  t.input_commit_id AS input_commit_id,
+  k.resolved_params AS params_raw,
+  COALESCE(k.input_commit_id, t.input_commit_id) AS input_commit_id,
   j.loop_id AS loop_id,
   j.project_id AS project_id,
   j.plugin_id,
@@ -153,16 +153,16 @@ SELECT
   j.resolved_params AS round_params_raw,
   j.resources AS resources_raw,
   j.input_commit_id AS round_input_commit_id
-FROM step t
+FROM task k
+JOIN step t ON t.task_id = k.id
 JOIN round j ON j.id = t.round_id
-LEFT JOIN task k ON k.id = t.task_id
-WHERE t.id = $1::uuid
-FOR UPDATE SKIP LOCKED
+WHERE k.id = $1::uuid
+FOR UPDATE OF k SKIP LOCKED
 `
 
-type GetStepPayloadByIDForUpdateRow struct {
+type GetStepPayloadByTaskIDForUpdateRow struct {
 	StepID             uuid.UUID
-	TaskID             *uuid.UUID
+	TaskID             uuid.UUID
 	RoundID            uuid.UUID
 	Status             Stepstatus
 	StepType           Steptype
@@ -183,9 +183,9 @@ type GetStepPayloadByIDForUpdateRow struct {
 	RoundInputCommitID *uuid.UUID
 }
 
-func (q *Queries) GetStepPayloadByIDForUpdate(ctx context.Context, stepID uuid.UUID) (GetStepPayloadByIDForUpdateRow, error) {
-	row := q.db.QueryRow(ctx, getStepPayloadByIDForUpdate, stepID)
-	var i GetStepPayloadByIDForUpdateRow
+func (q *Queries) GetStepPayloadByTaskIDForUpdate(ctx context.Context, taskID uuid.UUID) (GetStepPayloadByTaskIDForUpdateRow, error) {
+	row := q.db.QueryRow(ctx, getStepPayloadByTaskIDForUpdate, taskID)
+	var i GetStepPayloadByTaskIDForUpdateRow
 	err := row.Scan(
 		&i.StepID,
 		&i.TaskID,
@@ -209,20 +209,6 @@ func (q *Queries) GetStepPayloadByIDForUpdate(ctx context.Context, stepID uuid.U
 		&i.RoundInputCommitID,
 	)
 	return i, err
-}
-
-const getStepStateForUpdate = `-- name: GetStepStateForUpdate :one
-SELECT state
-FROM step
-WHERE id = $1::uuid
-FOR UPDATE
-`
-
-func (q *Queries) GetStepStateForUpdate(ctx context.Context, stepID uuid.UUID) (Stepstatus, error) {
-	row := q.db.QueryRow(ctx, getStepStateForUpdate, stepID)
-	var state Stepstatus
-	err := row.Scan(&state)
-	return state, err
 }
 
 const getSucceededScoreStepIDByRound = `-- name: GetSucceededScoreStepIDByRound :one
@@ -420,159 +406,6 @@ func (q *Queries) ListTaskCandidatesByTaskID(ctx context.Context, arg ListTaskCa
 	return items, nil
 }
 
-const markOrchestratorStepRetrying = `-- name: MarkOrchestratorStepRetrying :execrows
-UPDATE step
-SET state = 'RETRYING'::stepstatus,
-    attempt = attempt + 1,
-    last_error = $1,
-    state_version = state_version + 1,
-    updated_at = now()
-WHERE id = $2::uuid
-  AND state = 'RUNNING'::stepstatus
-  AND attempt < max_attempts
-`
-
-type MarkOrchestratorStepRetryingParams struct {
-	LastError pgtype.Text
-	StepID    uuid.UUID
-}
-
-func (q *Queries) MarkOrchestratorStepRetrying(ctx context.Context, arg MarkOrchestratorStepRetryingParams) (int64, error) {
-	result, err := q.db.Exec(ctx, markOrchestratorStepRetrying, arg.LastError, arg.StepID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
-const markOrchestratorStepRunning = `-- name: MarkOrchestratorStepRunning :execrows
-UPDATE step
-SET state = 'RUNNING'::stepstatus,
-    started_at = COALESCE(started_at, now()),
-    state_version = state_version + 1,
-    updated_at = now()
-WHERE id = $1::uuid
-  AND state = 'READY'::stepstatus
-`
-
-func (q *Queries) MarkOrchestratorStepRunning(ctx context.Context, stepID uuid.UUID) (int64, error) {
-	result, err := q.db.Exec(ctx, markOrchestratorStepRunning, stepID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
-const markStepDispatching = `-- name: MarkStepDispatching :execrows
-UPDATE step
-SET state = 'DISPATCHING'::stepstatus,
-    assigned_executor_id = $1,
-    state_version = state_version + 1,
-    updated_at = now()
-WHERE id = $2::uuid
-  AND state = 'READY'::stepstatus
-`
-
-type MarkStepDispatchingParams struct {
-	AssignedExecutorID pgtype.Text
-	StepID             uuid.UUID
-}
-
-func (q *Queries) MarkStepDispatching(ctx context.Context, arg MarkStepDispatchingParams) (int64, error) {
-	result, err := q.db.Exec(ctx, markStepDispatching, arg.AssignedExecutorID, arg.StepID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
-const promoteRetryingStepToReady = `-- name: PromoteRetryingStepToReady :execrows
-UPDATE step
-SET state = 'READY'::stepstatus,
-    state_version = state_version + 1,
-    updated_at = now()
-WHERE id = $1::uuid
-  AND state = 'RETRYING'::stepstatus
-`
-
-func (q *Queries) PromoteRetryingStepToReady(ctx context.Context, stepID uuid.UUID) (int64, error) {
-	result, err := q.db.Exec(ctx, promoteRetryingStepToReady, stepID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
-const promoteStepToReady = `-- name: PromoteStepToReady :execrows
-UPDATE step
-SET state = 'READY'::stepstatus,
-    state_version = state_version + 1,
-    updated_at = now()
-WHERE id = $1::uuid
-  AND state = 'PENDING'::stepstatus
-`
-
-func (q *Queries) PromoteStepToReady(ctx context.Context, stepID uuid.UUID) (int64, error) {
-	result, err := q.db.Exec(ctx, promoteStepToReady, stepID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
-const recoverStaleDispatchingStepToReady = `-- name: RecoverStaleDispatchingStepToReady :execrows
-UPDATE step
-SET state = 'READY'::stepstatus,
-    assigned_executor_id = NULL,
-    last_error = $1,
-    state_version = state_version + 1,
-    updated_at = now()
-WHERE id = $2::uuid
-  AND state IN (
-    'DISPATCHING'::stepstatus,
-    'SYNCING_ENV'::stepstatus,
-    'PROBING_RUNTIME'::stepstatus,
-    'BINDING_DEVICE'::stepstatus
-  )
-`
-
-type RecoverStaleDispatchingStepToReadyParams struct {
-	LastError pgtype.Text
-	StepID    uuid.UUID
-}
-
-func (q *Queries) RecoverStaleDispatchingStepToReady(ctx context.Context, arg RecoverStaleDispatchingStepToReadyParams) (int64, error) {
-	result, err := q.db.Exec(ctx, recoverStaleDispatchingStepToReady, arg.LastError, arg.StepID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
-const resetStepToReadyQueueFull = `-- name: ResetStepToReadyQueueFull :execrows
-UPDATE step
-SET state = 'READY'::stepstatus,
-    assigned_executor_id = NULL,
-    last_error = '派发队列已满',
-    state_version = state_version + 1,
-    updated_at = now()
-WHERE id = $1::uuid
-  AND state IN (
-    'DISPATCHING'::stepstatus,
-    'SYNCING_ENV'::stepstatus,
-    'PROBING_RUNTIME'::stepstatus,
-    'BINDING_DEVICE'::stepstatus
-  )
-`
-
-func (q *Queries) ResetStepToReadyQueueFull(ctx context.Context, stepID uuid.UUID) (int64, error) {
-	result, err := q.db.Exec(ctx, resetStepToReadyQueueFull, stepID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
 const updateStepArtifacts = `-- name: UpdateStepArtifacts :exec
 UPDATE step
 SET artifacts = $1::jsonb,
@@ -590,105 +423,22 @@ func (q *Queries) UpdateStepArtifacts(ctx context.Context, arg UpdateStepArtifac
 	return err
 }
 
-const updateStepExecutionResultGuarded = `-- name: UpdateStepExecutionResultGuarded :execrows
+const updateStepResultProjection = `-- name: UpdateStepResultProjection :execrows
 UPDATE step
-SET state = $1::stepstatus,
-    last_error = $2::text,
-    ended_at = CASE
-      WHEN $1::stepstatus IN ('SUCCEEDED'::stepstatus, 'FAILED'::stepstatus, 'CANCELLED'::stepstatus, 'SKIPPED'::stepstatus)
-      THEN COALESCE(ended_at, now())
-      ELSE ended_at
-    END,
-    state_version = state_version + 1,
+SET metrics = $1::jsonb,
+    artifacts = $2::jsonb,
     updated_at = now()
 WHERE id = $3::uuid
-  AND state = $4::stepstatus
 `
 
-type UpdateStepExecutionResultGuardedParams struct {
-	State     Stepstatus
-	LastError pgtype.Text
+type UpdateStepResultProjectionParams struct {
+	Metrics   []byte
+	Artifacts []byte
 	StepID    uuid.UUID
-	FromState Stepstatus
 }
 
-func (q *Queries) UpdateStepExecutionResultGuarded(ctx context.Context, arg UpdateStepExecutionResultGuardedParams) (int64, error) {
-	result, err := q.db.Exec(ctx, updateStepExecutionResultGuarded,
-		arg.State,
-		arg.LastError,
-		arg.StepID,
-		arg.FromState,
-	)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
-const updateStepResultGuarded = `-- name: UpdateStepResultGuarded :execrows
-UPDATE step
-SET state = $1::stepstatus,
-    metrics = $2::jsonb,
-    artifacts = $3::jsonb,
-    last_error = $4::text,
-    started_at = COALESCE(started_at, now()),
-    ended_at = CASE WHEN $1::stepstatus IN ('SUCCEEDED'::stepstatus, 'FAILED'::stepstatus, 'CANCELLED'::stepstatus, 'SKIPPED'::stepstatus) THEN COALESCE(ended_at, now()) ELSE ended_at END,
-    state_version = state_version + 1,
-    updated_at = now()
-WHERE id = $5::uuid
-  AND state = $6::stepstatus
-`
-
-type UpdateStepResultGuardedParams struct {
-	State        Stepstatus
-	Metrics      []byte
-	Artifacts    []byte
-	ErrorMessage pgtype.Text
-	StepID       uuid.UUID
-	FromState    Stepstatus
-}
-
-func (q *Queries) UpdateStepResultGuarded(ctx context.Context, arg UpdateStepResultGuardedParams) (int64, error) {
-	result, err := q.db.Exec(ctx, updateStepResultGuarded,
-		arg.State,
-		arg.Metrics,
-		arg.Artifacts,
-		arg.ErrorMessage,
-		arg.StepID,
-		arg.FromState,
-	)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
-const updateStepStatusFromEventGuarded = `-- name: UpdateStepStatusFromEventGuarded :execrows
-UPDATE step
-SET state = $1::stepstatus,
-    started_at = CASE WHEN $1::stepstatus = 'RUNNING'::stepstatus THEN COALESCE(started_at, now()) ELSE started_at END,
-    ended_at = CASE WHEN $1::stepstatus IN ('SUCCEEDED'::stepstatus, 'FAILED'::stepstatus, 'CANCELLED'::stepstatus, 'SKIPPED'::stepstatus) THEN COALESCE(ended_at, now()) ELSE ended_at END,
-    last_error = CASE WHEN $1::stepstatus IN ('SUCCEEDED'::stepstatus, 'FAILED'::stepstatus, 'CANCELLED'::stepstatus, 'SKIPPED'::stepstatus) THEN $2::text ELSE last_error END,
-    state_version = state_version + 1,
-    updated_at = now()
-WHERE id = $3::uuid
-  AND state = $4::stepstatus
-`
-
-type UpdateStepStatusFromEventGuardedParams struct {
-	State     Stepstatus
-	Reason    pgtype.Text
-	StepID    uuid.UUID
-	FromState Stepstatus
-}
-
-func (q *Queries) UpdateStepStatusFromEventGuarded(ctx context.Context, arg UpdateStepStatusFromEventGuardedParams) (int64, error) {
-	result, err := q.db.Exec(ctx, updateStepStatusFromEventGuarded,
-		arg.State,
-		arg.Reason,
-		arg.StepID,
-		arg.FromState,
-	)
+func (q *Queries) UpdateStepResultProjection(ctx context.Context, arg UpdateStepResultProjectionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateStepResultProjection, arg.Metrics, arg.Artifacts, arg.StepID)
 	if err != nil {
 		return 0, err
 	}

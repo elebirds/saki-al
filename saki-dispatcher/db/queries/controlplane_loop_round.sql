@@ -116,11 +116,12 @@ INSERT INTO round(
 
 -- name: InsertStep :exec
 INSERT INTO step(
-  id, round_id, step_type, dispatch_kind, state, round_index, step_index, depends_on_step_ids, resolved_params, metrics, artifacts,
+  id, round_id, task_id, step_type, dispatch_kind, state, round_index, step_index, depends_on_step_ids, resolved_params, metrics, artifacts,
   input_commit_id, attempt, max_attempts, state_version, created_at, updated_at
 ) VALUES (
   sqlc.arg(step_id)::uuid,
   sqlc.arg(round_id)::uuid,
+  sqlc.arg(task_id)::uuid,
   sqlc.arg(step_type)::steptype,
   sqlc.arg(dispatch_kind)::stepdispatchkind,
   'PENDING'::stepstatus,
@@ -200,12 +201,12 @@ LIMIT sqlc.arg(limit_count);
 
 -- name: CountStepStatesByRound :many
 SELECT
-  COALESCE(t.status::text, s.state::text)::stepstatus AS state,
+  t.status::text::stepstatus AS state,
   COUNT(*)::int AS count
 FROM step s
-LEFT JOIN task t ON t.id = s.task_id
+JOIN task t ON t.id = s.task_id
 WHERE s.round_id = sqlc.arg(round_id)::uuid
-GROUP BY COALESCE(t.status::text, s.state::text)::stepstatus;
+GROUP BY t.status::text::stepstatus;
 
 -- name: UpdateRoundAggregate :exec
 UPDATE round
@@ -248,131 +249,73 @@ WHERE id = sqlc.arg(round_id)::uuid
   AND confirmed_at IS NULL;
 
 -- name: ListRoundActiveStepIDs :many
-SELECT id
-FROM step
-WHERE round_id = sqlc.arg(round_id)::uuid
-  AND state IN (
-    'PENDING'::stepstatus,
-    'READY'::stepstatus,
-    'DISPATCHING'::stepstatus,
-    'SYNCING_ENV'::stepstatus,
-    'PROBING_RUNTIME'::stepstatus,
-    'BINDING_DEVICE'::stepstatus,
-    'RUNNING'::stepstatus,
-    'RETRYING'::stepstatus
-  );
-
--- name: CancelStepsByRound :exec
-UPDATE step
-SET state = 'CANCELLED'::stepstatus,
-    last_error = sqlc.arg(last_error),
-    ended_at = COALESCE(ended_at, now()),
-    state_version = state_version + 1,
-    updated_at = now()
-WHERE round_id = sqlc.arg(round_id)::uuid
-  AND state IN (
-    'PENDING'::stepstatus,
-    'READY'::stepstatus,
-    'DISPATCHING'::stepstatus,
-    'SYNCING_ENV'::stepstatus,
-    'PROBING_RUNTIME'::stepstatus,
-    'BINDING_DEVICE'::stepstatus,
-    'RUNNING'::stepstatus,
-    'RETRYING'::stepstatus
-  );
-
--- name: GetStepState :one
-SELECT state
-FROM step
-WHERE id = sqlc.arg(step_id)::uuid;
-
--- name: CancelStepByID :exec
-UPDATE step
-SET state = 'CANCELLED'::stepstatus,
-    last_error = sqlc.arg(last_error),
-    ended_at = COALESCE(ended_at, now()),
-    state_version = state_version + 1,
-    updated_at = now()
-WHERE id = sqlc.arg(step_id)::uuid
-  AND state IN (
-    'PENDING'::stepstatus,
-    'READY'::stepstatus,
-    'DISPATCHING'::stepstatus,
-    'SYNCING_ENV'::stepstatus,
-    'PROBING_RUNTIME'::stepstatus,
-    'BINDING_DEVICE'::stepstatus,
-    'RUNNING'::stepstatus,
-    'RETRYING'::stepstatus
+SELECT s.id AS id
+FROM step s
+JOIN task t ON t.id = s.task_id
+WHERE s.round_id = sqlc.arg(round_id)::uuid
+  AND t.status IN (
+    'PENDING'::runtimetaskstatus,
+    'READY'::runtimetaskstatus,
+    'DISPATCHING'::runtimetaskstatus,
+    'SYNCING_ENV'::runtimetaskstatus,
+    'PROBING_RUNTIME'::runtimetaskstatus,
+    'BINDING_DEVICE'::runtimetaskstatus,
+    'RUNNING'::runtimetaskstatus,
+    'RETRYING'::runtimetaskstatus
   );
 
 -- name: ListLoopStoppableSteps :many
 SELECT
-  t.id AS id,
-  t.state,
-  t.attempt,
-  t.updated_at
-FROM step t
-JOIN round j ON j.id = t.round_id
+  s.id AS id,
+  t.status::text::stepstatus AS state,
+  t.attempt AS attempt,
+  t.updated_at AS updated_at
+FROM step s
+JOIN round j ON j.id = s.round_id
+JOIN task t ON t.id = s.task_id
 WHERE j.loop_id = sqlc.arg(loop_id)::uuid
-  AND t.state IN (
-    'PENDING'::stepstatus,
-    'READY'::stepstatus,
-    'DISPATCHING'::stepstatus,
-    'SYNCING_ENV'::stepstatus,
-    'PROBING_RUNTIME'::stepstatus,
-    'BINDING_DEVICE'::stepstatus,
-    'RUNNING'::stepstatus,
-    'RETRYING'::stepstatus
+  AND t.status IN (
+    'PENDING'::runtimetaskstatus,
+    'READY'::runtimetaskstatus,
+    'DISPATCHING'::runtimetaskstatus,
+    'SYNCING_ENV'::runtimetaskstatus,
+    'PROBING_RUNTIME'::runtimetaskstatus,
+    'BINDING_DEVICE'::runtimetaskstatus,
+    'RUNNING'::runtimetaskstatus,
+    'RETRYING'::runtimetaskstatus
   )
-ORDER BY t.created_at ASC;
-
--- name: CancelStepsByIDs :exec
-UPDATE step
-SET state = 'CANCELLED'::stepstatus,
-    last_error = sqlc.arg(last_error),
-    ended_at = COALESCE(ended_at, now()),
-    state_version = state_version + 1,
-    updated_at = now()
-WHERE id = ANY(sqlc.arg(step_ids)::uuid[])
-  AND state IN (
-    'PENDING'::stepstatus,
-    'READY'::stepstatus,
-    'DISPATCHING'::stepstatus,
-    'SYNCING_ENV'::stepstatus,
-    'PROBING_RUNTIME'::stepstatus,
-    'BINDING_DEVICE'::stepstatus,
-    'RUNNING'::stepstatus,
-    'RETRYING'::stepstatus
-  );
+ORDER BY s.created_at ASC;
 
 -- name: CountLoopActiveSteps :one
 SELECT COUNT(*)::int AS count
-FROM step t
-JOIN round j ON j.id = t.round_id
+FROM step s
+JOIN round j ON j.id = s.round_id
+JOIN task t ON t.id = s.task_id
 WHERE j.loop_id = sqlc.arg(loop_id)::uuid
-  AND t.state IN (
-    'PENDING'::stepstatus,
-    'READY'::stepstatus,
-    'DISPATCHING'::stepstatus,
-    'SYNCING_ENV'::stepstatus,
-    'PROBING_RUNTIME'::stepstatus,
-    'BINDING_DEVICE'::stepstatus,
-    'RUNNING'::stepstatus,
-    'RETRYING'::stepstatus
+  AND t.status IN (
+    'PENDING'::runtimetaskstatus,
+    'READY'::runtimetaskstatus,
+    'DISPATCHING'::runtimetaskstatus,
+    'SYNCING_ENV'::runtimetaskstatus,
+    'PROBING_RUNTIME'::runtimetaskstatus,
+    'BINDING_DEVICE'::runtimetaskstatus,
+    'RUNNING'::runtimetaskstatus,
+    'RETRYING'::runtimetaskstatus
   );
 
 -- name: CountLoopInFlightSteps :one
 SELECT COUNT(*)::int AS count
-FROM step t
-JOIN round j ON j.id = t.round_id
+FROM step s
+JOIN round j ON j.id = s.round_id
+JOIN task t ON t.id = s.task_id
 WHERE j.loop_id = sqlc.arg(loop_id)::uuid
-  AND t.state IN (
-    'DISPATCHING'::stepstatus,
-    'SYNCING_ENV'::stepstatus,
-    'PROBING_RUNTIME'::stepstatus,
-    'BINDING_DEVICE'::stepstatus,
-    'RUNNING'::stepstatus,
-    'RETRYING'::stepstatus
+  AND t.status IN (
+    'DISPATCHING'::runtimetaskstatus,
+    'SYNCING_ENV'::runtimetaskstatus,
+    'PROBING_RUNTIME'::runtimetaskstatus,
+    'BINDING_DEVICE'::runtimetaskstatus,
+    'RUNNING'::runtimetaskstatus,
+    'RETRYING'::runtimetaskstatus
   );
 
 -- name: FindRoundIDByStep :one

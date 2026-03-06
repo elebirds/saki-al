@@ -559,43 +559,40 @@ func (s *Service) StopTask(ctx context.Context, commandID string, taskID string,
 		if err != nil {
 			return "rejected", "task not found", nil
 		}
-		stepPGID, found, err := s.resolveStepIDForTaskTx(ctx, tx, taskPGID)
+		taskRow, found, err := s.getTaskForUpdateTx(ctx, tx, taskPGID)
 		if err != nil {
 			return "", "", err
 		}
 		if !found {
-			taskRow, taskFound, taskErr := s.getTaskForUpdateTx(ctx, tx, taskPGID)
-			if taskErr != nil {
-				return "", "", taskErr
-			}
-			if !taskFound {
-				return "rejected", "task not found", nil
-			}
-			if isTerminalTaskStatus(taskRow.Status) {
-				return "applied", "task already in terminal state", nil
-			}
-			_, updateErr := s.qtx(tx).CancelTaskByID(ctx, db.CancelTaskByIDParams{
-				LastError: toPGText(reason),
-				TaskID:    taskPGID,
-			})
-			if updateErr != nil {
-				return "", "", updateErr
-			}
-			s.dispatcher.StopTask(taskPGID.String(), reason)
-			return "applied", "stop_task applied", nil
+			return "rejected", "task not found", nil
 		}
-		currentState, err := s.qtx(tx).GetStepState(ctx, stepPGID)
-		if err != nil {
-			if err == pgx.ErrNoRows {
-				return "rejected", "task not found", nil
-			}
-			return "", "", err
-		}
-		if currentState == stepSucceeded || currentState == stepFailed || currentState == stepCancelled || currentState == stepSkipped {
+		if isTerminalTaskStatus(taskRow.Status) {
 			return "applied", "task already in terminal state", nil
 		}
-		if err := s.cancelStepIDsTx(ctx, tx, []uuid.UUID{stepPGID}, reason); err != nil {
+		taskKind := normalizeTaskEnumText(taskRow.Kind)
+		if taskKind == "STEP" {
+			_, mapped, mapErr := s.resolveStepIDForTaskTx(ctx, tx, taskPGID)
+			if mapErr != nil {
+				return "", "", mapErr
+			}
+			if !mapped {
+				const projectionErr = "step projection missing"
+				if err := s.updateTaskStatusTx(ctx, tx, taskPGID, "FAILED", projectionErr); err != nil {
+					return "", "", err
+				}
+				return "rejected", projectionErr, nil
+			}
+		}
+		if _, err := s.qtx(tx).CancelTaskByID(ctx, db.CancelTaskByIDParams{
+			LastError: toPGText(reason),
+			TaskID:    taskPGID,
+		}); err != nil {
 			return "", "", err
+		}
+		if taskKind == "STEP" {
+			if err := s.projectTaskToStepTx(ctx, tx, taskPGID); err != nil {
+				return "", "", err
+			}
 		}
 		s.dispatcher.StopTask(taskPGID.String(), reason)
 		return "applied", "stop_task applied", nil
@@ -608,43 +605,35 @@ func (s *Service) DispatchTask(ctx context.Context, commandID string, taskID str
 		if err != nil {
 			return "rejected", "task not found", nil
 		}
-		stepPGID, found, err := s.resolveStepIDForTaskTx(ctx, tx, taskPGID)
+		taskRow, found, err := s.getTaskForUpdateTx(ctx, tx, taskPGID)
 		if err != nil {
 			return "", "", err
 		}
 		if !found {
-			taskRow, taskFound, taskErr := s.getTaskForUpdateTx(ctx, tx, taskPGID)
-			if taskErr != nil {
-				return "", "", taskErr
-			}
-			if !taskFound {
-				return "rejected", "task not found", nil
-			}
-			if isTerminalTaskStatus(taskRow.Status) {
-				return "rejected", "task is in terminal state", nil
-			}
-			taskKind := normalizeTaskEnumText(taskRow.Kind)
-			if taskKind == "STEP" {
-				return "rejected", "step projection missing", nil
-			}
-			if taskKind != "PREDICTION" {
-				return "rejected", "task is not dispatchable", nil
-			}
-			if !isTaskStatusDispatchable(taskRow.Status) {
-				return "rejected", "task is not dispatchable", nil
-			}
-			s.dispatcher.QueueTask(taskPGID.String())
-			return "applied", "dispatch_task queued", nil
+			return "rejected", "task not found", nil
 		}
-		currentState, err := s.qtx(tx).GetStepState(ctx, stepPGID)
-		if err != nil {
-			if err == pgx.ErrNoRows {
-				return "rejected", "task not found", nil
-			}
-			return "", "", err
-		}
-		if currentState == stepSucceeded || currentState == stepFailed || currentState == stepCancelled || currentState == stepSkipped {
+		if isTerminalTaskStatus(taskRow.Status) {
 			return "rejected", "task is in terminal state", nil
+		}
+		if !isTaskStatusDispatchable(taskRow.Status) {
+			return "rejected", "task is not dispatchable", nil
+		}
+		taskKind := normalizeTaskEnumText(taskRow.Kind)
+		if taskKind != "STEP" && taskKind != "PREDICTION" {
+			return "rejected", "task is not dispatchable", nil
+		}
+		if taskKind == "STEP" {
+			_, mapped, mapErr := s.resolveStepIDForTaskTx(ctx, tx, taskPGID)
+			if mapErr != nil {
+				return "", "", mapErr
+			}
+			if !mapped {
+				const projectionErr = "step projection missing"
+				if err := s.updateTaskStatusTx(ctx, tx, taskPGID, "FAILED", projectionErr); err != nil {
+					return "", "", err
+				}
+				return "rejected", projectionErr, nil
+			}
 		}
 		s.dispatcher.QueueTask(taskPGID.String())
 		return "applied", "dispatch_task queued", nil
@@ -1119,27 +1108,13 @@ func (s *Service) createRoundAttemptTx(
 		if err != nil {
 			return nil, err
 		}
-		if err := s.qtx(tx).InsertStep(ctx, db.InsertStepParams{
-			StepID:           stepID,
-			RoundID:          roundID,
-			StepType:         stepSpec.StepType,
-			DispatchKind:     stepSpec.DispatchKind,
-			RoundIndex:       int32(roundIndex),
-			StepIndex:        int32(idx + 1),
-			DependsOnStepIds: []byte(dependsOnJSON),
-			ResolvedParams:   []byte(stepParamsJSON),
-			InputCommitID:    sourceCommitID,
-		}); err != nil {
-			return nil, err
-		}
 		dependencyTaskIDs := make([]uuid.UUID, 0, 1)
 		if previousTaskID != nil {
 			dependencyTaskIDs = append(dependencyTaskIDs, *previousTaskID)
 		}
-		createdTaskID, bindErr := s.ensureTaskBindingForStepTx(
+		createdTaskID, taskErr := s.createStepTaskTx(
 			ctx,
 			tx,
-			stepID,
 			projectID,
 			stepSpec.StepType,
 			loop.ModelArch,
@@ -1148,8 +1123,23 @@ func (s *Service) createRoundAttemptTx(
 			[]byte(stepParamsJSON),
 			3,
 		)
-		if bindErr != nil {
-			return nil, bindErr
+		if taskErr != nil {
+			return nil, taskErr
+		}
+		if err := s.qtx(tx).InsertStep(ctx, db.InsertStepParams{
+			StepID:           stepID,
+			RoundID:          roundID,
+			TaskID:           createdTaskID,
+			StepType:         stepSpec.StepType,
+			DispatchKind:     stepSpec.DispatchKind,
+			RoundIndex:       int32(roundIndex),
+			StepIndex:        int32(idx + 1),
+			DependsOnStepIds: []byte(dependsOnJSON),
+			ResolvedParams:   []byte(stepParamsJSON),
+			InputCommitID:    sourceCommitID,
+		}); err != nil {
+			_, _ = s.qtx(tx).DeleteTaskByID(ctx, createdTaskID)
+			return nil, err
 		}
 		previousTaskID = &createdTaskID
 		previousStepID = &stepID

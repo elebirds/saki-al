@@ -12,96 +12,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const cancelStepByID = `-- name: CancelStepByID :exec
-UPDATE step
-SET state = 'CANCELLED'::stepstatus,
-    last_error = $1,
-    ended_at = COALESCE(ended_at, now()),
-    state_version = state_version + 1,
-    updated_at = now()
-WHERE id = $2::uuid
-  AND state IN (
-    'PENDING'::stepstatus,
-    'READY'::stepstatus,
-    'DISPATCHING'::stepstatus,
-    'SYNCING_ENV'::stepstatus,
-    'PROBING_RUNTIME'::stepstatus,
-    'BINDING_DEVICE'::stepstatus,
-    'RUNNING'::stepstatus,
-    'RETRYING'::stepstatus
-  )
-`
-
-type CancelStepByIDParams struct {
-	LastError pgtype.Text
-	StepID    uuid.UUID
-}
-
-func (q *Queries) CancelStepByID(ctx context.Context, arg CancelStepByIDParams) error {
-	_, err := q.db.Exec(ctx, cancelStepByID, arg.LastError, arg.StepID)
-	return err
-}
-
-const cancelStepsByIDs = `-- name: CancelStepsByIDs :exec
-UPDATE step
-SET state = 'CANCELLED'::stepstatus,
-    last_error = $1,
-    ended_at = COALESCE(ended_at, now()),
-    state_version = state_version + 1,
-    updated_at = now()
-WHERE id = ANY($2::uuid[])
-  AND state IN (
-    'PENDING'::stepstatus,
-    'READY'::stepstatus,
-    'DISPATCHING'::stepstatus,
-    'SYNCING_ENV'::stepstatus,
-    'PROBING_RUNTIME'::stepstatus,
-    'BINDING_DEVICE'::stepstatus,
-    'RUNNING'::stepstatus,
-    'RETRYING'::stepstatus
-  )
-`
-
-type CancelStepsByIDsParams struct {
-	LastError pgtype.Text
-	StepIds   []uuid.UUID
-}
-
-func (q *Queries) CancelStepsByIDs(ctx context.Context, arg CancelStepsByIDsParams) error {
-	_, err := q.db.Exec(ctx, cancelStepsByIDs, arg.LastError, arg.StepIds)
-	return err
-}
-
-const cancelStepsByRound = `-- name: CancelStepsByRound :exec
-UPDATE step
-SET state = 'CANCELLED'::stepstatus,
-    last_error = $1,
-    ended_at = COALESCE(ended_at, now()),
-    state_version = state_version + 1,
-    updated_at = now()
-WHERE round_id = $2::uuid
-  AND state IN (
-    'PENDING'::stepstatus,
-    'READY'::stepstatus,
-    'DISPATCHING'::stepstatus,
-    'SYNCING_ENV'::stepstatus,
-    'PROBING_RUNTIME'::stepstatus,
-    'BINDING_DEVICE'::stepstatus,
-    'RUNNING'::stepstatus,
-    'RETRYING'::stepstatus
-  )
-`
-
-type CancelStepsByRoundParams struct {
-	LastError pgtype.Text
-	RoundID   uuid.UUID
-}
-
-func (q *Queries) CancelStepsByRound(ctx context.Context, arg CancelStepsByRoundParams) error {
-	_, err := q.db.Exec(ctx, cancelStepsByRound, arg.LastError, arg.RoundID)
-	return err
-}
-
 const countCommitAnnotationsByCommit = `-- name: CountCommitAnnotationsByCommit :one
 SELECT COUNT(*)::bigint AS count
 FROM commit_annotation_map
@@ -117,18 +27,19 @@ func (q *Queries) CountCommitAnnotationsByCommit(ctx context.Context, commitID u
 
 const countLoopActiveSteps = `-- name: CountLoopActiveSteps :one
 SELECT COUNT(*)::int AS count
-FROM step t
-JOIN round j ON j.id = t.round_id
+FROM step s
+JOIN round j ON j.id = s.round_id
+JOIN task t ON t.id = s.task_id
 WHERE j.loop_id = $1::uuid
-  AND t.state IN (
-    'PENDING'::stepstatus,
-    'READY'::stepstatus,
-    'DISPATCHING'::stepstatus,
-    'SYNCING_ENV'::stepstatus,
-    'PROBING_RUNTIME'::stepstatus,
-    'BINDING_DEVICE'::stepstatus,
-    'RUNNING'::stepstatus,
-    'RETRYING'::stepstatus
+  AND t.status IN (
+    'PENDING'::runtimetaskstatus,
+    'READY'::runtimetaskstatus,
+    'DISPATCHING'::runtimetaskstatus,
+    'SYNCING_ENV'::runtimetaskstatus,
+    'PROBING_RUNTIME'::runtimetaskstatus,
+    'BINDING_DEVICE'::runtimetaskstatus,
+    'RUNNING'::runtimetaskstatus,
+    'RETRYING'::runtimetaskstatus
   )
 `
 
@@ -141,16 +52,17 @@ func (q *Queries) CountLoopActiveSteps(ctx context.Context, loopID uuid.UUID) (i
 
 const countLoopInFlightSteps = `-- name: CountLoopInFlightSteps :one
 SELECT COUNT(*)::int AS count
-FROM step t
-JOIN round j ON j.id = t.round_id
+FROM step s
+JOIN round j ON j.id = s.round_id
+JOIN task t ON t.id = s.task_id
 WHERE j.loop_id = $1::uuid
-  AND t.state IN (
-    'DISPATCHING'::stepstatus,
-    'SYNCING_ENV'::stepstatus,
-    'PROBING_RUNTIME'::stepstatus,
-    'BINDING_DEVICE'::stepstatus,
-    'RUNNING'::stepstatus,
-    'RETRYING'::stepstatus
+  AND t.status IN (
+    'DISPATCHING'::runtimetaskstatus,
+    'SYNCING_ENV'::runtimetaskstatus,
+    'PROBING_RUNTIME'::runtimetaskstatus,
+    'BINDING_DEVICE'::runtimetaskstatus,
+    'RUNNING'::runtimetaskstatus,
+    'RETRYING'::runtimetaskstatus
   )
 `
 
@@ -163,12 +75,12 @@ func (q *Queries) CountLoopInFlightSteps(ctx context.Context, loopID uuid.UUID) 
 
 const countStepStatesByRound = `-- name: CountStepStatesByRound :many
 SELECT
-  COALESCE(t.status::text, s.state::text)::stepstatus AS state,
+  t.status::text::stepstatus AS state,
   COUNT(*)::int AS count
 FROM step s
-LEFT JOIN task t ON t.id = s.task_id
+JOIN task t ON t.id = s.task_id
 WHERE s.round_id = $1::uuid
-GROUP BY COALESCE(t.status::text, s.state::text)::stepstatus
+GROUP BY t.status::text::stepstatus
 `
 
 type CountStepStatesByRoundRow struct {
@@ -482,19 +394,6 @@ func (q *Queries) GetRoundState(ctx context.Context, roundID uuid.UUID) (Roundst
 	return state, err
 }
 
-const getStepState = `-- name: GetStepState :one
-SELECT state
-FROM step
-WHERE id = $1::uuid
-`
-
-func (q *Queries) GetStepState(ctx context.Context, stepID uuid.UUID) (Stepstatus, error) {
-	row := q.db.QueryRow(ctx, getStepState, stepID)
-	var state Stepstatus
-	err := row.Scan(&state)
-	return state, err
-}
-
 const insertCommandLog = `-- name: InsertCommandLog :execrows
 INSERT INTO runtime_command_log(
   id, command_id, status, detail, created_at, updated_at
@@ -594,21 +493,22 @@ func (q *Queries) InsertRound(ctx context.Context, arg InsertRoundParams) error 
 
 const insertStep = `-- name: InsertStep :exec
 INSERT INTO step(
-  id, round_id, step_type, dispatch_kind, state, round_index, step_index, depends_on_step_ids, resolved_params, metrics, artifacts,
+  id, round_id, task_id, step_type, dispatch_kind, state, round_index, step_index, depends_on_step_ids, resolved_params, metrics, artifacts,
   input_commit_id, attempt, max_attempts, state_version, created_at, updated_at
 ) VALUES (
   $1::uuid,
   $2::uuid,
-  $3::steptype,
-  $4::stepdispatchkind,
+  $3::uuid,
+  $4::steptype,
+  $5::stepdispatchkind,
   'PENDING'::stepstatus,
-  $5,
   $6,
-  $7::jsonb,
+  $7,
   $8::jsonb,
+  $9::jsonb,
   '{}'::jsonb,
   '{}'::jsonb,
-  $9::uuid,
+  $10::uuid,
   1,
   3,
   0,
@@ -620,6 +520,7 @@ INSERT INTO step(
 type InsertStepParams struct {
 	StepID           uuid.UUID
 	RoundID          uuid.UUID
+	TaskID           uuid.UUID
 	StepType         Steptype
 	DispatchKind     Stepdispatchkind
 	RoundIndex       int32
@@ -633,6 +534,7 @@ func (q *Queries) InsertStep(ctx context.Context, arg InsertStepParams) error {
 	_, err := q.db.Exec(ctx, insertStep,
 		arg.StepID,
 		arg.RoundID,
+		arg.TaskID,
 		arg.StepType,
 		arg.DispatchKind,
 		arg.RoundIndex,
@@ -646,24 +548,25 @@ func (q *Queries) InsertStep(ctx context.Context, arg InsertStepParams) error {
 
 const listLoopStoppableSteps = `-- name: ListLoopStoppableSteps :many
 SELECT
-  t.id AS id,
-  t.state,
-  t.attempt,
-  t.updated_at
-FROM step t
-JOIN round j ON j.id = t.round_id
+  s.id AS id,
+  t.status::text::stepstatus AS state,
+  t.attempt AS attempt,
+  t.updated_at AS updated_at
+FROM step s
+JOIN round j ON j.id = s.round_id
+JOIN task t ON t.id = s.task_id
 WHERE j.loop_id = $1::uuid
-  AND t.state IN (
-    'PENDING'::stepstatus,
-    'READY'::stepstatus,
-    'DISPATCHING'::stepstatus,
-    'SYNCING_ENV'::stepstatus,
-    'PROBING_RUNTIME'::stepstatus,
-    'BINDING_DEVICE'::stepstatus,
-    'RUNNING'::stepstatus,
-    'RETRYING'::stepstatus
+  AND t.status IN (
+    'PENDING'::runtimetaskstatus,
+    'READY'::runtimetaskstatus,
+    'DISPATCHING'::runtimetaskstatus,
+    'SYNCING_ENV'::runtimetaskstatus,
+    'PROBING_RUNTIME'::runtimetaskstatus,
+    'BINDING_DEVICE'::runtimetaskstatus,
+    'RUNNING'::runtimetaskstatus,
+    'RETRYING'::runtimetaskstatus
   )
-ORDER BY t.created_at ASC
+ORDER BY s.created_at ASC
 `
 
 type ListLoopStoppableStepsRow struct {
@@ -699,18 +602,19 @@ func (q *Queries) ListLoopStoppableSteps(ctx context.Context, loopID uuid.UUID) 
 }
 
 const listRoundActiveStepIDs = `-- name: ListRoundActiveStepIDs :many
-SELECT id
-FROM step
-WHERE round_id = $1::uuid
-  AND state IN (
-    'PENDING'::stepstatus,
-    'READY'::stepstatus,
-    'DISPATCHING'::stepstatus,
-    'SYNCING_ENV'::stepstatus,
-    'PROBING_RUNTIME'::stepstatus,
-    'BINDING_DEVICE'::stepstatus,
-    'RUNNING'::stepstatus,
-    'RETRYING'::stepstatus
+SELECT s.id AS id
+FROM step s
+JOIN task t ON t.id = s.task_id
+WHERE s.round_id = $1::uuid
+  AND t.status IN (
+    'PENDING'::runtimetaskstatus,
+    'READY'::runtimetaskstatus,
+    'DISPATCHING'::runtimetaskstatus,
+    'SYNCING_ENV'::runtimetaskstatus,
+    'PROBING_RUNTIME'::runtimetaskstatus,
+    'BINDING_DEVICE'::runtimetaskstatus,
+    'RUNNING'::runtimetaskstatus,
+    'RETRYING'::runtimetaskstatus
   )
 `
 

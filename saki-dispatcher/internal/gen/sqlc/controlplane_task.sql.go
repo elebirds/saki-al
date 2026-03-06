@@ -12,25 +12,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const bindTaskToStep = `-- name: BindTaskToStep :execrows
-UPDATE step
-SET task_id = $1::uuid
-WHERE id = $2::uuid
-`
-
-type BindTaskToStepParams struct {
-	TaskID uuid.UUID
-	StepID uuid.UUID
-}
-
-func (q *Queries) BindTaskToStep(ctx context.Context, arg BindTaskToStepParams) (int64, error) {
-	result, err := q.db.Exec(ctx, bindTaskToStep, arg.TaskID, arg.StepID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
 const cancelTaskByID = `-- name: CancelTaskByID :execrows
 UPDATE task
 SET status = 'CANCELLED'::runtimetaskstatus,
@@ -47,21 +28,6 @@ type CancelTaskByIDParams struct {
 
 func (q *Queries) CancelTaskByID(ctx context.Context, arg CancelTaskByIDParams) (int64, error) {
 	result, err := q.db.Exec(ctx, cancelTaskByID, arg.LastError, arg.TaskID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
-const clearTaskAssignedExecutor = `-- name: ClearTaskAssignedExecutor :execrows
-UPDATE task
-SET assigned_executor_id = NULL,
-    updated_at = now()
-WHERE id = $1::uuid
-`
-
-func (q *Queries) ClearTaskAssignedExecutor(ctx context.Context, taskID uuid.UUID) (int64, error) {
-	result, err := q.db.Exec(ctx, clearTaskAssignedExecutor, taskID)
 	if err != nil {
 		return 0, err
 	}
@@ -227,6 +193,50 @@ func (q *Queries) InsertStepTask(ctx context.Context, arg InsertStepTaskParams) 
 	return err
 }
 
+const markOrchestratorTaskRetrying = `-- name: MarkOrchestratorTaskRetrying :execrows
+UPDATE task
+SET status = 'RETRYING'::runtimetaskstatus,
+    attempt = attempt + 1,
+    last_error = $1,
+    assigned_executor_id = NULL,
+    ended_at = NULL,
+    updated_at = now()
+WHERE id = $2::uuid
+  AND status = 'RUNNING'::runtimetaskstatus
+  AND attempt < max_attempts
+`
+
+type MarkOrchestratorTaskRetryingParams struct {
+	LastError pgtype.Text
+	TaskID    uuid.UUID
+}
+
+func (q *Queries) MarkOrchestratorTaskRetrying(ctx context.Context, arg MarkOrchestratorTaskRetryingParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markOrchestratorTaskRetrying, arg.LastError, arg.TaskID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const markOrchestratorTaskRunning = `-- name: MarkOrchestratorTaskRunning :execrows
+UPDATE task
+SET status = 'RUNNING'::runtimetaskstatus,
+    started_at = COALESCE(started_at, now()),
+    last_error = NULL,
+    updated_at = now()
+WHERE id = $1::uuid
+  AND status = 'READY'::runtimetaskstatus
+`
+
+func (q *Queries) MarkOrchestratorTaskRunning(ctx context.Context, taskID uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, markOrchestratorTaskRunning, taskID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const markTaskDispatching = `-- name: MarkTaskDispatching :execrows
 UPDATE task
 SET status = 'DISPATCHING'::runtimetaskstatus,
@@ -243,6 +253,138 @@ type MarkTaskDispatchingParams struct {
 
 func (q *Queries) MarkTaskDispatching(ctx context.Context, arg MarkTaskDispatchingParams) (int64, error) {
 	result, err := q.db.Exec(ctx, markTaskDispatching, arg.AssignedExecutorID, arg.TaskID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const markTaskDispatchingFromReady = `-- name: MarkTaskDispatchingFromReady :execrows
+UPDATE task
+SET status = 'DISPATCHING'::runtimetaskstatus,
+    assigned_executor_id = $1,
+    last_error = NULL,
+    updated_at = now()
+WHERE id = $2::uuid
+  AND status = 'READY'::runtimetaskstatus
+`
+
+type MarkTaskDispatchingFromReadyParams struct {
+	AssignedExecutorID pgtype.Text
+	TaskID             uuid.UUID
+}
+
+func (q *Queries) MarkTaskDispatchingFromReady(ctx context.Context, arg MarkTaskDispatchingFromReadyParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markTaskDispatchingFromReady, arg.AssignedExecutorID, arg.TaskID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const projectStepFromTask = `-- name: ProjectStepFromTask :execrows
+UPDATE step s
+SET state = t.status::text::stepstatus,
+    state_version = CASE
+      WHEN s.state IS DISTINCT FROM t.status::text::stepstatus THEN s.state_version + 1
+      ELSE s.state_version
+    END,
+    attempt = t.attempt,
+    max_attempts = t.max_attempts,
+    assigned_executor_id = t.assigned_executor_id,
+    started_at = CASE
+      WHEN t.status IN (
+        'RUNNING'::runtimetaskstatus,
+        'SUCCEEDED'::runtimetaskstatus,
+        'FAILED'::runtimetaskstatus,
+        'CANCELLED'::runtimetaskstatus,
+        'SKIPPED'::runtimetaskstatus
+      ) THEN COALESCE(s.started_at, t.started_at, now())
+      ELSE s.started_at
+    END,
+    ended_at = CASE
+      WHEN t.status IN (
+        'SUCCEEDED'::runtimetaskstatus,
+        'FAILED'::runtimetaskstatus,
+        'CANCELLED'::runtimetaskstatus,
+        'SKIPPED'::runtimetaskstatus
+      ) THEN COALESCE(s.ended_at, t.ended_at, now())
+      ELSE s.ended_at
+    END,
+    last_error = t.last_error,
+    updated_at = now()
+FROM task t
+WHERE t.id = $1::uuid
+  AND s.task_id = t.id
+`
+
+func (q *Queries) ProjectStepFromTask(ctx context.Context, taskID uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, projectStepFromTask, taskID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const promoteRetryingTaskToReady = `-- name: PromoteRetryingTaskToReady :execrows
+UPDATE task
+SET status = 'READY'::runtimetaskstatus,
+    last_error = NULL,
+    ended_at = NULL,
+    updated_at = now()
+WHERE id = $1::uuid
+  AND status = 'RETRYING'::runtimetaskstatus
+`
+
+func (q *Queries) PromoteRetryingTaskToReady(ctx context.Context, taskID uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, promoteRetryingTaskToReady, taskID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const promoteTaskToReady = `-- name: PromoteTaskToReady :execrows
+UPDATE task
+SET status = 'READY'::runtimetaskstatus,
+    last_error = NULL,
+    ended_at = NULL,
+    updated_at = now()
+WHERE id = $1::uuid
+  AND status = 'PENDING'::runtimetaskstatus
+`
+
+func (q *Queries) PromoteTaskToReady(ctx context.Context, taskID uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, promoteTaskToReady, taskID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const recoverStaleDispatchingTaskToReady = `-- name: RecoverStaleDispatchingTaskToReady :execrows
+UPDATE task
+SET status = 'READY'::runtimetaskstatus,
+    assigned_executor_id = NULL,
+    last_error = $1,
+    ended_at = NULL,
+    updated_at = now()
+WHERE id = $2::uuid
+  AND status IN (
+    'DISPATCHING'::runtimetaskstatus,
+    'SYNCING_ENV'::runtimetaskstatus,
+    'PROBING_RUNTIME'::runtimetaskstatus,
+    'BINDING_DEVICE'::runtimetaskstatus
+  )
+`
+
+type RecoverStaleDispatchingTaskToReadyParams struct {
+	LastError pgtype.Text
+	TaskID    uuid.UUID
+}
+
+func (q *Queries) RecoverStaleDispatchingTaskToReady(ctx context.Context, arg RecoverStaleDispatchingTaskToReadyParams) (int64, error) {
+	result, err := q.db.Exec(ctx, recoverStaleDispatchingTaskToReady, arg.LastError, arg.TaskID)
 	if err != nil {
 		return 0, err
 	}
@@ -266,42 +408,49 @@ func (q *Queries) ResetTaskToReadyQueueFull(ctx context.Context, taskID uuid.UUI
 	return result.RowsAffected(), nil
 }
 
-const setTaskAssignedExecutor = `-- name: SetTaskAssignedExecutor :execrows
+const updateTaskExecutionResultGuarded = `-- name: UpdateTaskExecutionResultGuarded :execrows
 UPDATE task
-SET assigned_executor_id = $1,
+SET status = $1::runtimetaskstatus,
+    started_at = COALESCE(started_at, now()),
+    ended_at = CASE
+      WHEN $1::runtimetaskstatus IN (
+        'SUCCEEDED'::runtimetaskstatus,
+        'FAILED'::runtimetaskstatus,
+        'CANCELLED'::runtimetaskstatus,
+        'SKIPPED'::runtimetaskstatus
+      ) THEN COALESCE(ended_at, now())
+      ELSE ended_at
+    END,
+    last_error = $2::text,
+    assigned_executor_id = CASE
+      WHEN $1::runtimetaskstatus IN (
+        'SUCCEEDED'::runtimetaskstatus,
+        'FAILED'::runtimetaskstatus,
+        'CANCELLED'::runtimetaskstatus,
+        'SKIPPED'::runtimetaskstatus,
+        'RETRYING'::runtimetaskstatus
+      ) THEN NULL
+      ELSE assigned_executor_id
+    END,
     updated_at = now()
-WHERE id = $2::uuid
+WHERE id = $3::uuid
+  AND status = $4::runtimetaskstatus
 `
 
-type SetTaskAssignedExecutorParams struct {
-	AssignedExecutorID pgtype.Text
-	TaskID             uuid.UUID
+type UpdateTaskExecutionResultGuardedParams struct {
+	Status     Runtimetaskstatus
+	LastError  pgtype.Text
+	TaskID     uuid.UUID
+	FromStatus Runtimetaskstatus
 }
 
-func (q *Queries) SetTaskAssignedExecutor(ctx context.Context, arg SetTaskAssignedExecutorParams) (int64, error) {
-	result, err := q.db.Exec(ctx, setTaskAssignedExecutor, arg.AssignedExecutorID, arg.TaskID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
-const syncTaskAttemptFromStep = `-- name: SyncTaskAttemptFromStep :execrows
-UPDATE task t
-SET attempt = s.attempt,
-    max_attempts = s.max_attempts,
-    updated_at = now()
-FROM step s
-WHERE s.id = $1::uuid
-  AND t.id = s.task_id
-  AND (
-    t.attempt <> s.attempt
-    OR t.max_attempts <> s.max_attempts
-  )
-`
-
-func (q *Queries) SyncTaskAttemptFromStep(ctx context.Context, stepID uuid.UUID) (int64, error) {
-	result, err := q.db.Exec(ctx, syncTaskAttemptFromStep, stepID)
+func (q *Queries) UpdateTaskExecutionResultGuarded(ctx context.Context, arg UpdateTaskExecutionResultGuardedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateTaskExecutionResultGuarded,
+		arg.Status,
+		arg.LastError,
+		arg.TaskID,
+		arg.FromStatus,
+	)
 	if err != nil {
 		return 0, err
 	}

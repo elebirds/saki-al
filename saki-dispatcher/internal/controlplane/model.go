@@ -169,10 +169,9 @@ func mapLoopStoppableSteps(rows []db.ListLoopStoppableStepsRow) []stoppingStep {
 	return items
 }
 
-func mapStepPayload(record db.GetStepPayloadByIDForUpdateRow) (stepDispatchPayload, error) {
+func mapStepPayload(record db.GetStepPayloadByTaskIDForUpdateRow) (stepDispatchPayload, error) {
 	row := stepDispatchPayload{
 		StepID:             record.StepID,
-		TaskID:             record.TaskID,
 		RoundID:            record.RoundID,
 		Status:             record.Status,
 		StepType:           record.StepType,
@@ -191,6 +190,7 @@ func mapStepPayload(record db.GetStepPayloadByIDForUpdateRow) (stepDispatchPaylo
 		resourcesRaw:       record.ResourcesRaw,
 		roundInputCommitID: record.RoundInputCommitID,
 	}
+	row.TaskID = &record.TaskID
 	if row.InputCommitID == nil {
 		row.InputCommitID = row.roundInputCommitID
 	}

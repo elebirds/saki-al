@@ -161,3 +161,16 @@ SET status = 'CANCELLED'::runtimetaskstatus,
     ended_at = COALESCE(ended_at, now()),
     updated_at = now()
 WHERE id = sqlc.arg(task_id)::uuid;
+
+-- name: SyncTaskAttemptFromStep :execrows
+UPDATE task t
+SET attempt = s.attempt,
+    max_attempts = s.max_attempts,
+    updated_at = now()
+FROM step s
+WHERE s.id = sqlc.arg(step_id)::uuid
+  AND t.id = s.task_id
+  AND (
+    t.attempt <> s.attempt
+    OR t.max_attempts <> s.max_attempts
+  );

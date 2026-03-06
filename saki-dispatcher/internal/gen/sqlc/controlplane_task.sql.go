@@ -319,6 +319,28 @@ func (q *Queries) SetTaskAssignedExecutor(ctx context.Context, arg SetTaskAssign
 	return result.RowsAffected(), nil
 }
 
+const syncTaskAttemptFromStep = `-- name: SyncTaskAttemptFromStep :execrows
+UPDATE task t
+SET attempt = s.attempt,
+    max_attempts = s.max_attempts,
+    updated_at = now()
+FROM step s
+WHERE s.id = $1::uuid
+  AND t.id = s.task_id
+  AND (
+    t.attempt <> s.attempt
+    OR t.max_attempts <> s.max_attempts
+  )
+`
+
+func (q *Queries) SyncTaskAttemptFromStep(ctx context.Context, stepID uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, syncTaskAttemptFromStep, stepID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const updateTaskResult = `-- name: UpdateTaskResult :execrows
 UPDATE task
 SET status = $1::runtimetaskstatus,

@@ -1010,6 +1010,9 @@ func (s *Service) syncStepStateToTaskTx(
 	if err := s.updateTaskStatusTx(ctx, tx, taskID, targetTaskStatus, reason); err != nil {
 		return err
 	}
+	if _, err := s.qtx(tx).SyncTaskAttemptFromStep(ctx, stepID); err != nil {
+		return err
+	}
 
 	switch stepState {
 	case stepDispatching:

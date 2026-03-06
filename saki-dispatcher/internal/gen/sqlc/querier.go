@@ -88,6 +88,7 @@ type Querier interface {
 	ResetTaskToReadyQueueFull(ctx context.Context, taskID uuid.UUID) (int64, error)
 	ResolveBranchHeadFromDB(ctx context.Context, branchID uuid.UUID) (ResolveBranchHeadFromDBRow, error)
 	SetTaskAssignedExecutor(ctx context.Context, arg SetTaskAssignedExecutorParams) (int64, error)
+	SyncTaskAttemptFromStep(ctx context.Context, stepID uuid.UUID) (int64, error)
 	TryDispatchAdvisoryLock(ctx context.Context, lockKey int64) (bool, error)
 	TryLoopAdvisoryXactLock(ctx context.Context, lockKey int64) (bool, error)
 	UpdateCommandLogStatusDetail(ctx context.Context, arg UpdateCommandLogStatusDetailParams) error

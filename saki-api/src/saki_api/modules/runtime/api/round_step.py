@@ -323,7 +323,7 @@ class TaskArtifactRead(BaseModel):
 
 class RoundArtifactRead(BaseModel):
     step_id: uuid.UUID
-    task_id: Optional[uuid.UUID] = None
+    task_id: uuid.UUID
     step_index: int
     stage: str
     artifact_class: str

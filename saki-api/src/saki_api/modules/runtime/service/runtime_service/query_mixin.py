@@ -687,13 +687,6 @@ class RuntimeQueryMixin:
         return self._extract_downloadable_step_artifacts(step)
 
     @staticmethod
-    def _artifact_stage_from_step_type(step_type: Any) -> str:
-        value = str(step_type.value if hasattr(step_type, "value") else step_type).strip().lower()
-        if value in {"train", "eval", "score", "select", "predict"}:
-            return value
-        return "custom"
-
-    @staticmethod
     def _artifact_class_from_stage(stage: str, kind: str) -> str:
         normalized_kind = str(kind or "").strip().lower()
         if stage == "train":
@@ -710,12 +703,25 @@ class RuntimeQueryMixin:
 
     async def list_round_artifacts(self, round_id: uuid.UUID, limit: int = 2000) -> list[RoundArtifactRead]:
         steps = await self.list_steps(round_id, limit=limit)
+        task_ids = [step.task_id for step in steps if step.task_id is not None]
+        round_tasks = await self.task_repo.get_by_ids(task_ids) if task_ids else []
+        task_by_id = {task.id: task for task in round_tasks}
         items: list[RoundArtifactRead] = []
         for step in steps:
-            artifacts = self._extract_downloadable_step_artifacts(step)
+            if step.task_id is None:
+                continue
+            task = task_by_id.get(step.task_id)
+            if task is None:
+                continue
+
+            task_type = str(task.task_type.value if hasattr(task.task_type, "value") else task.task_type).strip().lower()
+            stage = self._round_stage_from_task_type(task_type)
+
+            artifacts = self._extract_downloadable_task_artifacts(task)
+            if not artifacts:
+                artifacts = self._extract_downloadable_step_artifacts(step)
             if not artifacts:
                 continue
-            stage = self._artifact_stage_from_step_type(step.step_type)
             for artifact in artifacts:
                 size_raw = (artifact.meta or {}).get("size") if isinstance(artifact.meta, dict) else None
                 size_value = int(size_raw) if isinstance(size_raw, (int, float)) else None

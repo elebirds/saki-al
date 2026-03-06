@@ -650,6 +650,13 @@ class RuntimeQueryMixin:
         step = await self.step_repo.get_by_id_or_raise(step_id)
         return self._extract_downloadable_step_artifacts(step)
 
+    async def list_task_artifacts(self, task_id: uuid.UUID) -> list[StepArtifactRead]:
+        await self.task_repo.get_by_id_or_raise(task_id)
+        step = await self.step_repo.get_by_task_id(task_id)
+        if step is None:
+            return []
+        return self._extract_downloadable_step_artifacts(step)
+
     @staticmethod
     def _artifact_stage_from_step_type(step_type: Any) -> str:
         value = str(step_type.value if hasattr(step_type, "value") else step_type).strip().lower()
@@ -686,6 +693,7 @@ class RuntimeQueryMixin:
                 items.append(
                     RoundArtifactRead(
                         step_id=step.id,
+                        task_id=step.task_id,
                         step_index=int(step.step_index or 0),
                         stage=stage,
                         artifact_class=self._artifact_class_from_stage(stage, artifact.kind),
@@ -699,14 +707,13 @@ class RuntimeQueryMixin:
         items.sort(key=lambda item: (int(item.step_index or 0), str(item.name or "")))
         return items
 
-    async def get_step_artifact_download_url(
+    def _resolve_artifact_download_url_from_step(
         self,
         *,
-        step_id: uuid.UUID,
+        step: Step,
         artifact_name: str,
         expires_in_hours: int = 2,
     ) -> str:
-        step = await self.step_repo.get_by_id_or_raise(step_id)
         artifact = (step.artifacts or {}).get(artifact_name)
         if not artifact:
             raise NotFoundAppException(f"Artifact {artifact_name} not found")
@@ -731,6 +738,37 @@ class RuntimeQueryMixin:
             return uri
 
         raise BadRequestAppException(f"Unsupported artifact URI: {uri}")
+
+    async def get_step_artifact_download_url(
+        self,
+        *,
+        step_id: uuid.UUID,
+        artifact_name: str,
+        expires_in_hours: int = 2,
+    ) -> str:
+        step = await self.step_repo.get_by_id_or_raise(step_id)
+        return self._resolve_artifact_download_url_from_step(
+            step=step,
+            artifact_name=artifact_name,
+            expires_in_hours=expires_in_hours,
+        )
+
+    async def get_task_artifact_download_url(
+        self,
+        *,
+        task_id: uuid.UUID,
+        artifact_name: str,
+        expires_in_hours: int = 2,
+    ) -> str:
+        await self.task_repo.get_by_id_or_raise(task_id)
+        step = await self.step_repo.get_by_task_id(task_id)
+        if step is None:
+            raise NotFoundAppException(f"Task {task_id} has no mapped step artifacts")
+        return self._resolve_artifact_download_url_from_step(
+            step=step,
+            artifact_name=artifact_name,
+            expires_in_hours=expires_in_hours,
+        )
 
     async def summarize_loop(self, loop_id: uuid.UUID) -> LoopSummaryStatsVO:
         await self.loop_repo.get_by_id_or_raise(loop_id)

@@ -329,6 +329,7 @@ class StepArtifactsResponse(BaseModel):
 
 class RoundArtifactRead(BaseModel):
     step_id: uuid.UUID
+    task_id: Optional[uuid.UUID] = None
     step_index: int
     stage: str
     artifact_class: str
@@ -342,6 +343,11 @@ class RoundArtifactRead(BaseModel):
 class RoundArtifactsResponse(BaseModel):
     round_id: uuid.UUID
     items: List[RoundArtifactRead] = Field(default_factory=list)
+
+
+class TaskArtifactsResponse(BaseModel):
+    task_id: uuid.UUID
+    artifacts: List[StepArtifactRead]
 
 
 class RoundMissingSamplesDatasetStatRead(BaseModel):
@@ -432,6 +438,13 @@ class PredictionApplyResponse(BaseModel):
 
 class StepArtifactDownloadResponse(BaseModel):
     step_id: uuid.UUID
+    artifact_name: str
+    download_url: str
+    expires_in_hours: int = Field(default=2, ge=1, le=24)
+
+
+class TaskArtifactDownloadResponse(BaseModel):
+    task_id: uuid.UUID
     artifact_name: str
     download_url: str
     expires_in_hours: int = Field(default=2, ge=1, le=24)

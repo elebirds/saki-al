@@ -20,6 +20,8 @@ from saki_api.modules.runtime.api.round_step import (
     RoundRead,
     RoundSelectionRead,
     StepRead,
+    TaskArtifactDownloadResponse,
+    TaskArtifactsResponse,
     StepArtifactDownloadResponse,
     StepArtifactsResponse,
     StepCandidateRead,
@@ -324,6 +326,55 @@ async def get_task_candidates(
         )
         for item in rows
     ]
+
+
+@router.get("/tasks/{task_id}/artifacts", response_model=TaskArtifactsResponse)
+async def get_task_artifacts(
+    *,
+    task_id: uuid.UUID,
+    runtime_service: RuntimeServiceDep,
+    session: AsyncSession = Depends(get_session),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
+):
+    task = await runtime_service.task_repo.get_by_id_or_raise(task_id)
+    await ensure_project_permission(
+        session=session,
+        current_user_id=current_user_id,
+        project_id=task.project_id,
+        required_permission=Permissions.ROUND_READ,
+    )
+    artifacts = await runtime_service.list_task_artifacts(task_id)
+    return TaskArtifactsResponse(task_id=task_id, artifacts=artifacts)
+
+
+@router.get("/tasks/{task_id}/artifacts/{artifact_name}:download-url", response_model=TaskArtifactDownloadResponse)
+async def get_task_artifact_download_url(
+    *,
+    task_id: uuid.UUID,
+    artifact_name: str,
+    expires_in_hours: int = Query(default=2, ge=1, le=24),
+    runtime_service: RuntimeServiceDep,
+    session: AsyncSession = Depends(get_session),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
+):
+    task = await runtime_service.task_repo.get_by_id_or_raise(task_id)
+    await ensure_project_permission(
+        session=session,
+        current_user_id=current_user_id,
+        project_id=task.project_id,
+        required_permission=Permissions.ROUND_READ,
+    )
+    download_url = await runtime_service.get_task_artifact_download_url(
+        task_id=task_id,
+        artifact_name=artifact_name,
+        expires_in_hours=expires_in_hours,
+    )
+    return TaskArtifactDownloadResponse(
+        task_id=task_id,
+        artifact_name=artifact_name,
+        download_url=download_url,
+        expires_in_hours=expires_in_hours,
+    )
 
 
 @router.get("/steps/{step_id}/metrics/series", response_model=List[StepMetricPointRead])

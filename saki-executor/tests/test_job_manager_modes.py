@@ -399,9 +399,9 @@ class _ContextProbePlugin(_MinimalPlugin):
     def _capture_context(self, context: TaskRuntimeContext | ExecutionBindingContext | None) -> None:
         if context is None:
             return
-        step_context = context.step_context if isinstance(context, ExecutionBindingContext) else context
-        self.context_ids.append(id(step_context))
-        self.context_snapshots.append(step_context.to_dict())
+        task_context = context.task_context if isinstance(context, ExecutionBindingContext) else context
+        self.context_ids.append(id(task_context))
+        self.context_snapshots.append(task_context.to_dict())
 
     def validate_params(
         self,

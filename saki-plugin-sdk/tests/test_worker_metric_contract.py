@@ -29,7 +29,7 @@ class _FakePubSocket:
 
 def _execution_context(step_type: str) -> ExecutionBindingContext:
     return ExecutionBindingContext(
-        step_context=TaskRuntimeContext(
+        task_context=TaskRuntimeContext(
             task_id="step-contract",
             round_id="round-contract",
             round_index=1,

@@ -85,13 +85,13 @@ class OrientedRCNNPredictService:
             val_degraded=bool(manifest.get("val_degraded", True)),
             work_dir=work_dir,
             load_from=checkpoint_ref,
-            train_seed=int(cfg.train_seed or context.step_context.train_seed),
+            train_seed=int(cfg.train_seed or context.task_context.train_seed),
             train_sample_count=int(manifest.get("train_sample_count") or 0),
         )
 
         topk = max(1, to_int(params.get("sampling_topk", params.get("topk", 200)), 200))
-        random_seed = int(cfg.sampling_seed or context.step_context.sampling_seed)
-        round_index = int(cfg.round_index or context.step_context.round_index)
+        random_seed = int(cfg.sampling_seed or context.task_context.sampling_seed)
+        round_index = int(cfg.round_index or context.task_context.round_index)
         geometry_mode = self._resolve_geometry_mode(cfg)
 
         model = await asyncio.to_thread(

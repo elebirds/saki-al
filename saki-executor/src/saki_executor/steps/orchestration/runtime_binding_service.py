@@ -107,7 +107,7 @@ class RuntimeBindingService:
         bound_params = dict(plan.effective_plugin_params)
 
         execution_context = ExecutionBindingContext(
-            step_context=plan.runtime_context,
+            task_context=plan.runtime_context,
             host_capability=plan.host_capability,
             runtime_capability=runtime_capability,
             device_binding=binding,

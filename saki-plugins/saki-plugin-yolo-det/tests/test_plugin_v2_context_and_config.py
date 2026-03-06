@@ -116,7 +116,7 @@ async def test_plugin_facade_forwards_context_to_runtime(tmp_path):
         resolved_device_backend="cpu",
     )
     context = ExecutionBindingContext(
-        step_context=step_context,
+        task_context=step_context,
         host_capability=HostCapabilitySnapshot.from_dict(
             {
                 "cpu_workers": 8,
@@ -156,7 +156,7 @@ async def test_plugin_facade_forwards_context_to_runtime(tmp_path):
         context=context,
     )
     assert runtime_stub.last_train_context is not None
-    forwarded_step_context = runtime_stub.last_train_context.step_context
+    forwarded_step_context = runtime_stub.last_train_context.task_context
     assert forwarded_step_context.task_type == "train"
     assert forwarded_step_context.mode == "simulation"
     assert forwarded_step_context.split_seed == 11
@@ -278,7 +278,7 @@ async def test_runtime_prepare_data_ignores_yolo_task_split_hint(tmp_path: Path,
         resolved_device_backend="cpu",
     )
     context = ExecutionBindingContext(
-        step_context=step_context,
+        task_context=step_context,
         host_capability=HostCapabilitySnapshot.from_dict(
             {
                 "cpu_workers": 8,
@@ -376,7 +376,7 @@ async def test_runtime_train_reads_split_seed_from_plugin_config_attrs(tmp_path:
         resolved_device_backend="cpu",
     )
     context = ExecutionBindingContext(
-        step_context=step_context,
+        task_context=step_context,
         host_capability=HostCapabilitySnapshot.from_dict(
             {
                 "cpu_workers": 8,

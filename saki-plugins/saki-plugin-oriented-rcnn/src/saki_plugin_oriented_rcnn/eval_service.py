@@ -68,7 +68,7 @@ class OrientedRCNNEvalService:
             val_degraded=bool(manifest.get("val_degraded", False)),
             work_dir=work_dir,
             load_from=checkpoint_ref,
-            train_seed=int(cfg.train_seed or context.step_context.train_seed),
+            train_seed=int(cfg.train_seed or context.task_context.train_seed),
             train_sample_count=int(manifest.get("train_sample_count") or 0),
         )
 

@@ -86,7 +86,7 @@ async def test_plugin_worker_lifecycle_demo_plugin(tmp_path: Path):
         resolved_device_backend="cpu",
     )
     execution_context = ExecutionBindingContext(
-        step_context=runtime_context,
+        task_context=runtime_context,
         host_capability=HostCapabilitySnapshot.from_dict(
             {
                 "cpu_workers": 8,
@@ -127,7 +127,7 @@ async def test_plugin_worker_lifecycle_demo_plugin(tmp_path: Path):
         runtime_payload = protocol.read_json(Path(runtime_reply.result_path))
         runtime_capability = protocol.parse_runtime_capability(runtime_payload)
         execution_context = ExecutionBindingContext(
-            step_context=runtime_context,
+            task_context=runtime_context,
             host_capability=execution_context.host_capability,
             runtime_capability=runtime_capability,
             device_binding=execution_context.device_binding,

@@ -126,7 +126,7 @@ class YoloRuntimeService:
     ) -> TrainOutput:
         self._stop_flag.clear()
         raw_params = dict(params or {})
-        step_context = context.step_context
+        step_context = context.task_context
         raw_params.setdefault("split_seed", step_context.split_seed)
         raw_params.setdefault("train_seed", step_context.train_seed)
         raw_params.setdefault("sampling_seed", step_context.sampling_seed)

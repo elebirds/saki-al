@@ -59,7 +59,7 @@ class DemoDetectionInternal:
             *,
             context: ExecutionBindingContext,
     ) -> TrainOutput:
-        step_context = context.step_context
+        step_context = context.task_context
         epochs = int(params.get("epochs", 5))
         steps_per_epoch = int(params.get("steps_per_epoch", 20))
 

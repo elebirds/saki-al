@@ -69,7 +69,7 @@ class YoloPredictService:
         topk = max(1, to_int(getattr(cfg, "topk", getattr(cfg, "sampling_topk", 200)), 200))
         conf = to_float(cfg.predict_conf, 0.1)
         imgsz = to_int(cfg.imgsz, 640)
-        step_context = context.step_context
+        step_context = context.task_context
         random_seed = max(
             0,
             to_int(

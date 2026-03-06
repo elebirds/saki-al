@@ -100,7 +100,7 @@ def _context() -> TaskRuntimeContext:
 
 def _execution_context() -> ExecutionBindingContext:
     return ExecutionBindingContext(
-        step_context=_context(),
+        task_context=_context(),
         host_capability=HostCapabilitySnapshot.from_dict(
             {
                 "cpu_workers": 8,

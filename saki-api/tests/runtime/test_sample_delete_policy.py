@@ -150,19 +150,17 @@ async def _seed_context(session: AsyncSession) -> SampleDeleteContext:
     session.add(round_)
     await session.flush()
 
+    task = Task(project_id=project.id)
+    session.add(task)
+    await session.flush()
+
     step = Step(
         round_id=round_.id,
+        task_id=task.id,
         step_type=StepType.SELECT,
         round_index=1,
         step_index=1,
     )
-    session.add(step)
-    await session.flush()
-
-    task = Task(project_id=project.id)
-    session.add(task)
-    await session.flush()
-    step.task_id = task.id
     session.add(step)
     await session.flush()
 

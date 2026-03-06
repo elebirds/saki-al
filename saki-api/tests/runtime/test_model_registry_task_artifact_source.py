@@ -107,8 +107,24 @@ async def _seed_round_with_step_and_task(session: AsyncSession):
     session.add(round_row)
     await session.flush()
 
+    task = Task(
+        project_id=project.id,
+        kind=RuntimeTaskKind.STEP,
+        task_type=RuntimeTaskType.TRAIN,
+        status=RuntimeTaskStatus.SUCCEEDED,
+        plugin_id=loop.model_arch,
+        depends_on_task_ids=[],
+        input_commit_id=commit.id,
+        resolved_params={},
+        attempt=1,
+        max_attempts=3,
+    )
+    session.add(task)
+    await session.flush()
+
     step = Step(
         round_id=round_row.id,
+        task_id=task.id,
         step_type=StepType.TRAIN,
         dispatch_kind=StepDispatchKind.DISPATCHABLE,
         state=StepStatus.SUCCEEDED,
@@ -131,23 +147,6 @@ async def _seed_round_with_step_and_task(session: AsyncSession):
     session.add(step)
     await session.flush()
 
-    task = Task(
-        project_id=project.id,
-        kind=RuntimeTaskKind.STEP,
-        task_type=RuntimeTaskType.TRAIN,
-        status=RuntimeTaskStatus.SUCCEEDED,
-        plugin_id=loop.model_arch,
-        depends_on_task_ids=[],
-        input_commit_id=commit.id,
-        resolved_params={},
-        attempt=1,
-        max_attempts=3,
-    )
-    session.add(task)
-    await session.flush()
-
-    step.task_id = task.id
-    session.add(step)
     await session.commit()
     return round_row.id, step.id, task.id
 

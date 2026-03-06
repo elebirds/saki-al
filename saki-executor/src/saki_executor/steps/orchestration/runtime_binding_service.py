@@ -5,7 +5,7 @@ from typing import Any
 
 from saki_executor.plugins.venv_manager import ensure_plugin_venv_for_profile
 from saki_executor.runtime.binding.device_binding_resolver import DeviceBindingResolver
-from saki_executor.steps.orchestration.error_codes import StepErrorCode, StepStage, wrap_stage_error
+from saki_executor.steps.orchestration.error_codes import TaskErrorCode, TaskStage, wrap_task_error
 from saki_executor.steps.orchestration.models import BoundExecutionPlan, TaskExecutionPlan
 from saki_plugin_sdk import ExecutionBindingContext, RuntimeCapabilitySnapshot
 
@@ -45,9 +45,9 @@ class RuntimeBindingService:
                 extra_env=extra_env,
             )
         except Exception as exc:
-            raise wrap_stage_error(
-                stage=StepStage.SYNCING_ENV,
-                default_code=StepErrorCode.ENV_SYNC_FAILED,
+            raise wrap_task_error(
+                stage=TaskStage.SYNCING_ENV,
+                default_code=TaskErrorCode.ENV_SYNC_FAILED,
                 exc=exc,
                 message=(
                     f"profile environment sync failed plugin_id={plan.request.plugin_id} "
@@ -67,9 +67,9 @@ class RuntimeBindingService:
                 return runtime_capability
             return RuntimeCapabilitySnapshot.from_dict(dict(runtime_capability or {}))
         except Exception as exc:
-            raise wrap_stage_error(
-                stage=StepStage.PROBING_RUNTIME,
-                default_code=StepErrorCode.RUNTIME_PROBE_FAILED,
+            raise wrap_task_error(
+                stage=TaskStage.PROBING_RUNTIME,
+                default_code=TaskErrorCode.RUNTIME_PROBE_FAILED,
                 exc=exc,
                 message=(
                     f"runtime capability probe failed plugin_id={plan.request.plugin_id} "
@@ -94,9 +94,9 @@ class RuntimeBindingService:
                 allow_auto_fallback=bool(getattr(plugin, "supports_auto_fallback", True)),
             )
         except Exception as exc:
-            raise wrap_stage_error(
-                stage=StepStage.BINDING_DEVICE,
-                default_code=StepErrorCode.DEVICE_BINDING_CONFLICT,
+            raise wrap_task_error(
+                stage=TaskStage.BINDING_DEVICE,
+                default_code=TaskErrorCode.DEVICE_BINDING_CONFLICT,
                 exc=exc,
                 message=(
                     f"device binding failed plugin_id={plan.request.plugin_id} "
@@ -119,9 +119,9 @@ class RuntimeBindingService:
             try:
                 await bind_context(execution_context)
             except Exception as exc:
-                raise wrap_stage_error(
-                    stage=StepStage.BINDING_DEVICE,
-                    default_code=StepErrorCode.BIND_CONTEXT_FAILED,
+                raise wrap_task_error(
+                    stage=TaskStage.BINDING_DEVICE,
+                    default_code=TaskErrorCode.BIND_CONTEXT_FAILED,
                     exc=exc,
                     message=(
                         f"bind execution context failed plugin_id={plan.request.plugin_id} "
@@ -132,9 +132,9 @@ class RuntimeBindingService:
         try:
             plugin.validate_params(bound_params, context=execution_context)
         except Exception as exc:
-            raise wrap_stage_error(
-                stage=StepStage.POST_BIND_VALIDATION,
-                default_code=StepErrorCode.PARAM_VALIDATE_FAILED,
+            raise wrap_task_error(
+                stage=TaskStage.POST_BIND_VALIDATION,
+                default_code=TaskErrorCode.PARAM_VALIDATE_FAILED,
                 exc=exc,
                 message=(
                     f"plugin params validate failed after binding plugin_id={plan.request.plugin_id} "

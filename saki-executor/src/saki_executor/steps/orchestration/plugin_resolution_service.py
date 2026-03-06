@@ -5,7 +5,7 @@ from typing import Any
 
 from saki_executor.runtime.profile.profile_selector import ProfileSelectorStrategy
 from saki_executor.steps.contracts import TaskExecutionRequest
-from saki_executor.steps.orchestration.error_codes import StepErrorCode, StepPipelineError, StepStage, wrap_stage_error
+from saki_executor.steps.orchestration.error_codes import TaskErrorCode, TaskPipelineError, TaskStage, wrap_task_error
 from saki_executor.steps.orchestration.models import TaskExecutionPlan
 from saki_plugin_sdk import RuntimeProfileSpec, TaskRuntimeContext, parse_runtime_profiles
 
@@ -17,9 +17,9 @@ class PluginResolutionService:
     def resolve(self, *, manager: Any, request: TaskExecutionRequest) -> TaskExecutionPlan:
         metadata_plugin = manager.plugin_registry.get(request.plugin_id)
         if metadata_plugin is None:
-            raise StepPipelineError(
-                code=StepErrorCode.PLUGIN_NOT_FOUND,
-                stage=StepStage.PLUGIN_RESOLUTION,
+            raise TaskPipelineError(
+                code=TaskErrorCode.PLUGIN_NOT_FOUND,
+                stage=TaskStage.PLUGIN_RESOLUTION,
                 message=f"plugin not found: {request.plugin_id}",
             )
 
@@ -30,9 +30,9 @@ class PluginResolutionService:
             if str(item).strip()
         }
         if supported_task_types and request.task_type not in supported_task_types:
-            raise StepPipelineError(
-                code=StepErrorCode.PLUGIN_UNSUPPORTED_STEP_TYPE,
-                stage=StepStage.PLUGIN_RESOLUTION,
+            raise TaskPipelineError(
+                code=TaskErrorCode.PLUGIN_UNSUPPORTED_STEP_TYPE,
+                stage=TaskStage.PLUGIN_RESOLUTION,
                 message=(
                     f"plugin {request.plugin_id} does not support task_type={request.task_type}; "
                     f"supported={sorted(supported_task_types)}"
@@ -53,9 +53,9 @@ class PluginResolutionService:
                 context=runtime_context_candidate.to_dict(),
             )
         except Exception as exc:
-            raise wrap_stage_error(
-                stage=StepStage.PLUGIN_RESOLUTION,
-                default_code=StepErrorCode.CONFIG_RESOLVE_FAILED,
+            raise wrap_task_error(
+                stage=TaskStage.PLUGIN_RESOLUTION,
+                default_code=TaskErrorCode.CONFIG_RESOLVE_FAILED,
                 exc=exc,
                 message=(
                     f"plugin config resolve failed plugin_id={request.plugin_id} "
@@ -81,9 +81,9 @@ class PluginResolutionService:
         try:
             metadata_plugin.validate_params(effective_plugin_params, context=runtime_context_candidate)
         except Exception as exc:
-            raise wrap_stage_error(
-                stage=StepStage.PLUGIN_RESOLUTION,
-                default_code=StepErrorCode.PARAM_VALIDATE_FAILED,
+            raise wrap_task_error(
+                stage=TaskStage.PLUGIN_RESOLUTION,
+                default_code=TaskErrorCode.PARAM_VALIDATE_FAILED,
                 exc=exc,
                 message=(
                     f"plugin params validate failed plugin_id={request.plugin_id} "
@@ -100,9 +100,9 @@ class PluginResolutionService:
                 requested_device=requested_device,
             )
         except Exception as exc:
-            raise wrap_stage_error(
-                stage=StepStage.PLUGIN_RESOLUTION,
-                default_code=StepErrorCode.PROFILE_UNSATISFIED,
+            raise wrap_task_error(
+                stage=TaskStage.PLUGIN_RESOLUTION,
+                default_code=TaskErrorCode.PROFILE_UNSATISFIED,
                 exc=exc,
                 message=(
                     f"runtime profile select failed plugin_id={request.plugin_id} "

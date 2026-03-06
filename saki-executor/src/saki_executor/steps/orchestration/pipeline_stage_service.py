@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from saki_ir import normalize_prediction_candidates
-from saki_executor.steps.orchestration.error_codes import StepErrorCode, StepStage, wrap_stage_error
+from saki_executor.steps.orchestration.error_codes import TaskErrorCode, TaskStage, wrap_task_error
 from saki_executor.steps.orchestration.models import BoundExecutionPlan
 from saki_executor.steps.orchestration.training_data_service import TrainingDataService
 from saki_plugin_sdk import TaskReporter, TaskRuntimeRequirements, WorkspaceProtocol
@@ -74,9 +74,9 @@ class PipelineStageService:
             f"artifact={artifact_name} task_type={self._request.task_type}"
         )
         if self._manager.strict_train_model_handoff:
-            raise wrap_stage_error(
-                stage=StepStage.EXECUTE,
-                default_code=StepErrorCode.EXECUTION_FAILED,
+            raise wrap_task_error(
+                stage=TaskStage.EXECUTE,
+                default_code=TaskErrorCode.EXECUTION_FAILED,
                 exc=RuntimeError(message),
                 message=message,
             )
@@ -142,9 +142,9 @@ class PipelineStageService:
 
             raise RuntimeError(f"task_type routing is not implemented: {self._request.task_type}")
         except Exception as exc:
-            raise wrap_stage_error(
-                stage=StepStage.EXECUTE,
-                default_code=StepErrorCode.EXECUTION_FAILED,
+            raise wrap_task_error(
+                stage=TaskStage.EXECUTE,
+                default_code=TaskErrorCode.EXECUTION_FAILED,
                 exc=exc,
                 message=f"task execution failed task_id={self._request.task_id}: {exc}",
             ) from exc
@@ -236,9 +236,9 @@ class PipelineStageService:
             )
             return data_bundle.protected
         except Exception as exc:
-            raise wrap_stage_error(
-                stage=StepStage.PREPARE_DATA,
-                default_code=StepErrorCode.PREPARE_DATA_FAILED,
+            raise wrap_task_error(
+                stage=TaskStage.PREPARE_DATA,
+                default_code=TaskErrorCode.PREPARE_DATA_FAILED,
                 exc=exc,
                 message=f"prepare_data failed task_id={self._request.task_id}: {exc}",
             ) from exc
@@ -633,9 +633,9 @@ class PipelineStageService:
             except Exception as exc:
                 message = f"artifact={artifact.name} required={required} error={exc}"
                 if required:
-                    raise wrap_stage_error(
-                        stage=StepStage.FINALIZE,
-                        default_code=StepErrorCode.ARTIFACT_UPLOAD_FAILED,
+                    raise wrap_task_error(
+                        stage=TaskStage.FINALIZE,
+                        default_code=TaskErrorCode.ARTIFACT_UPLOAD_FAILED,
                         exc=exc,
                         message=f"required artifact upload failed: {message}",
                     ) from exc

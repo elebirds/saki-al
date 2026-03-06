@@ -3,7 +3,7 @@ from __future__ import annotations
 from enum import Enum
 
 
-class StepStage(str, Enum):
+class TaskStage(str, Enum):
     REQUEST_VALIDATION = "request_validation"
     PLUGIN_RESOLUTION = "plugin_resolution"
     SYNCING_ENV = "syncing_env"
@@ -15,7 +15,7 @@ class StepStage(str, Enum):
     FINALIZE = "finalize"
 
 
-class StepErrorCode(str, Enum):
+class TaskErrorCode(str, Enum):
     REQUEST_INVALID = "REQUEST_INVALID"
     PLUGIN_NOT_FOUND = "PLUGIN_NOT_FOUND"
     PLUGIN_UNSUPPORTED_STEP_TYPE = "PLUGIN_UNSUPPORTED_STEP_TYPE"
@@ -33,12 +33,12 @@ class StepErrorCode(str, Enum):
     INTERNAL_ERROR = "INTERNAL_ERROR"
 
 
-class StepPipelineError(RuntimeError):
+class TaskPipelineError(RuntimeError):
     def __init__(
         self,
         *,
-        code: StepErrorCode,
-        stage: StepStage,
+        code: TaskErrorCode,
+        stage: TaskStage,
         message: str,
         cause: Exception | None = None,
     ) -> None:
@@ -55,32 +55,32 @@ class StepPipelineError(RuntimeError):
 def infer_error_code_from_exception(
     exc: Exception,
     *,
-    default: StepErrorCode,
-) -> StepErrorCode:
+    default: TaskErrorCode,
+) -> TaskErrorCode:
     text = str(exc or "").upper()
     if "PROFILE_UNSATISFIED" in text:
-        return StepErrorCode.PROFILE_UNSATISFIED
+        return TaskErrorCode.PROFILE_UNSATISFIED
     if "DEVICE_BINDING_CONFLICT" in text:
-        return StepErrorCode.DEVICE_BINDING_CONFLICT
+        return TaskErrorCode.DEVICE_BINDING_CONFLICT
     if "RUNTIME_PROBE_FAILED" in text:
-        return StepErrorCode.RUNTIME_PROBE_FAILED
+        return TaskErrorCode.RUNTIME_PROBE_FAILED
     if "CONFIG" in text and "RESOLVE" in text:
-        return StepErrorCode.CONFIG_RESOLVE_FAILED
+        return TaskErrorCode.CONFIG_RESOLVE_FAILED
     if "VALIDATE" in text or "VALIDATION" in text:
-        return StepErrorCode.PARAM_VALIDATE_FAILED
+        return TaskErrorCode.PARAM_VALIDATE_FAILED
     if "METRIC_CONTRACT_VIOLATION" in text or "PLUGINMETRICCONTRACTERROR" in text:
-        return StepErrorCode.METRIC_CONTRACT_VIOLATION
+        return TaskErrorCode.METRIC_CONTRACT_VIOLATION
     return default
 
 
-def wrap_stage_error(
+def wrap_task_error(
     *,
-    stage: StepStage,
-    default_code: StepErrorCode,
+    stage: TaskStage,
+    default_code: TaskErrorCode,
     exc: Exception,
     message: str,
-) -> StepPipelineError:
-    if isinstance(exc, StepPipelineError):
+) -> TaskPipelineError:
+    if isinstance(exc, TaskPipelineError):
         return exc
     code = infer_error_code_from_exception(exc, default=default_code)
-    return StepPipelineError(code=code, stage=stage, message=message, cause=exc)
+    return TaskPipelineError(code=code, stage=stage, message=message, cause=exc)

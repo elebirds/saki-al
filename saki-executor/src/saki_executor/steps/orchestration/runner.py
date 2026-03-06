@@ -9,7 +9,7 @@ from saki_executor.agent import codec as runtime_codec
 from saki_executor.core.config import settings
 from saki_executor.plugins.ipc.proxy_plugin import SubprocessPluginProxy
 from saki_executor.steps.contracts import SUPPORTED_LOOP_MODES, TaskExecutionRequest, TaskFinalResult
-from saki_executor.steps.orchestration.error_codes import StepErrorCode, StepPipelineError, StepStage, wrap_stage_error
+from saki_executor.steps.orchestration.error_codes import TaskErrorCode, TaskPipelineError, TaskStage, wrap_task_error
 from saki_executor.steps.orchestration.event_emitter import TaskEventEmitter
 from saki_executor.steps.orchestration.models import BoundExecutionPlan, TaskExecutionPlan
 from saki_executor.steps.orchestration.pipeline_stage_service import PipelineStageService
@@ -89,21 +89,21 @@ class TaskPipelineRunner:
             if self._request.task_type not in self._TRAINING_PIPELINE_STEP_TYPES:
                 raise RuntimeError(f"unsupported task_type for executor pipeline: {self._request.task_type}")
         except Exception as exc:
-            raise wrap_stage_error(
-                stage=StepStage.REQUEST_VALIDATION,
-                default_code=StepErrorCode.REQUEST_INVALID,
+            raise wrap_task_error(
+                stage=TaskStage.REQUEST_VALIDATION,
+                default_code=TaskErrorCode.REQUEST_INVALID,
                 exc=exc,
                 message=f"request validation failed task_id={self._request.task_id}: {exc}",
             ) from exc
 
     async def _resolve_execution_plan(self, emitter: TaskEventEmitter) -> TaskExecutionPlan:
         await emitter.emit_stage_start(
-            stage=StepStage.PLUGIN_RESOLUTION.value,
+            stage=TaskStage.PLUGIN_RESOLUTION.value,
             message=f"resolving plugin and runtime plan plugin_id={self._request.plugin_id}",
         )
         try:
             plan = self._plugin_resolution_service.resolve(manager=self._manager, request=self._request)
-        except StepPipelineError as exc:
+        except TaskPipelineError as exc:
             await emitter.emit_stage_fail(
                 stage=exc.stage.value,
                 error_code=exc.code.value,
@@ -111,9 +111,9 @@ class TaskPipelineRunner:
             )
             raise
         except Exception as exc:
-            wrapped = wrap_stage_error(
-                stage=StepStage.PLUGIN_RESOLUTION,
-                default_code=StepErrorCode.INTERNAL_ERROR,
+            wrapped = wrap_task_error(
+                stage=TaskStage.PLUGIN_RESOLUTION,
+                default_code=TaskErrorCode.INTERNAL_ERROR,
                 exc=exc,
                 message=f"plugin resolution failed task_id={self._request.task_id}: {exc}",
             )
@@ -125,7 +125,7 @@ class TaskPipelineRunner:
             raise wrapped
 
         await emitter.emit_stage_success(
-            stage=StepStage.PLUGIN_RESOLUTION.value,
+            stage=TaskStage.PLUGIN_RESOLUTION.value,
             message=(
                 f"runtime plan resolved profile={plan.selected_profile.id} "
                 f"task_id={self._request.task_id}"
@@ -141,7 +141,7 @@ class TaskPipelineRunner:
     ) -> TaskExecutionPlan:
         await emitter.emit_status(TaskStatus.SYNCING_ENV, "syncing plugin runtime environment")
         await emitter.emit_stage_start(
-            stage=StepStage.SYNCING_ENV.value,
+            stage=TaskStage.SYNCING_ENV.value,
             message=f"ensuring runtime profile environment profile={plan.selected_profile.id}",
         )
         try:
@@ -149,7 +149,7 @@ class TaskPipelineRunner:
                 plan=plan,
                 auto_sync=settings.PLUGIN_VENV_AUTO_SYNC,
             )
-        except StepPipelineError as exc:
+        except TaskPipelineError as exc:
             await emitter.emit_stage_fail(
                 stage=exc.stage.value,
                 error_code=exc.code.value,
@@ -157,9 +157,9 @@ class TaskPipelineRunner:
             )
             raise
         except Exception as exc:
-            wrapped = wrap_stage_error(
-                stage=StepStage.SYNCING_ENV,
-                default_code=StepErrorCode.ENV_SYNC_FAILED,
+            wrapped = wrap_task_error(
+                stage=TaskStage.SYNCING_ENV,
+                default_code=TaskErrorCode.ENV_SYNC_FAILED,
                 exc=exc,
                 message=f"runtime environment sync failed task_id={self._request.task_id}: {exc}",
             )
@@ -171,7 +171,7 @@ class TaskPipelineRunner:
             raise wrapped
 
         await emitter.emit_stage_success(
-            stage=StepStage.SYNCING_ENV.value,
+            stage=TaskStage.SYNCING_ENV.value,
             message=f"runtime profile environment ready profile={plan.selected_profile.id}",
         )
         return synced
@@ -197,7 +197,7 @@ class TaskPipelineRunner:
     ) -> BoundExecutionPlan:
         await emitter.emit_status(TaskStatus.PROBING_RUNTIME, "probing plugin runtime capability")
         await emitter.emit_stage_start(
-            stage=StepStage.PROBING_RUNTIME.value,
+            stage=TaskStage.PROBING_RUNTIME.value,
             message=f"probing runtime capability profile={plan.selected_profile.id}",
         )
         try:
@@ -205,7 +205,7 @@ class TaskPipelineRunner:
                 plan=plan,
                 plugin=plugin,
             )
-        except StepPipelineError as exc:
+        except TaskPipelineError as exc:
             await emitter.emit_stage_fail(
                 stage=exc.stage.value,
                 error_code=exc.code.value,
@@ -213,13 +213,13 @@ class TaskPipelineRunner:
             )
             raise
         await emitter.emit_stage_success(
-            stage=StepStage.PROBING_RUNTIME.value,
+            stage=TaskStage.PROBING_RUNTIME.value,
             message="runtime capability probe succeeded",
         )
 
         await emitter.emit_status(TaskStatus.BINDING_DEVICE, "binding execution device")
         await emitter.emit_stage_start(
-            stage=StepStage.BINDING_DEVICE.value,
+            stage=TaskStage.BINDING_DEVICE.value,
             message="resolving device binding",
         )
         try:
@@ -228,7 +228,7 @@ class TaskPipelineRunner:
                 plugin=plugin,
                 runtime_capability=runtime_capability,
             )
-        except StepPipelineError as exc:
+        except TaskPipelineError as exc:
             await emitter.emit_stage_fail(
                 stage=exc.stage.value,
                 error_code=exc.code.value,
@@ -237,7 +237,7 @@ class TaskPipelineRunner:
             raise
 
         await emitter.emit_stage_success(
-            stage=StepStage.BINDING_DEVICE.value,
+            stage=TaskStage.BINDING_DEVICE.value,
             message=(
                 f"execution binding resolved backend={bound_plan.execution_context.device_binding.backend} "
                 f"profile={plan.selected_profile.id}"

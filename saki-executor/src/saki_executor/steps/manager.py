@@ -13,7 +13,7 @@ from saki_executor.core.config import settings
 from saki_executor.grpc_gen import runtime_control_pb2 as pb
 from saki_executor.runtime.capability.host_capability_cache import HostCapabilityCache
 from saki_executor.steps.contracts import ArtifactUploadTicket, FetchedPage, TaskExecutionRequest
-from saki_executor.steps.orchestration.error_codes import StepErrorCode, StepPipelineError, StepStage
+from saki_executor.steps.orchestration.error_codes import TaskErrorCode, TaskPipelineError, TaskStage
 from saki_executor.steps.orchestration.runner import TaskPipelineRunner
 from saki_executor.steps.services import ArtifactUploader, DataGateway, SamplingService
 from saki_executor.steps.state import ExecutorState, TaskStatus
@@ -289,12 +289,12 @@ class TaskManager:
         if self._send_message is None:
             raise RuntimeError("task manager send transport is not configured")
         self.executor_state = ExecutorState.FINALIZING
-        if isinstance(exc, StepPipelineError):
+        if isinstance(exc, TaskPipelineError):
             error_message = exc.to_user_message()
         else:
             error_message = (
-                f"[{StepErrorCode.INTERNAL_ERROR.value}] {str(exc)} "
-                f"(stage={StepStage.EXECUTE.value})"
+                f"[{TaskErrorCode.INTERNAL_ERROR.value}] {str(exc)} "
+                f"(stage={TaskStage.EXECUTE.value})"
             )
         reporter = self._ensure_reporter(request)
         await self._push_event(

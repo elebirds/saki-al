@@ -25,6 +25,21 @@ const statusColor: Record<string, string> = {
     failed: 'error',
 };
 
+const taskStatusColor: Record<string, string> = {
+    pending: 'default',
+    ready: 'processing',
+    dispatching: 'processing',
+    syncing_env: 'processing',
+    probing_runtime: 'processing',
+    binding_device: 'processing',
+    running: 'processing',
+    retrying: 'warning',
+    succeeded: 'success',
+    failed: 'error',
+    cancelled: 'default',
+    skipped: 'default',
+};
+
 type ScopeStatus = 'all' | 'unlabeled' | 'labeled' | 'draft';
 
 interface TaskFormValues {
@@ -269,7 +284,7 @@ const ProjectPredictionTasks: React.FC = () => {
             'running',
             'retrying',
         ]);
-        const status = String(selectedTask.taskStatus || selectedTask.status || '').toLowerCase();
+        const status = String(selectedTask.taskStatus || '').toLowerCase();
         if (!activeStatuses.has(status)) return;
         const timer = window.setInterval(() => {
             void loadTaskConsoleEvents(selectedTask, false);
@@ -352,10 +367,20 @@ const ProjectPredictionTasks: React.FC = () => {
                             render: (value: string) => <Typography.Text code>{value}</Typography.Text>,
                         },
                         {
-                            title: t('project.predictionTasks.table.status'),
+                            title: 'Prediction 状态',
                             dataIndex: 'status',
                             width: 130,
                             render: (value: string) => <Tag color={statusColor[value] || 'default'}>{value}</Tag>,
+                        },
+                        {
+                            title: 'Task 状态',
+                            dataIndex: 'taskStatus',
+                            width: 130,
+                            render: (value?: string | null) => {
+                                const status = String(value || '').toLowerCase();
+                                if (!status) return '-';
+                                return <Tag color={taskStatusColor[status] || 'default'}>{status}</Tag>;
+                            },
                         },
                         {
                             title: 'Plugin',

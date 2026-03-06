@@ -17,10 +17,9 @@ from saki_api.modules.runtime.api.round_step import (
     RoundSelectionApplyRequest,
     RoundSelectionApplyResponse,
     RoundCommandResponse,
-    StepCommandResponse,
 )
 from saki_api.modules.access.domain.rbac import Permissions
-from saki_api.modules.shared.modeling.enums import RoundStatus, StepStatus
+from saki_api.modules.shared.modeling.enums import RoundStatus
 
 router = APIRouter()
 
@@ -124,42 +123,3 @@ async def stop_round(
     except Exception as exc:
         logger.warning("dispatcher stop_round failed round_id={} error={}", round_id, exc)
         raise InternalServerErrorAppException("dispatcher stop_round failed") from exc
-
-@router.post("/steps/{step_id}:stop", response_model=StepCommandResponse)
-async def stop_step(
-    *,
-    step_id: uuid.UUID,
-    reason: str = Query(default="user requested stop"),
-    runtime_service: RuntimeServiceDep,
-    dispatcher_admin_client: DispatcherAdminClientDep,
-    session: AsyncSession = Depends(get_session),
-    current_user_id: uuid.UUID = Depends(get_current_user_id),
-):
-    step = await runtime_service.get_step_by_id_or_raise(step_id)
-    round_item = await runtime_service.get_by_id_or_raise(step.round_id)
-    await ensure_project_permission(
-        session=session,
-        current_user_id=current_user_id,
-        project_id=round_item.project_id,
-        required_permission=Permissions.ROUND_MANAGE,
-    )
-
-    if step.state in {StepStatus.SUCCEEDED, StepStatus.FAILED, StepStatus.CANCELLED, StepStatus.SKIPPED}:
-        return StepCommandResponse(request_id=str(uuid.uuid4()), step_id=step_id, status=step.state.value)
-
-    if not dispatcher_admin_client.enabled:
-        raise InternalServerErrorAppException("dispatcher_admin is not configured")
-    try:
-        dispatch_task_id = str(getattr(step, "task_id", None) or "").strip()
-        if not dispatch_task_id:
-            raise InternalServerErrorAppException("step task binding is missing")
-        response = await dispatcher_admin_client.stop_task(dispatch_task_id, reason=reason)
-        status = str(response.status or "").strip().lower() or "accepted"
-        return StepCommandResponse(
-            request_id=str(response.request_id or response.command_id or uuid.uuid4()),
-            step_id=step_id,
-            status="stopping" if status == "accepted" else status,
-        )
-    except Exception as exc:
-        logger.warning("dispatcher stop_task failed via step binding step_id={} error={}", step_id, exc)
-        raise InternalServerErrorAppException("dispatcher stop_task failed") from exc

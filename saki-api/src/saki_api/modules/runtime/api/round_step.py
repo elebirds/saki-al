@@ -203,12 +203,6 @@ class StepRead(BaseModel):
         return value
 
 
-class StepCommandResponse(BaseModel):
-    request_id: str
-    step_id: uuid.UUID
-    status: str
-
-
 class TaskEventRead(BaseModel):
     task_id: uuid.UUID
     seq: int

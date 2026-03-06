@@ -57,11 +57,25 @@ class RuntimeQueryMixin:
             return None
         return dict(metrics)
 
-    async def _build_task_result_metrics_map(self, steps: list[Step]) -> dict[uuid.UUID, dict[str, Any]]:
+    async def _build_task_result_metrics_map(
+        self,
+        steps: list[Step],
+        *,
+        strict: bool = False,
+    ) -> dict[uuid.UUID, dict[str, Any]]:
+        if strict:
+            for step in steps:
+                if step.task_id is None:
+                    raise NotFoundAppException(f"step {step.id} has no task binding")
         task_ids = [step.task_id for step in steps if step.task_id is not None]
         if not task_ids:
             return {}
         tasks = await self.task_repo.get_by_ids(task_ids)
+        if strict:
+            found_task_ids = {task.id for task in tasks}
+            for task_id in task_ids:
+                if task_id not in found_task_ids:
+                    raise NotFoundAppException(f"task {task_id} not found")
         metrics_by_task: dict[uuid.UUID, dict[str, Any]] = {}
         for task in tasks:
             metrics = self._extract_task_result_metrics(task)
@@ -231,7 +245,7 @@ class RuntimeQueryMixin:
             return []
         round_ids = [row.id for row in rounds]
         steps = await self.step_repo.list_by_round_ids(round_ids)
-        task_metrics_by_task_id = await self._build_task_result_metrics_map(steps)
+        task_metrics_by_task_id = await self._build_task_result_metrics_map(steps, strict=True)
         steps_by_round = self._group_steps_by_round(steps)
         for row in rounds:
             row.final_metrics = self.derive_round_final_metrics(
@@ -836,7 +850,7 @@ class RuntimeQueryMixin:
 
         round_ids = [round_item.id for round_item in rounds]
         steps = await self.step_repo.list_by_round_ids(round_ids)
-        task_metrics_by_task_id = await self._build_task_result_metrics_map(steps)
+        task_metrics_by_task_id = await self._build_task_result_metrics_map(steps, strict=True)
         latest_round = rounds[-1]
         steps_by_round = self._group_steps_by_round(steps)
         latest_round_metric_view = self.derive_round_metric_view(

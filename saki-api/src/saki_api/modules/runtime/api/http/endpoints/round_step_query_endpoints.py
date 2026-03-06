@@ -66,7 +66,7 @@ async def get_round(
         and round_item.confirmed_at is None
     )
     steps = await runtime_service.list_steps(round_id, limit=5000)
-    task_metrics_by_task_id = await runtime_service._build_task_result_metrics_map(steps)
+    task_metrics_by_task_id = await runtime_service._build_task_result_metrics_map(steps, strict=True)
     metric_view = runtime_service.derive_round_metric_view(
         round_item=round_item,
         steps=steps,

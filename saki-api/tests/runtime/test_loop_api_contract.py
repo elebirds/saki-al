@@ -2358,55 +2358,56 @@ async def test_get_round_metric_view_empty_when_all_steps_missing_metrics(loop_a
             session.add(round_row)
             await session.flush()
 
-            session.add_all(
-                [
-                    Step(
-                        round_id=round_row.id,
-                        step_type=StepType.TRAIN,
-                        dispatch_kind=StepDispatchKind.DISPATCHABLE,
-                        state=StepStatus.SUCCEEDED,
-                        round_index=1,
-                        step_index=1,
-                        depends_on_step_ids=[],
-                        resolved_params={},
-                        metrics={},
-                        artifacts={},
-                        input_commit_id=branch.head_commit_id,
-                        attempt=1,
-                        max_attempts=3,
-                    ),
-                    Step(
-                        round_id=round_row.id,
-                        step_type=StepType.EVAL,
-                        dispatch_kind=StepDispatchKind.DISPATCHABLE,
-                        state=StepStatus.SUCCEEDED,
-                        round_index=1,
-                        step_index=2,
-                        depends_on_step_ids=[],
-                        resolved_params={},
-                        metrics={},
-                        artifacts={},
-                        input_commit_id=branch.head_commit_id,
-                        attempt=1,
-                        max_attempts=3,
-                    ),
-                    Step(
-                        round_id=round_row.id,
-                        step_type=StepType.SELECT,
-                        dispatch_kind=StepDispatchKind.ORCHESTRATOR,
-                        state=StepStatus.SUCCEEDED,
-                        round_index=1,
-                        step_index=3,
-                        depends_on_step_ids=[],
-                        resolved_params={},
-                        metrics={},
-                        artifacts={},
-                        input_commit_id=branch.head_commit_id,
-                        attempt=1,
-                        max_attempts=3,
-                    ),
-                ]
+            train_step = Step(
+                round_id=round_row.id,
+                step_type=StepType.TRAIN,
+                dispatch_kind=StepDispatchKind.DISPATCHABLE,
+                state=StepStatus.SUCCEEDED,
+                round_index=1,
+                step_index=1,
+                depends_on_step_ids=[],
+                resolved_params={},
+                metrics={},
+                artifacts={},
+                input_commit_id=branch.head_commit_id,
+                attempt=1,
+                max_attempts=3,
             )
+            eval_step = Step(
+                round_id=round_row.id,
+                step_type=StepType.EVAL,
+                dispatch_kind=StepDispatchKind.DISPATCHABLE,
+                state=StepStatus.SUCCEEDED,
+                round_index=1,
+                step_index=2,
+                depends_on_step_ids=[],
+                resolved_params={},
+                metrics={},
+                artifacts={},
+                input_commit_id=branch.head_commit_id,
+                attempt=1,
+                max_attempts=3,
+            )
+            select_step = Step(
+                round_id=round_row.id,
+                step_type=StepType.SELECT,
+                dispatch_kind=StepDispatchKind.ORCHESTRATOR,
+                state=StepStatus.SUCCEEDED,
+                round_index=1,
+                step_index=3,
+                depends_on_step_ids=[],
+                resolved_params={},
+                metrics={},
+                artifacts={},
+                input_commit_id=branch.head_commit_id,
+                attempt=1,
+                max_attempts=3,
+            )
+            session.add_all([train_step, eval_step, select_step])
+            await session.flush()
+            await _attach_step_task(session, project_id=project.id, step=train_step, plugin_id=loop.model_arch)
+            await _attach_step_task(session, project_id=project.id, step=eval_step, plugin_id=loop.model_arch)
+            await _attach_step_task(session, project_id=project.id, step=select_step, plugin_id=loop.model_arch)
             await session.commit()
 
             payload = await round_step_query_endpoint.get_round(
@@ -2975,6 +2976,83 @@ async def test_list_round_steps_raises_when_step_task_binding_missing(loop_api_e
                 await round_step_query_endpoint.list_round_steps(
                     round_id=round_row.id,
                     limit=100,
+                    runtime_service=service,
+                    session=session,
+                    current_user_id=current_user_id,
+                )
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_list_loop_rounds_raises_when_step_task_binding_missing(loop_api_env, monkeypatch):
+    session_local = loop_api_env
+
+    async def _allow(*args, **kwargs) -> None:
+        del args, kwargs
+        return None
+
+    monkeypatch.setattr(loop_query_endpoint, "_ensure_project_perm", _allow)
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        service = RuntimeService(session)
+        current_user_id = uuid.uuid4()
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-rounds-missing-task-binding",
+                    branch_id=branch.id,
+                    mode=LoopMode.ACTIVE_LEARNING,
+                    model_arch="yolo_det_v1",
+                    config=_loop_config({"sampling": {"strategy": "random_baseline", "topk": 20}}),
+                    lifecycle=LoopLifecycle.RUNNING,
+                ),
+            )
+            round_row = Round(
+                project_id=project.id,
+                loop_id=loop.id,
+                round_index=1,
+                mode=LoopMode.ACTIVE_LEARNING,
+                state=RoundStatus.COMPLETED,
+                step_counts={"pending": 1},
+                round_type="loop_round",
+                plugin_id=loop.model_arch,
+                resolved_params={"sampling": {"strategy": "random_baseline"}},
+                resources={},
+                input_commit_id=branch.head_commit_id,
+                final_metrics={},
+                final_artifacts={},
+                strategy_params={"sampling": {"strategy": "random_baseline"}},
+            )
+            session.add(round_row)
+            await session.flush()
+
+            step = Step(
+                round_id=round_row.id,
+                step_type=StepType.TRAIN,
+                dispatch_kind=StepDispatchKind.DISPATCHABLE,
+                state=StepStatus.PENDING,
+                round_index=1,
+                step_index=1,
+                depends_on_step_ids=[],
+                resolved_params={},
+                metrics={},
+                artifacts={},
+                input_commit_id=branch.head_commit_id,
+                attempt=1,
+                max_attempts=3,
+            )
+            session.add(step)
+            await session.commit()
+
+            with pytest.raises(NotFoundAppException):
+                await loop_query_endpoint.list_loop_rounds(
+                    loop_id=loop.id,
+                    limit=20,
                     runtime_service=service,
                     session=session,
                     current_user_id=current_user_id,

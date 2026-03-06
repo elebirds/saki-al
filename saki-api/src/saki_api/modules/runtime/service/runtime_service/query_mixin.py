@@ -50,6 +50,26 @@ class RuntimeQueryMixin:
     _ROUND_EVENT_STAGE_ALLOWLIST = {"train", "eval", "score", "select", "custom"}
 
     @staticmethod
+    def _extract_task_result_metrics(task: Any) -> dict[str, Any] | None:
+        params = task.resolved_params if isinstance(getattr(task, "resolved_params", None), dict) else {}
+        metrics = params.get("_result_metrics")
+        if not isinstance(metrics, dict) or not metrics:
+            return None
+        return dict(metrics)
+
+    async def _build_task_result_metrics_map(self, steps: list[Step]) -> dict[uuid.UUID, dict[str, Any]]:
+        task_ids = [step.task_id for step in steps if step.task_id is not None]
+        if not task_ids:
+            return {}
+        tasks = await self.task_repo.get_by_ids(task_ids)
+        metrics_by_task: dict[uuid.UUID, dict[str, Any]] = {}
+        for task in tasks:
+            metrics = self._extract_task_result_metrics(task)
+            if metrics is not None:
+                metrics_by_task[task.id] = metrics
+        return metrics_by_task
+
+    @staticmethod
     def _step_type_text(step: Step) -> str:
         raw = step.step_type.value if hasattr(step.step_type, "value") else step.step_type
         return str(raw or "").strip().lower()
@@ -67,7 +87,12 @@ class RuntimeQueryMixin:
     def _pick_non_empty_step_metrics(
         *,
         step: Step,
+        task_metrics_by_task_id: dict[uuid.UUID, dict[str, Any]] | None = None,
     ) -> dict[str, Any] | None:
+        if step.task_id is not None and task_metrics_by_task_id:
+            task_metrics = task_metrics_by_task_id.get(step.task_id)
+            if task_metrics:
+                return dict(task_metrics)
         metrics = step.metrics if isinstance(step.metrics, dict) else {}
         if metrics:
             return dict(metrics)
@@ -78,6 +103,7 @@ class RuntimeQueryMixin:
         *,
         steps: list[Step],
         step_type: str,
+        task_metrics_by_task_id: dict[uuid.UUID, dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         if not steps:
             return {}
@@ -89,7 +115,10 @@ class RuntimeQueryMixin:
                     continue
                 if require_succeeded and self._step_state_text(step) != "succeeded":
                     continue
-                metrics = self._pick_non_empty_step_metrics(step=step)
+                metrics = self._pick_non_empty_step_metrics(
+                    step=step,
+                    task_metrics_by_task_id=task_metrics_by_task_id,
+                )
                 if metrics is not None:
                     return metrics
         return {}
@@ -97,6 +126,7 @@ class RuntimeQueryMixin:
     def _pick_final_metrics_with_source(
         self,
         steps: list[Step],
+        task_metrics_by_task_id: dict[uuid.UUID, dict[str, Any]] | None = None,
     ) -> tuple[dict[str, Any], str]:
         if not steps:
             return {}, "none"
@@ -105,19 +135,28 @@ class RuntimeQueryMixin:
         for step in reversed(ordered_steps):
             if self._step_type_text(step) != "eval":
                 continue
-            metrics = self._pick_non_empty_step_metrics(step=step)
+            metrics = self._pick_non_empty_step_metrics(
+                step=step,
+                task_metrics_by_task_id=task_metrics_by_task_id,
+            )
             if metrics is not None:
                 return metrics, "eval"
 
         for step in reversed(ordered_steps):
             if self._step_type_text(step) != "train":
                 continue
-            metrics = self._pick_non_empty_step_metrics(step=step)
+            metrics = self._pick_non_empty_step_metrics(
+                step=step,
+                task_metrics_by_task_id=task_metrics_by_task_id,
+            )
             if metrics is not None:
                 return metrics, "train"
 
         for step in reversed(ordered_steps):
-            metrics = self._pick_non_empty_step_metrics(step=step)
+            metrics = self._pick_non_empty_step_metrics(
+                step=step,
+                task_metrics_by_task_id=task_metrics_by_task_id,
+            )
             if metrics is not None:
                 return metrics, "other"
         return {}, "none"
@@ -125,8 +164,12 @@ class RuntimeQueryMixin:
     def _pick_final_metrics_from_steps(
         self,
         steps: list[Step],
+        task_metrics_by_task_id: dict[uuid.UUID, dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
-        metrics, _ = self._pick_final_metrics_with_source(steps)
+        metrics, _ = self._pick_final_metrics_with_source(
+            steps,
+            task_metrics_by_task_id=task_metrics_by_task_id,
+        )
         return metrics
 
     def derive_round_final_metrics(
@@ -134,26 +177,36 @@ class RuntimeQueryMixin:
         *,
         round_item: Round,
         steps: list[Step],
+        task_metrics_by_task_id: dict[uuid.UUID, dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         del round_item
-        return self._pick_final_metrics_from_steps(steps)
+        return self._pick_final_metrics_from_steps(
+            steps,
+            task_metrics_by_task_id=task_metrics_by_task_id,
+        )
 
     def derive_round_metric_view(
         self,
         *,
         round_item: Round,
         steps: list[Step],
+        task_metrics_by_task_id: dict[uuid.UUID, dict[str, Any]] | None = None,
     ) -> RoundMetricViewVO:
         del round_item
         train_final_metrics = self._pick_latest_step_type_metrics(
             steps=steps,
             step_type="train",
+            task_metrics_by_task_id=task_metrics_by_task_id,
         )
         eval_final_metrics = self._pick_latest_step_type_metrics(
             steps=steps,
             step_type="eval",
+            task_metrics_by_task_id=task_metrics_by_task_id,
         )
-        final_metrics, final_metrics_source = self._pick_final_metrics_with_source(steps)
+        final_metrics, final_metrics_source = self._pick_final_metrics_with_source(
+            steps,
+            task_metrics_by_task_id=task_metrics_by_task_id,
+        )
         return RoundMetricViewVO(
             train_final_metrics=train_final_metrics,
             eval_final_metrics=eval_final_metrics,
@@ -178,11 +231,13 @@ class RuntimeQueryMixin:
             return []
         round_ids = [row.id for row in rounds]
         steps = await self.step_repo.list_by_round_ids(round_ids)
+        task_metrics_by_task_id = await self._build_task_result_metrics_map(steps)
         steps_by_round = self._group_steps_by_round(steps)
         for row in rounds:
             row.final_metrics = self.derive_round_final_metrics(
                 round_item=row,
                 steps=steps_by_round.get(row.id, []),
+                task_metrics_by_task_id=task_metrics_by_task_id,
             )
         return rounds
 

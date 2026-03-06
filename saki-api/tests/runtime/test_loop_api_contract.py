@@ -2924,6 +2924,101 @@ async def test_task_artifact_download_url_only_reads_task_artifacts(loop_api_env
 
 
 @pytest.mark.anyio
+async def test_list_round_artifacts_only_reads_task_artifacts(loop_api_env):
+    session_local = loop_api_env
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        service = RuntimeService(session)
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-round-artifact-only",
+                    branch_id=branch.id,
+                    mode=LoopMode.ACTIVE_LEARNING,
+                    model_arch="yolo_det_v1",
+                    config=_loop_config({"sampling": {"strategy": "random_baseline", "topk": 20}}),
+                    lifecycle=LoopLifecycle.RUNNING,
+                ),
+            )
+            round_row = Round(
+                project_id=project.id,
+                loop_id=loop.id,
+                round_index=1,
+                mode=LoopMode.ACTIVE_LEARNING,
+                state=RoundStatus.RUNNING,
+                step_counts={},
+                round_type="loop_round",
+                plugin_id=loop.model_arch,
+                resolved_params={"sampling": {"strategy": "random_baseline"}},
+                resources={},
+                input_commit_id=branch.head_commit_id,
+                final_metrics={},
+                final_artifacts={},
+                strategy_params={"sampling": {"strategy": "random_baseline"}},
+            )
+            session.add(round_row)
+            await session.flush()
+
+            step = Step(
+                round_id=round_row.id,
+                step_type=StepType.TRAIN,
+                dispatch_kind=StepDispatchKind.DISPATCHABLE,
+                state=StepStatus.SUCCEEDED,
+                round_index=1,
+                step_index=1,
+                depends_on_step_ids=[],
+                resolved_params={},
+                metrics={},
+                artifacts={
+                    "step-only.pt": {
+                        "kind": "model",
+                        "uri": "https://example.com/step-only-model.pt",
+                        "meta": {},
+                    }
+                },
+                input_commit_id=branch.head_commit_id,
+                attempt=1,
+                max_attempts=3,
+            )
+            session.add(step)
+            await session.flush()
+            task = await _attach_step_task(
+                session,
+                project_id=project.id,
+                step=step,
+                plugin_id=loop.model_arch,
+            )
+            await session.commit()
+
+            items = await service.list_round_artifacts(round_id=round_row.id, limit=100)
+            assert items == []
+
+            params = dict(task.resolved_params or {})
+            params["_result_artifacts"] = {
+                "task-result.pt": {
+                    "kind": "model",
+                    "uri": "https://example.com/task-result-model.pt",
+                    "meta": {"size": 2048},
+                }
+            }
+            task.resolved_params = params
+            session.add(task)
+            await session.commit()
+
+            items = await service.list_round_artifacts(round_id=round_row.id, limit=100)
+            assert len(items) == 1
+            assert items[0].name == "task-result.pt"
+            assert str(items[0].task_id) == str(task.id)
+            assert str(items[0].step_id) == str(step.id)
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
 async def test_create_simulation_loop_normalizes_mode_without_seeds_or_random_baseline(
     loop_api_env,
     monkeypatch,

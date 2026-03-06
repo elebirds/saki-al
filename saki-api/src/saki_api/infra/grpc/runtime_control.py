@@ -25,6 +25,7 @@ from saki_api.modules.project.repo.commit_sample_state import CommitSampleStateR
 from saki_api.modules.project.service.commit_hash import refresh_commit_hash
 from saki_api.modules.runtime.domain.round import Round
 from saki_api.modules.runtime.domain.step import Step
+from saki_api.modules.runtime.domain.task import Task
 from saki_api.modules.runtime.domain.task_candidate_item import TaskCandidateItem
 from saki_api.modules.runtime.service.runtime_service import RuntimeService
 from saki_api.modules.runtime.service.ingress.control_ingress_service import RuntimeControlIngressService
@@ -88,14 +89,23 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
             self._storage = get_storage_provider()
         return self._storage
 
-    async def _resolve_step_by_task_id(self, *, session, task_id: uuid.UUID) -> Step | None:
+    async def _resolve_task_by_id(self, *, session, task_id: uuid.UUID) -> Task | None:
         return (
             await session.exec(
-                select(Step)
-                .where(Step.task_id == task_id)
+                select(Task)
+                .where(Task.id == task_id)
                 .limit(1)
             )
         ).first()
+
+    @staticmethod
+    def _resolve_result_artifact_uri_from_task(*, task: Task, artifact_name: str) -> tuple[bool, str]:
+        params = task.resolved_params if isinstance(task.resolved_params, dict) else {}
+        artifact_map = params.get("_result_artifacts") if isinstance(params.get("_result_artifacts"), dict) else {}
+        artifact = artifact_map.get(artifact_name)
+        if not isinstance(artifact, dict):
+            return False, ""
+        return True, str(artifact.get("uri") or "").strip()
 
     async def GetBranchHead(self, request, context):  # noqa: N802
         branch_id = _parse_uuid(request.branch_id)
@@ -577,8 +587,8 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
             )
 
         async with SessionLocal() as session:
-            step = await self._resolve_step_by_task_id(session=session, task_id=task_id)
-            if step is None:
+            task = await self._resolve_task_by_id(session=session, task_id=task_id)
+            if task is None:
                 context.set_code(grpc.StatusCode.NOT_FOUND)
                 context.set_details("task not found")
                 return domain_pb.DownloadTicketResponse(
@@ -591,9 +601,8 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
                     headers={},
                 )
 
-            artifact_map = step.artifacts if isinstance(step.artifacts, dict) else {}
-            artifact = artifact_map.get(artifact_name)
-            if not isinstance(artifact, dict):
+            found, uri = self._resolve_result_artifact_uri_from_task(task=task, artifact_name=artifact_name)
+            if not found:
                 context.set_code(grpc.StatusCode.NOT_FOUND)
                 context.set_details("artifact not found")
                 return domain_pb.DownloadTicketResponse(
@@ -605,8 +614,6 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
                     storage_uri="",
                     headers={},
                 )
-
-            uri = str(artifact.get("uri") or "").strip()
             if not uri:
                 context.set_code(grpc.StatusCode.FAILED_PRECONDITION)
                 context.set_details("artifact uri is empty")

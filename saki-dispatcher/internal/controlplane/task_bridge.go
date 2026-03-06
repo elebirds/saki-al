@@ -102,7 +102,7 @@ func (s *Service) resolveTaskIDsForStepDependenciesTx(
 			dependencyTaskIDs = append(dependencyTaskIDs, taskID.String())
 			continue
 		}
-		return nil, fmt.Errorf("step missing task binding: step_id=%s", stepID.String())
+		return nil, fmt.Errorf("task binding missing for step dependency: step_id=%s", stepID.String())
 	}
 	return dependencyTaskIDs, nil
 }

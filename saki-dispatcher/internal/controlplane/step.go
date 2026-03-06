@@ -1339,9 +1339,14 @@ func (s *Service) buildDispatchResolvedParamsTx(
 	trainStepID, err := s.qtx(tx).GetLatestSucceededTrainStepIDByRound(ctx, stepPayload.RoundID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
+			currentTaskID := stepPayload.StepID
+			if mappedTaskID, ok, mapErr := s.resolveTaskIDForStepTx(ctx, tx, stepPayload.StepID); mapErr == nil && ok {
+				currentTaskID = mappedTaskID
+			}
 			return nil, fmt.Errorf(
-				"round 缺少成功 TRAIN step，无法注入模型: round_id=%s step_id=%s",
+				"round 缺少成功 TRAIN 结果，无法注入模型: round_id=%s task_id=%s step_id=%s",
 				stepPayload.RoundID,
+				currentTaskID,
 				stepPayload.StepID,
 			)
 		}

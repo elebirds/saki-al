@@ -21,7 +21,7 @@ from saki_api.modules.runtime.domain.round import Round
 from saki_api.modules.runtime.domain.step import Step
 from saki_api.modules.runtime.domain.loop import Loop
 from saki_api.modules.runtime.domain.task_candidate_item import TaskCandidateItem
-from saki_api.modules.shared.modeling.enums import RoundStatus, StepStatus
+from saki_api.modules.shared.modeling.enums import RoundStatus
 
 
 @dataclass(slots=True)
@@ -98,6 +98,32 @@ class RuntimeQueryMixin:
         return str(raw or "").strip().lower()
 
     @staticmethod
+    def _task_state_text(task: Any) -> str:
+        raw = task.status.value if hasattr(task.status, "value") else task.status
+        return str(raw or "").strip().lower()
+
+    async def _build_task_status_map(
+        self,
+        steps: list[Step],
+        *,
+        strict: bool = False,
+    ) -> dict[uuid.UUID, str]:
+        if strict:
+            for step in steps:
+                if step.task_id is None:
+                    raise NotFoundAppException(f"step {step.id} has no task binding")
+        task_ids = [step.task_id for step in steps if step.task_id is not None]
+        if not task_ids:
+            return {}
+        tasks = await self.task_repo.get_by_ids(task_ids)
+        if strict:
+            found_task_ids = {task.id for task in tasks}
+            for task_id in task_ids:
+                if task_id not in found_task_ids:
+                    raise NotFoundAppException(f"task {task_id} not found")
+        return {task.id: self._task_state_text(task) for task in tasks}
+
+    @staticmethod
     def _pick_non_empty_step_metrics(
         *,
         step: Step,
@@ -118,6 +144,7 @@ class RuntimeQueryMixin:
         steps: list[Step],
         step_type: str,
         task_metrics_by_task_id: dict[uuid.UUID, dict[str, Any]] | None = None,
+        task_status_by_task_id: dict[uuid.UUID, str] | None = None,
     ) -> dict[str, Any]:
         if not steps:
             return {}
@@ -127,7 +154,10 @@ class RuntimeQueryMixin:
             for step in reversed(ordered_steps):
                 if self._step_type_text(step) != step_type:
                     continue
-                if require_succeeded and self._step_state_text(step) != "succeeded":
+                status_text = self._step_state_text(step)
+                if step.task_id is not None and task_status_by_task_id is not None:
+                    status_text = str(task_status_by_task_id.get(step.task_id) or "").strip().lower()
+                if require_succeeded and status_text != "succeeded":
                     continue
                 metrics = self._pick_non_empty_step_metrics(
                     step=step,
@@ -192,8 +222,10 @@ class RuntimeQueryMixin:
         round_item: Round,
         steps: list[Step],
         task_metrics_by_task_id: dict[uuid.UUID, dict[str, Any]] | None = None,
+        task_status_by_task_id: dict[uuid.UUID, str] | None = None,
     ) -> dict[str, Any]:
         del round_item
+        del task_status_by_task_id
         return self._pick_final_metrics_from_steps(
             steps,
             task_metrics_by_task_id=task_metrics_by_task_id,
@@ -205,17 +237,20 @@ class RuntimeQueryMixin:
         round_item: Round,
         steps: list[Step],
         task_metrics_by_task_id: dict[uuid.UUID, dict[str, Any]] | None = None,
+        task_status_by_task_id: dict[uuid.UUID, str] | None = None,
     ) -> RoundMetricViewVO:
         del round_item
         train_final_metrics = self._pick_latest_step_type_metrics(
             steps=steps,
             step_type="train",
             task_metrics_by_task_id=task_metrics_by_task_id,
+            task_status_by_task_id=task_status_by_task_id,
         )
         eval_final_metrics = self._pick_latest_step_type_metrics(
             steps=steps,
             step_type="eval",
             task_metrics_by_task_id=task_metrics_by_task_id,
+            task_status_by_task_id=task_status_by_task_id,
         )
         final_metrics, final_metrics_source = self._pick_final_metrics_with_source(
             steps,
@@ -246,12 +281,14 @@ class RuntimeQueryMixin:
         round_ids = [row.id for row in rounds]
         steps = await self.step_repo.list_by_round_ids(round_ids)
         task_metrics_by_task_id = await self._build_task_result_metrics_map(steps, strict=True)
+        task_status_by_task_id = await self._build_task_status_map(steps, strict=True)
         steps_by_round = self._group_steps_by_round(steps)
         for row in rounds:
             row.final_metrics = self.derive_round_final_metrics(
                 round_item=row,
                 steps=steps_by_round.get(row.id, []),
                 task_metrics_by_task_id=task_metrics_by_task_id,
+                task_status_by_task_id=task_status_by_task_id,
             )
         return rounds
 
@@ -681,7 +718,6 @@ class RuntimeQueryMixin:
             item["task_id"] = event.task_id
             item["task_index"] = int(step.step_index or 0)
             item["task_type"] = task_type
-            item["step_id"] = step.id
             item["stage"] = step_stage.get(step.id) or self._round_stage_from_task_type(task_type)
             items.append(item)
             task_key = str(event.task_id)
@@ -851,12 +887,14 @@ class RuntimeQueryMixin:
         round_ids = [round_item.id for round_item in rounds]
         steps = await self.step_repo.list_by_round_ids(round_ids)
         task_metrics_by_task_id = await self._build_task_result_metrics_map(steps, strict=True)
+        task_status_by_task_id = await self._build_task_status_map(steps, strict=True)
         latest_round = rounds[-1]
         steps_by_round = self._group_steps_by_round(steps)
         latest_round_metric_view = self.derive_round_metric_view(
             round_item=latest_round,
             steps=steps_by_round.get(latest_round.id, []),
             task_metrics_by_task_id=task_metrics_by_task_id,
+            task_status_by_task_id=task_status_by_task_id,
         )
 
         logical_round_ids = {int(item.round_index) for item in rounds}
@@ -869,7 +907,12 @@ class RuntimeQueryMixin:
             attempts_total=len(rounds),
             rounds_succeeded=len(succeeded_logical_round_ids),
             steps_total=len(steps),
-            steps_succeeded=sum(1 for item in steps if item.state == StepStatus.SUCCEEDED),
+            steps_succeeded=sum(
+                1
+                for item in steps
+                if item.task_id is not None
+                and str(task_status_by_task_id.get(item.task_id) or "").strip().lower() == "succeeded"
+            ),
             metrics_latest=latest_round_metric_view.final_metrics,
             metrics_latest_train=latest_round_metric_view.train_final_metrics,
             metrics_latest_eval=latest_round_metric_view.eval_final_metrics,

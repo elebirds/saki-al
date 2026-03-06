@@ -12,7 +12,7 @@ from saki_api.modules.shared.modeling.enums import (
     LoopMode,
     LoopPhase,
     RoundStatus,
-    StepStatus,
+    RuntimeTaskStatus,
 )
 
 
@@ -50,19 +50,24 @@ class LoopGateMixin:
             )
             if latest_round and latest_round_state == RoundStatus.FAILED.value:
                 steps = await self.step_repo.list_by_round(latest_round.id)
-                has_inflight_steps = any(
-                    str(step.state.value if hasattr(step.state, "value") else step.state).strip().lower()
-                    in {
-                        StepStatus.SYNCING_ENV.value,
-                        StepStatus.PROBING_RUNTIME.value,
-                        StepStatus.BINDING_DEVICE.value,
-                        StepStatus.RUNNING.value,
-                        StepStatus.DISPATCHING.value,
-                        StepStatus.RETRYING.value,
-                    }
+                task_ids = [step.task_id for step in steps if step.task_id is not None]
+                tasks = await self.task_repo.get_by_ids(task_ids) if task_ids else []
+                task_status_by_id = {
+                    task.id: str(task.status.value if hasattr(task.status, "value") else task.status).strip().lower()
+                    for task in tasks
+                }
+                terminal_task_statuses = {
+                    RuntimeTaskStatus.SUCCEEDED.value,
+                    RuntimeTaskStatus.FAILED.value,
+                    RuntimeTaskStatus.CANCELLED.value,
+                    RuntimeTaskStatus.SKIPPED.value,
+                }
+                has_inflight_tasks = any(
+                    step.task_id is None
+                    or str(task_status_by_id.get(step.task_id) or "").strip().lower() not in terminal_task_statuses
                     for step in steps
                 )
-                if not has_inflight_steps:
+                if not has_inflight_tasks:
                     retry_action = self._action(
                         "retry_round",
                         label="Retry Round",

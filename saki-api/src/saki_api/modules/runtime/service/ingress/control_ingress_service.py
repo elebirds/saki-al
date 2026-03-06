@@ -34,20 +34,10 @@ from saki_api.modules.runtime.service.application.control_plane_dto import (
     RuntimeDataRequestDTO,
     RuntimeUploadTicketRequestDTO,
 )
-from saki_api.modules.runtime.service.application.event_dto import (
-    RuntimeArtifactDTO,
-    RuntimeTaskCandidateDTO,
-    RuntimeTaskEventDTO,
-    RuntimeTaskResultDTO,
-)
-from saki_api.modules.runtime.service.persistence.task_runtime_persistence_service import (
-    RuntimeTaskPersistenceService,
-)
 from saki_api.modules.shared.modeling.enums import (
     LoopMode,
     SnapshotPartition,
     SnapshotValPolicy,
-    StepStatus,
 )
 from saki_api.modules.storage.domain.asset import Asset
 from saki_api.modules.storage.domain.sample import Sample
@@ -195,86 +185,6 @@ class RuntimeControlIngressService:
                 headers={"Content-Type": request.content_type},
             )
         )
-
-    async def persist_task_event(self, message: pb.TaskEvent) -> None:
-        event_type, payload, status_enum = runtime_codec.decode_task_event(message)
-        mapped_status = self._status_from_pb(status_enum) if status_enum is not None else None
-        task_id = self._parse_uuid(message.task_id, "task_id")
-
-        async with self._session_local() as session:
-            event_dto = RuntimeTaskEventDTO(
-                task_id=task_id,
-                seq=int(message.seq),
-                ts=self._to_datetime_seconds(int(message.ts)),
-                event_type=event_type,
-                payload=payload,
-                status=mapped_status,
-                request_id=str(message.request_id or "") or None,
-            )
-            persistence = RuntimeTaskPersistenceService(session)
-            await persistence.persist_task_event(event_dto)
-            await session.commit()
-
-    async def persist_task_result(self, message: pb.TaskResult) -> None:
-        task_id = self._parse_uuid(message.task_id, "task_id")
-        artifacts: list[RuntimeArtifactDTO] = [
-            RuntimeArtifactDTO(
-                name=str(item.name or ""),
-                kind=str(item.kind or "artifact"),
-                uri=str(item.uri or ""),
-                meta=runtime_codec.struct_to_dict(item.meta),
-            )
-            for item in message.artifacts
-            if str(item.name or "")
-        ]
-
-        candidates: list[RuntimeTaskCandidateDTO] = []
-        for idx, candidate in enumerate(message.candidates, start=1):
-            sample_id_raw = str(candidate.sample_id or "").strip()
-            if not sample_id_raw:
-                continue
-            try:
-                sample_id = uuid.UUID(sample_id_raw)
-            except Exception:
-                continue
-            reason_payload = runtime_codec.struct_to_dict(candidate.reason)
-            if not isinstance(reason_payload, dict):
-                reason_payload = {}
-            snapshot_payload: dict[str, Any] = {}
-            snapshot_raw = reason_payload.get("prediction_snapshot")
-            if isinstance(snapshot_raw, dict):
-                try:
-                    snapshot_payload = normalize_prediction_snapshot(
-                        snapshot_raw,
-                        path="candidate.reason.prediction_snapshot",
-                    )
-                except IRValidationError as exc:
-                    issue = exc.issues[0]
-                    raise ValueError(
-                        f"[{issue.code}] {issue.message} (path={issue.path}, phase=prediction_resolve)"
-                    ) from exc
-            candidates.append(
-                RuntimeTaskCandidateDTO(
-                    sample_id=sample_id,
-                    rank=idx,
-                    score=float(candidate.score or 0.0),
-                    reason=reason_payload,
-                    prediction_snapshot=snapshot_payload,
-                )
-                )
-
-        async with self._session_local() as session:
-            result_dto = RuntimeTaskResultDTO(
-                task_id=task_id,
-                status=self._status_from_pb(int(message.status)),
-                metrics={str(k): float(v) for k, v in message.metrics.items()},
-                artifacts=artifacts,
-                candidates=candidates,
-                last_error=str(message.error_message or "") or None,
-            )
-            persistence = RuntimeTaskPersistenceService(session)
-            await persistence.persist_task_result(result_dto)
-            await session.commit()
 
     def _decode_data_request(self, message: pb.DataRequest) -> RuntimeDataRequestDTO:
         request_id = str(message.request_id or "")
@@ -617,29 +527,6 @@ class RuntimeControlIngressService:
             return uuid.UUID(value)
         except Exception as exc:
             raise ValueError(f"invalid {field_name}: {value}") from exc
-
-    @staticmethod
-    def _status_from_pb(status: int) -> StepStatus:
-        mapping = {
-            pb.PENDING: StepStatus.PENDING,
-            pb.DISPATCHING: StepStatus.DISPATCHING,
-            pb.SYNCING_ENV: StepStatus.SYNCING_ENV,
-            pb.PROBING_RUNTIME: StepStatus.PROBING_RUNTIME,
-            pb.BINDING_DEVICE: StepStatus.BINDING_DEVICE,
-            pb.RUNNING: StepStatus.RUNNING,
-            pb.RETRYING: StepStatus.RETRYING,
-            pb.SUCCEEDED: StepStatus.SUCCEEDED,
-            pb.FAILED: StepStatus.FAILED,
-            pb.CANCELLED: StepStatus.CANCELLED,
-            pb.SKIPPED: StepStatus.SKIPPED,
-        }
-        return mapping.get(int(status), StepStatus.PENDING)
-
-    @staticmethod
-    def _to_datetime_seconds(ts: int) -> datetime:
-        if int(ts) <= 0:
-            return datetime.now(UTC)
-        return datetime.fromtimestamp(float(ts), tz=UTC)
 
     @staticmethod
     def _to_datetime_millis(ts: int) -> datetime:

@@ -1967,6 +1967,7 @@ async def test_get_round_events_query_contract(loop_api_env, monkeypatch):
             assert first_page.has_more is False
             assert first_page.next_after_cursor
             assert {item.stage for item in first_page.items} == {"train", "eval"}
+            assert all(not hasattr(item, "step_id") for item in first_page.items)
 
             second_page = await round_step_query_endpoint.get_round_events(
                 round_id=round_row.id,

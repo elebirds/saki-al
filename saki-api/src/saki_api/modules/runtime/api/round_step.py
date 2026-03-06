@@ -246,7 +246,6 @@ class RoundEventRead(BaseModel):
     task_id: uuid.UUID
     task_index: int
     task_type: RuntimeTaskType
-    step_id: Optional[uuid.UUID] = None
     stage: str
     seq: int
     ts: datetime

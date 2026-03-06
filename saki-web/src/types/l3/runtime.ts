@@ -357,13 +357,6 @@ export interface RoundSelectionApplyResponse {
     effectiveSelected: RuntimeStepCandidate[];
 }
 
-export interface RuntimeStepArtifact {
-    name: string;
-    kind: string;
-    uri: string;
-    meta: Record<string, any>;
-}
-
 export interface RuntimeRoundArtifact {
     stepId: string;
     taskId?: string | null;

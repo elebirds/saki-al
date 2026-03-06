@@ -22,9 +22,6 @@ class StepRepository(BaseRepository[Step]):
             order_by=[Step.step_index.asc(), Step.created_at.asc()],
         )
 
-    async def get_by_id_with_relations(self, step_id: uuid.UUID) -> Optional[Step]:
-        return await self.get_one(filters=[Step.id == step_id])
-
     async def get_by_task_id(self, task_id: uuid.UUID) -> Optional[Step]:
         return await self.get_one(filters=[Step.task_id == task_id])
 
@@ -59,13 +56,6 @@ class StepRepository(BaseRepository[Step]):
         if not round_ids:
             return []
         stmt = select(Step).where(Step.round_id.in_(round_ids))
-        rows = await self.session.exec(stmt)
-        return list(rows.all())
-
-    async def get_by_ids(self, step_ids: List[uuid.UUID]) -> List[Step]:
-        if not step_ids:
-            return []
-        stmt = select(Step).where(Step.id.in_(step_ids))
         rows = await self.session.exec(stmt)
         return list(rows.all())
 

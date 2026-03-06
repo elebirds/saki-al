@@ -16,9 +16,6 @@ class RoundRepository(BaseRepository[Round]):
     def __init__(self, session: AsyncSession):
         super().__init__(Round, session)
 
-    async def get_by_id_with_relations(self, round_id: uuid.UUID) -> Optional[Round]:
-        return await self.get_one(filters=[Round.id == round_id])
-
     async def get_latest_by_loop(self, loop_id: uuid.UUID) -> Optional[Round]:
         rounds = await self.list(
             filters=[Round.loop_id == loop_id],

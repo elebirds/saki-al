@@ -49,25 +49,12 @@ func (s *Service) dispatchPending(ctx context.Context, limit int) (int, error) {
 	}
 
 	claimed := 0
-	for _, queuedStepID := range s.dispatcher.DrainQueuedStepIDs() {
-		stepID, err := parseUUID(queuedStepID)
-		if err != nil {
-			continue
-		}
-		dispatched, err := s.dispatchStepByID(ctx, stepID)
-		if err != nil {
-			return claimed, err
-		}
-		if dispatched {
-			claimed++
-		}
-	}
 	for _, queuedTaskID := range s.dispatcher.DrainQueuedTaskIDs() {
 		taskID, err := parseUUID(queuedTaskID)
 		if err != nil {
 			continue
 		}
-		dispatched, err := s.dispatchPredictionTaskByID(ctx, taskID)
+		dispatched, err := s.dispatchTaskByID(ctx, taskID)
 		if err != nil {
 			return claimed, err
 		}
@@ -372,6 +359,44 @@ func (s *Service) dispatchStepByID(ctx context.Context, stepID uuid.UUID) (bool,
 		return false, tx.Commit(ctx)
 	}
 	return true, tx.Commit(ctx)
+}
+
+func (s *Service) dispatchTaskByID(ctx context.Context, taskID uuid.UUID) (bool, error) {
+	tx, err := s.beginTx(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback(ctx)
+
+	taskRow, found, err := s.getTaskForUpdateTx(ctx, tx, taskID)
+	if err != nil {
+		return false, err
+	}
+	if !found {
+		return false, tx.Commit(ctx)
+	}
+	taskKind := normalizeTaskEnumText(taskRow.Kind)
+	if taskKind == "PREDICTION" {
+		if err := tx.Commit(ctx); err != nil {
+			return false, err
+		}
+		return s.dispatchPredictionTaskByID(ctx, taskID)
+	}
+	if taskKind != "STEP" {
+		return false, tx.Commit(ctx)
+	}
+
+	stepID, mapped, err := s.resolveStepIDForTaskTx(ctx, tx, taskID)
+	if err != nil {
+		return false, err
+	}
+	if !mapped {
+		return false, tx.Commit(ctx)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, err
+	}
+	return s.dispatchStepByID(ctx, stepID)
 }
 
 func (s *Service) dispatchPredictionTaskByID(ctx context.Context, taskID uuid.UUID) (bool, error) {
@@ -1529,8 +1554,19 @@ func (s *Service) issueCancelAttemptTx(
 		return false, nil
 	}
 
-	stopRequestID, accepted := s.dispatcher.StopTask(stepID.String(), reason)
-	detail := fmt.Sprintf("已发起取消尝试 accepted=%t stop_request_id=%s", accepted, strings.TrimSpace(stopRequestID))
+	dispatchTaskID := stepID
+	if mappedTaskID, mapped, mapErr := s.resolveTaskIDForStepTx(ctx, tx, stepID); mapErr != nil {
+		return false, mapErr
+	} else if mapped {
+		dispatchTaskID = mappedTaskID
+	}
+	stopRequestID, accepted := s.dispatcher.StopTask(dispatchTaskID.String(), reason)
+	detail := fmt.Sprintf(
+		"已发起取消尝试 accepted=%t stop_request_id=%s task_id=%s",
+		accepted,
+		strings.TrimSpace(stopRequestID),
+		dispatchTaskID.String(),
+	)
 	if err := s.qtx(tx).UpdateCommandLogStatusDetail(ctx, db.UpdateCommandLogStatusDetailParams{
 		CommandID: commandID,
 		Status:    "applied",

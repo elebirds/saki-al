@@ -443,7 +443,14 @@ func (s *Service) StopRound(ctx context.Context, commandID string, roundID strin
 			return "", "", err
 		}
 		for _, stepID := range stepIDs {
-			s.dispatcher.StopTask(stepID.String(), reason)
+			taskID, mapped, mapErr := s.resolveTaskIDForStepTx(ctx, tx, stepID)
+			if mapErr != nil {
+				return "", "", mapErr
+			}
+			if !mapped {
+				continue
+			}
+			s.dispatcher.StopTask(taskID.String(), reason)
 		}
 		return "applied", "stop_round applied", nil
 	})
@@ -603,7 +610,7 @@ func (s *Service) StopTask(ctx context.Context, commandID string, taskID string,
 		}); err != nil {
 			return "", "", err
 		}
-		s.dispatcher.StopTask(stepPGID.String(), reason)
+		s.dispatcher.StopTask(taskPGID.String(), reason)
 		return "applied", "stop_task applied", nil
 	})
 }
@@ -650,7 +657,7 @@ func (s *Service) DispatchTask(ctx context.Context, commandID string, taskID str
 		if currentState == stepSucceeded || currentState == stepFailed || currentState == stepCancelled || currentState == stepSkipped {
 			return "rejected", "task is in terminal state", nil
 		}
-		s.dispatcher.QueueStep(stepPGID.String())
+		s.dispatcher.QueueTask(taskPGID.String())
 		return "applied", "dispatch_task queued", nil
 	})
 }
@@ -1147,7 +1154,13 @@ func (s *Service) createRoundAttemptTx(
 		}
 		previousStepID = &stepID
 		if idx == 0 {
-			s.dispatcher.QueueStep(stepID.String())
+			taskID, mapped, mapErr := s.resolveTaskIDForStepTx(ctx, tx, stepID)
+			if mapErr != nil {
+				return nil, mapErr
+			}
+			if mapped {
+				s.dispatcher.QueueTask(taskID.String())
+			}
 		}
 	}
 

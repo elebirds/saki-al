@@ -41,7 +41,6 @@ type Dispatcher struct {
 
 	pendingAssign map[string]PendingAssign
 	pendingStop   map[string]string
-	queuedSteps   map[string]struct{}
 	queuedTasks   map[string]struct{}
 }
 
@@ -73,7 +72,6 @@ func NewDispatcher() *Dispatcher {
 		sessions:      map[string]*ExecutorSession{},
 		pendingAssign: map[string]PendingAssign{},
 		pendingStop:   map[string]string{},
-		queuedSteps:   map[string]struct{}{},
 		queuedTasks:   map[string]struct{}{},
 	}
 }
@@ -348,16 +346,6 @@ func (d *Dispatcher) StopTask(taskID string, reason string) (string, bool) {
 	}
 }
 
-func (d *Dispatcher) QueueStep(stepID string) {
-	stepID = strings.TrimSpace(stepID)
-	if stepID == "" {
-		return
-	}
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	d.queuedSteps[stepID] = struct{}{}
-}
-
 func (d *Dispatcher) QueueTask(taskID string) {
 	taskID = strings.TrimSpace(taskID)
 	if taskID == "" {
@@ -366,19 +354,6 @@ func (d *Dispatcher) QueueTask(taskID string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.queuedTasks[taskID] = struct{}{}
-}
-
-func (d *Dispatcher) DrainQueuedStepIDs() []string {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	ids := make([]string, 0, len(d.queuedSteps))
-	for stepID := range d.queuedSteps {
-		ids = append(ids, stepID)
-		delete(d.queuedSteps, stepID)
-	}
-	sort.Strings(ids)
-	return ids
 }
 
 func (d *Dispatcher) DrainQueuedTaskIDs() []string {
@@ -401,7 +376,7 @@ func (d *Dispatcher) Summary() SummarySnapshot {
 	snapshot := SummarySnapshot{
 		PendingAssign:   int64(len(d.pendingAssign)),
 		PendingStop:     int64(len(d.pendingStop)),
-		QueuedTaskCount: int64(len(d.queuedSteps) + len(d.queuedTasks)),
+		QueuedTaskCount: int64(len(d.queuedTasks)),
 	}
 	for _, session := range d.sessions {
 		if !session.IsOnline {

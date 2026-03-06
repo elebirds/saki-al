@@ -364,13 +364,9 @@ export interface RuntimeStepArtifact {
     meta: Record<string, any>;
 }
 
-export interface RuntimeStepArtifactsResponse {
-    stepId: string;
-    artifacts: RuntimeStepArtifact[];
-}
-
 export interface RuntimeRoundArtifact {
     stepId: string;
+    taskId?: string | null;
     stepIndex: number;
     stage: string;
     artifactClass: string;
@@ -449,8 +445,8 @@ export interface PredictionApplyResponse {
     status: string;
 }
 
-export interface StepArtifactDownload {
-    stepId: string;
+export interface TaskArtifactDownload {
+    taskId: string;
     artifactName: string;
     downloadUrl: string;
     expiresInHours: number;

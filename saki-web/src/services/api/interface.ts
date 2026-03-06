@@ -31,14 +31,13 @@ import {
     RuntimeRoundCommandResponse,
     RuntimeStep,
     RuntimeRoundArtifactsResponse,
-    RuntimeStepArtifactsResponse,
     RuntimeStepCandidate,
     RoundEventQuery,
     RoundEventQueryResponse,
     TaskEventQuery,
     TaskEventQueryResponse,
     RuntimeStepMetricPoint,
-    StepArtifactDownload,
+    TaskArtifactDownload,
     RoundPredictionCleanupResponse,
     LoopCreateRequest,
     LoopActionRequest,
@@ -291,14 +290,7 @@ export interface ApiService {
     getTaskEvents(taskId: string, query?: TaskEventQuery): Promise<TaskEventQueryResponse>;
     getTaskMetricSeries(taskId: string, limit?: number): Promise<RuntimeStepMetricPoint[]>;
     getTaskCandidates(taskId: string, limit?: number): Promise<RuntimeStepCandidate[]>;
-
-    getStepMetricSeries(stepId: string, limit?: number): Promise<RuntimeStepMetricPoint[]>;
-
-    getStepCandidates(stepId: string, limit?: number): Promise<RuntimeStepCandidate[]>;
-
-    getStepArtifacts(stepId: string): Promise<RuntimeStepArtifactsResponse>;
-
-    getStepArtifactDownloadUrl(stepId: string, artifactName: string, expiresInHours?: number): Promise<StepArtifactDownload>;
+    getTaskArtifactDownloadUrl(taskId: string, artifactName: string, expiresInHours?: number): Promise<TaskArtifactDownload>;
 
     getRuntimeExecutors(): Promise<RuntimeExecutorListResponse>;
 

@@ -59,7 +59,8 @@ const ArtifactTableCard: React.FC<ArtifactTableCardProps> = ({roundArtifactRows,
                             title: '操作',
                             width: 220,
                             render: (_value: unknown, row: RoundArtifactTableRow) => {
-                                const url = artifactUrls[buildArtifactKey(row.stepId, row.name)];
+                                const ownerId = String(row.taskId || row.stepId || '').trim();
+                                const url = ownerId ? artifactUrls[buildArtifactKey(ownerId, row.name)] : undefined;
                                 return url ? (
                                     <Button size="small" onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}>
                                         下载/预览

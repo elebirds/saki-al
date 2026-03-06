@@ -32,7 +32,6 @@ import {
     RuntimeRoundCommandResponse,
     RuntimeRoundArtifactsResponse,
     RuntimeStep,
-    RuntimeStepArtifactsResponse,
     RuntimeStepCandidate,
     RuntimeTaskEvent,
     RuntimeRoundEvent,
@@ -41,7 +40,7 @@ import {
     TaskEventQuery,
     TaskEventQueryResponse,
     RuntimeStepMetricPoint,
-    StepArtifactDownload,
+    TaskArtifactDownload,
     LoopCreateRequest,
     LoopActionRequest,
     LoopActionResponse,
@@ -1177,28 +1176,13 @@ export class RealApiService implements ApiService {
         return response.data;
     }
 
-    async getStepMetricSeries(stepId: string, limit: number = 5000): Promise<RuntimeStepMetricPoint[]> {
-        const response = await this.client.get<RuntimeStepMetricPoint[]>(`/steps/${stepId}/metrics/series`, {params: {limit}});
-        return response.data;
-    }
-
-    async getStepCandidates(stepId: string, limit: number = 200): Promise<RuntimeStepCandidate[]> {
-        const response = await this.client.get<RuntimeStepCandidate[]>(`/steps/${stepId}/candidates`, {params: {limit}});
-        return response.data;
-    }
-
-    async getStepArtifacts(stepId: string): Promise<RuntimeStepArtifactsResponse> {
-        const response = await this.client.get<RuntimeStepArtifactsResponse>(`/steps/${stepId}/artifacts`);
-        return response.data;
-    }
-
-    async getStepArtifactDownloadUrl(
-        stepId: string,
+    async getTaskArtifactDownloadUrl(
+        taskId: string,
         artifactName: string,
         expiresInHours: number = 2
-    ): Promise<StepArtifactDownload> {
-        const response = await this.client.get<StepArtifactDownload>(
-            `/steps/${stepId}/artifacts/${artifactName}:download-url`,
+    ): Promise<TaskArtifactDownload> {
+        const response = await this.client.get<TaskArtifactDownload>(
+            `/tasks/${taskId}/artifacts/${artifactName}:download-url`,
             {params: {expires_in_hours: expiresInHours}}
         );
         return response.data;

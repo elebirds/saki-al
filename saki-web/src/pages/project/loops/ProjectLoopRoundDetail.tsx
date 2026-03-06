@@ -246,13 +246,15 @@ const ProjectLoopRoundDetail: React.FC = () => {
             const stageKey = String(item.stage || '').trim().toLowerCase() as RoundStageKey;
             const stageLabel = STAGE_LABEL[stageKey] || String(item.stage || '-');
             const artifactClass = String(item.artifactClass || '').trim().toLowerCase();
+            const ownerId = String(item.taskId || item.stepId || '').trim();
             return {
-                key: buildArtifactKey(item.stepId, item.name),
+                key: buildArtifactKey(ownerId, item.name),
                 stage: String(item.stage || ''),
                 stageLabel,
                 artifactClass,
                 artifactClassLabel: ARTIFACT_CLASS_LABEL[artifactClass] || artifactClass || '-',
                 stepId: item.stepId,
+                taskId: item.taskId,
                 stepIndex: Number(item.stepIndex || 0),
                 name: item.name,
                 kind: item.kind,

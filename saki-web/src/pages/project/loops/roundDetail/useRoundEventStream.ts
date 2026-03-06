@@ -118,8 +118,16 @@ export const useRoundEventStream = ({
             if (artifactRows.length > 0) {
                 setRoundArtifacts((prev) => {
                     const rowMap = new Map<string, RuntimeRoundArtifact>();
-                    prev.forEach((item) => rowMap.set(buildArtifactKey(item.stepId, item.name), item));
-                    artifactRows.forEach((item) => rowMap.set(buildArtifactKey(item.stepId, item.name), item));
+                    prev.forEach((item) => {
+                        const ownerId = String(item.taskId || item.stepId || '').trim();
+                        if (!ownerId) return;
+                        rowMap.set(buildArtifactKey(ownerId, item.name), item);
+                    });
+                    artifactRows.forEach((item) => {
+                        const ownerId = String(item.taskId || item.stepId || '').trim();
+                        if (!ownerId) return;
+                        rowMap.set(buildArtifactKey(ownerId, item.name), item);
+                    });
                     return Array.from(rowMap.values()).sort(
                         (left, right) => Number(left.stepIndex || 0) - Number(right.stepIndex || 0),
                     );

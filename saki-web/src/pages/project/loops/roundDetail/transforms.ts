@@ -38,7 +38,7 @@ export const mapStepTypeToStage = (stepType: string): RoundStageKey => {
     }
 };
 
-export const buildArtifactKey = (stepId: string, artifactName: string): string => `${stepId}:${artifactName}`;
+export const buildArtifactKey = (ownerId: string, artifactName: string): string => `${ownerId}:${artifactName}`;
 
 export const formatArtifactSize = (sizeRaw: unknown): string => {
     const size = Number(sizeRaw || 0);
@@ -144,10 +144,13 @@ export const buildArtifactFromRoundEvent = (event: RuntimeRoundEvent): RuntimeRo
     const uri = String(payload.uri || '').trim();
     const sizeRaw = payload.size ?? (payload.meta && typeof payload.meta === 'object' ? (payload.meta as Record<string, any>).size : null);
     const sizeValue = Number(sizeRaw);
-    const ownerId = String(event.stepId || event.taskId || '').trim();
+    const taskId = String(event.taskId || '').trim();
+    const stepId = String(event.stepId || '').trim();
+    const ownerId = taskId || stepId;
     if (!ownerId) return null;
     return {
-        stepId: ownerId,
+        stepId: stepId || ownerId,
+        taskId: taskId || ownerId,
         stepIndex: Number(event.taskIndex || 0),
         stage: event.stage,
         artifactClass: deriveArtifactClass(event.stage, kind),

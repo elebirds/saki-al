@@ -921,11 +921,14 @@ func (s *Service) processStoppingLoopTx(ctx context.Context, tx pgx.Tx, loop loo
 				return err
 			}
 			for _, stepID := range forceCancelStepIDs {
-				s.logger.Warn().
+				logEvent := s.logger.Warn().
 					Str("loop_id", loop.ID.String()).
 					Str("step_id", stepID.String()).
-					Dur("force_after", s.stopForceCancelAfter).
-					Msg("STOPPING 超时后强制取消步骤")
+					Dur("force_after", s.stopForceCancelAfter)
+				if taskID, ok, mapErr := s.resolveTaskIDForStepTx(ctx, tx, stepID); mapErr == nil && ok {
+					logEvent = logEvent.Str("task_id", taskID.String())
+				}
+				logEvent.Msg("STOPPING 超时后强制取消步骤")
 			}
 		}
 		if hasInflightRunning {

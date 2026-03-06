@@ -60,38 +60,6 @@ func (s *Service) resolveTaskIDForStepTx(
 	return uuid.Nil, false, err
 }
 
-func (s *Service) resolveDependencyTaskIDsByStepDependenciesTx(
-	ctx context.Context,
-	tx pgx.Tx,
-	dependencyStepIDs []uuid.UUID,
-) ([]uuid.UUID, error) {
-	if len(dependencyStepIDs) == 0 {
-		return nil, nil
-	}
-
-	rows, err := s.qtx(tx).ListStepTaskBindingsByStepIDs(ctx, dependencyStepIDs)
-	if err != nil {
-		return nil, err
-	}
-
-	taskByStepID := make(map[uuid.UUID]uuid.UUID, len(dependencyStepIDs))
-	for _, row := range rows {
-		if row.TaskID != nil {
-			taskByStepID[row.StepID] = *row.TaskID
-		}
-	}
-
-	dependencyTaskIDs := make([]uuid.UUID, 0, len(dependencyStepIDs))
-	for _, stepID := range dependencyStepIDs {
-		if taskID, ok := taskByStepID[stepID]; ok {
-			dependencyTaskIDs = append(dependencyTaskIDs, taskID)
-			continue
-		}
-		return nil, fmt.Errorf("task binding missing for step dependency: step_id=%s", stepID.String())
-	}
-	return dependencyTaskIDs, nil
-}
-
 func (s *Service) ensureTaskBindingForStepTx(
 	ctx context.Context,
 	tx pgx.Tx,

@@ -1101,6 +1101,7 @@ func (s *Service) createRoundAttemptTx(
 		return nil, fmt.Errorf("unsupported loop mode for step plan: %s", loop.Mode)
 	}
 	var previousStepID *uuid.UUID
+	var previousTaskID *uuid.UUID
 	for idx, stepSpec := range stepPlan {
 		stepID := uuid.New()
 		dependsOn := make([]uuid.UUID, 0, 1)
@@ -1129,11 +1130,11 @@ func (s *Service) createRoundAttemptTx(
 		}); err != nil {
 			return nil, err
 		}
-		dependencyTaskIDs, depErr := s.resolveDependencyTaskIDsByStepDependenciesTx(ctx, tx, dependsOn)
-		if depErr != nil {
-			return nil, depErr
+		dependencyTaskIDs := make([]uuid.UUID, 0, 1)
+		if previousTaskID != nil {
+			dependencyTaskIDs = append(dependencyTaskIDs, *previousTaskID)
 		}
-		if _, bindErr := s.ensureTaskBindingForStepTx(
+		createdTaskID, bindErr := s.ensureTaskBindingForStepTx(
 			ctx,
 			tx,
 			stepID,
@@ -1144,18 +1145,14 @@ func (s *Service) createRoundAttemptTx(
 			dependencyTaskIDs,
 			[]byte(stepParamsJSON),
 			3,
-		); bindErr != nil {
+		)
+		if bindErr != nil {
 			return nil, bindErr
 		}
+		previousTaskID = &createdTaskID
 		previousStepID = &stepID
 		if idx == 0 {
-			taskID, mapped, mapErr := s.resolveTaskIDForStepTx(ctx, tx, stepID)
-			if mapErr != nil {
-				return nil, mapErr
-			}
-			if mapped {
-				s.dispatcher.QueueTask(taskID.String())
-			}
+			s.dispatcher.QueueTask(createdTaskID.String())
 		}
 	}
 

@@ -9,13 +9,6 @@ SELECT task_id
 FROM step
 WHERE id = sqlc.arg(step_id)::uuid;
 
--- name: ListStepTaskBindingsByStepIDs :many
-SELECT
-  id AS step_id,
-  task_id
-FROM step
-WHERE id = ANY(sqlc.arg(step_ids)::uuid[]);
-
 -- name: InsertStepTask :exec
 INSERT INTO task(
   created_at,

@@ -66,7 +66,6 @@ type Querier interface {
 	ListOrphanDispatchingStepIDs(ctx context.Context, arg ListOrphanDispatchingStepIDsParams) ([]uuid.UUID, error)
 	ListReadyTaskIDsForDispatch(ctx context.Context, limitCount int32) ([]uuid.UUID, error)
 	ListRoundActiveStepIDs(ctx context.Context, roundID uuid.UUID) ([]uuid.UUID, error)
-	ListStepTaskBindingsByStepIDs(ctx context.Context, stepIds []uuid.UUID) ([]ListStepTaskBindingsByStepIDsRow, error)
 	ListTaskCandidatesByTaskID(ctx context.Context, arg ListTaskCandidatesByTaskIDParams) ([]ListTaskCandidatesByTaskIDRow, error)
 	ListTickLoopIDs(ctx context.Context, limitCount int32) ([]uuid.UUID, error)
 	MarkDispatchOutboxRetry(ctx context.Context, arg MarkDispatchOutboxRetryParams) (int64, error)

@@ -59,12 +59,10 @@ type stepDispatchPayload struct {
 	Attempt          int
 	Status           db.Stepstatus
 	UpdatedAt        *time.Time
-	DependsOnStepIDs []uuid.UUID
 	DependsOnTaskIDs []uuid.UUID
 	Params           *structpb.Struct
 	Resources        *runtimecontrolv1.ResourceSummary
 
-	dependsOnRaw       []byte
 	dependsOnTaskRaw   []byte
 	paramsRaw          []byte
 	roundParamsRaw     []byte
@@ -182,7 +180,6 @@ func mapStepPayload(record db.GetStepPayloadByIDForUpdateRow) (stepDispatchPaylo
 		RoundIndex:         int(record.RoundIndex),
 		Attempt:            int(record.Attempt),
 		UpdatedAt:          timestampPtr(record.UpdatedAt),
-		dependsOnRaw:       record.DependsOnRaw,
 		dependsOnTaskRaw:   record.DependsOnTaskRaw,
 		paramsRaw:          record.ParamsRaw,
 		InputCommitID:      record.InputCommitID,
@@ -198,10 +195,6 @@ func mapStepPayload(record db.GetStepPayloadByIDForUpdateRow) (stepDispatchPaylo
 		row.InputCommitID = row.roundInputCommitID
 	}
 	var parseErr error
-	row.DependsOnStepIDs, parseErr = parseJSONUUIDs(row.dependsOnRaw)
-	if parseErr != nil {
-		return stepDispatchPayload{}, parseErr
-	}
 	row.DependsOnTaskIDs, parseErr = parseJSONUUIDs(row.dependsOnTaskRaw)
 	if parseErr != nil {
 		return stepDispatchPayload{}, parseErr

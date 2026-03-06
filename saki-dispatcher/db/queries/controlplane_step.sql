@@ -37,7 +37,6 @@ SELECT
   COALESCE(k.attempt, t.attempt) AS attempt,
   t.state_version,
   COALESCE(k.updated_at, t.updated_at) AS updated_at,
-  t.depends_on_step_ids AS depends_on_raw,
   COALESCE(k.depends_on_task_ids, '[]'::jsonb) AS depends_on_task_raw,
   t.resolved_params AS params_raw,
   t.input_commit_id AS input_commit_id,

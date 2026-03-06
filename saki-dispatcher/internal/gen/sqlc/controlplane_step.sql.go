@@ -143,7 +143,6 @@ SELECT
   COALESCE(k.attempt, t.attempt) AS attempt,
   t.state_version,
   COALESCE(k.updated_at, t.updated_at) AS updated_at,
-  t.depends_on_step_ids AS depends_on_raw,
   COALESCE(k.depends_on_task_ids, '[]'::jsonb) AS depends_on_task_raw,
   t.resolved_params AS params_raw,
   t.input_commit_id AS input_commit_id,
@@ -172,7 +171,6 @@ type GetStepPayloadByIDForUpdateRow struct {
 	Attempt            int32
 	StateVersion       int32
 	UpdatedAt          pgtype.Timestamptz
-	DependsOnRaw       []byte
 	DependsOnTaskRaw   []byte
 	ParamsRaw          []byte
 	InputCommitID      *uuid.UUID
@@ -199,7 +197,6 @@ func (q *Queries) GetStepPayloadByIDForUpdate(ctx context.Context, stepID uuid.U
 		&i.Attempt,
 		&i.StateVersion,
 		&i.UpdatedAt,
-		&i.DependsOnRaw,
 		&i.DependsOnTaskRaw,
 		&i.ParamsRaw,
 		&i.InputCommitID,

@@ -227,39 +227,6 @@ func (q *Queries) InsertStepTask(ctx context.Context, arg InsertStepTaskParams) 
 	return err
 }
 
-const listStepTaskBindingsByStepIDs = `-- name: ListStepTaskBindingsByStepIDs :many
-SELECT
-  id AS step_id,
-  task_id
-FROM step
-WHERE id = ANY($1::uuid[])
-`
-
-type ListStepTaskBindingsByStepIDsRow struct {
-	StepID uuid.UUID
-	TaskID *uuid.UUID
-}
-
-func (q *Queries) ListStepTaskBindingsByStepIDs(ctx context.Context, stepIds []uuid.UUID) ([]ListStepTaskBindingsByStepIDsRow, error) {
-	rows, err := q.db.Query(ctx, listStepTaskBindingsByStepIDs, stepIds)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []ListStepTaskBindingsByStepIDsRow
-	for rows.Next() {
-		var i ListStepTaskBindingsByStepIDsRow
-		if err := rows.Scan(&i.StepID, &i.TaskID); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const markTaskDispatching = `-- name: MarkTaskDispatching :execrows
 UPDATE task
 SET status = 'DISPATCHING'::runtimetaskstatus,

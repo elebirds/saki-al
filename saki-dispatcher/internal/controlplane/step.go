@@ -590,6 +590,13 @@ func (s *Service) runOrchestratorStepTx(
 }
 
 func (s *Service) runSelectTopKTx(ctx context.Context, tx pgx.Tx, stepPayload stepDispatchPayload) error {
+	selectTaskID := stepPayload.StepID
+	if mappedTaskID, ok, mapErr := s.resolveTaskIDForStepTx(ctx, tx, stepPayload.StepID); mapErr != nil {
+		return mapErr
+	} else if ok {
+		selectTaskID = mappedTaskID
+	}
+
 	queryBatchRaw, err := s.qtx(tx).GetLoopQueryBatchSize(ctx, stepPayload.LoopID)
 	if err != nil {
 		return err
@@ -602,7 +609,7 @@ func (s *Service) runSelectTopKTx(ctx context.Context, tx pgx.Tx, stepPayload st
 	scoreStepID, err := s.qtx(tx).GetSucceededScoreStepIDByRound(ctx, stepPayload.RoundID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
-			return fmt.Errorf("SELECT 步骤依赖的 SCORE 结果尚未就绪: step_id=%s", stepPayload.StepID)
+			return fmt.Errorf("SELECT 依赖的 SCORE 结果尚未就绪: task_id=%s step_id=%s", selectTaskID, stepPayload.StepID)
 		}
 		return err
 	}
@@ -634,12 +641,6 @@ func (s *Service) runSelectTopKTx(ctx context.Context, tx pgx.Tx, stepPayload st
 			reasonJSON:     row.ReasonJson,
 			predictionJSON: row.PredictionJson,
 		})
-	}
-	selectTaskID := stepPayload.StepID
-	if mappedTaskID, ok, mapErr := s.resolveTaskIDForStepTx(ctx, tx, stepPayload.StepID); mapErr != nil {
-		return mapErr
-	} else if ok {
-		selectTaskID = mappedTaskID
 	}
 	if err := s.qtx(tx).DeleteTaskCandidatesByTaskID(ctx, selectTaskID); err != nil {
 		return err
@@ -741,7 +742,7 @@ func (s *Service) OnTaskEvent(ctx context.Context, event *runtimecontrolv1.TaskE
 			return err
 		}
 		if affected == 0 {
-			return fmt.Errorf("运行时事件导致非法步骤迁移: step_id=%s target=%s", stepID, targetState)
+			return fmt.Errorf("运行时事件导致非法步骤迁移: task_id=%s step_id=%s target=%s", taskID, stepID, targetState)
 		}
 
 	case "metric":
@@ -834,7 +835,7 @@ func (s *Service) OnTaskResult(ctx context.Context, result *runtimecontrolv1.Tas
 		return err
 	}
 	if affected == 0 {
-		return fmt.Errorf("步骤结果导致非法状态迁移: step_id=%s target=%s", stepID, targetState)
+		return fmt.Errorf("步骤结果导致非法状态迁移: task_id=%s step_id=%s target=%s", taskID, stepID, targetState)
 	}
 
 	roundID, err := s.findRoundIDByStep(ctx, tx, stepID)
@@ -1373,13 +1374,15 @@ func (s *Service) buildDispatchResolvedParamsTx(
 		}
 		if runtime_domain_client.IsInvalidRequestError(ticketErr) {
 			return nil, fmt.Errorf(
-				"训练模型下载票据请求无效: train_step_id=%s artifact=%s",
+				"训练模型下载票据请求无效: train_task_id=%s train_step_id=%s artifact=%s",
+				trainTaskID,
 				trainStepID,
 				artifactName,
 			)
 		}
 		return nil, fmt.Errorf(
-			"训练模型下载票据请求失败: train_step_id=%s artifact=%s err=%w",
+			"训练模型下载票据请求失败: train_task_id=%s train_step_id=%s artifact=%s err=%w",
+			trainTaskID,
 			trainStepID,
 			artifactName,
 			ticketErr,
@@ -1388,13 +1391,15 @@ func (s *Service) buildDispatchResolvedParamsTx(
 	if downloadResp == nil {
 		if lastNotFoundErr != nil {
 			return nil, fmt.Errorf(
-				"训练模型制品不存在: train_step_id=%s tried=%s",
+				"训练模型制品不存在: train_task_id=%s train_step_id=%s tried=%s",
+				trainTaskID,
 				trainStepID,
 				strings.Join(artifactCandidates, ","),
 			)
 		}
 		return nil, fmt.Errorf(
-			"训练模型下载票据请求失败: train_step_id=%s tried=%s",
+			"训练模型下载票据请求失败: train_task_id=%s train_step_id=%s tried=%s",
+			trainTaskID,
 			trainStepID,
 			strings.Join(artifactCandidates, ","),
 		)
@@ -1402,7 +1407,8 @@ func (s *Service) buildDispatchResolvedParamsTx(
 	downloadURL := strings.TrimSpace(downloadResp.GetDownloadUrl())
 	if downloadURL == "" {
 		return nil, fmt.Errorf(
-			"训练模型下载地址为空: train_step_id=%s artifact=%s",
+			"训练模型下载地址为空: train_task_id=%s train_step_id=%s artifact=%s",
+			trainTaskID,
 			trainStepID,
 			selectedArtifact,
 		)

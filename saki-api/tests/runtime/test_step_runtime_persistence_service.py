@@ -418,3 +418,54 @@ async def test_persist_task_result_projects_back_to_step_without_step_id_input(p
         assert round_row is not None
         assert float(round_row.final_metrics.get("map50", 0.0)) == pytest.approx(0.77)
         assert float(round_row.final_metrics.get("loss", 0.0)) == pytest.approx(0.28)
+
+
+@pytest.mark.anyio
+async def test_recompute_round_summary_uses_task_result_artifacts_as_source_of_truth(persistence_env):
+    session_local = persistence_env
+
+    async with session_local() as session:
+        step_id, round_id = await _seed_train_step(session)
+        persistence = RuntimeTaskPersistenceService(session)
+        step = await session.get(Step, step_id)
+        assert step is not None
+        assert step.task_id is not None
+
+        await persistence.persist_task_result(
+            RuntimeTaskResultDTO(
+                task_id=step.task_id,
+                status=StepStatus.SUCCEEDED,
+                metrics={"map50": 0.81},
+                artifacts=[
+                    {
+                        "name": "best.pt",
+                        "kind": "weights",
+                        "uri": "https://example.com/task-best.pt",
+                        "meta": {"size": 1024},
+                    }
+                ],
+                candidates=[],
+            )
+        )
+        await session.flush()
+
+        # Tamper step projection; round summary should still follow task._result_artifacts.
+        step = await session.get(Step, step_id)
+        assert step is not None
+        step.artifacts = {
+            "tampered.pt": {
+                "kind": "weights",
+                "uri": "https://example.com/step-tampered.pt",
+                "meta": {},
+            }
+        }
+        session.add(step)
+        await session.flush()
+
+        await persistence._recompute_round_summary(round_id)
+        await session.commit()
+
+        round_row = await session.get(Round, round_id)
+        assert round_row is not None
+        assert "best.pt" in (round_row.final_artifacts or {})
+        assert "tampered.pt" not in (round_row.final_artifacts or {})

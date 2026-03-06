@@ -87,21 +87,22 @@ func (q *Queries) GetLatestAssignedExecutorByTaskIDs(ctx context.Context, taskId
 	return assigned_executor_id, err
 }
 
-const getLatestSucceededTrainStepIDByRound = `-- name: GetLatestSucceededTrainStepIDByRound :one
-SELECT id AS step_id
-FROM step
-WHERE round_id = $1::uuid
-  AND step_type = 'TRAIN'::steptype
-  AND state = 'SUCCEEDED'::stepstatus
-ORDER BY step_index DESC
+const getLatestSucceededTrainTaskIDByRound = `-- name: GetLatestSucceededTrainTaskIDByRound :one
+SELECT t.id AS task_id
+FROM task t
+JOIN step s ON s.task_id = t.id
+WHERE s.round_id = $1::uuid
+  AND t.task_type = 'TRAIN'::runtimetasktype
+  AND t.status = 'SUCCEEDED'::runtimetaskstatus
+ORDER BY s.step_index DESC
 LIMIT 1
 `
 
-func (q *Queries) GetLatestSucceededTrainStepIDByRound(ctx context.Context, roundID uuid.UUID) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, getLatestSucceededTrainStepIDByRound, roundID)
-	var step_id uuid.UUID
-	err := row.Scan(&step_id)
-	return step_id, err
+func (q *Queries) GetLatestSucceededTrainTaskIDByRound(ctx context.Context, roundID uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, getLatestSucceededTrainTaskIDByRound, roundID)
+	var task_id uuid.UUID
+	err := row.Scan(&task_id)
+	return task_id, err
 }
 
 const getLoopQueryBatchSize = `-- name: GetLoopQueryBatchSize :one
@@ -136,7 +137,7 @@ SELECT
   t.id AS step_id,
   k.id AS task_id,
   t.round_id AS round_id,
-  k.status::text::stepstatus AS status,
+  k.status AS task_status,
   t.step_type AS step_type,
   t.dispatch_kind AS dispatch_kind,
   t.round_index,
@@ -164,7 +165,7 @@ type GetStepPayloadByTaskIDForUpdateRow struct {
 	StepID             uuid.UUID
 	TaskID             uuid.UUID
 	RoundID            uuid.UUID
-	Status             Stepstatus
+	TaskStatus         Runtimetaskstatus
 	StepType           Steptype
 	DispatchKind       Stepdispatchkind
 	RoundIndex         int32
@@ -190,7 +191,7 @@ func (q *Queries) GetStepPayloadByTaskIDForUpdate(ctx context.Context, taskID uu
 		&i.StepID,
 		&i.TaskID,
 		&i.RoundID,
-		&i.Status,
+		&i.TaskStatus,
 		&i.StepType,
 		&i.DispatchKind,
 		&i.RoundIndex,
@@ -211,21 +212,22 @@ func (q *Queries) GetStepPayloadByTaskIDForUpdate(ctx context.Context, taskID uu
 	return i, err
 }
 
-const getSucceededScoreStepIDByRound = `-- name: GetSucceededScoreStepIDByRound :one
-SELECT id AS step_id
-FROM step
-WHERE round_id = $1::uuid
-  AND step_type = 'SCORE'::steptype
-  AND state = 'SUCCEEDED'::stepstatus
-ORDER BY step_index DESC
+const getSucceededScoreTaskIDByRound = `-- name: GetSucceededScoreTaskIDByRound :one
+SELECT t.id AS task_id
+FROM task t
+JOIN step s ON s.task_id = t.id
+WHERE s.round_id = $1::uuid
+  AND t.task_type = 'SCORE'::runtimetasktype
+  AND t.status = 'SUCCEEDED'::runtimetaskstatus
+ORDER BY s.step_index DESC
 LIMIT 1
 `
 
-func (q *Queries) GetSucceededScoreStepIDByRound(ctx context.Context, roundID uuid.UUID) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, getSucceededScoreStepIDByRound, roundID)
-	var step_id uuid.UUID
-	err := row.Scan(&step_id)
-	return step_id, err
+func (q *Queries) GetSucceededScoreTaskIDByRound(ctx context.Context, roundID uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, getSucceededScoreTaskIDByRound, roundID)
+	var task_id uuid.UUID
+	err := row.Scan(&task_id)
+	return task_id, err
 }
 
 const insertTaskCandidateItem = `-- name: InsertTaskCandidateItem :exec

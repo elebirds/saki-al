@@ -102,7 +102,8 @@ func (s *Service) dispatchStepTaskByID(ctx context.Context, taskID uuid.UUID) (b
 		return false, tx.Commit(ctx)
 	}
 
-	if stepPayload.Status == stepPending || stepPayload.Status == stepRetrying {
+	taskStatus := normalizeTaskEnumText(string(stepPayload.TaskStatus))
+	if taskStatus == "PENDING" || taskStatus == "RETRYING" {
 		loopLifecycle, err := s.qtx(tx).GetLoopLifecycle(ctx, stepPayload.LoopID)
 		if err != nil {
 			if err == pgx.ErrNoRows {
@@ -121,7 +122,7 @@ func (s *Service) dispatchStepTaskByID(ctx context.Context, taskID uuid.UUID) (b
 			return false, tx.Commit(ctx)
 		}
 		promoteToReady := s.promoteTaskToReadyTx
-		if stepPayload.Status == stepRetrying {
+		if taskStatus == "RETRYING" {
 			if !isRetryDue(time.Now().UTC(), stepPayload.UpdatedAt, stepPayload.Attempt) {
 				return false, tx.Commit(ctx)
 			}
@@ -134,12 +135,13 @@ func (s *Service) dispatchStepTaskByID(ctx context.Context, taskID uuid.UUID) (b
 		if !promoted {
 			return false, tx.Commit(ctx)
 		}
-		stepPayload.Status = stepReady
+		stepPayload.TaskStatus = db.RuntimetaskstatusREADY
+		taskStatus = "READY"
 		now := time.Now().UTC()
 		stepPayload.UpdatedAt = &now
 	}
 
-	if stepPayload.Status != stepReady {
+	if taskStatus != "READY" {
 		return false, tx.Commit(ctx)
 	}
 	if err := s.syncLoopPhaseWithStepTx(ctx, tx, stepPayload); err != nil {
@@ -480,7 +482,9 @@ func (s *Service) runOrchestratorStepTx(
 
 func (s *Service) runSelectTopKTx(ctx context.Context, tx pgx.Tx, stepPayload stepDispatchPayload) error {
 	selectTaskID := stepPayload.StepID
-	if mappedTaskID, ok, mapErr := s.resolveTaskIDForStepTx(ctx, tx, stepPayload.StepID); mapErr != nil {
+	if stepPayload.TaskID != nil {
+		selectTaskID = *stepPayload.TaskID
+	} else if mappedTaskID, ok, mapErr := s.resolveTaskIDForStepTx(ctx, tx, stepPayload.StepID); mapErr != nil {
 		return mapErr
 	} else if ok {
 		selectTaskID = mappedTaskID
@@ -495,18 +499,12 @@ func (s *Service) runSelectTopKTx(ctx context.Context, tx pgx.Tx, stepPayload st
 		queryBatch = 1
 	}
 
-	scoreStepID, err := s.qtx(tx).GetSucceededScoreStepIDByRound(ctx, stepPayload.RoundID)
+	scoreTaskID, err := s.qtx(tx).GetSucceededScoreTaskIDByRound(ctx, stepPayload.RoundID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
-			return fmt.Errorf("SELECT 依赖的 SCORE 结果尚未就绪: task_id=%s step_id=%s", selectTaskID, stepPayload.StepID)
+			return fmt.Errorf("SELECT 依赖的 SCORE task 结果尚未就绪: task_id=%s step_id=%s", selectTaskID, stepPayload.StepID)
 		}
 		return err
-	}
-	scoreTaskID := scoreStepID
-	if mappedTaskID, ok, mapErr := s.resolveTaskIDForStepTx(ctx, tx, scoreStepID); mapErr != nil {
-		return mapErr
-	} else if ok {
-		scoreTaskID = mappedTaskID
 	}
 	rows, err := s.qtx(tx).ListTaskCandidatesByTaskID(ctx, db.ListTaskCandidatesByTaskIDParams{
 		TaskID:     scoreTaskID,
@@ -1151,11 +1149,13 @@ func (s *Service) buildDispatchResolvedParamsTx(
 		return nil, runtime_domain_client.ErrDisabled
 	}
 
-	trainStepID, err := s.qtx(tx).GetLatestSucceededTrainStepIDByRound(ctx, stepPayload.RoundID)
+	trainTaskID, err := s.qtx(tx).GetLatestSucceededTrainTaskIDByRound(ctx, stepPayload.RoundID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			currentTaskID := stepPayload.StepID
-			if mappedTaskID, ok, mapErr := s.resolveTaskIDForStepTx(ctx, tx, stepPayload.StepID); mapErr == nil && ok {
+			if stepPayload.TaskID != nil {
+				currentTaskID = *stepPayload.TaskID
+			} else if mappedTaskID, ok, mapErr := s.resolveTaskIDForStepTx(ctx, tx, stepPayload.StepID); mapErr == nil && ok {
 				currentTaskID = mappedTaskID
 			}
 			return nil, fmt.Errorf(
@@ -1167,11 +1167,11 @@ func (s *Service) buildDispatchResolvedParamsTx(
 		}
 		return nil, err
 	}
-	trainTaskID := trainStepID
-	if mappedTaskID, ok, mapErr := s.resolveTaskIDForStepTx(ctx, tx, trainStepID); mapErr != nil {
+	trainStepID := uuid.Nil
+	if mappedStepID, mapped, mapErr := s.resolveStepIDForTaskTx(ctx, tx, trainTaskID); mapErr != nil {
 		return nil, mapErr
-	} else if ok {
-		trainTaskID = mappedTaskID
+	} else if mapped {
+		trainStepID = mappedStepID
 	}
 
 	var (
@@ -1199,14 +1199,14 @@ func (s *Service) buildDispatchResolvedParamsTx(
 			return nil, fmt.Errorf(
 				"训练模型下载票据请求无效: train_task_id=%s train_step_id=%s artifact=%s",
 				trainTaskID,
-				trainStepID,
+				trainStepID.String(),
 				artifactName,
 			)
 		}
 		return nil, fmt.Errorf(
 			"训练模型下载票据请求失败: train_task_id=%s train_step_id=%s artifact=%s err=%w",
 			trainTaskID,
-			trainStepID,
+			trainStepID.String(),
 			artifactName,
 			ticketErr,
 		)
@@ -1216,14 +1216,14 @@ func (s *Service) buildDispatchResolvedParamsTx(
 			return nil, fmt.Errorf(
 				"训练模型制品不存在: train_task_id=%s train_step_id=%s tried=%s",
 				trainTaskID,
-				trainStepID,
+				trainStepID.String(),
 				strings.Join(artifactCandidates, ","),
 			)
 		}
 		return nil, fmt.Errorf(
 			"训练模型下载票据请求失败: train_task_id=%s train_step_id=%s tried=%s",
 			trainTaskID,
-			trainStepID,
+			trainStepID.String(),
 			strings.Join(artifactCandidates, ","),
 		)
 	}
@@ -1232,7 +1232,7 @@ func (s *Service) buildDispatchResolvedParamsTx(
 		return nil, fmt.Errorf(
 			"训练模型下载地址为空: train_task_id=%s train_step_id=%s artifact=%s",
 			trainTaskID,
-			trainStepID,
+			trainStepID.String(),
 			selectedArtifact,
 		)
 	}
@@ -1243,7 +1243,7 @@ func (s *Service) buildDispatchResolvedParamsTx(
 	pluginParams["model_custom_ref"] = downloadURL
 	paramsMap["plugin"] = pluginParams
 	paramsMap["_runtime_model_handoff"] = map[string]any{
-		"from_step_id":  trainStepID.String(),
+		"from_step_id":  strings.TrimSpace(trainStepID.String()),
 		"from_task_id":  trainTaskID.String(),
 		"artifact_name": selectedArtifact,
 		"download_url":  downloadURL,

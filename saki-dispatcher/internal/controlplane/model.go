@@ -57,7 +57,7 @@ type stepDispatchPayload struct {
 	Mode             db.Loopmode
 	RoundIndex       int
 	Attempt          int
-	Status           db.Stepstatus
+	TaskStatus       db.Runtimetaskstatus
 	UpdatedAt        *time.Time
 	DependsOnTaskIDs []uuid.UUID
 	Params           *structpb.Struct
@@ -173,7 +173,7 @@ func mapStepPayload(record db.GetStepPayloadByTaskIDForUpdateRow) (stepDispatchP
 	row := stepDispatchPayload{
 		StepID:             record.StepID,
 		RoundID:            record.RoundID,
-		Status:             record.Status,
+		TaskStatus:         record.TaskStatus,
 		StepType:           record.StepType,
 		DispatchKind:       record.DispatchKind,
 		RoundIndex:         int(record.RoundIndex),

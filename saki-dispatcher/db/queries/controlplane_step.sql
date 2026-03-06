@@ -30,7 +30,7 @@ SELECT
   t.id AS step_id,
   k.id AS task_id,
   t.round_id AS round_id,
-  k.status::text::stepstatus AS status,
+  k.status AS task_status,
   t.step_type AS step_type,
   t.dispatch_kind AS dispatch_kind,
   t.round_index,
@@ -70,22 +70,24 @@ SELECT query_batch_size
 FROM loop
 WHERE id = sqlc.arg(loop_id)::uuid;
 
--- name: GetSucceededScoreStepIDByRound :one
-SELECT id AS step_id
-FROM step
-WHERE round_id = sqlc.arg(round_id)::uuid
-  AND step_type = 'SCORE'::steptype
-  AND state = 'SUCCEEDED'::stepstatus
-ORDER BY step_index DESC
+-- name: GetSucceededScoreTaskIDByRound :one
+SELECT t.id AS task_id
+FROM task t
+JOIN step s ON s.task_id = t.id
+WHERE s.round_id = sqlc.arg(round_id)::uuid
+  AND t.task_type = 'SCORE'::runtimetasktype
+  AND t.status = 'SUCCEEDED'::runtimetaskstatus
+ORDER BY s.step_index DESC
 LIMIT 1;
 
--- name: GetLatestSucceededTrainStepIDByRound :one
-SELECT id AS step_id
-FROM step
-WHERE round_id = sqlc.arg(round_id)::uuid
-  AND step_type = 'TRAIN'::steptype
-  AND state = 'SUCCEEDED'::stepstatus
-ORDER BY step_index DESC
+-- name: GetLatestSucceededTrainTaskIDByRound :one
+SELECT t.id AS task_id
+FROM task t
+JOIN step s ON s.task_id = t.id
+WHERE s.round_id = sqlc.arg(round_id)::uuid
+  AND t.task_type = 'TRAIN'::runtimetasktype
+  AND t.status = 'SUCCEEDED'::runtimetaskstatus
+ORDER BY s.step_index DESC
 LIMIT 1;
 
 -- name: ListTaskCandidatesByTaskID :many

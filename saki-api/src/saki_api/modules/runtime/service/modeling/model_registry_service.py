@@ -24,6 +24,7 @@ from saki_api.modules.runtime.repo.model import ModelRepository
 from saki_api.modules.runtime.repo.model_class_schema import ModelClassSchemaRepository
 from saki_api.modules.runtime.repo.round import RoundRepository
 from saki_api.modules.runtime.repo.step import StepRepository
+from saki_api.modules.runtime.repo.task import TaskRepository
 
 
 @dataclass(slots=True)
@@ -44,6 +45,7 @@ class ModelService:
         self.round_repo = RoundRepository(session)
         self.loop_repo = LoopRepository(session)
         self.step_repo = StepRepository(session)
+        self.task_repo = TaskRepository(session)
         self.repository = ModelRepository(session)
         self.model_class_schema_repo = ModelClassSchemaRepository(session)
         self._storage = None
@@ -127,11 +129,22 @@ class ModelService:
 
     async def _collect_round_artifacts(self, round_id: uuid.UUID) -> dict[str, _ArtifactCandidate]:
         step_rows = await self.step_repo.list_by_round(round_id)
+        task_ids = [step.task_id for step in step_rows if step.task_id is not None]
+        task_rows = await self.task_repo.get_by_ids(task_ids) if task_ids else []
+        task_by_id = {task.id: task for task in task_rows}
         collected: dict[str, _ArtifactCandidate] = {}
         for step in step_rows:
             step_type = self._normalize_step_type(step.step_type)
-            step_artifacts = step.artifacts if isinstance(step.artifacts, dict) else {}
-            for raw_name, raw_payload in step_artifacts.items():
+            artifact_map: dict[str, Any] = {}
+            if step.task_id is not None:
+                task = task_by_id.get(step.task_id)
+                params = task.resolved_params if task and isinstance(task.resolved_params, dict) else {}
+                task_result_artifacts = params.get("_result_artifacts")
+                if isinstance(task_result_artifacts, dict):
+                    artifact_map = task_result_artifacts
+            if not artifact_map:
+                artifact_map = step.artifacts if isinstance(step.artifacts, dict) else {}
+            for raw_name, raw_payload in artifact_map.items():
                 name = self._normalize_text(raw_name)
                 if not name:
                     continue

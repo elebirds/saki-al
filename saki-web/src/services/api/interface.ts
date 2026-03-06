@@ -38,6 +38,7 @@ import {
     TaskEventQueryResponse,
     RuntimeTaskMetricPoint,
     TaskArtifactDownload,
+    TaskArtifactsResponse,
     RoundPredictionCleanupResponse,
     LoopCreateRequest,
     LoopActionRequest,
@@ -290,6 +291,7 @@ export interface ApiService {
     getTaskEvents(taskId: string, query?: TaskEventQuery): Promise<TaskEventQueryResponse>;
     getTaskMetricSeries(taskId: string, limit?: number): Promise<RuntimeTaskMetricPoint[]>;
     getTaskCandidates(taskId: string, limit?: number): Promise<RuntimeTaskCandidate[]>;
+    getTaskArtifacts(taskId: string): Promise<TaskArtifactsResponse>;
     getTaskArtifactDownloadUrl(taskId: string, artifactName: string, expiresInHours?: number): Promise<TaskArtifactDownload>;
 
     getRuntimeExecutors(): Promise<RuntimeExecutorListResponse>;

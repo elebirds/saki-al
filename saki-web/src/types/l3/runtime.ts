@@ -445,6 +445,18 @@ export interface TaskArtifactDownload {
     expiresInHours: number;
 }
 
+export interface TaskArtifactRead {
+    name: string;
+    kind: string;
+    uri: string;
+    meta: Record<string, any>;
+}
+
+export interface TaskArtifactsResponse {
+    taskId: string;
+    artifacts: TaskArtifactRead[];
+}
+
 export interface LoopSummary {
     loopId: string;
     lifecycle: LoopLifecycle;

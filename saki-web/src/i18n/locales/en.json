@@ -953,7 +953,21 @@
       },
       "actions": {
         "gotoLoop": "Go to Loop",
-        "apply": "Apply"
+        "apply": "Apply",
+        "detail": "Detail"
+      },
+      "detail": {
+        "title": "Prediction Task Detail",
+        "summaryTitle": "Task Summary",
+        "artifactsTitle": "Task Artifacts",
+        "artifactsEmpty": "No artifacts for current task",
+        "itemsTitle": "Prediction Items",
+        "consoleTitle": "Task Console Logs",
+        "consoleEmpty": "No task logs yet",
+        "empty": "Prediction not found or no access",
+        "messages": {
+          "loadFailed": "Failed to load prediction detail"
+        }
       },
       "modal": {
         "title": "Create Prediction Task",

@@ -2,7 +2,7 @@ import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {Button, Card, Form, Modal, Select, Slider, Space, Table, Tag, Typography, message} from 'antd';
 import {PlusOutlined, ReloadOutlined} from '@ant-design/icons';
 import {useTranslation} from 'react-i18next';
-import {useParams} from 'react-router-dom';
+import {useNavigate, useParams} from 'react-router-dom';
 import {api} from '../../../services/api';
 import {
     CommitHistoryItem,
@@ -55,6 +55,7 @@ interface TaskFormValues {
 const ProjectPredictionTasks: React.FC = () => {
     const {t} = useTranslation();
     const {projectId} = useParams<{ projectId: string }>();
+    const navigate = useNavigate();
     const [messageApi, contextHolder] = message.useMessage();
     const [loading, setLoading] = useState(false);
     const [submitting, setSubmitting] = useState(false);
@@ -400,9 +401,15 @@ const ProjectPredictionTasks: React.FC = () => {
                         {
                             title: t('project.predictionTasks.table.actions'),
                             key: 'actions',
-                            width: 120,
+                            width: 200,
                             render: (_, row) => (
                                 <Space>
+                                    <Button
+                                        size="small"
+                                        onClick={() => navigate(`/projects/${projectId}/prediction-tasks/${row.id}`)}
+                                    >
+                                        {t('project.predictionTasks.actions.detail')}
+                                    </Button>
                                     <Button
                                         size="small"
                                         type="primary"

@@ -41,6 +41,7 @@ import {
     TaskEventQueryResponse,
     RuntimeTaskMetricPoint,
     TaskArtifactDownload,
+    TaskArtifactsResponse,
     LoopCreateRequest,
     LoopActionRequest,
     LoopActionResponse,
@@ -1173,6 +1174,11 @@ export class RealApiService implements ApiService {
 
     async getTaskCandidates(taskId: string, limit: number = 200): Promise<RuntimeTaskCandidate[]> {
         const response = await this.client.get<RuntimeTaskCandidate[]>(`/tasks/${taskId}/candidates`, {params: {limit}});
+        return response.data;
+    }
+
+    async getTaskArtifacts(taskId: string): Promise<TaskArtifactsResponse> {
+        const response = await this.client.get<TaskArtifactsResponse>(`/tasks/${taskId}/artifacts`);
         return response.data;
     }
 

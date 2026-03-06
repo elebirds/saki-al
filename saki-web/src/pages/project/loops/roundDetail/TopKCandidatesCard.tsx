@@ -1,13 +1,13 @@
 import React from 'react';
 import {Card, Empty, Progress, Table, Tag, Typography} from 'antd';
 
-import {RuntimeRound, RuntimeStepCandidate} from '../../../../types';
+import {RuntimeRound, RuntimeTaskCandidate} from '../../../../types';
 
 const {Text} = Typography;
 
 interface TopKCandidatesCardProps {
     roundMode?: RuntimeRound['mode'];
-    topkCandidates: RuntimeStepCandidate[];
+    topkCandidates: RuntimeTaskCandidate[];
     topkSource: string;
 }
 

@@ -305,7 +305,7 @@ export interface TaskEventQueryResponse {
     facets?: TaskEventFacets | null;
 }
 
-export interface RuntimeStepMetricPoint {
+export interface RuntimeTaskMetricPoint {
     step: number;
     epoch?: number | null;
     metricName: string;
@@ -313,7 +313,7 @@ export interface RuntimeStepMetricPoint {
     ts: string;
 }
 
-export interface RuntimeStepCandidate {
+export interface RuntimeTaskCandidate {
     sampleId: string;
     rank: number;
     score: number;
@@ -334,10 +334,10 @@ export interface RoundSelectionRead {
     attemptIndex: number;
     topk: number;
     reviewPoolSize: number;
-    autoSelected: RuntimeStepCandidate[];
-    scorePool: RuntimeStepCandidate[];
+    autoSelected: RuntimeTaskCandidate[];
+    scorePool: RuntimeTaskCandidate[];
     overrides: RoundSelectionOverrideRead[];
-    effectiveSelected: RuntimeStepCandidate[];
+    effectiveSelected: RuntimeTaskCandidate[];
     selectedCount: number;
     includeCount: number;
     excludeCount: number;
@@ -354,7 +354,7 @@ export interface RoundSelectionApplyResponse {
     selectedCount: number;
     includeCount: number;
     excludeCount: number;
-    effectiveSelected: RuntimeStepCandidate[];
+    effectiveSelected: RuntimeTaskCandidate[];
 }
 
 export interface RuntimeRoundArtifact {

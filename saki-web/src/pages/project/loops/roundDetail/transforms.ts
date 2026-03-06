@@ -2,7 +2,7 @@ import {
     RuntimeRoundArtifact,
     RuntimeRoundEvent,
     RuntimeStep,
-    RuntimeStepMetricPoint,
+    RuntimeTaskMetricPoint,
 } from '../../../../types';
 import {computeDurationMs} from '../runtimeTime';
 import {
@@ -49,11 +49,11 @@ export const formatArtifactSize = (sizeRaw: unknown): string => {
 
 export const isLossMetricName = (metricName: string): boolean => LOSS_METRIC_NAME_RE.test(String(metricName || ''));
 
-export const extractMetricPointsFromEvent = (event: RuntimeRoundEvent): RuntimeStepMetricPoint[] => {
+export const extractMetricPointsFromEvent = (event: RuntimeRoundEvent): RuntimeTaskMetricPoint[] => {
     if (event.eventType !== 'metric') return [];
     if (event.stage !== 'train') return [];
     const payload = event.payload && typeof event.payload === 'object' ? event.payload : {};
-    const points: RuntimeStepMetricPoint[] = [];
+    const points: RuntimeTaskMetricPoint[] = [];
     const stepValue = Number(payload.step ?? payload.globalStep ?? payload.iteration ?? event.seq ?? 0);
     const epochRaw = payload.epoch;
     const epoch = epochRaw == null ? null : Number(epochRaw);
@@ -81,11 +81,11 @@ export const extractMetricPointsFromEvent = (event: RuntimeRoundEvent): RuntimeS
 };
 
 export const mergeMetricPoints = (
-    previous: RuntimeStepMetricPoint[],
-    incoming: RuntimeStepMetricPoint[],
-): RuntimeStepMetricPoint[] => {
+    previous: RuntimeTaskMetricPoint[],
+    incoming: RuntimeTaskMetricPoint[],
+): RuntimeTaskMetricPoint[] => {
     if (incoming.length === 0) return previous;
-    const merged = new Map<string, RuntimeStepMetricPoint>();
+    const merged = new Map<string, RuntimeTaskMetricPoint>();
     [...previous, ...incoming].forEach((item) => {
         const key = `${item.step}|${item.epoch ?? ''}|${item.metricName}|${item.ts}`;
         merged.set(key, item);

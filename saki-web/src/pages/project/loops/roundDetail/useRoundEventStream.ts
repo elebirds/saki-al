@@ -4,7 +4,7 @@ import {
     RuntimeRoundArtifact,
     RuntimeRoundEvent,
     RuntimeStep,
-    RuntimeStepMetricPoint,
+    RuntimeTaskMetricPoint,
 } from '../../../../types';
 import {api} from '../../../../services/api';
 import {mergeRuntimeRoundEvents, normalizeRuntimeRoundEvent} from '../runtimeEventFormatter';
@@ -28,7 +28,7 @@ interface UseRoundEventStreamOptions {
     scheduleRoundMetaRefresh: () => void;
     ensureArtifactUrls: (items: RuntimeRoundArtifact[]) => Promise<void>;
     setSteps: Dispatch<SetStateAction<RuntimeStep[]>>;
-    setTrainMetricPoints: Dispatch<SetStateAction<RuntimeStepMetricPoint[]>>;
+    setTrainMetricPoints: Dispatch<SetStateAction<RuntimeTaskMetricPoint[]>>;
     setRoundArtifacts: Dispatch<SetStateAction<RuntimeRoundArtifact[]>>;
 }
 

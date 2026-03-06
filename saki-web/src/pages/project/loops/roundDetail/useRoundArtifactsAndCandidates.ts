@@ -4,8 +4,8 @@ import {
     RuntimeRound,
     RuntimeRoundArtifact,
     RuntimeStep,
-    RuntimeStepCandidate,
-    RuntimeStepMetricPoint,
+    RuntimeTaskCandidate,
+    RuntimeTaskMetricPoint,
 } from '../../../../types';
 import {api} from '../../../../services/api';
 import {buildArtifactKey} from './transforms';
@@ -25,8 +25,8 @@ export const useRoundArtifactsAndCandidates = ({
     selectStep,
     scoreStep,
 }: UseRoundArtifactsAndCandidatesOptions) => {
-    const [trainMetricPoints, setTrainMetricPoints] = useState<RuntimeStepMetricPoint[]>([]);
-    const [topkCandidates, setTopkCandidates] = useState<RuntimeStepCandidate[]>([]);
+    const [trainMetricPoints, setTrainMetricPoints] = useState<RuntimeTaskMetricPoint[]>([]);
+    const [topkCandidates, setTopkCandidates] = useState<RuntimeTaskCandidate[]>([]);
     const [topkSource, setTopkSource] = useState('-');
     const [roundArtifacts, setRoundArtifacts] = useState<RuntimeRoundArtifact[]>([]);
     const [artifactUrls, setArtifactUrls] = useState<Record<string, string>>({});
@@ -106,7 +106,7 @@ export const useRoundArtifactsAndCandidates = ({
                 return;
             }
 
-            let rows: RuntimeStepCandidate[] = [];
+            let rows: RuntimeTaskCandidate[] = [];
             let source = '-';
             let selectionResolved = false;
             if (round.mode === 'active_learning') {

@@ -32,14 +32,14 @@ import {
     RuntimeRoundCommandResponse,
     RuntimeRoundArtifactsResponse,
     RuntimeStep,
-    RuntimeStepCandidate,
+    RuntimeTaskCandidate,
     RuntimeTaskEvent,
     RuntimeRoundEvent,
     RoundEventQuery,
     RoundEventQueryResponse,
     TaskEventQuery,
     TaskEventQueryResponse,
-    RuntimeStepMetricPoint,
+    RuntimeTaskMetricPoint,
     TaskArtifactDownload,
     LoopCreateRequest,
     LoopActionRequest,
@@ -1166,13 +1166,13 @@ export class RealApiService implements ApiService {
         return normalizeTaskEventQueryResponse(response.data);
     }
 
-    async getTaskMetricSeries(taskId: string, limit: number = 5000): Promise<RuntimeStepMetricPoint[]> {
-        const response = await this.client.get<RuntimeStepMetricPoint[]>(`/tasks/${taskId}/metrics/series`, {params: {limit}});
+    async getTaskMetricSeries(taskId: string, limit: number = 5000): Promise<RuntimeTaskMetricPoint[]> {
+        const response = await this.client.get<RuntimeTaskMetricPoint[]>(`/tasks/${taskId}/metrics/series`, {params: {limit}});
         return response.data;
     }
 
-    async getTaskCandidates(taskId: string, limit: number = 200): Promise<RuntimeStepCandidate[]> {
-        const response = await this.client.get<RuntimeStepCandidate[]>(`/tasks/${taskId}/candidates`, {params: {limit}});
+    async getTaskCandidates(taskId: string, limit: number = 200): Promise<RuntimeTaskCandidate[]> {
+        const response = await this.client.get<RuntimeTaskCandidate[]>(`/tasks/${taskId}/candidates`, {params: {limit}});
         return response.data;
     }
 

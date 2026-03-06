@@ -40,24 +40,22 @@ export const useRoundArtifactsAndCandidates = ({
         if (!items || items.length === 0) return;
         const currentMap = artifactUrlsRef.current;
         const missing = items.filter((item) => {
-            const ownerId = String(item.taskId || item.stepId || '').trim();
-            return ownerId && !currentMap[buildArtifactKey(ownerId, item.name)];
+            const taskId = String(item.taskId || '').trim();
+            return taskId && !currentMap[buildArtifactKey(taskId, item.name)];
         });
         if (missing.length === 0) return;
 
         const updates: Record<string, string> = {};
         for (const artifact of missing) {
-            const ownerId = String(artifact.taskId || artifact.stepId || '').trim();
-            if (!ownerId) continue;
-            const key = buildArtifactKey(ownerId, artifact.name);
+            const taskId = String(artifact.taskId || '').trim();
+            if (!taskId) continue;
+            const key = buildArtifactKey(taskId, artifact.name);
             const uri = String(artifact.uri || '');
             if (uri.startsWith('http://') || uri.startsWith('https://')) {
                 updates[key] = uri;
                 continue;
             }
             if (!uri.startsWith('s3://')) continue;
-            const taskId = String(artifact.taskId || '').trim();
-            if (!taskId) continue;
             try {
                 const row = await api.getTaskArtifactDownloadUrl(taskId, artifact.name, 2);
                 updates[key] = row.downloadUrl;

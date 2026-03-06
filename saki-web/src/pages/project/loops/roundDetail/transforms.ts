@@ -145,12 +145,11 @@ export const buildArtifactFromRoundEvent = (event: RuntimeRoundEvent): RuntimeRo
     const sizeRaw = payload.size ?? (payload.meta && typeof payload.meta === 'object' ? (payload.meta as Record<string, any>).size : null);
     const sizeValue = Number(sizeRaw);
     const taskId = String(event.taskId || '').trim();
+    if (!taskId) return null;
     const stepId = String(event.stepId || '').trim();
-    const ownerId = taskId || stepId;
-    if (!ownerId) return null;
     return {
-        stepId: stepId || ownerId,
-        taskId: taskId || ownerId,
+        stepId,
+        taskId,
         stepIndex: Number(event.taskIndex || 0),
         stage: event.stage,
         artifactClass: deriveArtifactClass(event.stage, kind),

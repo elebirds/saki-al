@@ -242,13 +242,15 @@ const ProjectLoopRoundDetail: React.FC = () => {
     }, [trainMetricPoints]);
 
     const roundArtifactRows = useMemo<RoundArtifactTableRow[]>(() => {
-        return (roundArtifacts || []).map((item) => {
+        return (roundArtifacts || [])
+            .filter((item) => String(item.taskId || '').trim().length > 0)
+            .map((item) => {
+            const taskId = String(item.taskId || '').trim();
             const stageKey = String(item.stage || '').trim().toLowerCase() as RoundStageKey;
             const stageLabel = STAGE_LABEL[stageKey] || String(item.stage || '-');
             const artifactClass = String(item.artifactClass || '').trim().toLowerCase();
-            const ownerId = String(item.taskId || item.stepId || '').trim();
             return {
-                key: buildArtifactKey(ownerId, item.name),
+                key: buildArtifactKey(taskId, item.name),
                 stage: String(item.stage || ''),
                 stageLabel,
                 artifactClass,
@@ -261,7 +263,7 @@ const ProjectLoopRoundDetail: React.FC = () => {
                 size: item.size,
                 createdAt: item.createdAt,
             };
-        });
+            });
     }, [roundArtifacts]);
 
     const handleSelectStep = (step: RuntimeStep) => {

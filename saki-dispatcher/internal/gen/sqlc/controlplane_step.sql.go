@@ -402,7 +402,7 @@ WHERE (
 )
 OR (
   t.kind = 'STEP'::taskkind
-  AND s.state = 'READY'::stepstatus
+  AND t.status = 'READY'::taskstatus
   AND l.lifecycle = 'RUNNING'::looplifecycle
 )
 ORDER BY t.created_at ASC

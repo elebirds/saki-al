@@ -135,7 +135,13 @@ const deriveArtifactClass = (stage: RoundStageKey, kindRaw: string): string => {
     return 'generic_artifact';
 };
 
-export const buildArtifactFromRoundEvent = (event: RuntimeRoundEvent): RuntimeRoundArtifact | null => {
+export const buildArtifactFromRoundEvent = (
+    event: RuntimeRoundEvent,
+    options?: {
+        stepId?: string;
+        stepIndex?: number;
+    },
+): RuntimeRoundArtifact | null => {
     if (event.eventType !== 'artifact') return null;
     const payload = event.payload && typeof event.payload === 'object' ? event.payload : {};
     const name = String(payload.name || '').trim();
@@ -146,11 +152,12 @@ export const buildArtifactFromRoundEvent = (event: RuntimeRoundEvent): RuntimeRo
     const sizeValue = Number(sizeRaw);
     const taskId = String(event.taskId || '').trim();
     if (!taskId) return null;
-    const stepId = String(payload.stepId ?? payload.step_id ?? '').trim();
+    const stepId = String(options?.stepId || '').trim();
+    const stepIndex = Number(options?.stepIndex ?? event.taskIndex ?? 0);
     return {
         stepId,
         taskId,
-        stepIndex: Number(event.taskIndex || 0),
+        stepIndex: Number.isFinite(stepIndex) ? stepIndex : 0,
         stage: event.stage,
         artifactClass: deriveArtifactClass(event.stage, kind),
         name,

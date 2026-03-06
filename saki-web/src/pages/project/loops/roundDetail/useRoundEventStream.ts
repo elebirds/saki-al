@@ -24,6 +24,7 @@ interface UseRoundEventStreamOptions {
     canManageLoops: boolean;
     roundId?: string;
     token?: string | null;
+    steps: RuntimeStep[];
     activeConsoleStages: RoundStageKey[];
     scheduleRoundMetaRefresh: () => void;
     ensureArtifactUrls: (items: RuntimeRoundArtifact[]) => Promise<void>;
@@ -36,6 +37,7 @@ export const useRoundEventStream = ({
     canManageLoops,
     roundId,
     token,
+    steps,
     activeConsoleStages,
     scheduleRoundMetaRefresh,
     ensureArtifactUrls,
@@ -52,10 +54,15 @@ export const useRoundEventStream = ({
     const wsRetryTimerRef = useRef<number | null>(null);
     const wsRetryCountRef = useRef(0);
     const wsClosedRef = useRef(false);
+    const stepsRef = useRef<RuntimeStep[]>(steps || []);
 
     useEffect(() => {
         eventsRef.current = events;
     }, [events]);
+
+    useEffect(() => {
+        stepsRef.current = steps || [];
+    }, [steps]);
 
     const clearEventsBuffer = useCallback(() => {
         eventsRef.current = [];
@@ -112,8 +119,25 @@ export const useRoundEventStream = ({
                 setTrainMetricPoints((prev) => mergeMetricPoints(prev, metricPoints));
             }
 
+            const stepMetaByTask = new Map<string, {stepId: string; stepIndex: number}>();
+            stepsRef.current.forEach((step) => {
+                const taskId = String(step.taskId || '').trim();
+                if (!taskId) return;
+                stepMetaByTask.set(taskId, {
+                    stepId: String(step.id || '').trim(),
+                    stepIndex: Number(step.stepIndex || 0),
+                });
+            });
+
             const artifactRows = incoming
-                .map((item) => buildArtifactFromRoundEvent(item))
+                .map((item) => {
+                    const taskId = String(item.taskId || '').trim();
+                    const stepMeta = taskId ? stepMetaByTask.get(taskId) : undefined;
+                    return buildArtifactFromRoundEvent(item, {
+                        stepId: stepMeta?.stepId,
+                        stepIndex: stepMeta?.stepIndex,
+                    });
+                })
                 .filter((item): item is RuntimeRoundArtifact => Boolean(item));
             if (artifactRows.length > 0) {
                 setRoundArtifacts((prev) => {
@@ -126,10 +150,24 @@ export const useRoundEventStream = ({
                     artifactRows.forEach((item) => {
                         const taskId = String(item.taskId || '').trim();
                         if (!taskId) return;
-                        rowMap.set(buildArtifactKey(taskId, item.name), item);
+                        const key = buildArtifactKey(taskId, item.name);
+                        const previous = rowMap.get(key);
+                        const taskStepMeta = stepMetaByTask.get(taskId);
+                        const stepIndexRaw = Number(item.stepIndex || previous?.stepIndex || taskStepMeta?.stepIndex || 0);
+                        rowMap.set(key, {
+                            ...(previous || {}),
+                            ...item,
+                            stepId: String(item.stepId || previous?.stepId || taskStepMeta?.stepId || '').trim(),
+                            stepIndex: Number.isFinite(stepIndexRaw) ? stepIndexRaw : 0,
+                        });
                     });
                     return Array.from(rowMap.values()).sort(
-                        (left, right) => Number(left.stepIndex || 0) - Number(right.stepIndex || 0),
+                        (left, right) => {
+                            if (Number(left.stepIndex || 0) !== Number(right.stepIndex || 0)) {
+                                return Number(left.stepIndex || 0) - Number(right.stepIndex || 0);
+                            }
+                            return String(left.name || '').localeCompare(String(right.name || ''));
+                        },
                     );
                 });
                 void ensureArtifactUrls(artifactRows);

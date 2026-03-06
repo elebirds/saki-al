@@ -123,6 +123,7 @@ const ProjectLoopRoundDetail: React.FC = () => {
         canManageLoops,
         roundId: round?.id,
         token,
+        steps,
         activeConsoleStages,
         scheduleRoundMetaRefresh,
         ensureArtifactUrls,

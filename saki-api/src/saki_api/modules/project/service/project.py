@@ -953,6 +953,43 @@ class ProjectService(CrudServiceBase[Project, ProjectRepository, ProjectCreate, 
             review_states=review_states,
         )
 
+    async def list_project_sample_ids_by_filter(
+            self,
+            *,
+            project_id: uuid.UUID,
+            dataset_id: uuid.UUID,
+            current_user_id: uuid.UUID,
+            branch_name: str,
+            q: str | None,
+            status: str,
+            sort_by: str,
+            sort_order: str,
+    ) -> list[uuid.UUID]:
+        dataset_ids = await self.get_linked_datasets(project_id)
+        if dataset_id not in dataset_ids:
+            return []
+
+        branch_repo = BranchRepository(self.session)
+        branch = await branch_repo.get_by_name(project_id, branch_name)
+        if not branch:
+            return []
+        head_commit_id = branch.head_commit_id
+
+        statement = self._build_project_sample_statement(
+            project_id=project_id,
+            dataset_id=dataset_id,
+            current_user_id=current_user_id,
+            branch_name=branch_name,
+            q=q,
+            status=status,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            head_commit_id=head_commit_id,
+        )
+        sample_subquery = statement.subquery()
+        rows = await self.session.exec(select(sample_subquery.c.id))
+        return list(rows.all())
+
     # =========================================================================
     # Project Member Management (similar to DatasetService)
     # =========================================================================

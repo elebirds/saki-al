@@ -1,5 +1,7 @@
 import axios, {AxiosInstance, InternalAxiosRequestConfig} from 'axios';
 import {
+    AnnotationDraftBatchRequest,
+    AnnotationDraftBatchResult,
     AnnotationDraftCommitRequest,
     AnnotationDraftPayload,
     AnnotationDraftRead,
@@ -1534,6 +1536,33 @@ export class RealApiService implements ApiService {
             ...item,
             payload: hydrateDraftPayload(item.payload) || {annotations: [], meta: {}},
         }));
+    }
+
+    async deleteAnnotationDrafts(
+        projectId: string,
+        branchName?: string,
+        sampleId?: string
+    ): Promise<void> {
+        await this.client.delete(
+            `/annotations/projects/${projectId}/drafts`,
+            {
+                params: {
+                    branch_name: branchName,
+                    sample_id: sampleId,
+                },
+            }
+        );
+    }
+
+    async batchOperateAnnotationDrafts(
+        projectId: string,
+        payload: AnnotationDraftBatchRequest
+    ): Promise<AnnotationDraftBatchResult> {
+        const response = await this.client.post<AnnotationDraftBatchResult>(
+            `/annotations/projects/${projectId}/drafts:batch`,
+            convertKeysToSnake(payload),
+        );
+        return convertKeysToCamel<AnnotationDraftBatchResult>(response.data);
     }
 
     async commitAnnotationDrafts(

@@ -3,6 +3,7 @@ Schemas for Annotation Draft and Working Area payloads.
 """
 
 import uuid
+from enum import Enum
 from typing import Any, List, Optional
 
 from sqlmodel import Field, SQLModel
@@ -71,3 +72,33 @@ class AnnotationDraftCommitRequest(SQLModel):
     branch_name: str = "master"
     commit_message: str
     sample_ids: Optional[List[uuid.UUID]] = None
+
+
+class AnnotationDraftBatchOperation(str, Enum):
+    CLEAR_DRAFTS = "clear_drafts"
+    CONFIRM_MODEL_ANNOTATIONS = "confirm_model_annotations"
+    CLEAR_UNCONFIRMED_MODEL_ANNOTATIONS = "clear_unconfirmed_model_annotations"
+
+
+class AnnotationDraftBatchRequest(SQLModel):
+    branch_name: str = "master"
+    dataset_id: uuid.UUID
+    q: Optional[str] = None
+    status: str = "all"
+    sort_by: str = "createdAt"
+    sort_order: str = "desc"
+    operation: AnnotationDraftBatchOperation
+    dry_run: bool = True
+
+
+class AnnotationDraftBatchResult(SQLModel):
+    operation: AnnotationDraftBatchOperation
+    dry_run: bool
+    branch_name: str
+    matched_sample_count: int
+    matched_draft_count: int
+    affected_draft_count: int
+    affected_annotation_count: int
+    updated_draft_count: int = 0
+    deleted_draft_count: int = 0
+    cleared_working_count: int = 0

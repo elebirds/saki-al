@@ -171,6 +171,35 @@ export interface AnnotationDraftCommitRequest {
     sampleIds?: string[];
 }
 
+export type AnnotationDraftBatchOperationType =
+    | 'clear_drafts'
+    | 'confirm_model_annotations'
+    | 'clear_unconfirmed_model_annotations';
+
+export interface AnnotationDraftBatchRequest {
+    branchName: string;
+    datasetId: string;
+    q?: string;
+    status?: 'all' | 'labeled' | 'unlabeled' | 'draft';
+    sortBy?: string;
+    sortOrder?: 'asc' | 'desc';
+    operation: AnnotationDraftBatchOperationType;
+    dryRun?: boolean;
+}
+
+export interface AnnotationDraftBatchResult {
+    operation: AnnotationDraftBatchOperationType;
+    dryRun: boolean;
+    branchName: string;
+    matchedSampleCount: number;
+    matchedDraftCount: number;
+    affectedDraftCount: number;
+    affectedAnnotationCount: number;
+    updatedDraftCount: number;
+    deletedDraftCount: number;
+    clearedWorkingCount: number;
+}
+
 export interface CommitResult {
     commitId: string;
     message: string;

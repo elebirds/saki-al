@@ -359,6 +359,43 @@
       "noEditPermission": "您没有编辑权限",
       "readOnly": "只读",
       "confidenceShort": "置信度 {{confidence}}",
+      "batch": {
+        "entry": "批量操作",
+        "drawerTitle": "草稿与模型批量操作",
+        "currentSampleTitle": "当前样本操作",
+        "currentSampleDesc": "用于精细确认当前画布中选中的模型标注。",
+        "filteredScopeTitle": "全量操作（当前筛选结果）",
+        "filteredScopeDesc": "范围覆盖当前筛选条件命中的全部分页样本，仅作用于当前用户草稿。",
+        "previewAndRun": "预览并执行",
+        "confirmTitle": "确认执行：{{operation}}",
+        "confirmContent": "将影响 {{samples}} 个样本，预计变更 {{drafts}} 份草稿、{{annotations}} 条标注。",
+        "confirmOk": "确认执行",
+        "preview": {
+          "samples": "样本 {{count}}",
+          "drafts": "草稿 {{count}}",
+          "annotations": "标注 {{count}}"
+        },
+        "ops": {
+          "confirmModel": {
+            "title": "确认模型生成标注",
+            "desc": "将未确认模型标注批量转为“已确认模型”，可进入后续训练提交。"
+          },
+          "clearUnconfirmed": {
+            "title": "清空未确认模型生成标注",
+            "desc": "清理当前筛选范围内仍为未确认状态的模型标注。"
+          },
+          "clearDrafts": {
+            "title": "清空草稿",
+            "desc": "删除当前筛选范围内的草稿与对应 working 快照。"
+          }
+        },
+        "messages": {
+          "noAffected": "当前筛选范围内没有可处理内容",
+          "confirmModelDone": "已确认 {{count}} 条模型标注",
+          "clearUnconfirmedDone": "已清空 {{count}} 条未确认模型标注",
+          "clearDraftsDone": "已清空 {{count}} 份草稿"
+        }
+      },
       "annotationSource": {
         "manual": "手动",
         "auto": "自动生成",

@@ -359,6 +359,43 @@
       "noEditPermission": "You do not have edit permission",
       "readOnly": "Read-only",
       "confidenceShort": "Conf {{confidence}}",
+      "batch": {
+        "entry": "Batch Actions",
+        "drawerTitle": "Draft & Model Batch Actions",
+        "currentSampleTitle": "Current Sample",
+        "currentSampleDesc": "Use this for precise confirmation of the selected model annotation on canvas.",
+        "filteredScopeTitle": "Bulk Actions (Current Filters)",
+        "filteredScopeDesc": "Scope includes all paginated samples matched by current filters and only affects your own drafts.",
+        "previewAndRun": "Preview & Run",
+        "confirmTitle": "Confirm Execution: {{operation}}",
+        "confirmContent": "This will affect {{samples}} samples, with estimated {{drafts}} drafts and {{annotations}} annotations changed.",
+        "confirmOk": "Run",
+        "preview": {
+          "samples": "Samples {{count}}",
+          "drafts": "Drafts {{count}}",
+          "annotations": "Annotations {{count}}"
+        },
+        "ops": {
+          "confirmModel": {
+            "title": "Confirm Model Annotations",
+            "desc": "Bulk-convert pending model annotations to confirmed_model so they can be committed for training."
+          },
+          "clearUnconfirmed": {
+            "title": "Clear Unconfirmed Model Annotations",
+            "desc": "Remove model annotations that are still unconfirmed within current filter scope."
+          },
+          "clearDrafts": {
+            "title": "Clear Drafts",
+            "desc": "Delete drafts and related working snapshots within current filter scope."
+          }
+        },
+        "messages": {
+          "noAffected": "No actionable items under current filters",
+          "confirmModelDone": "{{count}} model annotations confirmed",
+          "clearUnconfirmedDone": "{{count}} unconfirmed model annotations cleared",
+          "clearDraftsDone": "{{count}} drafts cleared"
+        }
+      },
       "annotationSource": {
         "manual": "Manual",
         "auto": "Auto-generated",

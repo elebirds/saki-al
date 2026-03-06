@@ -11,6 +11,7 @@ from saki_api.core.exceptions import BadRequestAppException, NotFoundAppExceptio
 from saki_api.infra.db.transaction import transactional
 from saki_api.modules.annotation.domain.draft import AnnotationDraft
 from saki_api.modules.annotation.repo.draft import AnnotationDraftRepository
+from saki_api.modules.annotation.service.working import AnnotationWorkingService
 from saki_api.modules.project.contracts import ProjectReadGateway
 from saki_api.modules.project.service.project import ProjectService
 from saki_api.modules.shared.application.crud_service import CrudServiceBase
@@ -26,6 +27,35 @@ class AnnotationDraftService(CrudServiceBase[AnnotationDraft, AnnotationDraftRep
         self.session = session
         self.project_gateway = ProjectReadGateway(session)
         self.project_service = ProjectService(session)
+        self.working_service = AnnotationWorkingService()
+
+    _BATCH_STATUS_VALUES = {"all", "labeled", "unlabeled", "draft"}
+    _BATCH_SORT_ORDER_VALUES = {"asc", "desc"}
+    _BATCH_OPERATION_VALUES = {
+        "clear_drafts",
+        "confirm_model_annotations",
+        "clear_unconfirmed_model_annotations",
+    }
+
+    @staticmethod
+    def _list_annotation_items(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+        annotations = payload.get("annotations")
+        if not isinstance(annotations, list):
+            return []
+        return [dict(item) for item in annotations if isinstance(item, dict)]
+
+    @staticmethod
+    def _resolve_group_id(item: Dict[str, Any]) -> str:
+        return str(
+            item.get("group_id")
+            or item.get("groupId")
+            or item.get("id")
+            or ""
+        ).strip()
+
+    @staticmethod
+    def _normalize_source(item: Dict[str, Any]) -> str:
+        return str(item.get("source") or "").strip().lower()
 
     async def _ensure_project_sample(
             self,
@@ -243,3 +273,147 @@ class AnnotationDraftService(CrudServiceBase[AnnotationDraft, AnnotationDraftRep
             )
 
         return commit, used_sample_ids
+
+    @transactional
+    async def batch_operate_drafts(
+            self,
+            *,
+            project_id: uuid.UUID,
+            user_id: uuid.UUID,
+            branch_name: str,
+            dataset_id: uuid.UUID,
+            q: Optional[str],
+            status: str,
+            sort_by: str,
+            sort_order: str,
+            operation: str,
+            dry_run: bool,
+    ) -> Dict[str, Any]:
+        if status not in self._BATCH_STATUS_VALUES:
+            raise BadRequestAppException("Invalid status filter")
+        if sort_order not in self._BATCH_SORT_ORDER_VALUES:
+            raise BadRequestAppException("Invalid sort order")
+        if operation not in self._BATCH_OPERATION_VALUES:
+            raise BadRequestAppException("Invalid draft batch operation")
+
+        sample_ids = await self.project_service.list_project_sample_ids_by_filter(
+            project_id=project_id,
+            dataset_id=dataset_id,
+            current_user_id=user_id,
+            branch_name=branch_name,
+            q=q,
+            status=status,
+            sort_by=sort_by,
+            sort_order=sort_order,
+        )
+        matched_sample_count = len(sample_ids)
+        if matched_sample_count == 0:
+            return {
+                "operation": operation,
+                "dry_run": dry_run,
+                "branch_name": branch_name,
+                "matched_sample_count": 0,
+                "matched_draft_count": 0,
+                "affected_draft_count": 0,
+                "affected_annotation_count": 0,
+                "updated_draft_count": 0,
+                "deleted_draft_count": 0,
+                "cleared_working_count": 0,
+            }
+
+        drafts = await self.repository.list_by_scope_and_samples(
+            project_id=project_id,
+            user_id=user_id,
+            branch_name=branch_name,
+            sample_ids=sample_ids,
+        )
+
+        matched_draft_count = len(drafts)
+        affected_draft_count = 0
+        affected_annotation_count = 0
+        updated_draft_count = 0
+        deleted_draft_count = 0
+        cleared_working_count = 0
+
+        if operation == "clear_drafts":
+            affected_draft_count = matched_draft_count
+            for draft in drafts:
+                payload = dict(draft.payload or {}) if isinstance(draft.payload, dict) else {}
+                affected_annotation_count += len(self._list_annotation_items(payload))
+
+            if not dry_run:
+                unique_sample_ids: set[uuid.UUID] = set()
+                for draft in drafts:
+                    unique_sample_ids.add(draft.sample_id)
+                    await self.session.delete(draft)
+                    deleted_draft_count += 1
+                await self.session.flush()
+
+                for sample_id in unique_sample_ids:
+                    await self.working_service.delete_working(
+                        project_id=project_id,
+                        sample_id=sample_id,
+                        user_id=user_id,
+                        branch_name=branch_name,
+                    )
+                    cleared_working_count += 1
+        else:
+            for draft in drafts:
+                payload = dict(draft.payload or {}) if isinstance(draft.payload, dict) else {}
+                items = self._list_annotation_items(payload)
+                if not items:
+                    continue
+
+                next_items: List[Dict[str, Any]] = []
+                changed_count = 0
+
+                if operation == "confirm_model_annotations":
+                    for item in items:
+                        if self._normalize_source(item) == "model":
+                            next_item = {**item, "source": "confirmed_model"}
+                            changed_count += 1
+                        else:
+                            next_item = item
+                        next_items.append(next_item)
+
+                if operation == "clear_unconfirmed_model_annotations":
+                    model_group_ids: set[str] = set()
+                    for item in items:
+                        if self._normalize_source(item) != "model":
+                            continue
+                        group_id = self._resolve_group_id(item)
+                        if group_id:
+                            model_group_ids.add(group_id)
+
+                    for item in items:
+                        source = self._normalize_source(item)
+                        group_id = self._resolve_group_id(item)
+                        should_remove = source == "model" or (group_id and group_id in model_group_ids)
+                        if should_remove:
+                            changed_count += 1
+                            continue
+                        next_items.append(item)
+
+                if changed_count <= 0:
+                    continue
+
+                affected_draft_count += 1
+                affected_annotation_count += changed_count
+
+                if not dry_run:
+                    next_payload = {**payload, "annotations": next_items}
+                    await self.repository.update(draft.id, {"payload": next_payload})
+                    updated_draft_count += 1
+
+        return {
+            "operation": operation,
+            "dry_run": dry_run,
+            "branch_name": branch_name,
+            "matched_sample_count": matched_sample_count,
+            "matched_draft_count": matched_draft_count,
+            "affected_draft_count": affected_draft_count,
+            "affected_annotation_count": affected_annotation_count,
+            "updated_draft_count": updated_draft_count,
+            "deleted_draft_count": deleted_draft_count,
+            "cleared_working_count": cleared_working_count,
+        }

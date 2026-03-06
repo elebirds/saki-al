@@ -21,6 +21,8 @@ from saki_api.core.exceptions import BadRequestAppException, ConflictAppExceptio
 from saki_api.modules.access.api.dependencies import get_current_user_id, require_permission
 from saki_api.modules.annotation.api.annotation import AnnotationCreate, AnnotationHistoryItem, AnnotationRead
 from saki_api.modules.annotation.api.draft import (
+    AnnotationDraftBatchRequest,
+    AnnotationDraftBatchResult,
     AnnotationDraftCommitRequest,
     AnnotationDraftRead,
     AnnotationDraftUpsert,
@@ -519,6 +521,31 @@ async def delete_annotation_drafts(
         branch_name=branch_name,
         sample_id=sample_id,
     )
+
+
+@router.post("/projects/{project_id}/drafts:batch", response_model=AnnotationDraftBatchResult, dependencies=[
+    Depends(require_permission(Permissions.ANNOTATE, ResourceType.PROJECT, "project_id"))
+])
+async def batch_annotation_drafts(
+        *,
+        project_id: uuid.UUID,
+        batch_in: AnnotationDraftBatchRequest,
+        draft_service: AnnotationDraftServiceDep,
+        current_user_id: uuid.UUID = Depends(get_current_user_id),
+):
+    result = await draft_service.batch_operate_drafts(
+        project_id=project_id,
+        user_id=current_user_id,
+        branch_name=batch_in.branch_name,
+        dataset_id=batch_in.dataset_id,
+        q=batch_in.q,
+        status=batch_in.status,
+        sort_by=batch_in.sort_by,
+        sort_order=batch_in.sort_order,
+        operation=batch_in.operation.value,
+        dry_run=batch_in.dry_run,
+    )
+    return AnnotationDraftBatchResult.model_validate(result)
 
 
 @router.post("/projects/{project_id}/drafts/commit", response_model=dict, dependencies=[

@@ -1,4 +1,6 @@
 import {
+    AnnotationDraftBatchRequest,
+    AnnotationDraftBatchResult,
     AnnotationDraftCommitRequest,
     AnnotationDraftPayload,
     AnnotationDraftRead,
@@ -405,6 +407,15 @@ export interface ApiService {
         branchName?: string,
         sampleId?: string
     ): Promise<AnnotationDraftRead[]>;
+    deleteAnnotationDrafts(
+        projectId: string,
+        branchName?: string,
+        sampleId?: string
+    ): Promise<void>;
+    batchOperateAnnotationDrafts(
+        projectId: string,
+        payload: AnnotationDraftBatchRequest
+    ): Promise<AnnotationDraftBatchResult>;
 
     commitAnnotationDrafts(projectId: string, payload: AnnotationDraftCommitRequest): Promise<CommitResult>;
 

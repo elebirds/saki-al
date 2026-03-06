@@ -1,11 +1,18 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {Button, message} from 'antd';
+import {Button, Modal, message} from 'antd';
 import {useNavigate, useParams, useSearchParams} from 'react-router-dom';
 import {useTranslation} from 'react-i18next';
-import {AnnotationWorkspaceLayout, DualCanvasArea, DualCanvasAreaRef} from '../../components/annotation';
+import {
+    AnnotationWorkspaceLayout,
+    DraftBatchActionsDrawer,
+    DualCanvasArea,
+    DualCanvasAreaRef,
+} from '../../components/annotation';
 import CommitModal from '../../components/project/CommitModal';
 import {
     Annotation,
+    AnnotationDraftBatchOperationType,
+    AnnotationDraftBatchResult,
     AnnotationDraftItem,
     AnnotationDraftPayload,
     Dataset,
@@ -45,6 +52,11 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset, ena
     const [pendingIndex, setPendingIndex] = useState<'first' | 'last' | null>(null);
     const [timeEnergyImageUrl, setTimeEnergyImageUrl] = useState('');
     const [lWdImageUrl, setLWdImageUrl] = useState('');
+    const [batchDrawerOpen, setBatchDrawerOpen] = useState(false);
+    const [runningBatchOperation, setRunningBatchOperation] = useState<AnnotationDraftBatchOperationType | null>(null);
+    const [batchPreviewResults, setBatchPreviewResults] = useState<
+        Partial<Record<AnnotationDraftBatchOperationType, AnnotationDraftBatchResult>>
+    >({});
 
     const {can: canProject} = useResourcePermission('project', projectId);
     const canAnnotate = canProject('annotation:create:assigned');
@@ -273,17 +285,6 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset, ena
         }
     }, [handleSyncActions, applyBaseAnnotations]);
 
-    const pendingModelGroups = useMemo(() => {
-        const map = new Map<string, Annotation>();
-        canvasAnnotations.forEach((ann) => {
-            if (String(ann.source || '').toLowerCase() !== 'model') return;
-            const groupId = ann.groupId || ann.id;
-            if (!groupId || map.has(groupId)) return;
-            map.set(groupId, ann);
-        });
-        return map;
-    }, [canvasAnnotations]);
-
     const selectedModelAnnotation = useMemo(() => {
         if (!annotationState.selectedId) return null;
         const row = canvasAnnotations.find((ann) => ann.id === annotationState.selectedId);
@@ -309,37 +310,6 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset, ena
         message.success(t('annotation.workspace.confirmSelectedDone'));
     }, [selectedModelAnnotation, syncAndApplyWorkspace, buildDraftItem, t]);
 
-    const handleConfirmAllModel = useCallback(async () => {
-        if (pendingModelGroups.size === 0) {
-            message.warning(t('annotation.workspace.noPendingModelAnnotations'));
-            return;
-        }
-        const actions = Array.from(pendingModelGroups.entries()).map(([groupId, ann]) => ({
-            type: 'update' as const,
-            groupId,
-            data: buildDraftItem({
-                ...ann,
-                groupId,
-                source: 'confirmed_model',
-            }),
-        }));
-        await syncAndApplyWorkspace(actions);
-        message.success(t('annotation.workspace.confirmAllDone', {count: actions.length}));
-    }, [pendingModelGroups, syncAndApplyWorkspace, buildDraftItem, t]);
-
-    const handleClearUnconfirmedModel = useCallback(async () => {
-        if (pendingModelGroups.size === 0) {
-            message.warning(t('annotation.workspace.noPendingModelAnnotations'));
-            return;
-        }
-        const actions = Array.from(pendingModelGroups.keys()).map((groupId) => ({
-            type: 'delete' as const,
-            groupId,
-        }));
-        await syncAndApplyWorkspace(actions);
-        message.success(t('annotation.workspace.clearUnconfirmedDone', {count: actions.length}));
-    }, [pendingModelGroups, syncAndApplyWorkspace, t]);
-
     const loadAnnotations = useCallback(async () => {
         if (!projectId || !currentSample?.id) return;
         setAnnotationsLoading(true);
@@ -354,6 +324,100 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset, ena
     useEffect(() => {
         loadAnnotations();
     }, [loadAnnotations]);
+
+    const runBatchOperation = useCallback(async (
+        operation: AnnotationDraftBatchOperationType,
+        dryRun: boolean
+    ) => {
+        if (!projectId || !datasetId) return null;
+        const result = await api.batchOperateAnnotationDrafts(projectId, {
+            branchName,
+            datasetId,
+            q: q || undefined,
+            status,
+            sortBy,
+            sortOrder: sortOrder as 'asc' | 'desc',
+            operation,
+            dryRun,
+        });
+        return result;
+    }, [projectId, datasetId, api, branchName, q, status, sortBy, sortOrder]);
+
+    const handleRunBatchOperation = useCallback(async (operation: AnnotationDraftBatchOperationType) => {
+        if (!projectId || !datasetId) return;
+        setRunningBatchOperation(operation);
+        try {
+            await flushDraft();
+            const preview = await runBatchOperation(operation, true);
+            if (!preview) return;
+            setBatchPreviewResults((prev) => ({...prev, [operation]: preview}));
+
+            if (preview.affectedDraftCount <= 0 && preview.affectedAnnotationCount <= 0) {
+                message.info(t('annotation.workspace.batch.messages.noAffected'));
+                return;
+            }
+
+            const operationTitle = ({
+                confirm_model_annotations: t('annotation.workspace.batch.ops.confirmModel.title'),
+                clear_unconfirmed_model_annotations: t('annotation.workspace.batch.ops.clearUnconfirmed.title'),
+                clear_drafts: t('annotation.workspace.batch.ops.clearDrafts.title'),
+            } as Record<AnnotationDraftBatchOperationType, string>)[operation];
+
+            Modal.confirm({
+                title: t('annotation.workspace.batch.confirmTitle', {operation: operationTitle}),
+                content: t('annotation.workspace.batch.confirmContent', {
+                    samples: preview.matchedSampleCount,
+                    drafts: preview.affectedDraftCount,
+                    annotations: preview.affectedAnnotationCount,
+                }),
+                okText: t('annotation.workspace.batch.confirmOk'),
+                cancelText: t('common.cancel'),
+                okButtonProps: {
+                    danger: operation !== 'confirm_model_annotations',
+                },
+                onOk: async () => {
+                    setRunningBatchOperation(operation);
+                    try {
+                        await flushDraft();
+                        const applied = await runBatchOperation(operation, false);
+                        if (!applied) return;
+                        if (operation === 'confirm_model_annotations') {
+                            message.success(t('annotation.workspace.batch.messages.confirmModelDone', {
+                                count: applied.affectedAnnotationCount,
+                            }));
+                        }
+                        if (operation === 'clear_unconfirmed_model_annotations') {
+                            message.success(t('annotation.workspace.batch.messages.clearUnconfirmedDone', {
+                                count: applied.affectedAnnotationCount,
+                            }));
+                        }
+                        if (operation === 'clear_drafts') {
+                            message.success(t('annotation.workspace.batch.messages.clearDraftsDone', {
+                                count: applied.deletedDraftCount,
+                            }));
+                        }
+                        await reloadSamples();
+                        if (currentSample?.id) {
+                            await loadAnnotations();
+                        }
+                    } finally {
+                        setRunningBatchOperation(null);
+                    }
+                },
+            });
+        } finally {
+            setRunningBatchOperation(null);
+        }
+    }, [
+        projectId,
+        datasetId,
+        flushDraft,
+        runBatchOperation,
+        t,
+        reloadSamples,
+        currentSample?.id,
+        loadAnnotations,
+    ]);
 
     useEffect(() => {
         return () => {
@@ -535,23 +599,10 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset, ena
                 toolbarExtraActions={
                     <>
                         <Button
-                            onClick={() => void handleConfirmSelectedModel()}
-                            disabled={!canAnnotate || !selectedModelAnnotation}
+                            onClick={() => setBatchDrawerOpen(true)}
+                            disabled={!canAnnotate}
                         >
-                            {t('annotation.workspace.confirmSelected')}
-                        </Button>
-                        <Button
-                            onClick={() => void handleConfirmAllModel()}
-                            disabled={!canAnnotate || pendingModelGroups.size === 0}
-                        >
-                            {t('annotation.workspace.confirmAll')}
-                        </Button>
-                        <Button
-                            danger
-                            onClick={() => void handleClearUnconfirmedModel()}
-                            disabled={!canAnnotate || pendingModelGroups.size === 0}
-                        >
-                            {t('annotation.workspace.clearUnconfirmed')}
+                            {t('annotation.workspace.batch.entry')}
                         </Button>
                         <Button
                             type="primary"
@@ -601,6 +652,17 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset, ena
                         canEditAnnotation={canEditAnnotation}
                     />
                 }
+            />
+
+            <DraftBatchActionsDrawer
+                open={batchDrawerOpen}
+                onClose={() => setBatchDrawerOpen(false)}
+                canAnnotate={canAnnotate}
+                onConfirmSelected={() => void handleConfirmSelectedModel()}
+                confirmSelectedDisabled={!selectedModelAnnotation}
+                onRunBatchOperation={(operation) => void handleRunBatchOperation(operation)}
+                runningOperation={runningBatchOperation}
+                previewResults={batchPreviewResults}
             />
 
             <CommitModal

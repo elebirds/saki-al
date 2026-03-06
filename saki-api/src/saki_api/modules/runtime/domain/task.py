@@ -23,6 +23,7 @@ class Task(UUIDMixin, TimestampMixin, SQLModel, table=True):
     status: RuntimeTaskStatus = Field(default=RuntimeTaskStatus.PENDING, index=True)
 
     plugin_id: str = Field(default="", max_length=255, index=True)
+    depends_on_task_ids: list[str] = Field(default_factory=list, sa_column=Column(OPT_JSON))
     input_commit_id: uuid.UUID | None = Field(default=None, foreign_key="commit.id", index=True)
     resolved_params: dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
     assigned_executor_id: str | None = Field(default=None, index=True)

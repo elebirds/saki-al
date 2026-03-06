@@ -46,25 +46,25 @@ func (q *Queries) DeleteTaskCandidatesByTaskID(ctx context.Context, taskID uuid.
 	return err
 }
 
-const getDependencyStatesByIDs = `-- name: GetDependencyStatesByIDs :many
-SELECT state
-FROM step
+const getDependencyTaskStatusesByIDs = `-- name: GetDependencyTaskStatusesByIDs :many
+SELECT status
+FROM task
 WHERE id = ANY($1::uuid[])
 `
 
-func (q *Queries) GetDependencyStatesByIDs(ctx context.Context, stepIds []uuid.UUID) ([]Stepstatus, error) {
-	rows, err := q.db.Query(ctx, getDependencyStatesByIDs, stepIds)
+func (q *Queries) GetDependencyTaskStatusesByIDs(ctx context.Context, taskIds []uuid.UUID) ([]Runtimetaskstatus, error) {
+	rows, err := q.db.Query(ctx, getDependencyTaskStatusesByIDs, taskIds)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Stepstatus
+	var items []Runtimetaskstatus
 	for rows.Next() {
-		var state Stepstatus
-		if err := rows.Scan(&state); err != nil {
+		var status Runtimetaskstatus
+		if err := rows.Scan(&status); err != nil {
 			return nil, err
 		}
-		items = append(items, state)
+		items = append(items, status)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -72,16 +72,16 @@ func (q *Queries) GetDependencyStatesByIDs(ctx context.Context, stepIds []uuid.U
 	return items, nil
 }
 
-const getLatestAssignedExecutorByStepIDs = `-- name: GetLatestAssignedExecutorByStepIDs :one
+const getLatestAssignedExecutorByTaskIDs = `-- name: GetLatestAssignedExecutorByTaskIDs :one
 SELECT COALESCE(assigned_executor_id, '') AS assigned_executor_id
-FROM step
+FROM task
 WHERE id = ANY($1::uuid[])
-ORDER BY step_index DESC
+ORDER BY array_position($1::uuid[], id) DESC
 LIMIT 1
 `
 
-func (q *Queries) GetLatestAssignedExecutorByStepIDs(ctx context.Context, stepIds []uuid.UUID) (string, error) {
-	row := q.db.QueryRow(ctx, getLatestAssignedExecutorByStepIDs, stepIds)
+func (q *Queries) GetLatestAssignedExecutorByTaskIDs(ctx context.Context, taskIds []uuid.UUID) (string, error) {
+	row := q.db.QueryRow(ctx, getLatestAssignedExecutorByTaskIDs, taskIds)
 	var assigned_executor_id string
 	err := row.Scan(&assigned_executor_id)
 	return assigned_executor_id, err
@@ -134,6 +134,7 @@ func (q *Queries) GetStepArtifactsForUpdate(ctx context.Context, stepID uuid.UUI
 const getStepPayloadByIDForUpdate = `-- name: GetStepPayloadByIDForUpdate :one
 SELECT
   t.id AS step_id,
+  t.task_id AS task_id,
   t.round_id AS round_id,
   t.state AS status,
   t.step_type AS step_type,
@@ -143,6 +144,7 @@ SELECT
   t.state_version,
   t.updated_at,
   t.depends_on_step_ids AS depends_on_raw,
+  COALESCE(k.depends_on_task_ids, '[]'::jsonb) AS depends_on_task_raw,
   t.resolved_params AS params_raw,
   t.input_commit_id AS input_commit_id,
   j.loop_id AS loop_id,
@@ -154,12 +156,14 @@ SELECT
   j.input_commit_id AS round_input_commit_id
 FROM step t
 JOIN round j ON j.id = t.round_id
+LEFT JOIN task k ON k.id = t.task_id
 WHERE t.id = $1::uuid
 FOR UPDATE SKIP LOCKED
 `
 
 type GetStepPayloadByIDForUpdateRow struct {
 	StepID             uuid.UUID
+	TaskID             *uuid.UUID
 	RoundID            uuid.UUID
 	Status             Stepstatus
 	StepType           Steptype
@@ -169,6 +173,7 @@ type GetStepPayloadByIDForUpdateRow struct {
 	StateVersion       int32
 	UpdatedAt          pgtype.Timestamptz
 	DependsOnRaw       []byte
+	DependsOnTaskRaw   []byte
 	ParamsRaw          []byte
 	InputCommitID      *uuid.UUID
 	LoopID             uuid.UUID
@@ -185,6 +190,7 @@ func (q *Queries) GetStepPayloadByIDForUpdate(ctx context.Context, stepID uuid.U
 	var i GetStepPayloadByIDForUpdateRow
 	err := row.Scan(
 		&i.StepID,
+		&i.TaskID,
 		&i.RoundID,
 		&i.Status,
 		&i.StepType,
@@ -194,6 +200,7 @@ func (q *Queries) GetStepPayloadByIDForUpdate(ctx context.Context, stepID uuid.U
 		&i.StateVersion,
 		&i.UpdatedAt,
 		&i.DependsOnRaw,
+		&i.DependsOnTaskRaw,
 		&i.ParamsRaw,
 		&i.InputCommitID,
 		&i.LoopID,

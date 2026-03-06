@@ -686,7 +686,7 @@ CREATE TABLE public.model (
     project_id uuid NOT NULL,
     source_commit_id uuid,
     source_round_id uuid,
-    source_step_id uuid,
+    source_task_id uuid,
     parent_model_id uuid,
     plugin_id character varying NOT NULL,
     model_arch character varying NOT NULL,
@@ -1041,7 +1041,8 @@ CREATE TABLE public.task (
     max_attempts integer NOT NULL,
     started_at timestamp with time zone,
     ended_at timestamp with time zone,
-    last_error character varying(4000)
+    last_error character varying(4000),
+    depends_on_task_ids jsonb DEFAULT '[]'::jsonb NOT NULL
 );
 
 
@@ -2152,10 +2153,10 @@ CREATE INDEX ix_model_source_round_id ON public.model USING btree (source_round_
 
 
 --
--- Name: ix_model_source_step_id; Type: INDEX; Schema: public; Owner: -
+-- Name: ix_model_source_task_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX ix_model_source_step_id ON public.model USING btree (source_step_id);
+CREATE INDEX ix_model_source_task_id ON public.model USING btree (source_task_id);
 
 
 --
@@ -2976,11 +2977,11 @@ ALTER TABLE ONLY public.model
 
 
 --
--- Name: model fk_model_source_step_id_step; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: model fk_model_source_task_id_task; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.model
-    ADD CONSTRAINT fk_model_source_step_id_step FOREIGN KEY (source_step_id) REFERENCES public.step(id);
+    ADD CONSTRAINT fk_model_source_task_id_task FOREIGN KEY (source_task_id) REFERENCES public.task(id);
 
 
 --

@@ -421,7 +421,7 @@ const ProjectModels: React.FC = () => {
                             </Descriptions.Item>
                             <Descriptions.Item label={t('project.models.detailDrawer.labels.plugin')}>{detailModel.pluginId}</Descriptions.Item>
                             <Descriptions.Item label={t('project.models.detailDrawer.labels.sourceRound')}>{detailModel.sourceRoundId || '-'}</Descriptions.Item>
-                            <Descriptions.Item label={t('project.models.detailDrawer.labels.sourceStep')}>{detailModel.sourceStepId || '-'}</Descriptions.Item>
+                            <Descriptions.Item label={t('project.models.detailDrawer.labels.sourceTask')}>{detailModel.sourceTaskId || '-'}</Descriptions.Item>
                             <Descriptions.Item label={t('project.models.detailDrawer.labels.primaryArtifact')}>{detailModel.primaryArtifactName}</Descriptions.Item>
                             <Descriptions.Item label={t('project.models.detailDrawer.labels.createdAt')}>{formatDateTime(detailModel.createdAt)}</Descriptions.Item>
                         </Descriptions>

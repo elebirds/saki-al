@@ -1037,7 +1037,7 @@
           "status": "Status",
           "plugin": "Plugin",
           "sourceRound": "Source Round",
-          "sourceStep": "Source Step",
+          "sourceTask": "Source Task",
           "primaryArtifact": "Primary Artifact",
           "createdAt": "Created At"
         },

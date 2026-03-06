@@ -66,6 +66,7 @@ FOR UPDATE OF s SKIP LOCKED;
 -- name: GetStepPayloadByIDForUpdate :one
 SELECT
   t.id AS step_id,
+  t.task_id AS task_id,
   t.round_id AS round_id,
   t.state AS status,
   t.step_type AS step_type,
@@ -75,6 +76,7 @@ SELECT
   t.state_version,
   t.updated_at,
   t.depends_on_step_ids AS depends_on_raw,
+  COALESCE(k.depends_on_task_ids, '[]'::jsonb) AS depends_on_task_raw,
   t.resolved_params AS params_raw,
   t.input_commit_id AS input_commit_id,
   j.loop_id AS loop_id,
@@ -86,19 +88,20 @@ SELECT
   j.input_commit_id AS round_input_commit_id
 FROM step t
 JOIN round j ON j.id = t.round_id
+LEFT JOIN task k ON k.id = t.task_id
 WHERE t.id = sqlc.arg(step_id)::uuid
 FOR UPDATE SKIP LOCKED;
 
--- name: GetDependencyStatesByIDs :many
-SELECT state
-FROM step
-WHERE id = ANY(sqlc.arg(step_ids)::uuid[]);
+-- name: GetDependencyTaskStatusesByIDs :many
+SELECT status
+FROM task
+WHERE id = ANY(sqlc.arg(task_ids)::uuid[]);
 
--- name: GetLatestAssignedExecutorByStepIDs :one
+-- name: GetLatestAssignedExecutorByTaskIDs :one
 SELECT COALESCE(assigned_executor_id, '') AS assigned_executor_id
-FROM step
-WHERE id = ANY(sqlc.arg(step_ids)::uuid[])
-ORDER BY step_index DESC
+FROM task
+WHERE id = ANY(sqlc.arg(task_ids)::uuid[])
+ORDER BY array_position(sqlc.arg(task_ids)::uuid[], id) DESC
 LIMIT 1;
 
 -- name: PromoteStepToReady :execrows

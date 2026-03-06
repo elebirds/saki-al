@@ -33,6 +33,7 @@ class _ArtifactCandidate:
     uri: str
     meta: dict[str, Any]
     step_id: uuid.UUID
+    task_id: uuid.UUID | None
     step_index: int
     step_type: str
 
@@ -99,6 +100,8 @@ class ModelService:
     def _build_artifact_payload(candidate: _ArtifactCandidate) -> dict[str, Any]:
         meta = dict(candidate.meta or {})
         meta.setdefault("step_id", str(candidate.step_id))
+        if candidate.task_id is not None:
+            meta.setdefault("task_id", str(candidate.task_id))
         meta.setdefault("step_type", candidate.step_type)
         meta.setdefault("step_index", int(candidate.step_index))
         return {
@@ -146,6 +149,7 @@ class ModelService:
                     uri=uri,
                     meta=meta,
                     step_id=step.id,
+                    task_id=step.task_id,
                     step_index=int(step.step_index or 0),
                     step_type=step_type,
                 )
@@ -339,7 +343,7 @@ class ModelService:
             "round_index": int(round_row.round_index or 0),
             "attempt_index": int(round_row.attempt_index or 1),
             "primary_artifact_name": primary.name,
-            "primary_step_id": str(primary.step_id),
+            "primary_task_id": str(primary.task_id) if primary.task_id is not None else "",
             "included_artifacts": sorted(artifact_map.keys()),
             "published_at": datetime.now(UTC).isoformat(),
         }
@@ -350,7 +354,7 @@ class ModelService:
             project_id=project_id,
             source_commit_id=round_row.input_commit_id,
             source_round_id=round_row.id,
-            source_step_id=primary.step_id,
+            source_task_id=primary.task_id,
             parent_model_id=parent_model_id,
             plugin_id=round_row.plugin_id,
             model_arch=loop.model_arch if loop else round_row.plugin_id,

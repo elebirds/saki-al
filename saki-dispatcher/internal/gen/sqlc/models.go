@@ -1405,7 +1405,7 @@ type Model struct {
 	ProjectID           uuid.UUID
 	SourceCommitID      *uuid.UUID
 	SourceRoundID       *uuid.UUID
-	SourceStepID        *uuid.UUID
+	SourceTaskID        *uuid.UUID
 	ParentModelID       *uuid.UUID
 	PluginID            string
 	ModelArch           string
@@ -1671,6 +1671,7 @@ type Task struct {
 	StartedAt          pgtype.Timestamptz
 	EndedAt            pgtype.Timestamptz
 	LastError          pgtype.Text
+	DependsOnTaskIds   []byte
 }
 
 type TaskCandidateItem struct {

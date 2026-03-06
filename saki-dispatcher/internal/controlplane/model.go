@@ -46,6 +46,7 @@ type commandLogEntry struct {
 
 type stepDispatchPayload struct {
 	StepID           uuid.UUID
+	TaskID           *uuid.UUID
 	RoundID          uuid.UUID
 	LoopID           uuid.UUID
 	ProjectID        uuid.UUID
@@ -59,10 +60,12 @@ type stepDispatchPayload struct {
 	Status           db.Stepstatus
 	UpdatedAt        *time.Time
 	DependsOnStepIDs []uuid.UUID
+	DependsOnTaskIDs []uuid.UUID
 	Params           *structpb.Struct
 	Resources        *runtimecontrolv1.ResourceSummary
 
 	dependsOnRaw       []byte
+	dependsOnTaskRaw   []byte
 	paramsRaw          []byte
 	roundParamsRaw     []byte
 	resourcesRaw       []byte
@@ -171,6 +174,7 @@ func mapLoopStoppableSteps(rows []db.ListLoopStoppableStepsRow) []stoppingStep {
 func mapStepPayload(record db.GetStepPayloadByIDForUpdateRow) (stepDispatchPayload, error) {
 	row := stepDispatchPayload{
 		StepID:             record.StepID,
+		TaskID:             record.TaskID,
 		RoundID:            record.RoundID,
 		Status:             record.Status,
 		StepType:           record.StepType,
@@ -179,6 +183,7 @@ func mapStepPayload(record db.GetStepPayloadByIDForUpdateRow) (stepDispatchPaylo
 		Attempt:            int(record.Attempt),
 		UpdatedAt:          timestampPtr(record.UpdatedAt),
 		dependsOnRaw:       record.DependsOnRaw,
+		dependsOnTaskRaw:   record.DependsOnTaskRaw,
 		paramsRaw:          record.ParamsRaw,
 		InputCommitID:      record.InputCommitID,
 		LoopID:             record.LoopID,
@@ -194,6 +199,10 @@ func mapStepPayload(record db.GetStepPayloadByIDForUpdateRow) (stepDispatchPaylo
 	}
 	var parseErr error
 	row.DependsOnStepIDs, parseErr = parseJSONUUIDs(row.dependsOnRaw)
+	if parseErr != nil {
+		return stepDispatchPayload{}, parseErr
+	}
+	row.DependsOnTaskIDs, parseErr = parseJSONUUIDs(row.dependsOnTaskRaw)
 	if parseErr != nil {
 		return stepDispatchPayload{}, parseErr
 	}

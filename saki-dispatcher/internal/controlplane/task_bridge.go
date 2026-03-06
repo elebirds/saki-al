@@ -60,11 +60,11 @@ func (s *Service) resolveTaskIDForStepTx(
 	return uuid.Nil, false, err
 }
 
-func (s *Service) resolveTaskIDsForStepDependenciesTx(
+func (s *Service) resolveDependencyTaskIDsByStepDependenciesTx(
 	ctx context.Context,
 	tx pgx.Tx,
 	dependencyStepIDs []uuid.UUID,
-) ([]string, error) {
+) ([]uuid.UUID, error) {
 	if len(dependencyStepIDs) == 0 {
 		return nil, nil
 	}
@@ -81,10 +81,10 @@ func (s *Service) resolveTaskIDsForStepDependenciesTx(
 		}
 	}
 
-	dependencyTaskIDs := make([]string, 0, len(dependencyStepIDs))
+	dependencyTaskIDs := make([]uuid.UUID, 0, len(dependencyStepIDs))
 	for _, stepID := range dependencyStepIDs {
 		if taskID, ok := taskByStepID[stepID]; ok {
-			dependencyTaskIDs = append(dependencyTaskIDs, taskID.String())
+			dependencyTaskIDs = append(dependencyTaskIDs, taskID)
 			continue
 		}
 		return nil, fmt.Errorf("task binding missing for step dependency: step_id=%s", stepID.String())
@@ -100,6 +100,7 @@ func (s *Service) ensureTaskBindingForStepTx(
 	stepType db.Steptype,
 	pluginID string,
 	inputCommitID *uuid.UUID,
+	dependencyTaskIDs []uuid.UUID,
 	resolvedParams []byte,
 	maxAttempts int,
 ) (uuid.UUID, error) {
@@ -108,15 +109,23 @@ func (s *Service) ensureTaskBindingForStepTx(
 		maxAttempts = 1
 	}
 	pluginID = strings.TrimSpace(pluginID)
+	if dependencyTaskIDs == nil {
+		dependencyTaskIDs = make([]uuid.UUID, 0)
+	}
+	dependencyTaskIDsJSON, err := marshalJSON(dependencyTaskIDs)
+	if err != nil {
+		return uuid.Nil, err
+	}
 
-	err := s.qtx(tx).InsertStepTask(ctx, db.InsertStepTaskParams{
-		TaskID:         taskID,
-		ProjectID:      projectID,
-		TaskType:       db.Runtimetasktype(string(stepType)),
-		PluginID:       pluginID,
-		InputCommitID:  inputCommitID,
-		ResolvedParams: resolvedParams,
-		MaxAttempts:    int32(maxAttempts),
+	err = s.qtx(tx).InsertStepTask(ctx, db.InsertStepTaskParams{
+		TaskID:            taskID,
+		ProjectID:         projectID,
+		TaskType:          db.Runtimetasktype(string(stepType)),
+		PluginID:          pluginID,
+		DependsOnTaskIds:  []byte(dependencyTaskIDsJSON),
+		InputCommitID:     inputCommitID,
+		ResolvedParams:    resolvedParams,
+		MaxAttempts:       int32(maxAttempts),
 	})
 	if err != nil {
 		return uuid.Nil, err

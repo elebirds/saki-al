@@ -17,7 +17,7 @@ class ModelCreateData(BaseModel):
     project_id: uuid.UUID
     source_commit_id: Optional[uuid.UUID] = None
     source_round_id: Optional[uuid.UUID] = None
-    source_step_id: Optional[uuid.UUID] = None
+    source_task_id: Optional[uuid.UUID] = None
     parent_model_id: Optional[uuid.UUID] = None
     plugin_id: str
     model_arch: str
@@ -45,7 +45,7 @@ class ModelRead(BaseModel):
     project_id: uuid.UUID
     source_commit_id: Optional[uuid.UUID] = None
     source_round_id: Optional[uuid.UUID] = None
-    source_step_id: Optional[uuid.UUID] = None
+    source_task_id: Optional[uuid.UUID] = None
     parent_model_id: Optional[uuid.UUID] = None
     plugin_id: str
     model_arch: str

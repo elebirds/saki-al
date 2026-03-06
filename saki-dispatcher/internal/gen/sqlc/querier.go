@@ -33,8 +33,8 @@ type Querier interface {
 	DeleteTaskCandidatesByTaskID(ctx context.Context, taskID uuid.UUID) error
 	FindRoundIDByStep(ctx context.Context, stepID uuid.UUID) (uuid.UUID, error)
 	GetCommandLogByCommandID(ctx context.Context, commandID string) (GetCommandLogByCommandIDRow, error)
-	GetDependencyStatesByIDs(ctx context.Context, stepIds []uuid.UUID) ([]Stepstatus, error)
-	GetLatestAssignedExecutorByStepIDs(ctx context.Context, stepIds []uuid.UUID) (string, error)
+	GetDependencyTaskStatusesByIDs(ctx context.Context, taskIds []uuid.UUID) ([]Runtimetaskstatus, error)
+	GetLatestAssignedExecutorByTaskIDs(ctx context.Context, taskIds []uuid.UUID) (string, error)
 	GetLatestRoundByLoop(ctx context.Context, loopID uuid.UUID) (GetLatestRoundByLoopRow, error)
 	GetLatestSucceededTrainStepIDByRound(ctx context.Context, roundID uuid.UUID) (uuid.UUID, error)
 	GetLoopByID(ctx context.Context, loopID uuid.UUID) (GetLoopByIDRow, error)

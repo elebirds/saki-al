@@ -629,7 +629,7 @@ export interface ProjectModel {
     projectId: string;
     sourceCommitId?: string | null;
     sourceRoundId?: string | null;
-    sourceStepId?: string | null;
+    sourceTaskId?: string | null;
     parentModelId?: string | null;
     pluginId: string;
     modelArch: string;

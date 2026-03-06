@@ -170,7 +170,7 @@ func (s *Service) promotePendingStepIfReady(ctx context.Context, stepID uuid.UUI
 	if loopLifecycle != db.LooplifecycleRUNNING {
 		return false, tx.Commit(ctx)
 	}
-	depsOK, err := s.dependenciesSatisfiedTx(ctx, tx, stepPayload.DependsOnStepIDs)
+	depsOK, err := s.dependenciesSatisfiedTx(ctx, tx, stepPayload.DependsOnTaskIDs)
 	if err != nil {
 		return false, err
 	}
@@ -213,7 +213,7 @@ func (s *Service) dispatchStepByID(ctx context.Context, stepID uuid.UUID) (bool,
 		if loopLifecycle != db.LooplifecycleRUNNING {
 			return false, tx.Commit(ctx)
 		}
-		depsOK, err := s.dependenciesSatisfiedTx(ctx, tx, stepPayload.DependsOnStepIDs)
+		depsOK, err := s.dependenciesSatisfiedTx(ctx, tx, stepPayload.DependsOnTaskIDs)
 		if err != nil {
 			return false, err
 		}
@@ -246,7 +246,7 @@ func (s *Service) dispatchStepByID(ctx context.Context, stepID uuid.UUID) (bool,
 		return executed, tx.Commit(ctx)
 	}
 
-	preferredExecutorID, err := s.resolvePreferredExecutorIDByDependenciesTx(ctx, tx, stepPayload.DependsOnStepIDs)
+	preferredExecutorID, err := s.resolvePreferredExecutorIDByDependenciesTx(ctx, tx, stepPayload.DependsOnTaskIDs)
 	if err != nil {
 		return false, err
 	}
@@ -259,12 +259,10 @@ func (s *Service) dispatchStepByID(ctx context.Context, stepID uuid.UUID) (bool,
 		return false, tx.Commit(ctx)
 	}
 
-	dispatchTaskID := stepPayload.StepID
-	if mappedTaskID, ok, mapErr := s.resolveTaskIDForStepTx(ctx, tx, stepPayload.StepID); mapErr != nil {
-		return false, mapErr
-	} else if ok {
-		dispatchTaskID = mappedTaskID
+	if stepPayload.TaskID == nil {
+		return false, fmt.Errorf("task binding missing for step dispatch: step_id=%s", stepPayload.StepID)
 	}
+	dispatchTaskID := *stepPayload.TaskID
 
 	resolvedParams, err := s.buildDispatchResolvedParamsTx(ctx, tx, stepPayload)
 	if err != nil {
@@ -309,10 +307,6 @@ func (s *Service) dispatchStepByID(ctx context.Context, stepID uuid.UUID) (bool,
 	if stepPayload.InputCommitID != nil {
 		inputCommitID = stepPayload.InputCommitID.String()
 	}
-	dependsOnTaskIDs, err := s.resolveTaskIDsForStepDependenciesTx(ctx, tx, stepPayload.DependsOnStepIDs)
-	if err != nil {
-		return false, err
-	}
 	message := &runtimecontrolv1.TaskPayload{
 		TaskId:           dispatchTaskID.String(),
 		RoundId:          stepPayload.RoundID.String(),
@@ -328,7 +322,7 @@ func (s *Service) dispatchStepByID(ctx context.Context, stepID uuid.UUID) (bool,
 		Resources:        stepPayload.Resources,
 		RoundIndex:       int32(stepPayload.RoundIndex),
 		Attempt:          int32(stepPayload.Attempt),
-		DependsOnTaskIds: dependsOnTaskIDs,
+		DependsOnTaskIds: stringifyUUIDs(stepPayload.DependsOnTaskIDs),
 	}
 	payloadRaw, err := protojson.Marshal(message)
 	if err != nil {
@@ -1194,16 +1188,27 @@ func toIntValue(raw any, fallback int) int {
 	return fallback
 }
 
+func stringifyUUIDs(values []uuid.UUID) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	items := make([]string, 0, len(values))
+	for _, value := range values {
+		items = append(items, value.String())
+	}
+	return items
+}
+
 func (s *Service) dependenciesSatisfiedTx(ctx context.Context, tx pgx.Tx, dependencyIDs []uuid.UUID) (bool, error) {
 	if len(dependencyIDs) == 0 {
 		return true, nil
 	}
-	states, err := s.qtx(tx).GetDependencyStatesByIDs(ctx, dependencyIDs)
+	states, err := s.qtx(tx).GetDependencyTaskStatusesByIDs(ctx, dependencyIDs)
 	if err != nil {
 		return false, err
 	}
 	for _, state := range states {
-		if state != db.StepstatusSUCCEEDED {
+		if state != db.RuntimetaskstatusSUCCEEDED {
 			return false, nil
 		}
 	}
@@ -1271,7 +1276,7 @@ func (s *Service) resolvePreferredExecutorIDByDependenciesTx(
 	if len(dependencyIDs) == 0 {
 		return "", nil
 	}
-	executorID, err := s.qtx(tx).GetLatestAssignedExecutorByStepIDs(ctx, dependencyIDs)
+	executorID, err := s.qtx(tx).GetLatestAssignedExecutorByTaskIDs(ctx, dependencyIDs)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return "", nil

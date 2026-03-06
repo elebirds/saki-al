@@ -172,6 +172,7 @@ INSERT INTO task(
   task_type,
   status,
   plugin_id,
+  depends_on_task_ids,
   input_commit_id,
   resolved_params,
   assigned_executor_id,
@@ -189,11 +190,12 @@ INSERT INTO task(
   $3::runtimetasktype,
   'PENDING'::runtimetaskstatus,
   $4,
-  $5::uuid,
-  $6::jsonb,
+  $5::jsonb,
+  $6::uuid,
+  $7::jsonb,
   NULL,
   1,
-  $7,
+  $8,
   NULL,
   NULL,
   NULL
@@ -201,13 +203,14 @@ INSERT INTO task(
 `
 
 type InsertStepTaskParams struct {
-	TaskID         uuid.UUID
-	ProjectID      uuid.UUID
-	TaskType       Runtimetasktype
-	PluginID       string
-	InputCommitID  *uuid.UUID
-	ResolvedParams []byte
-	MaxAttempts    int32
+	TaskID           uuid.UUID
+	ProjectID        uuid.UUID
+	TaskType         Runtimetasktype
+	PluginID         string
+	DependsOnTaskIds []byte
+	InputCommitID    *uuid.UUID
+	ResolvedParams   []byte
+	MaxAttempts      int32
 }
 
 func (q *Queries) InsertStepTask(ctx context.Context, arg InsertStepTaskParams) error {
@@ -216,6 +219,7 @@ func (q *Queries) InsertStepTask(ctx context.Context, arg InsertStepTaskParams) 
 		arg.ProjectID,
 		arg.TaskType,
 		arg.PluginID,
+		arg.DependsOnTaskIds,
 		arg.InputCommitID,
 		arg.ResolvedParams,
 		arg.MaxAttempts,

@@ -20,7 +20,7 @@ class Model(UUIDMixin, TimestampMixin, SQLModel, table=True):
 
     source_commit_id: uuid.UUID | None = Field(default=None, foreign_key="commit.id", index=True)
     source_round_id: uuid.UUID | None = Field(default=None, foreign_key="round.id", index=True)
-    source_step_id: uuid.UUID | None = Field(default=None, foreign_key="step.id", index=True)
+    source_task_id: uuid.UUID | None = Field(default=None, foreign_key="task.id", index=True)
     parent_model_id: uuid.UUID | None = Field(default=None, foreign_key="model.id", index=True)
     plugin_id: str = Field(default="", index=True)
     model_arch: str = Field(default="", index=True)

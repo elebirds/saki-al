@@ -1064,7 +1064,7 @@
           "status": "状态",
           "plugin": "插件",
           "sourceRound": "来源 Round",
-          "sourceStep": "来源 Step",
+          "sourceTask": "来源 Task",
           "primaryArtifact": "主制品",
           "createdAt": "创建时间"
         },

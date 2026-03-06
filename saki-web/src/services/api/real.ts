@@ -427,7 +427,7 @@ function normalizeProjectModel(model: ProjectModel): ProjectModel {
         ...model,
         sourceCommitId: (model as any).sourceCommitId ?? null,
         sourceRoundId: (model as any).sourceRoundId ?? (model as any).roundId ?? null,
-        sourceStepId: (model as any).sourceStepId ?? null,
+        sourceTaskId: (model as any).sourceTaskId ?? null,
         primaryArtifactName: String((model as any).primaryArtifactName || 'best.pt'),
         publishManifest: (model as any).publishManifest && typeof (model as any).publishManifest === 'object'
             ? (model as any).publishManifest

@@ -1129,6 +1129,10 @@ func (s *Service) createRoundAttemptTx(
 		}); err != nil {
 			return nil, err
 		}
+		dependencyTaskIDs, depErr := s.resolveDependencyTaskIDsByStepDependenciesTx(ctx, tx, dependsOn)
+		if depErr != nil {
+			return nil, depErr
+		}
 		if _, bindErr := s.ensureTaskBindingForStepTx(
 			ctx,
 			tx,
@@ -1137,6 +1141,7 @@ func (s *Service) createRoundAttemptTx(
 			stepSpec.StepType,
 			loop.ModelArch,
 			sourceCommitID,
+			dependencyTaskIDs,
 			[]byte(stepParamsJSON),
 			3,
 		); bindErr != nil {

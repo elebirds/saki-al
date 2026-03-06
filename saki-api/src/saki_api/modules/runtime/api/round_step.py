@@ -179,7 +179,7 @@ class StepRead(BaseModel):
     metrics: Dict[str, Any]
     artifacts: Dict[str, Any]
     input_commit_id: Optional[uuid.UUID] = None
-    task_id: Optional[uuid.UUID] = None
+    task_id: uuid.UUID
     assigned_executor_id: Optional[str] = None
     attempt: int
     max_attempts: int

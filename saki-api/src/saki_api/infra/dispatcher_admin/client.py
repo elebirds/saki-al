@@ -181,30 +181,6 @@ class DispatcherAdminClient:
             metadata=self._metadata(),
         )
 
-    async def stop_step(
-            self,
-            step_id: str,
-            *,
-            reason: str = "",
-            command_id: str | None = None,
-    ) -> pb.CommandResponse:
-        return await self.stop_task(
-            task_id=step_id,
-            reason=reason,
-            command_id=command_id,
-        )
-
-    async def dispatch_step(
-            self,
-            step_id: str,
-            *,
-            command_id: str | None = None,
-    ) -> pb.CommandResponse:
-        return await self.dispatch_task(
-            task_id=step_id,
-            command_id=command_id,
-        )
-
     async def get_runtime_summary(self) -> pb.RuntimeSummaryResponse:
         stub = await self._get_stub()
         return await stub.GetRuntimeSummary(

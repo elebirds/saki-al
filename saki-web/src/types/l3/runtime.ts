@@ -359,7 +359,7 @@ export interface RoundSelectionApplyResponse {
 
 export interface RuntimeRoundArtifact {
     stepId: string;
-    taskId?: string | null;
+    taskId: string;
     stepIndex: number;
     stage: string;
     artifactClass: string;

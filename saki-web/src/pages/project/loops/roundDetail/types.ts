@@ -22,7 +22,7 @@ export interface RoundArtifactTableRow {
     artifactClass: string;
     artifactClassLabel: string;
     stepId: string;
-    taskId?: string | null;
+    taskId: string;
     stepIndex: number;
     name: string;
     kind: string;

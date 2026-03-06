@@ -36,7 +36,7 @@ from saki_api.modules.annotation.extensions.dataset_processing.base import Uploa
     ProgressInfo
 from saki_api.modules.annotation.extensions.factory import AnnotationSystemFactory
 from saki_api.modules.project.repo.sample import SampleRepository
-from saki_api.modules.runtime.domain.step_candidate_item import TaskCandidateItem
+from saki_api.modules.runtime.domain.task_candidate_item import TaskCandidateItem
 from saki_api.modules.shared.application.crud_service import CrudServiceBase
 from saki_api.modules.shared.modeling.enums import DatasetType
 from saki_api.modules.storage.api.sample import SampleRead

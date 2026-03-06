@@ -10,7 +10,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.infra.db.repository import BaseRepository
 from saki_api.modules.runtime.domain.step import Step
-from saki_api.modules.runtime.domain.step_event import TaskEvent
+from saki_api.modules.runtime.domain.task_event import TaskEvent
 
 
 class TaskEventRepository(BaseRepository[TaskEvent]):

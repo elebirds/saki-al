@@ -16,13 +16,13 @@ from saki_api.modules.project.domain.project import Project
 from saki_api.modules.runtime.domain.loop import Loop
 from saki_api.modules.runtime.domain.round import Round
 from saki_api.modules.runtime.domain.step import Step
-from saki_api.modules.runtime.domain.step_metric_point import TaskMetricPoint
+from saki_api.modules.runtime.domain.task_metric_point import TaskMetricPoint
 from saki_api.modules.runtime.service.application.event_dto import (
     RuntimeStepEventDTO,
     RuntimeStepResultDTO,
     RuntimeTaskResultDTO,
 )
-from saki_api.modules.runtime.service.persistence.step_runtime_persistence_service import RuntimeTaskPersistenceService
+from saki_api.modules.runtime.service.persistence.task_runtime_persistence_service import RuntimeTaskPersistenceService
 from saki_api.modules.shared.modeling.enums import (
     AuthorType,
     LoopMode,

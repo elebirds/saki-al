@@ -15,7 +15,7 @@ from saki_api.modules.runtime.domain.model_class_schema import ModelClassSchema
 from saki_api.modules.runtime.domain.prediction import Prediction
 from saki_api.modules.runtime.domain.round import Round
 from saki_api.modules.runtime.domain.step import Step
-from saki_api.modules.runtime.domain.step_candidate_item import TaskCandidateItem
+from saki_api.modules.runtime.domain.task_candidate_item import TaskCandidateItem
 from saki_api.modules.runtime.service.runtime_service.prediction_label_resolver import PredictionResolveError
 from saki_api.modules.shared.modeling.enums import (
     CommitSampleReviewState,

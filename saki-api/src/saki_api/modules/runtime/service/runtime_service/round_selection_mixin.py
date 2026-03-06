@@ -9,7 +9,7 @@ from saki_api.core.exceptions import BadRequestAppException
 from saki_api.infra.db.transaction import transactional
 from saki_api.modules.runtime.domain.round import Round
 from saki_api.modules.runtime.domain.step import Step
-from saki_api.modules.runtime.domain.step_candidate_item import TaskCandidateItem
+from saki_api.modules.runtime.domain.task_candidate_item import TaskCandidateItem
 from saki_api.modules.runtime.service.runtime_service.snapshot_policy_mixin import _RoundSelectionContext
 from saki_api.modules.shared.modeling.enums import (
     LoopLifecycle,

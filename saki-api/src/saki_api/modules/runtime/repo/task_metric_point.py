@@ -8,7 +8,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.infra.db.repository import BaseRepository
 from saki_api.modules.runtime.domain.step import Step
-from saki_api.modules.runtime.domain.step_metric_point import TaskMetricPoint
+from saki_api.modules.runtime.domain.task_metric_point import TaskMetricPoint
 
 
 class TaskMetricPointRepository(BaseRepository[TaskMetricPoint]):

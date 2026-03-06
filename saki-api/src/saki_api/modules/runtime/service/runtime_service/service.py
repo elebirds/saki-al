@@ -18,9 +18,9 @@ from saki_api.modules.runtime.repo.round import RoundRepository
 from saki_api.modules.runtime.repo.runtime_executor import RuntimeExecutorRepository
 from saki_api.modules.runtime.repo.step import StepRepository
 from saki_api.modules.runtime.repo.task import TaskRepository
-from saki_api.modules.runtime.repo.step_candidate_item import TaskCandidateItemRepository
-from saki_api.modules.runtime.repo.step_event import TaskEventRepository
-from saki_api.modules.runtime.repo.step_metric_point import TaskMetricPointRepository
+from saki_api.modules.runtime.repo.task_candidate_item import TaskCandidateItemRepository
+from saki_api.modules.runtime.repo.task_event import TaskEventRepository
+from saki_api.modules.runtime.repo.task_metric_point import TaskMetricPointRepository
 from saki_api.modules.runtime.repo.prediction import PredictionRepository
 from saki_api.modules.runtime.repo.prediction_binding import PredictionBindingRepository
 from saki_api.modules.runtime.repo.prediction_item import PredictionItemRepository

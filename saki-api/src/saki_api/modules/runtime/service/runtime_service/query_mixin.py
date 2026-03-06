@@ -20,7 +20,7 @@ from saki_api.modules.runtime.api.round_step import (
 from saki_api.modules.runtime.domain.round import Round
 from saki_api.modules.runtime.domain.step import Step
 from saki_api.modules.runtime.domain.loop import Loop
-from saki_api.modules.runtime.domain.step_candidate_item import TaskCandidateItem
+from saki_api.modules.runtime.domain.task_candidate_item import TaskCandidateItem
 from saki_api.modules.shared.modeling.enums import RoundStatus, StepStatus
 
 

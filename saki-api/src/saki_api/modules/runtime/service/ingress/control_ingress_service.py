@@ -40,7 +40,7 @@ from saki_api.modules.runtime.service.application.event_dto import (
     RuntimeTaskEventDTO,
     RuntimeTaskResultDTO,
 )
-from saki_api.modules.runtime.service.persistence.step_runtime_persistence_service import (
+from saki_api.modules.runtime.service.persistence.task_runtime_persistence_service import (
     RuntimeTaskPersistenceService,
 )
 from saki_api.modules.shared.modeling.enums import (

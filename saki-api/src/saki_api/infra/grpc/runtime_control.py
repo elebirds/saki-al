@@ -25,7 +25,7 @@ from saki_api.modules.project.repo.commit_sample_state import CommitSampleStateR
 from saki_api.modules.project.service.commit_hash import refresh_commit_hash
 from saki_api.modules.runtime.domain.round import Round
 from saki_api.modules.runtime.domain.step import Step
-from saki_api.modules.runtime.domain.step_candidate_item import TaskCandidateItem
+from saki_api.modules.runtime.domain.task_candidate_item import TaskCandidateItem
 from saki_api.modules.runtime.service.runtime_service import RuntimeService
 from saki_api.modules.runtime.service.ingress.control_ingress_service import RuntimeControlIngressService
 from saki_api.modules.shared.modeling.enums import AuthorType, CommitSampleReviewState, StepType

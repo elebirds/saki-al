@@ -11,7 +11,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from saki_api.modules.project.domain.commit_sample_state import CommitSampleState
 from saki_api.modules.runtime.domain.al_loop_visibility import ALLoopVisibility
 from saki_api.modules.runtime.domain.step import Step
-from saki_api.modules.runtime.domain.step_candidate_item import TaskCandidateItem
+from saki_api.modules.runtime.domain.task_candidate_item import TaskCandidateItem
 from saki_api.modules.shared.modeling.enums import CommitSampleReviewState, StepType
 from saki_api.modules.storage.domain.dataset import Dataset
 from saki_api.modules.storage.domain.sample import Sample

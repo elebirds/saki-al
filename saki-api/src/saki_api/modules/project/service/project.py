@@ -57,7 +57,7 @@ from saki_api.modules.project.repo.label import LabelRepository
 from saki_api.modules.project.service.commit_hash import refresh_commit_hash
 from saki_api.modules.runtime.domain.round import Round
 from saki_api.modules.runtime.domain.step import Step
-from saki_api.modules.runtime.domain.step_candidate_item import TaskCandidateItem
+from saki_api.modules.runtime.domain.task_candidate_item import TaskCandidateItem
 from saki_api.modules.shared.application.crud_service import CrudServiceBase
 from saki_api.modules.access.domain.rbac import ResourceType, Permissions
 from saki_api.modules.shared.modeling.enums import (

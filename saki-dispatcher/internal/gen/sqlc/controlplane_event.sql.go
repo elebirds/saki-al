@@ -12,7 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const insertStepEvent = `-- name: InsertStepEvent :execrows
+const insertTaskEvent = `-- name: InsertTaskEvent :execrows
 INSERT INTO task_event(id, task_id, seq, ts, event_type, payload, created_at, updated_at)
 VALUES(
   $1::uuid,
@@ -27,7 +27,7 @@ VALUES(
 ON CONFLICT (task_id, seq) DO NOTHING
 `
 
-type InsertStepEventParams struct {
+type InsertTaskEventParams struct {
 	EventID   uuid.UUID
 	TaskID    uuid.UUID
 	Seq       int32
@@ -36,8 +36,8 @@ type InsertStepEventParams struct {
 	Payload   []byte
 }
 
-func (q *Queries) InsertStepEvent(ctx context.Context, arg InsertStepEventParams) (int64, error) {
-	result, err := q.db.Exec(ctx, insertStepEvent,
+func (q *Queries) InsertTaskEvent(ctx context.Context, arg InsertTaskEventParams) (int64, error) {
+	result, err := q.db.Exec(ctx, insertTaskEvent,
 		arg.EventID,
 		arg.TaskID,
 		arg.Seq,

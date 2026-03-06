@@ -671,7 +671,7 @@ func (s *Service) OnTaskEvent(ctx context.Context, event *runtimecontrolv1.TaskE
 	if err != nil {
 		return err
 	}
-	if inserted, err := s.insertStepEventTx(
+	if inserted, err := s.insertTaskEventTx(
 		ctx,
 		tx,
 		taskID,
@@ -1487,7 +1487,7 @@ func (s *Service) getStepPayloadByIDTx(ctx context.Context, tx pgx.Tx, stepID uu
 	return row, true, nil
 }
 
-func (s *Service) insertStepEventTx(
+func (s *Service) insertTaskEventTx(
 	ctx context.Context,
 	tx pgx.Tx,
 	taskID uuid.UUID,
@@ -1498,7 +1498,7 @@ func (s *Service) insertStepEventTx(
 	requestID string,
 ) (bool, error) {
 	_ = requestID
-	affected, err := s.qtx(tx).InsertStepEvent(ctx, db.InsertStepEventParams{
+	affected, err := s.qtx(tx).InsertTaskEvent(ctx, db.InsertTaskEventParams{
 		EventID:   uuid.New(),
 		TaskID:    taskID,
 		Seq:       int32(seq),

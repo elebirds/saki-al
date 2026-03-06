@@ -1,4 +1,4 @@
--- name: InsertStepEvent :execrows
+-- name: InsertTaskEvent :execrows
 INSERT INTO task_event(id, task_id, seq, ts, event_type, payload, created_at, updated_at)
 VALUES(
   sqlc.arg(event_id)::uuid,

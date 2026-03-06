@@ -51,8 +51,8 @@ type Querier interface {
 	InsertDispatchOutbox(ctx context.Context, arg InsertDispatchOutboxParams) (int64, error)
 	InsertRound(ctx context.Context, arg InsertRoundParams) error
 	InsertStep(ctx context.Context, arg InsertStepParams) error
-	InsertStepEvent(ctx context.Context, arg InsertStepEventParams) (int64, error)
 	InsertTaskCandidateItem(ctx context.Context, arg InsertTaskCandidateItemParams) error
+	InsertTaskEvent(ctx context.Context, arg InsertTaskEventParams) (int64, error)
 	InsertTaskMetricPoint(ctx context.Context, arg InsertTaskMetricPointParams) error
 	ListLoopStoppableSteps(ctx context.Context, loopID uuid.UUID) ([]ListLoopStoppableStepsRow, error)
 	ListOrphanDispatchingStepIDs(ctx context.Context, arg ListOrphanDispatchingStepIDsParams) ([]uuid.UUID, error)

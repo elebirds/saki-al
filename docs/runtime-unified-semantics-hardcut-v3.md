@@ -1,8 +1,8 @@
-# Runtime 统一语义硬切方案 v3（保留 Snapshot + 引入 PredictionSet）
+# Runtime 统一语义硬切方案 v3（历史版）
 
 > 生效日期：2026-03-01  
-> 状态：当前唯一生效文档（Hard Cut）  
-> 废弃：`runtime-loop-decision-action-strategy-v1.md`、`runtime-loop-round-step-语义计划书-v2.md`
+> 状态：已废弃（仅保留历史记录）  
+> 当前生效文档：[`runtime-task-主干最终语义-v4.md`](./runtime-task-主干最终语义-v4.md)
 
 ## 1. 摘要
 

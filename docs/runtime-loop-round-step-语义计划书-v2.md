@@ -1,6 +1,6 @@
 # Saki Runtime 语义计划书 v2（Loop / Round / Step）
 
-> 注意：本文件为历史计划文档（已废弃）。当前实现请以 [`runtime-unified-semantics-hardcut-v3.md`](./runtime-unified-semantics-hardcut-v3.md) 为准。
+> 注意：本文件为历史计划文档（已废弃）。当前实现请以 [`runtime-task-主干最终语义-v4.md`](./runtime-task-主干最终语义-v4.md) 为准。
 
 ## 0. 文档目的
 

@@ -271,7 +271,3 @@ class RuntimeTaskPersistenceService:
             }
         )
         return task.id
-
-
-# Legacy alias, kept for incremental refactor of imports.
-RuntimeStepPersistenceService = RuntimeTaskPersistenceService

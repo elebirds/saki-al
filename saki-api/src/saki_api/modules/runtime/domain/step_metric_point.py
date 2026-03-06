@@ -6,7 +6,6 @@ from typing import Optional
 
 import sqlalchemy as sa
 from sqlalchemy import Column, Integer
-from pydantic import model_validator
 from sqlmodel import Field, SQLModel
 
 from saki_api.modules.shared.modeling.base import TimestampMixin, UUIDMixin
@@ -20,17 +19,3 @@ class TaskMetricPoint(UUIDMixin, TimestampMixin, SQLModel, table=True):
     metric_name: str = Field(index=True, max_length=128)
     metric_value: float
     ts: datetime = Field(index=True, sa_type=sa.DateTime(timezone=True))
-
-    @model_validator(mode="before")
-    @classmethod
-    def _compat_step_id(cls, data):
-        if not isinstance(data, dict):
-            return data
-        if data.get("task_id") is None and data.get("step_id") is not None:
-            patched = dict(data)
-            patched["task_id"] = patched.get("step_id")
-            return patched
-        return data
-
-# Legacy alias, kept for incremental refactor of imports.
-StepMetricPoint = TaskMetricPoint

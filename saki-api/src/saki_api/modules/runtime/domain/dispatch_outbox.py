@@ -27,7 +27,3 @@ class TaskDispatchOutbox(UUIDMixin, TimestampMixin, SQLModel, table=True):
     locked_at: datetime | None = Field(default=None, sa_type=sa.DateTime(timezone=True))
     sent_at: datetime | None = Field(default=None, sa_type=sa.DateTime(timezone=True))
     last_error: str | None = Field(default=None, max_length=4000)
-
-
-# 向后兼容旧导出名，避免非关键调用点一次性大范围改名。
-DispatchOutbox = TaskDispatchOutbox

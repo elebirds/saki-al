@@ -20,7 +20,7 @@ from saki_api.modules.runtime.api.round_step import (
 from saki_api.modules.runtime.domain.round import Round
 from saki_api.modules.runtime.domain.step import Step
 from saki_api.modules.runtime.domain.loop import Loop
-from saki_api.modules.runtime.domain.step_candidate_item import StepCandidateItem
+from saki_api.modules.runtime.domain.step_candidate_item import TaskCandidateItem
 from saki_api.modules.shared.modeling.enums import RoundStatus, StepStatus
 
 
@@ -656,7 +656,7 @@ class RuntimeQueryMixin:
             return []
         return await self.task_metric_repo.list_by_task(step.task_id, limit=max(1, min(limit, 100000)))
 
-    async def list_step_candidates(self, step_id: uuid.UUID, limit: int = 200) -> List[StepCandidateItem]:
+    async def list_step_candidates(self, step_id: uuid.UUID, limit: int = 200) -> List[TaskCandidateItem]:
         step = await self.step_repo.get_by_id_or_raise(step_id)
         if not step.task_id:
             return []

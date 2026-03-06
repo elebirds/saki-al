@@ -9,7 +9,7 @@ from saki_api.core.exceptions import BadRequestAppException
 from saki_api.infra.db.transaction import transactional
 from saki_api.modules.runtime.domain.round import Round
 from saki_api.modules.runtime.domain.step import Step
-from saki_api.modules.runtime.domain.step_candidate_item import StepCandidateItem
+from saki_api.modules.runtime.domain.step_candidate_item import TaskCandidateItem
 from saki_api.modules.runtime.service.runtime_service.snapshot_policy_mixin import _RoundSelectionContext
 from saki_api.modules.shared.modeling.enums import (
     LoopLifecycle,
@@ -59,7 +59,7 @@ class RoundSelectionMixin:
         select_step = sorted(select_steps, key=lambda item: int(item.step_index), reverse=True)[0]
 
         topk, review_pool_size = self._sampling_limits_from_round(round_row=round_row, fallback_topk=loop.query_batch_size)
-        score_pool = await self.step_candidate_repo.list_by_step(score_step.id)
+        score_pool = await self.task_candidate_repo.list_by_step(score_step.id)
         if review_pool_size > 0:
             score_pool = score_pool[:review_pool_size]
         auto_selected = score_pool[:topk]
@@ -113,11 +113,11 @@ class RoundSelectionMixin:
     async def _replace_select_candidates_from_score_pool(
         self,
         *,
-        select_step_id: uuid.UUID,
+        select_task_id: uuid.UUID,
         selected_ids: list[uuid.UUID],
-        score_pool_by_id: dict[uuid.UUID, StepCandidateItem],
+        score_pool_by_id: dict[uuid.UUID, TaskCandidateItem],
     ) -> None:
-        await self.step_candidate_repo.delete_by_step(select_step_id)
+        await self.task_candidate_repo.delete_by_task(select_task_id)
         rows: list[dict[str, Any]] = []
         for rank, sample_id in enumerate(selected_ids, start=1):
             source = score_pool_by_id.get(sample_id)
@@ -125,7 +125,7 @@ class RoundSelectionMixin:
                 continue
             rows.append(
                 {
-                    "step_id": select_step_id,
+                    "task_id": select_task_id,
                     "sample_id": sample_id,
                     "rank": rank,
                     "score": float(source.score or 0.0),
@@ -134,7 +134,7 @@ class RoundSelectionMixin:
                 }
             )
         if rows:
-            await self.step_candidate_repo.create_many(rows)
+            await self.task_candidate_repo.create_many(rows)
 
     async def _build_round_selection_payload(
         self,
@@ -230,8 +230,10 @@ class RoundSelectionMixin:
         payload = await self._build_round_selection_payload(context=context)
         effective_ids = list(payload.get("_effective_selected_ids") or [])
         score_pool_by_id = {item.sample_id: item for item in context.score_pool}
+        if context.select_step.task_id is None:
+            raise BadRequestAppException("select step missing task binding")
         await self._replace_select_candidates_from_score_pool(
-            select_step_id=context.select_step.id,
+            select_task_id=context.select_step.task_id,
             selected_ids=effective_ids,
             score_pool_by_id=score_pool_by_id,
         )
@@ -243,8 +245,10 @@ class RoundSelectionMixin:
     async def reset_round_selection_override(self, *, round_id: uuid.UUID) -> dict[str, Any]:
         context = await self._resolve_round_selection_context(round_id=round_id, require_wait_phase=True)
         await self.al_round_selection_override_repo.reset_round(context.round_row.id)
+        if context.select_step.task_id is None:
+            raise BadRequestAppException("select step missing task binding")
         await self._replace_select_candidates_from_score_pool(
-            select_step_id=context.select_step.id,
+            select_task_id=context.select_step.task_id,
             selected_ids=[item.sample_id for item in context.auto_selected],
             score_pool_by_id={item.sample_id: item for item in context.score_pool},
         )

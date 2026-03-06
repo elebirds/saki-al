@@ -57,7 +57,7 @@ from saki_api.modules.project.repo.label import LabelRepository
 from saki_api.modules.project.service.commit_hash import refresh_commit_hash
 from saki_api.modules.runtime.domain.round import Round
 from saki_api.modules.runtime.domain.step import Step
-from saki_api.modules.runtime.domain.step_candidate_item import StepCandidateItem
+from saki_api.modules.runtime.domain.step_candidate_item import TaskCandidateItem
 from saki_api.modules.shared.application.crud_service import CrudServiceBase
 from saki_api.modules.access.domain.rbac import ResourceType, Permissions
 from saki_api.modules.shared.modeling.enums import (
@@ -678,9 +678,9 @@ class ProjectService(CrudServiceBase[Project, ProjectRepository, ProjectCreate, 
             task_ids = list(task_id_rows.all())
             if task_ids:
                 candidate_rows = await self.session.exec(
-                    select(StepCandidateItem).where(
-                        StepCandidateItem.task_id.in_(task_ids),
-                        StepCandidateItem.sample_id.in_(sample_ids),
+                    select(TaskCandidateItem).where(
+                        TaskCandidateItem.task_id.in_(task_ids),
+                        TaskCandidateItem.sample_id.in_(sample_ids),
                     )
                 )
                 for row in candidate_rows:

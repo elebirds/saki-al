@@ -36,7 +36,7 @@ from saki_api.modules.annotation.extensions.dataset_processing.base import Uploa
     ProgressInfo
 from saki_api.modules.annotation.extensions.factory import AnnotationSystemFactory
 from saki_api.modules.project.repo.sample import SampleRepository
-from saki_api.modules.runtime.domain.step_candidate_item import StepCandidateItem
+from saki_api.modules.runtime.domain.step_candidate_item import TaskCandidateItem
 from saki_api.modules.shared.application.crud_service import CrudServiceBase
 from saki_api.modules.shared.modeling.enums import DatasetType
 from saki_api.modules.storage.api.sample import SampleRead
@@ -577,7 +577,7 @@ class SampleService(CrudServiceBase[Sample, SampleRepository, SampleRead, Sample
         camap_count = await self._count_rows_by_sample(CommitAnnotationMap, sample_id)
         sample_state_count = await self._count_rows_by_sample(CommitSampleState, sample_id)
         draft_count = await self._count_rows_by_sample(AnnotationDraft, sample_id)
-        candidate_count = await self._count_rows_by_sample(StepCandidateItem, sample_id)
+        candidate_count = await self._count_rows_by_sample(TaskCandidateItem, sample_id)
         working_keys = await self._scan_working_snapshot_keys(sample_id)
         project_ids = await self._collect_project_ids_by_sample(sample_id)
 
@@ -652,7 +652,7 @@ class SampleService(CrudServiceBase[Sample, SampleRepository, SampleRead, Sample
             sample_id,
         )
         transient_deleted["step_candidate_item"] = await self._delete_rows_for_sample(
-            StepCandidateItem,
+            TaskCandidateItem,
             sample_id,
         )
         transient_deleted["working_snapshots"] = await self._cleanup_working_snapshots(

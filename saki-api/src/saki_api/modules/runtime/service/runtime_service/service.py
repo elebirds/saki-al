@@ -86,10 +86,6 @@ class RuntimeService(
         self.task_event_repo = TaskEventRepository(session)
         self.task_metric_repo = TaskMetricPointRepository(session)
         self.task_candidate_repo = TaskCandidateItemRepository(session)
-        # Legacy aliases for remaining step-based mixins during migration.
-        self.step_event_repo = self.task_event_repo
-        self.step_metric_repo = self.task_metric_repo
-        self.step_candidate_repo = self.task_candidate_repo
         self.prediction_repo = PredictionRepository(session)
         self.prediction_binding_repo = PredictionBindingRepository(session)
         self.prediction_item_repo = PredictionItemRepository(session)

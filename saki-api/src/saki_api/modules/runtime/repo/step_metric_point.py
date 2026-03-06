@@ -45,7 +45,3 @@ class TaskMetricPointRepository(BaseRepository[TaskMetricPoint]):
         if step is None or step.task_id is None:
             return 0
         return await self.delete_by_task(step.task_id)
-
-
-# Legacy alias, kept for incremental refactor of imports.
-StepMetricPointRepository = TaskMetricPointRepository

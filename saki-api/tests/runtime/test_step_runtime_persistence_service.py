@@ -16,13 +16,13 @@ from saki_api.modules.project.domain.project import Project
 from saki_api.modules.runtime.domain.loop import Loop
 from saki_api.modules.runtime.domain.round import Round
 from saki_api.modules.runtime.domain.step import Step
-from saki_api.modules.runtime.domain.step_metric_point import StepMetricPoint
+from saki_api.modules.runtime.domain.step_metric_point import TaskMetricPoint
 from saki_api.modules.runtime.service.application.event_dto import (
     RuntimeStepEventDTO,
     RuntimeStepResultDTO,
     RuntimeTaskResultDTO,
 )
-from saki_api.modules.runtime.service.persistence.step_runtime_persistence_service import RuntimeStepPersistenceService
+from saki_api.modules.runtime.service.persistence.step_runtime_persistence_service import RuntimeTaskPersistenceService
 from saki_api.modules.shared.modeling.enums import (
     AuthorType,
     LoopMode,
@@ -178,7 +178,7 @@ async def test_persist_step_result_no_longer_appends_terminal_metric_points(pers
 
     async with session_local() as session:
         step_id, _ = await _seed_train_step(session)
-        persistence = RuntimeStepPersistenceService(session)
+        persistence = RuntimeTaskPersistenceService(session)
 
         await persistence.persist_step_event(
             RuntimeStepEventDTO(
@@ -206,9 +206,9 @@ async def test_persist_step_result_no_longer_appends_terminal_metric_points(pers
         metric_rows = list(
             (
                 await session.exec(
-                    select(StepMetricPoint)
-                    .where(StepMetricPoint.task_id == step.task_id)
-                    .order_by(StepMetricPoint.metric_step.asc(), StepMetricPoint.metric_name.asc())
+                    select(TaskMetricPoint)
+                    .where(TaskMetricPoint.task_id == step.task_id)
+                    .order_by(TaskMetricPoint.metric_step.asc(), TaskMetricPoint.metric_name.asc())
                 )
             ).all()
         )
@@ -223,7 +223,7 @@ async def test_persist_step_result_without_metric_events_keeps_series_empty(pers
 
     async with session_local() as session:
         step_id, round_id = await _seed_train_step(session)
-        persistence = RuntimeStepPersistenceService(session)
+        persistence = RuntimeTaskPersistenceService(session)
 
         await persistence.persist_step_result(
             RuntimeStepResultDTO(
@@ -240,7 +240,7 @@ async def test_persist_step_result_without_metric_events_keeps_series_empty(pers
         assert step.task_id is not None
 
         metric_rows = list(
-            (await session.exec(select(StepMetricPoint).where(StepMetricPoint.task_id == step.task_id))).all()
+            (await session.exec(select(TaskMetricPoint).where(TaskMetricPoint.task_id == step.task_id))).all()
         )
         assert metric_rows == []
 
@@ -259,7 +259,7 @@ async def test_persist_multi_step_result_keeps_eval_metrics_as_round_final(persi
 
     async with session_local() as session:
         step_ids, round_id = await _seed_train_eval_select_steps(session)
-        persistence = RuntimeStepPersistenceService(session)
+        persistence = RuntimeTaskPersistenceService(session)
 
         await persistence.persist_step_result(
             RuntimeStepResultDTO(
@@ -302,7 +302,7 @@ async def test_persist_task_result_projects_back_to_step_without_step_id_input(p
 
     async with session_local() as session:
         step_id, round_id = await _seed_train_step(session)
-        persistence = RuntimeStepPersistenceService(session)
+        persistence = RuntimeTaskPersistenceService(session)
 
         await persistence.persist_step_event(
             RuntimeStepEventDTO(

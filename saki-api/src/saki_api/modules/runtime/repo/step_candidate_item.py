@@ -74,7 +74,3 @@ class TaskCandidateItemRepository(BaseRepository[TaskCandidateItem]):
         if step is None or step.task_id is None:
             return []
         return await self.list_topk_by_task(step.task_id, limit=limit)
-
-
-# Legacy alias, kept for incremental refactor of imports.
-StepCandidateItemRepository = TaskCandidateItemRepository

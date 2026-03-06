@@ -44,8 +44,8 @@ from saki_api.modules.runtime.domain.al_snapshot_sample import ALSnapshotSample
 from saki_api.modules.runtime.domain.round import Round
 from saki_api.modules.runtime.domain.step import Step
 from saki_api.modules.runtime.domain.task import Task
-from saki_api.modules.runtime.domain.step_event import StepEvent
-from saki_api.modules.runtime.domain.step_metric_point import StepMetricPoint
+from saki_api.modules.runtime.domain.step_event import TaskEvent
+from saki_api.modules.runtime.domain.step_metric_point import TaskMetricPoint
 from saki_api.modules.runtime.domain.al_snapshot_version import ALSnapshotVersion
 from saki_api.modules.storage.domain.dataset import Dataset
 from saki_api.modules.storage.domain.sample import Sample
@@ -1567,7 +1567,7 @@ async def test_cleanup_round_predictions_writes_audit_log(loop_api_env, monkeypa
                 plugin_id=loop.model_arch,
             )
             session.add(
-                StepEvent(
+                TaskEvent(
                     task_id=step.task_id,
                     seq=1,
                     ts=datetime.now(UTC),
@@ -1576,7 +1576,7 @@ async def test_cleanup_round_predictions_writes_audit_log(loop_api_env, monkeypa
                 )
             )
             session.add(
-                StepMetricPoint(
+                TaskMetricPoint(
                     task_id=step.task_id,
                     metric_step=1,
                     epoch=1,
@@ -1686,28 +1686,28 @@ async def test_get_step_events_query_contract(loop_api_env, monkeypatch):
 
             session.add_all(
                     [
-                        StepEvent(
+                        TaskEvent(
                             task_id=step.task_id,
                             seq=1,
                             ts=datetime.now(UTC),
                             event_type="log",
                             payload={"level": "INFO", "message": "train started", "tag": "trainer"},
                         ),
-                        StepEvent(
+                        TaskEvent(
                             task_id=step.task_id,
                             seq=2,
                             ts=datetime.now(UTC),
                             event_type="status",
                             payload={"status": "running", "reason": "epoch 1"},
                         ),
-                        StepEvent(
+                        TaskEvent(
                             task_id=step.task_id,
                             seq=3,
                             ts=datetime.now(UTC),
                             event_type="log",
                             payload={"level": "ERROR", "message": "disk full", "tags": ["io", "critical"]},
                         ),
-                        StepEvent(
+                        TaskEvent(
                             task_id=step.task_id,
                             seq=4,
                             ts=datetime.now(UTC),
@@ -1917,14 +1917,14 @@ async def test_get_round_events_query_contract(loop_api_env, monkeypatch):
 
             session.add_all(
                 [
-                    StepEvent(
+                    TaskEvent(
                         task_id=train_step.task_id,
                         seq=1,
                         ts=datetime.now(UTC),
                         event_type="log",
                         payload={"level": "INFO", "message": "train started"},
                     ),
-                    StepEvent(
+                    TaskEvent(
                         task_id=eval_step.task_id,
                         seq=1,
                         ts=datetime.now(UTC),
@@ -2215,7 +2215,7 @@ async def test_get_round_falls_back_to_train_when_eval_step_metrics_empty(loop_a
             now = datetime.now(UTC)
             session.add_all(
                 [
-                    StepMetricPoint(
+                    TaskMetricPoint(
                         task_id=eval_step.task_id,
                         metric_step=0,
                         epoch=0,
@@ -2223,7 +2223,7 @@ async def test_get_round_falls_back_to_train_when_eval_step_metrics_empty(loop_a
                         metric_value=0.1,
                         ts=now,
                     ),
-                    StepMetricPoint(
+                    TaskMetricPoint(
                         task_id=eval_step.task_id,
                         metric_step=1,
                         epoch=1,
@@ -2231,7 +2231,7 @@ async def test_get_round_falls_back_to_train_when_eval_step_metrics_empty(loop_a
                         metric_value=0.82,
                         ts=now,
                     ),
-                    StepMetricPoint(
+                    TaskMetricPoint(
                         task_id=eval_step.task_id,
                         metric_step=1,
                         epoch=1,
@@ -2239,7 +2239,7 @@ async def test_get_round_falls_back_to_train_when_eval_step_metrics_empty(loop_a
                         metric_value=0.9,
                         ts=now,
                     ),
-                    StepMetricPoint(
+                    TaskMetricPoint(
                         task_id=eval_step.task_id,
                         metric_step=2,
                         epoch=2,
@@ -2677,7 +2677,7 @@ async def test_get_step_metric_series_ignores_non_positive_step_points(loop_api_
 
             session.add_all(
                 [
-                    StepMetricPoint(
+                    TaskMetricPoint(
                         task_id=step.task_id,
                         metric_step=0,
                         epoch=None,
@@ -2685,7 +2685,7 @@ async def test_get_step_metric_series_ignores_non_positive_step_points(loop_api_
                         metric_value=0.6,
                         ts=datetime.now(UTC),
                     ),
-                    StepMetricPoint(
+                    TaskMetricPoint(
                         task_id=step.task_id,
                         metric_step=1,
                         epoch=1,

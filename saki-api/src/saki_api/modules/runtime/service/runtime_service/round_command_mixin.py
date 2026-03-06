@@ -43,9 +43,9 @@ class RoundCommandMixin:
         deleted_events = 0
         deleted_metrics = 0
         for step in score_steps:
-            deleted_candidates += await self.step_candidate_repo.delete_by_step(step.id)
-            deleted_events += await self.step_event_repo.delete_by_step_and_types(step_id=step.id, event_types=event_types)
-            deleted_metrics += await self.step_metric_repo.delete_by_step(step.id)
+            deleted_candidates += await self.task_candidate_repo.delete_by_step(step.id)
+            deleted_events += await self.task_event_repo.delete_by_step_and_types(step_id=step.id, event_types=event_types)
+            deleted_metrics += await self.task_metric_repo.delete_by_step(step.id)
 
         stats = {
             "score_steps": len(score_steps),

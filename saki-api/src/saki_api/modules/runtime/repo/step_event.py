@@ -157,7 +157,3 @@ class TaskEventRepository(BaseRepository[TaskEvent]):
         if step is None or step.task_id is None:
             return 0
         return await self.delete_by_task_and_types(task_id=step.task_id, event_types=event_types)
-
-
-# Legacy alias, kept for incremental refactor of imports.
-StepEventRepository = TaskEventRepository

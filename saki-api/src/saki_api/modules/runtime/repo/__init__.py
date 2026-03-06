@@ -12,9 +12,9 @@ from saki_api.modules.runtime.repo.model import ModelRepository
 from saki_api.modules.runtime.repo.model_class_schema import ModelClassSchemaRepository
 from saki_api.modules.runtime.repo.runtime_executor import RuntimeExecutorRepository
 from saki_api.modules.runtime.repo.runtime_executor_stats import RuntimeExecutorStatsRepository
-from saki_api.modules.runtime.repo.step_candidate_item import StepCandidateItemRepository
-from saki_api.modules.runtime.repo.step_event import StepEventRepository
-from saki_api.modules.runtime.repo.step_metric_point import StepMetricPointRepository
+from saki_api.modules.runtime.repo.step_candidate_item import TaskCandidateItemRepository
+from saki_api.modules.runtime.repo.step_event import TaskEventRepository
+from saki_api.modules.runtime.repo.step_metric_point import TaskMetricPointRepository
 from saki_api.modules.runtime.repo.prediction import PredictionRepository
 from saki_api.modules.runtime.repo.prediction_binding import PredictionBindingRepository
 from saki_api.modules.runtime.repo.prediction_item import PredictionItemRepository
@@ -30,9 +30,9 @@ __all__ = [
     "RoundRepository",
     "StepRepository",
     "TaskRepository",
-    "StepEventRepository",
-    "StepMetricPointRepository",
-    "StepCandidateItemRepository",
+    "TaskEventRepository",
+    "TaskMetricPointRepository",
+    "TaskCandidateItemRepository",
     "RuntimeExecutorRepository",
     "RuntimeExecutorStatsRepository",
     "ModelRepository",

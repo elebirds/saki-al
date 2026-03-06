@@ -15,7 +15,7 @@ from saki_api.modules.runtime.domain.model_class_schema import ModelClassSchema
 from saki_api.modules.runtime.domain.prediction import Prediction
 from saki_api.modules.runtime.domain.round import Round
 from saki_api.modules.runtime.domain.step import Step
-from saki_api.modules.runtime.domain.step_candidate_item import StepCandidateItem
+from saki_api.modules.runtime.domain.step_candidate_item import TaskCandidateItem
 from saki_api.modules.runtime.service.runtime_service.prediction_label_resolver import PredictionResolveError
 from saki_api.modules.shared.modeling.enums import (
     CommitSampleReviewState,
@@ -55,8 +55,8 @@ class _RoundSelectionContext:
     review_pool_size: int
     score_step: Step
     select_step: Step
-    score_pool: list[StepCandidateItem]
-    auto_selected: list[StepCandidateItem]
+    score_pool: list[TaskCandidateItem]
+    auto_selected: list[TaskCandidateItem]
 
 
 class SnapshotPolicyMixin:
@@ -480,7 +480,7 @@ class SnapshotPolicyMixin:
         return ordered
 
     @staticmethod
-    def _selection_candidate_payload(item: StepCandidateItem, rank: int | None = None) -> dict[str, Any]:
+    def _selection_candidate_payload(item: TaskCandidateItem, rank: int | None = None) -> dict[str, Any]:
         return {
             "sample_id": item.sample_id,
             "rank": int(rank if rank is not None else item.rank),

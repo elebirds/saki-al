@@ -29,7 +29,8 @@ from saki_api.modules.project.service.sample import SampleService
 from saki_api.modules.runtime.domain.loop import Loop
 from saki_api.modules.runtime.domain.round import Round
 from saki_api.modules.runtime.domain.step import Step
-from saki_api.modules.runtime.domain.step_candidate_item import StepCandidateItem
+from saki_api.modules.runtime.domain.task import Task
+from saki_api.modules.runtime.domain.step_candidate_item import TaskCandidateItem
 from saki_api.modules.shared.modeling.enums import (
     AuthorType,
     CommitSampleReviewState,
@@ -158,6 +159,13 @@ async def _seed_context(session: AsyncSession) -> SampleDeleteContext:
     session.add(step)
     await session.flush()
 
+    task = Task(project_id=project.id)
+    session.add(task)
+    await session.flush()
+    step.task_id = task.id
+    session.add(step)
+    await session.flush()
+
     return SampleDeleteContext(
         owner=owner,
         actor=actor,
@@ -209,8 +217,8 @@ async def _create_transient_refs(session: AsyncSession, ctx: SampleDeleteContext
         branch_name="master",
         payload={"annotations": []},
     )
-    candidate_item = StepCandidateItem(
-        step_id=ctx.step.id,
+    candidate_item = TaskCandidateItem(
+        task_id=ctx.step.task_id,
         sample_id=ctx.sample.id,
         rank=1,
         score=0.8,
@@ -298,7 +306,7 @@ async def test_force_delete_with_owner_cleans_all_refs(sample_delete_env):
         assert await _count_by_sample(session, CommitAnnotationMap, ctx.sample.id) == 0
         assert await _count_by_sample(session, CommitSampleState, ctx.sample.id) == 0
         assert await _count_by_sample(session, AnnotationDraft, ctx.sample.id) == 0
-        assert await _count_by_sample(session, StepCandidateItem, ctx.sample.id) == 0
+        assert await _count_by_sample(session, TaskCandidateItem, ctx.sample.id) == 0
 
 
 @pytest.mark.anyio

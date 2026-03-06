@@ -35,7 +35,7 @@ class RoundRevealMixin:
         *,
         round_id: uuid.UUID,
     ) -> list[uuid.UUID]:
-        return await self.step_candidate_repo.list_selected_sample_ids_by_round(round_id)
+        return await self.task_candidate_repo.list_selected_sample_ids_by_round(round_id)
 
     async def _probe_round_reveal(
         self,

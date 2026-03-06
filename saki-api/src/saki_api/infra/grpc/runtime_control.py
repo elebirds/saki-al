@@ -25,7 +25,7 @@ from saki_api.modules.project.repo.commit_sample_state import CommitSampleStateR
 from saki_api.modules.project.service.commit_hash import refresh_commit_hash
 from saki_api.modules.runtime.domain.round import Round
 from saki_api.modules.runtime.domain.step import Step
-from saki_api.modules.runtime.domain.step_candidate_item import StepCandidateItem
+from saki_api.modules.runtime.domain.step_candidate_item import TaskCandidateItem
 from saki_api.modules.runtime.service.runtime_service import RuntimeService
 from saki_api.modules.runtime.service.ingress.control_ingress_service import RuntimeControlIngressService
 from saki_api.modules.shared.modeling.enums import AuthorType, CommitSampleReviewState, StepType
@@ -328,8 +328,8 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
     ) -> list[uuid.UUID]:
         limit = max(1, int(topk or 1))
         select_stmt = (
-            select(StepCandidateItem.sample_id)
-            .join(Step, Step.task_id == StepCandidateItem.task_id)
+            select(TaskCandidateItem.sample_id)
+            .join(Step, Step.task_id == TaskCandidateItem.task_id)
             .join(Round, Round.id == Step.round_id)
             .where(
                 Round.loop_id == loop_id,
@@ -337,14 +337,14 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
                 Step.step_type == StepType.SELECT,
                 Step.task_id.is_not(None),
             )
-            .order_by(StepCandidateItem.rank.asc(), StepCandidateItem.created_at.asc())
+            .order_by(TaskCandidateItem.rank.asc(), TaskCandidateItem.created_at.asc())
             .limit(limit)
         )
         sample_ids = list((await session.exec(select_stmt)).all())
         if not sample_ids:
             fallback_stmt = (
-                select(StepCandidateItem.sample_id)
-                .join(Step, Step.task_id == StepCandidateItem.task_id)
+                select(TaskCandidateItem.sample_id)
+                .join(Step, Step.task_id == TaskCandidateItem.task_id)
                 .join(Round, Round.id == Step.round_id)
                 .where(
                     Round.loop_id == loop_id,
@@ -352,7 +352,7 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
                     Step.step_type == StepType.SCORE,
                     Step.task_id.is_not(None),
                 )
-                .order_by(StepCandidateItem.rank.asc(), StepCandidateItem.created_at.asc())
+                .order_by(TaskCandidateItem.rank.asc(), TaskCandidateItem.created_at.asc())
                 .limit(limit)
             )
             sample_ids = list((await session.exec(fallback_stmt)).all())

@@ -3,7 +3,6 @@
 import uuid
 from typing import Any, Dict
 
-from pydantic import model_validator
 from sqlalchemy import Column, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
@@ -19,17 +18,3 @@ class TaskCandidateItem(UUIDMixin, TimestampMixin, SQLModel, table=True):
     score: float = Field(default=0.0)
     reason: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
     prediction_snapshot: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
-
-    @model_validator(mode="before")
-    @classmethod
-    def _compat_step_id(cls, data):
-        if not isinstance(data, dict):
-            return data
-        if data.get("task_id") is None and data.get("step_id") is not None:
-            patched = dict(data)
-            patched["task_id"] = patched.get("step_id")
-            return patched
-        return data
-
-# Legacy alias, kept for incremental refactor of imports.
-StepCandidateItem = TaskCandidateItem

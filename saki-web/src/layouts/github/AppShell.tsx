@@ -21,7 +21,7 @@ export type AppShellProps = {
     userAvatarUrl?: string
     userMenuItems: MenuProps['items']
     onUserMenuClick: MenuProps['onClick']
-    footerText?: string
+    footerText?: React.ReactNode
     showHeader?: boolean
     showHeaderBorder?: boolean
     headerSubnav?: React.ReactNode

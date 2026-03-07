@@ -3,7 +3,6 @@ import type {MenuProps} from 'antd'
 import {Avatar, Button, Dropdown, Switch} from 'antd'
 import {
     DownOutlined,
-    GithubOutlined,
     GlobalOutlined,
     MoonOutlined,
     PlusOutlined,
@@ -11,6 +10,7 @@ import {
 } from '@ant-design/icons'
 import type {NavItem} from './types'
 import {useTranslation} from 'react-i18next'
+import sakiLogo from '../../assets/saki-logo.png'
 
 export type TopHeaderProps = {
     appTitle: string
@@ -77,7 +77,11 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
                 <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
                     <div className="flex items-center gap-4 justify-self-start">
                         <div className="flex items-center gap-3">
-                            <GithubOutlined className="text-github-text text-2xl"/>
+                            <img
+                                src={sakiLogo}
+                                alt={`${repoOwner}/${repoName} logo`}
+                                className="h-8 w-8 rounded-sm object-cover [image-rendering:pixelated]"
+                            />
                             <div className="flex items-center gap-1 text-sm">
                                 <span
                                     className={`text-github-text ${onRepoOwnerClick ? 'hover:underline cursor-pointer' : ''}`}

@@ -4,7 +4,7 @@
     "datasets": "Datasets",
     "projects": "Projects",
     "about": "About",
-    "footer": "Saki Active Learning ©2025 Created by elebird."
+    "footer": "Saki Active Learning ©2025-{{year}} Created by <author>elebird</author>."
   },
   "common": {
     "back": "Back",
@@ -1556,52 +1556,120 @@
   },
   "about": {
     "hero": {
-      "subtitle": "Visual Active Learning Platform",
-      "description1": "Saki is a closed-loop intelligent annotation platform integrating dataset management, sample annotation (with version control), model training, and visual active learning.",
-      "description2": "With a human-in-the-loop workflow, high-value samples are prioritized for annotation and training to reduce cost and improve iteration efficiency.",
+      "title": "Saki AL",
+      "subtitle": "A visual active learning platform designed for real annotation teams",
+      "description": "Saki focuses on practical collaboration: low learning cost, clear feedback, and sustainable iteration. Teams can prepare data, annotate, train, and review outcomes in one consistent workspace.",
       "tags": {
         "humanLoop": "Human-in-the-loop",
         "gitLike": "Git-like Versioning",
         "activeLoop": "Active Learning Loop"
+      },
+      "metrics": {
+        "clarity": {
+          "label": "Experience Goal",
+          "value": "Clear and Understandable",
+          "hint": "Critical actions are predictable with immediate feedback"
+        },
+        "trust": {
+          "label": "Design Principle",
+          "value": "Traceable Decisions",
+          "hint": "Version and process history remain visible for team confidence"
+        },
+        "efficiency": {
+          "label": "Efficiency Direction",
+          "value": "Less Repetitive Work",
+          "hint": "Common actions are foregrounded to reduce context switching"
+        },
+        "continuity": {
+          "label": "Long-term Value",
+          "value": "Continuous Improvement",
+          "hint": "From one-off tooling to an evolving workflow platform"
+        }
       }
     },
     "sections": {
-      "dataAssets": {
-        "title": "Data & Assets",
-        "body": "Dataset management and content addressing ensure data traceability, reuse, and deduplication.",
-        "tags": {
-          "assetSha": "Asset SHA256",
-          "datasetSample": "Dataset/Sample",
-          "minio": "MinIO"
+      "architecture": {
+        "title": "System Architecture and Responsibilities",
+        "modules": {
+          "api": {
+            "name": "saki-api",
+            "role": "Northbound HTTP APIs and domain source of truth (project, branch, commit, task, event).",
+            "status": "Project, annotation, and runtime APIs are iterating steadily"
+          },
+          "dispatcher": {
+            "name": "saki-dispatcher",
+            "role": "Owns Loop/Round/Step orchestration and dispatches from the unified task queue.",
+            "status": "Single-entry task dispatch and state transitions are in place"
+          },
+          "executor": {
+            "name": "saki-executor",
+            "role": "Executes train/predict workloads and reports events, metrics, candidates, and artifacts.",
+            "status": "Execution and reporting pipeline is stable in daily use"
+          },
+          "web": {
+            "name": "saki-web",
+            "role": "Unified views for data, annotation, Prediction Task, and Runtime operations.",
+            "status": "Dataset, annotation, and runtime pages continue to be refined"
+          }
         }
       },
-      "annotationVersioning": {
-        "title": "Annotation Versioning",
-        "body": "Annotation records are immutable. Commit snapshots and branch pointers make version history traceable like Git.",
-        "tags": {
-          "annotation": "Annotation",
-          "commitMap": "Commit/CAMap",
-          "branch": "Branch"
+      "mainDesign": {
+        "title": "Core Design Blocks",
+        "intro": "This About page focuses on three core design dimensions: data governance, version control, and training loop.",
+        "items": {
+          "dataAssets": {
+            "title": "Data and Assets",
+            "body": "Dataset management and content addressing ensure data traceability, reuse, and deduplication.",
+            "tags": {
+              "assetSha": "Asset SHA256",
+              "datasetSample": "Dataset/Sample",
+              "minio": "MinIO"
+            }
+          },
+          "annotationVersioning": {
+            "title": "Annotation Versioning",
+            "body": "Annotation records are immutable. Commit snapshots and branch pointers make version history traceable like Git.",
+            "tags": {
+              "annotation": "Annotation",
+              "commitMap": "Commit/CAMap",
+              "branch": "Branch"
+            }
+          },
+          "training": {
+            "title": "Training and Active Learning",
+            "body": "Runtime executes train/predict workloads and continuously surfaces high-value samples in a closed loop.",
+            "tags": {
+              "alLoop": "Loop",
+              "jobMetric": "Round/Metric",
+              "model": "Model"
+            }
+          }
         }
       },
-      "training": {
-        "title": "Training & Active Learning",
-        "body": "Runtime runs training/inference as stateless executors, continuously closing the loop to surface high-value samples.",
-        "tags": {
-          "alLoop": "Loop",
-          "jobMetric": "Round/Metric",
-          "model": "Model"
-        }
-      },
-      "coreWorkflow": {
-        "title": "Core Workflow",
+      "workflow": {
+        "title": "User Experience Flow",
+        "intro": "From data to model, the product is built around visible progress, controllable decisions, and reusable outcomes.",
         "steps": {
-          "dataImport": "Data import",
-          "sampleAnnotation": "Sample annotation",
-          "versionSnapshot": "Version snapshot",
-          "modelTraining": "Model training",
-          "activeSampling": "Active learning sampling",
-          "iteration": "Iteration & optimization"
+          "prepare": {
+            "title": "1. Data Preparation",
+            "desc": "Import samples and establish a manageable data context."
+          },
+          "annotate": {
+            "title": "2. Annotation Collaboration",
+            "desc": "Annotate, review, and consolidate versions in one workspace."
+          },
+          "train": {
+            "title": "3. Training and Sampling",
+            "desc": "Run training from the current version and get high-value sample suggestions."
+          },
+          "review": {
+            "title": "4. Outcome Review",
+            "desc": "Inspect logs, metrics, and artifacts to evaluate this iteration."
+          },
+          "iterate": {
+            "title": "5. Iterative Optimization",
+            "desc": "Confirm useful changes and move to the next loop."
+          }
         }
       },
       "techStack": {
@@ -1612,20 +1680,31 @@
         },
         "backend": {
           "label": "Backend",
-          "stack": "FastAPI · SQLModel · PostgreSQL · MinIO"
+          "stack": "FastAPI · SQLModel · PostgreSQL · MinIO · Redis"
         },
         "runtime": {
           "label": "Runtime",
-          "stack": "FastAPI · WebSocket · Subprocess · HTTPX"
+          "stack": "Go Dispatcher · Python Executor · gRPC Bidirectional Streams · Plugin SDK"
         }
       },
       "devStatus": {
-        "title": "Development Status",
+        "title": "Development Status Board",
+        "items": {
+          "dataAnnotation": "Data and annotation core workflow",
+          "runtimeExperience": "Runtime UX and visualization",
+          "opsObservability": "Operations and observability improvements"
+        },
         "status": {
           "completed": "Completed",
           "inProgress": "In progress",
           "planned": "Planned"
-        }
+        },
+        "note": "This board is updated continuously with each release."
+      },
+      "status": {
+        "done": "Shipped",
+        "active": "In progress",
+        "planned": "Planned"
       }
     }
   },

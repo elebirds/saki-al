@@ -4,7 +4,7 @@
     "datasets": "数据集",
     "projects": "项目",
     "about": "关于",
-    "footer": "Saki Active Learning ©2025 Created by elebird."
+    "footer": "Saki Active Learning ©2025-{{year}} Created by <author>elebird</author>."
   },
   "common": {
     "back": "返回",
@@ -1556,52 +1556,120 @@
   },
   "about": {
     "hero": {
-      "subtitle": "视觉主动学习平台",
-      "description1": "Saki 是一个集数据集管理、样本标注（支持版本控制）、模型训练与视觉主动学习于一体的闭环智能标注平台。",
-      "description2": "通过 Human-in-the-loop 流程，让高价值样本优先进入标注与训练，降低成本并提升迭代效率。",
+      "title": "Saki AL",
+      "subtitle": "为真实标注迭代而设计的视觉主动学习平台",
+      "description": "Saki 面向一线标注与训练协作场景，强调低学习成本、清晰反馈和可持续迭代。你可以在同一工作区完成数据准备、标注协作、模型迭代与结果复核。",
       "tags": {
         "humanLoop": "人机协同",
         "gitLike": "类 Git 版本控制",
         "activeLoop": "主动学习闭环"
+      },
+      "metrics": {
+        "clarity": {
+          "label": "体验目标",
+          "value": "清晰可理解",
+          "hint": "关键操作路径可预期，状态反馈即时可见"
+        },
+        "trust": {
+          "label": "设计原则",
+          "value": "结果可追溯",
+          "hint": "版本与过程均可回看，降低协作不确定性"
+        },
+        "efficiency": {
+          "label": "效率方向",
+          "value": "减少重复操作",
+          "hint": "常用动作前置，减少上下文切换"
+        },
+        "continuity": {
+          "label": "长期价值",
+          "value": "持续迭代优化",
+          "hint": "从一次性工具升级为可演进的工作平台"
+        }
       }
     },
     "sections": {
-      "dataAssets": {
-        "title": "数据与资产",
-        "body": "数据集管理与内容寻址，保证数据可追溯、可复用、可去重。",
-        "tags": {
-          "assetSha": "资产 SHA256",
-          "datasetSample": "数据集/样本",
-          "minio": "MinIO"
+      "architecture": {
+        "title": "系统架构与职责",
+        "modules": {
+          "api": {
+            "name": "saki-api",
+            "role": "北向 HTTP 接口与领域事实源（项目、分支、提交、任务、事件）。",
+            "status": "项目/标注/运行态接口持续迭代"
+          },
+          "dispatcher": {
+            "name": "saki-dispatcher",
+            "role": "负责 Loop/Round/Step 编排，统一从 task 队列派发执行。",
+            "status": "Task 单入口派发与状态推进已落地"
+          },
+          "executor": {
+            "name": "saki-executor",
+            "role": "执行训练/推理任务，回传事件、指标、候选与制品。",
+            "status": "训练/推理执行与回传链路稳定运行"
+          },
+          "web": {
+            "name": "saki-web",
+            "role": "统一展示数据、标注、Prediction Task 与 Runtime 运行态。",
+            "status": "数据、标注、Runtime 页面持续打磨"
+          }
         }
       },
-      "annotationVersioning": {
-        "title": "标注版本控制",
-        "body": "标注记录不可变，Commit 快照 + Branch 指针，让标注版本像 Git 一样可回溯。",
-        "tags": {
-          "annotation": "标注",
-          "commitMap": "Commit/CAMap",
-          "branch": "分支"
+      "mainDesign": {
+        "title": "主要设计板块",
+        "intro": "关于页面聚焦三个核心设计：数据治理、版本控制和训练闭环。",
+        "items": {
+          "dataAssets": {
+            "title": "数据与资产",
+            "body": "数据集管理与内容寻址，保证数据可追溯、可复用、可去重。",
+            "tags": {
+              "assetSha": "资产 SHA256",
+              "datasetSample": "数据集/样本",
+              "minio": "MinIO"
+            }
+          },
+          "annotationVersioning": {
+            "title": "标注版本控制",
+            "body": "标注记录不可变，Commit 快照 + Branch 指针，让标注版本像 Git 一样可回溯。",
+            "tags": {
+              "annotation": "标注",
+              "commitMap": "Commit/CAMap",
+              "branch": "分支"
+            }
+          },
+          "training": {
+            "title": "训练与主动学习",
+            "body": "Runtime 以执行器方式运行训练/推理任务，持续闭环筛选高价值样本。",
+            "tags": {
+              "alLoop": "Loop",
+              "jobMetric": "轮次/指标",
+              "model": "模型"
+            }
+          }
         }
       },
-      "training": {
-        "title": "训练与主动学习",
-        "body": "Runtime 以无状态执行器方式运行训练/推理任务，持续闭环筛选高价值样本。",
-        "tags": {
-          "alLoop": "Loop",
-          "jobMetric": "轮次/指标",
-          "model": "模型"
-        }
-      },
-      "coreWorkflow": {
-        "title": "核心工作流",
+      "workflow": {
+        "title": "用户体验流程",
+        "intro": "从数据到模型的过程，以“可见进度、可控决策、可复用结果”为主线。",
         "steps": {
-          "dataImport": "数据导入",
-          "sampleAnnotation": "样本标注",
-          "versionSnapshot": "版本快照",
-          "modelTraining": "模型训练",
-          "activeSampling": "主动学习选样",
-          "iteration": "迭代优化"
+          "prepare": {
+            "title": "1. 数据准备",
+            "desc": "导入样本并建立可管理的数据上下文。"
+          },
+          "annotate": {
+            "title": "2. 标注协作",
+            "desc": "在统一工作区内完成标注、复核与版本沉淀。"
+          },
+          "train": {
+            "title": "3. 训练与选样",
+            "desc": "基于当前版本触发训练，并获得高价值样本建议。"
+          },
+          "review": {
+            "title": "4. 结果复核",
+            "desc": "查看日志、指标与产物，评估本轮效果。"
+          },
+          "iterate": {
+            "title": "5. 迭代优化",
+            "desc": "确认有效改进后进入下一轮，实现持续提升。"
+          }
         }
       },
       "techStack": {
@@ -1612,20 +1680,31 @@
         },
         "backend": {
           "label": "后端",
-          "stack": "FastAPI · SQLModel · PostgreSQL · MinIO"
+          "stack": "FastAPI · SQLModel · PostgreSQL · MinIO · Redis"
         },
         "runtime": {
           "label": "运行时",
-          "stack": "FastAPI · WebSocket · Subprocess · HTTPX"
+          "stack": "Go Dispatcher · Python Executor · gRPC 双向流 · Plugin SDK"
         }
       },
       "devStatus": {
-        "title": "开发状态",
+        "title": "开发状态看板",
+        "items": {
+          "dataAnnotation": "数据与标注核心链路",
+          "runtimeExperience": "Runtime 体验与可视化",
+          "opsObservability": "运维与可观测增强"
+        },
         "status": {
-          "completed": "完成",
-          "inProgress": "开发中",
+          "completed": "已完成",
+          "inProgress": "进行中",
           "planned": "计划中"
-        }
+        },
+        "note": "状态看板会随版本持续更新。"
+      },
+      "status": {
+        "done": "已落地",
+        "active": "进行中",
+        "planned": "计划中"
       }
     }
   },

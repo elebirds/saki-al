@@ -1,6 +1,6 @@
 import React, {useEffect, useMemo} from 'react'
 import {Navigate, Outlet, useLocation, useNavigate, useParams} from 'react-router-dom'
-import {useTranslation} from 'react-i18next'
+import {Trans, useTranslation} from 'react-i18next'
 import type {MenuProps} from 'antd'
 import {
     AppstoreOutlined,
@@ -53,6 +53,7 @@ const ProtectedLayout: React.FC = () => {
         canProject('project:update:assigned') ||
         canProject('project:assign:assigned') ||
         canProject('project:archive:assigned')
+    const currentYear = new Date().getFullYear()
 
     useEffect(() => {
         let interval: number
@@ -295,7 +296,15 @@ const ProtectedLayout: React.FC = () => {
             userAvatarUrl={user?.avatarUrl}
             userMenuItems={userMenuItems}
             onUserMenuClick={handleUserMenuClick}
-            footerText={t('app.footer')}
+            footerText={
+                <Trans
+                    i18nKey="app.footer"
+                    values={{year: currentYear}}
+                    components={{
+                        author: <a href="https://hhm.moe" target="_blank" rel="noreferrer" className="underline hover:no-underline"/>,
+                    }}
+                />
+            }
             showHeaderBorder={!isProjectDetail}
             headerSubnav={
                 showProjectTabs && projectTabItems.length > 0 ? (

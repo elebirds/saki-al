@@ -14,6 +14,7 @@ interface UseRoundArtifactsAndCandidatesOptions {
     canManageLoops: boolean;
     round: RuntimeRound | null;
     trainStep: RuntimeStep | null;
+    evalStep: RuntimeStep | null;
     selectStep: RuntimeStep | null;
     scoreStep: RuntimeStep | null;
 }
@@ -22,10 +23,12 @@ export const useRoundArtifactsAndCandidates = ({
     canManageLoops,
     round,
     trainStep,
+    evalStep,
     selectStep,
     scoreStep,
 }: UseRoundArtifactsAndCandidatesOptions) => {
     const [trainMetricPoints, setTrainMetricPoints] = useState<RuntimeTaskMetricPoint[]>([]);
+    const [evalMetricPoints, setEvalMetricPoints] = useState<RuntimeTaskMetricPoint[]>([]);
     const [topkCandidates, setTopkCandidates] = useState<RuntimeTaskCandidate[]>([]);
     const [topkSource, setTopkSource] = useState('-');
     const [roundArtifacts, setRoundArtifacts] = useState<RuntimeRoundArtifact[]>([]);
@@ -36,37 +39,27 @@ export const useRoundArtifactsAndCandidates = ({
         artifactUrlsRef.current = artifactUrls;
     }, [artifactUrls]);
 
-    const ensureArtifactUrls = useCallback(async (items: RuntimeRoundArtifact[]) => {
-        if (!items || items.length === 0) return;
-        const currentMap = artifactUrlsRef.current;
-        const missing = items.filter((item) => {
-            const taskId = String(item.taskId || '').trim();
-            return taskId && !currentMap[buildArtifactKey(taskId, item.name)];
-        });
-        if (missing.length === 0) return;
+    const resolveArtifactUrl = useCallback(async (
+        row: {taskId: string; name: string; uri?: string | null},
+    ): Promise<string | null> => {
+        const taskId = String(row.taskId || '').trim();
+        const artifactName = String(row.name || '').trim();
+        if (!taskId || !artifactName) return null;
+        const key = buildArtifactKey(taskId, artifactName);
+        const cached = artifactUrlsRef.current[key];
+        if (cached) return cached;
 
-        const updates: Record<string, string> = {};
-        for (const artifact of missing) {
-            const taskId = String(artifact.taskId || '').trim();
-            if (!taskId) continue;
-            const key = buildArtifactKey(taskId, artifact.name);
-            const uri = String(artifact.uri || '');
-            if (uri.startsWith('http://') || uri.startsWith('https://')) {
-                updates[key] = uri;
-                continue;
-            }
-            if (!uri.startsWith('s3://')) continue;
-            try {
-                const row = await api.getTaskArtifactDownloadUrl(taskId, artifact.name, 2);
-                updates[key] = row.downloadUrl;
-            } catch {
-                // ignore unavailable artifacts
-            }
+        const uri = String(row.uri || '').trim();
+        if (uri.startsWith('http://') || uri.startsWith('https://')) {
+            setArtifactUrls((prev) => ({...prev, [key]: uri}));
+            return uri;
         }
 
-        if (Object.keys(updates).length > 0) {
-            setArtifactUrls((prev) => ({...prev, ...updates}));
-        }
+        const download = await api.getTaskArtifactDownloadUrl(taskId, artifactName, 2);
+        const resolved = String(download.downloadUrl || '').trim();
+        if (!resolved) return null;
+        setArtifactUrls((prev) => ({...prev, [key]: resolved}));
+        return resolved;
     }, []);
 
     useEffect(() => {
@@ -75,10 +68,14 @@ export const useRoundArtifactsAndCandidates = ({
 
         const run = async () => {
             const trainTaskId = String(trainStep?.taskId || '').trim();
+            const evalTaskId = String(evalStep?.taskId || '').trim();
             const selectTaskId = String(selectStep?.taskId || '').trim();
             const scoreTaskId = String(scoreStep?.taskId || '').trim();
             const trainPromise = trainTaskId
                 ? api.getTaskMetricSeries(trainTaskId, 5000).catch(() => [])
+                : Promise.resolve([]);
+            const evalPromise = evalTaskId
+                ? api.getTaskMetricSeries(evalTaskId, 5000).catch(() => [])
                 : Promise.resolve([]);
 
             const roundArtifactsPromise = api.getRoundArtifacts(round.id, 2000).catch(() => ({
@@ -86,7 +83,11 @@ export const useRoundArtifactsAndCandidates = ({
                 items: [] as RuntimeRoundArtifact[],
             }));
 
-            const [trainPoints, roundArtifactsResp] = await Promise.all([trainPromise, roundArtifactsPromise]);
+            const [trainPoints, evalPoints, roundArtifactsResp] = await Promise.all([
+                trainPromise,
+                evalPromise,
+                roundArtifactsPromise,
+            ]);
 
             if (cancelled) return;
 
@@ -95,8 +96,8 @@ export const useRoundArtifactsAndCandidates = ({
             );
 
             setTrainMetricPoints(trainPoints);
+            setEvalMetricPoints(evalPoints);
             setRoundArtifacts(roundArtifactItems);
-            void ensureArtifactUrls(roundArtifactItems);
 
             if (round.mode === 'manual') {
                 setTopkCandidates([]);
@@ -149,23 +150,26 @@ export const useRoundArtifactsAndCandidates = ({
         round?.mode,
         trainStep?.taskId,
         trainStep?.updatedAt,
+        evalStep?.taskId,
+        evalStep?.updatedAt,
         selectStep?.taskId,
         selectStep?.updatedAt,
         selectStep?.state,
         scoreStep?.taskId,
         scoreStep?.updatedAt,
         scoreStep?.state,
-        ensureArtifactUrls,
     ]);
 
     return {
         trainMetricPoints,
         setTrainMetricPoints,
+        evalMetricPoints,
+        setEvalMetricPoints,
         topkCandidates,
         topkSource,
         roundArtifacts,
         setRoundArtifacts,
         artifactUrls,
-        ensureArtifactUrls,
+        resolveArtifactUrl,
     };
 };

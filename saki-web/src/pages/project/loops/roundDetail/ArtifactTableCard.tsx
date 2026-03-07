@@ -6,9 +6,10 @@ import TaskArtifactTableCard, {TaskArtifactTableRow} from '../components/TaskArt
 interface ArtifactTableCardProps {
     roundArtifactRows: RoundArtifactTableRow[];
     artifactUrls: Record<string, string>;
+    resolveArtifactUrl: (row: TaskArtifactTableRow) => Promise<string | null>;
 }
 
-const ArtifactTableCard: React.FC<ArtifactTableCardProps> = ({roundArtifactRows, artifactUrls}) => {
+const ArtifactTableCard: React.FC<ArtifactTableCardProps> = ({roundArtifactRows, artifactUrls, resolveArtifactUrl}) => {
     const rows = useMemo<TaskArtifactTableRow[]>(
         () => roundArtifactRows.map((item) => ({
             key: item.key,
@@ -30,6 +31,7 @@ const ArtifactTableCard: React.FC<ArtifactTableCardProps> = ({roundArtifactRows,
             emptyDescription="当前 Round 暂无制品"
             rows={rows}
             artifactUrls={artifactUrls}
+            resolveArtifactUrl={resolveArtifactUrl}
             showSource
             showSourceClass
             showSequence

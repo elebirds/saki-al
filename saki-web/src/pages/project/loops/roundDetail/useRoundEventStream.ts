@@ -27,7 +27,6 @@ interface UseRoundEventStreamOptions {
     steps: RuntimeStep[];
     activeConsoleStages: RoundStageKey[];
     scheduleRoundMetaRefresh: () => void;
-    ensureArtifactUrls: (items: RuntimeRoundArtifact[]) => Promise<void>;
     setSteps: Dispatch<SetStateAction<RuntimeStep[]>>;
     setTrainMetricPoints: Dispatch<SetStateAction<RuntimeTaskMetricPoint[]>>;
     setRoundArtifacts: Dispatch<SetStateAction<RuntimeRoundArtifact[]>>;
@@ -40,7 +39,6 @@ export const useRoundEventStream = ({
     steps,
     activeConsoleStages,
     scheduleRoundMetaRefresh,
-    ensureArtifactUrls,
     setSteps,
     setTrainMetricPoints,
     setRoundArtifacts,
@@ -170,7 +168,6 @@ export const useRoundEventStream = ({
                         },
                     );
                 });
-                void ensureArtifactUrls(artifactRows);
             }
 
             const statusRows = incoming.filter((item) => item.eventType === 'status');
@@ -354,7 +351,6 @@ export const useRoundEventStream = ({
         activeConsoleStages,
         canManageLoops,
         clearEventsBuffer,
-        ensureArtifactUrls,
         roundId,
         scheduleRoundMetaRefresh,
         setRoundArtifacts,

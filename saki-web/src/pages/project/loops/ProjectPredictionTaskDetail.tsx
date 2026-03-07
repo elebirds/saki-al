@@ -72,6 +72,7 @@ const toTaskArtifactRow = (taskId: string, item: TaskArtifactRead): TaskArtifact
         taskId,
         name: String(item.name || ''),
         kind: String(item.kind || ''),
+        uri: String(item.uri || ''),
         size: Number.isFinite(sizeValue) && sizeValue > 0 ? sizeValue : null,
         createdAt: typeof createdAtRaw === 'string' ? createdAtRaw : null,
     };
@@ -102,29 +103,23 @@ const ProjectPredictionTaskDetail: React.FC = () => {
         artifactUrlsRef.current = artifactUrls;
     }, [artifactUrls]);
 
-    const ensureArtifactUrls = useCallback(async (taskId: string, rows: TaskArtifactTableRow[]) => {
-        const normalizedTaskId = String(taskId || '').trim();
-        if (!normalizedTaskId || rows.length === 0) return;
-        const current = artifactUrlsRef.current;
-        const updates: Record<string, string> = {};
-        for (const row of rows) {
-            const key = buildArtifactKey(normalizedTaskId, row.name);
-            if (current[key] || updates[key]) continue;
-            const uri = String((row as any).uri || '');
-            if (uri.startsWith('http://') || uri.startsWith('https://')) {
-                updates[key] = uri;
-                continue;
-            }
-            try {
-                const download = await api.getTaskArtifactDownloadUrl(normalizedTaskId, row.name, 2);
-                updates[key] = download.downloadUrl;
-            } catch {
-                // ignore unavailable artifacts
-            }
+    const resolveArtifactUrl = useCallback(async (row: TaskArtifactTableRow): Promise<string | null> => {
+        const taskId = String(row.taskId || '').trim();
+        const artifactName = String(row.name || '').trim();
+        if (!taskId || !artifactName) return null;
+        const key = buildArtifactKey(taskId, artifactName);
+        const cached = artifactUrlsRef.current[key];
+        if (cached) return cached;
+        const directUri = String(row.uri || '').trim();
+        if (directUri.startsWith('http://') || directUri.startsWith('https://')) {
+            setArtifactUrls((prev) => ({...prev, [key]: directUri}));
+            return directUri;
         }
-        if (Object.keys(updates).length > 0) {
-            setArtifactUrls((prev) => ({...prev, ...updates}));
-        }
+        const download = await api.getTaskArtifactDownloadUrl(taskId, artifactName, 2);
+        const url = String(download.downloadUrl || '').trim();
+        if (!url) return null;
+        setArtifactUrls((prev) => ({...prev, [key]: url}));
+        return url;
     }, []);
 
     const loadTaskConsoleEvents = useCallback(async (task: PredictionRead, reset: boolean) => {
@@ -167,11 +162,6 @@ const ProjectPredictionTaskDetail: React.FC = () => {
                 const artifactResponse = await api.getTaskArtifacts(taskId);
                 const artifacts = artifactResponse.artifacts || [];
                 setTaskArtifacts(artifacts);
-                const rows = artifacts.map((item) => ({
-                    ...toTaskArtifactRow(taskId, item),
-                    uri: item.uri,
-                })) as Array<TaskArtifactTableRow & {uri: string}>;
-                void ensureArtifactUrls(taskId, rows);
             } else {
                 setTaskArtifacts([]);
             }
@@ -191,7 +181,7 @@ const ProjectPredictionTaskDetail: React.FC = () => {
             if (!silent) setLoading(false);
             if (silent) setRefreshing(false);
         }
-    }, [projectId, predictionId, messageApi, t, ensureArtifactUrls, loadTaskConsoleEvents]);
+    }, [projectId, predictionId, messageApi, t, loadTaskConsoleEvents]);
 
     useEffect(() => {
         if (!canManageLoops) return;
@@ -335,6 +325,7 @@ const ProjectPredictionTaskDetail: React.FC = () => {
                 emptyDescription={t('project.predictionTasks.detail.artifactsEmpty')}
                 rows={artifactRows}
                 artifactUrls={artifactUrls}
+                resolveArtifactUrl={resolveArtifactUrl}
             />
 
             <Card className="!border-github-border !bg-github-panel" title={t('project.predictionTasks.detail.itemsTitle')}>

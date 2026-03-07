@@ -1,5 +1,5 @@
-import React from 'react';
-import {Button, Card, Empty, Table, Tag, Typography} from 'antd';
+import React, {useCallback, useState} from 'react';
+import {App, Button, Card, Empty, Table, Tag, Typography} from 'antd';
 
 import {buildArtifactKey, formatArtifactSize} from '../roundDetail/transforms';
 import {formatDateTime} from '../runtimeTime';
@@ -11,6 +11,7 @@ export interface TaskArtifactTableRow {
     taskId: string;
     name: string;
     kind: string;
+    uri?: string | null;
     size?: number | null;
     createdAt?: string | null;
     sourceLabel?: string;
@@ -23,6 +24,7 @@ interface TaskArtifactTableCardProps {
     emptyDescription?: string;
     rows: TaskArtifactTableRow[];
     artifactUrls: Record<string, string>;
+    resolveArtifactUrl?: (row: TaskArtifactTableRow) => Promise<string | null>;
     showSource?: boolean;
     showSourceClass?: boolean;
     showSequence?: boolean;
@@ -33,10 +35,40 @@ const TaskArtifactTableCard: React.FC<TaskArtifactTableCardProps> = ({
     emptyDescription = '暂无制品',
     rows,
     artifactUrls,
+    resolveArtifactUrl,
     showSource = false,
     showSourceClass = false,
     showSequence = false,
 }) => {
+    const {message} = App.useApp();
+    const [loadingByKey, setLoadingByKey] = useState<Record<string, boolean>>({});
+
+    const handleDownload = useCallback(async (row: TaskArtifactTableRow) => {
+        const taskId = String(row.taskId || '').trim();
+        if (!taskId) return;
+        const key = buildArtifactKey(taskId, row.name);
+        const currentUrl = artifactUrls[key];
+        if (currentUrl) {
+            window.open(currentUrl, '_blank', 'noopener,noreferrer');
+            return;
+        }
+        if (!resolveArtifactUrl) return;
+
+        setLoadingByKey((prev) => ({...prev, [key]: true}));
+        try {
+            const resolved = await resolveArtifactUrl(row);
+            if (resolved) {
+                window.open(resolved, '_blank', 'noopener,noreferrer');
+            } else {
+                message.warning('当前制品暂不可下载');
+            }
+        } catch (error: any) {
+            message.error(error?.message || '获取下载链接失败');
+        } finally {
+            setLoadingByKey((prev) => ({...prev, [key]: false}));
+        }
+    }, [artifactUrls, resolveArtifactUrl, message]);
+
     return (
         <Card className="!border-github-border !bg-github-panel" title={title}>
             {rows.length === 0 ? (
@@ -87,12 +119,22 @@ const TaskArtifactTableCard: React.FC<TaskArtifactTableCardProps> = ({
                             render: (_value: unknown, row: TaskArtifactTableRow) => {
                                 const taskId = String(row.taskId || '').trim();
                                 const url = taskId ? artifactUrls[buildArtifactKey(taskId, row.name)] : undefined;
-                                return url ? (
-                                    <Button size="small" onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}>
-                                        下载/预览
+                                const key = taskId ? buildArtifactKey(taskId, row.name) : row.key;
+                                const isLoading = Boolean(loadingByKey[key]);
+                                if (!taskId) {
+                                    return <Text type="secondary">暂不可下载</Text>;
+                                }
+                                if (!url && !resolveArtifactUrl) {
+                                    return <Text type="secondary">暂不可下载</Text>;
+                                }
+                                return (
+                                    <Button
+                                        size="small"
+                                        loading={isLoading}
+                                        onClick={() => void handleDownload(row)}
+                                    >
+                                        {url ? '下载/预览' : '获取链接并下载'}
                                     </Button>
-                                ) : (
-                                    <Text type="secondary">暂不可下载</Text>
                                 );
                             },
                         },

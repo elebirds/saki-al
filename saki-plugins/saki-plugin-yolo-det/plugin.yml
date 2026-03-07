@@ -72,7 +72,6 @@ config_schema:
           visible: "ctx.annotation_types.includes('rect')"
         - label: "Oriented Bounding Box (OBB)"
           value: "obb"
-          visible: "ctx.annotation_types.includes('obb')"
 
     # 训练参数组
     - key: epochs

@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from saki_ir.convert import ConversionContext, ConversionError, ConversionReport
-from saki_ir.convert.base import ERR_CONVERT_SCHEMA
+from saki_ir.convert.base import ERR_CONVERT_GEOMETRY, ERR_CONVERT_SCHEMA
 from saki_ir.convert.io import load_yolo_dataset, save_yolo_dataset
 from saki_ir.convert.yolo_obb import ir_to_yolo_obb_txt, yolo_obb_txt_to_ir
 from saki_ir.geom import obb_to_vertices
@@ -112,6 +112,41 @@ def test_yolo_obb_poly8_normalized_roundtrip() -> None:
 
     obb2 = _items_by_kind(batch2, "annotation")[0].annotation.geometry.obb
     assert _sorted_vertices(obb) == _sorted_vertices(obb2)
+
+
+def test_yolo_obb_poly8_non_rect_falls_back_to_min_area_rect() -> None:
+    txt = "0 0.100000 0.100000 0.400000 0.120000 0.350000 0.350000 0.120000 0.310000\n"
+    report = ConversionReport()
+    batch = yolo_obb_txt_to_ir(
+        txt,
+        image_w=1000,
+        image_h=1000,
+        class_names=["car"],
+        image_relpath="images/train/non_rect.jpg",
+        ctx=ConversionContext(strict=True, yolo_is_normalized=True, yolo_label_format="obb_poly8"),
+        report=report,
+    )
+
+    anns = _items_by_kind(batch, "annotation")
+    assert len(anns) == 1
+    obb = anns[0].annotation.geometry.obb
+    assert obb.width > 0
+    assert obb.height > 0
+    assert any("最小外接矩形" in item for item in report.warnings)
+
+
+def test_yolo_obb_poly8_degenerate_raises_geometry_error() -> None:
+    txt = "0 0.100000 0.100000 0.200000 0.200000 0.300000 0.300000 0.400000 0.400000\n"
+    with pytest.raises(ConversionError) as exc:
+        yolo_obb_txt_to_ir(
+            txt,
+            image_w=1000,
+            image_h=1000,
+            class_names=["car"],
+            image_relpath="images/train/degenerated.jpg",
+            ctx=ConversionContext(strict=True, yolo_is_normalized=True, yolo_label_format="obb_poly8"),
+        )
+    assert exc.value.code == ERR_CONVERT_GEOMETRY
 
 
 def test_yolo_obb_label_format_constraints() -> None:

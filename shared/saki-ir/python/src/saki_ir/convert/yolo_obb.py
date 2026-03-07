@@ -425,16 +425,19 @@ def _parse_poly8_to_obb(
         )
         return None
 
-    rect = _poly8_to_obb(points=points, eps=ctx.eps)
+    rect = _poly8_to_obb_strict(points=points, eps=ctx.eps)
     if rect is None:
-        fail_or_report(
-            ctx=ctx,
-            report=report,
-            code=ERR_CONVERT_UNSUPPORTED,
-            message="poly8 无法可靠矩形化为 OBB（当前 proto 不支持 polygon）",
-            source_ref=source_ref,
-        )
-        return None
+        rect = _fit_min_area_rect(points=points, eps=ctx.eps)
+        if rect is None:
+            fail_or_report(
+                ctx=ctx,
+                report=report,
+                code=ERR_CONVERT_GEOMETRY,
+                message="poly8 为退化四边形，无法拟合为有效 OBB",
+                source_ref=source_ref,
+            )
+            return None
+        report.warn(f"{source_ref}: poly8 非严格矩形，已使用最小外接矩形拟合为 OBB")
 
     cx, cy, w, h, angle_deg = rect
     return annotationirv1.ObbGeometry(
@@ -505,7 +508,7 @@ def _ann_to_obb(
     return out
 
 
-def _poly8_to_obb(
+def _poly8_to_obb_strict(
     *,
     points: list[tuple[float, float]],
     eps: float,
@@ -550,6 +553,101 @@ def _poly8_to_obb(
     vx, vy = vecs[0]
     angle_deg = _normalize_angle_deg(math.degrees(math.atan2(vy, vx)))
     return cx, cy, width, height, angle_deg
+
+
+def _fit_min_area_rect(
+    *,
+    points: list[tuple[float, float]],
+    eps: float,
+) -> tuple[float, float, float, float, float] | None:
+    if len(points) != 4:
+        return None
+    if not all(is_finite(x, y) for x, y in points):
+        return None
+
+    hull = _convex_hull(points)
+    if len(hull) < 3:
+        return None
+
+    best: tuple[float, float, float, float, float, float] | None = None
+    for idx in range(len(hull)):
+        x0, y0 = hull[idx]
+        x1, y1 = hull[(idx + 1) % len(hull)]
+        dx = x1 - x0
+        dy = y1 - y0
+        edge_len = math.hypot(dx, dy)
+        if edge_len <= eps:
+            continue
+
+        theta = math.atan2(dy, dx)
+        cos_t = math.cos(theta)
+        sin_t = math.sin(theta)
+
+        rotated = [(x * cos_t + y * sin_t, -x * sin_t + y * cos_t) for x, y in hull]
+        xs = [item[0] for item in rotated]
+        ys = [item[1] for item in rotated]
+        min_x = min(xs)
+        max_x = max(xs)
+        min_y = min(ys)
+        max_y = max(ys)
+        width = max_x - min_x
+        height = max_y - min_y
+        if width <= eps or height <= eps:
+            continue
+
+        area = width * height
+        center_x_local = (min_x + max_x) / 2.0
+        center_y_local = (min_y + max_y) / 2.0
+        center_x = center_x_local * cos_t - center_y_local * sin_t
+        center_y = center_x_local * sin_t + center_y_local * cos_t
+
+        candidate = (
+            area,
+            center_x,
+            center_y,
+            width,
+            height,
+            _normalize_angle_deg(math.degrees(theta)),
+        )
+        if best is None or candidate[0] < best[0]:
+            best = candidate
+
+    if best is None:
+        return None
+    _, cx, cy, width, height, angle = best
+    return cx, cy, width, height, angle
+
+
+def _convex_hull(points: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    dedup: list[tuple[float, float]] = []
+    seen: set[tuple[float, float]] = set()
+    for point in points:
+        key = (float(point[0]), float(point[1]))
+        if key in seen:
+            continue
+        seen.add(key)
+        dedup.append(key)
+    if len(dedup) <= 1:
+        return dedup
+
+    sorted_points = sorted(dedup)
+
+    def cross(o: tuple[float, float], a: tuple[float, float], b: tuple[float, float]) -> float:
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    lower: list[tuple[float, float]] = []
+    for point in sorted_points:
+        while len(lower) >= 2 and cross(lower[-2], lower[-1], point) <= 0:
+            lower.pop()
+        lower.append(point)
+
+    upper: list[tuple[float, float]] = []
+    for point in reversed(sorted_points):
+        while len(upper) >= 2 and cross(upper[-2], upper[-1], point) <= 0:
+            upper.pop()
+        upper.append(point)
+
+    return lower[:-1] + upper[:-1]
 
 
 def _parse_angle_to_deg(angle: float, *, unit: str) -> float:

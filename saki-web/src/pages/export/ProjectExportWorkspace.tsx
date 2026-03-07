@@ -19,7 +19,7 @@ import {
 import {ArrowLeftOutlined, DownloadOutlined, StopOutlined} from '@ant-design/icons';
 import {useNavigate, useParams} from 'react-router-dom';
 import {useTranslation} from 'react-i18next';
-import {TextReader, ZipWriter} from '@zip.js/zip.js';
+import {BlobReader, BlobWriter, TextReader, ZipWriter} from '@zip.js/zip.js';
 import {api} from '../../services/api';
 import {
     Dataset,
@@ -62,14 +62,37 @@ interface StreamZipParams {
     setProgress: React.Dispatch<React.SetStateAction<ExportProgress>>;
 }
 
-function isChromiumStreamZipSupported(): boolean {
-    if (typeof window === 'undefined') return false;
-    const hasPicker = typeof (window as any).showSaveFilePicker === 'function'
-        && typeof (window as any).showDirectoryPicker === 'function';
-    const hasStreams = typeof ReadableStream !== 'undefined' && typeof WritableStream !== 'undefined';
-    const ua = navigator.userAgent || '';
-    const chromiumLike = /Chrome\//.test(ua) || /Edg\//.test(ua) || /Chromium\//.test(ua);
-    return hasPicker && hasStreams && chromiumLike;
+interface ExportRuntimeCapability {
+    isSecureContext: boolean;
+    hasSaveFilePicker: boolean;
+    hasDirectoryPicker: boolean;
+}
+
+function detectExportRuntimeCapability(): ExportRuntimeCapability {
+    if (typeof window === 'undefined') {
+        return {
+            isSecureContext: false,
+            hasSaveFilePicker: false,
+            hasDirectoryPicker: false,
+        };
+    }
+    return {
+        isSecureContext: Boolean(window.isSecureContext),
+        hasSaveFilePicker: typeof (window as any).showSaveFilePicker === 'function',
+        hasDirectoryPicker: typeof (window as any).showDirectoryPicker === 'function',
+    };
+}
+
+function downloadBlob(blob: Blob, fileName: string): void {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 function sanitizePathSegment(value: string): string {
@@ -201,10 +224,15 @@ async function streamZipByChunks(params: StreamZipParams): Promise<void> {
                 if (signal.aborted) throw new DOMException('aborted', 'AbortError');
                 try {
                     const response = await fetch(file.downloadUrl as string, {signal});
-                    if (!response.ok || !response.body) {
+                    if (!response.ok) {
                         throw new Error(`HTTP ${response.status}`);
                     }
-                    await zipWriter.add(path, response.body, {level: 0});
+                    if (response.body) {
+                        await zipWriter.add(path, response.body, {level: 0});
+                    } else {
+                        const blob = await response.blob();
+                        await zipWriter.add(path, new BlobReader(blob), {level: 0});
+                    }
                     writtenPaths.add(path);
                 } catch (error) {
                     const issue = `asset download failed path=${path}: ${error instanceof Error ? error.message : String(error)}`;
@@ -242,7 +270,7 @@ const ProjectExportWorkspace: React.FC = () => {
     const {can: canProject} = useResourcePermission('project', projectId);
 
     const canExport = canProject('project:export:assigned');
-    const chromiumSupported = isChromiumStreamZipSupported();
+    const runtimeCapability = detectExportRuntimeCapability();
 
     const [project, setProject] = useState<Project | null>(null);
     const [datasets, setDatasets] = useState<Dataset[]>([]);
@@ -368,6 +396,50 @@ const ProjectExportWorkspace: React.FC = () => {
         };
     }, [projectId, formatProfile, snapshotType, branchName, commitId, selectedDatasetIds, sampleScope, includeAssets, bundleLayout]);
 
+    const writeZipPayload = useCallback(async (args: {
+        zipWriter: ZipWriter<unknown>;
+        title: string;
+        resolve: ProjectExportResolveResponse;
+        datasetIds: string[];
+        signal: AbortSignal;
+    }) => {
+        const {zipWriter, title, resolve, datasetIds, signal} = args;
+
+        await streamZipByChunks({
+            projectId: projectId!,
+            resolvedCommitId: resolve.resolvedCommitId,
+            datasetIds,
+            zipWriter,
+            formatProfile,
+            sampleScope,
+            includeAssets,
+            bundleLayout,
+            failFast,
+            signal,
+            appendIssue: appendReportIssue,
+            setProgress,
+        });
+
+        const reportPayload = {
+            exportedAt: new Date().toISOString(),
+            projectId,
+            title,
+            formatProfile,
+            includeAssets,
+            sampleScope,
+            datasetIds,
+        };
+        await zipWriter.add('export_manifest.json', new TextReader(`${JSON.stringify(reportPayload, null, 2)}\n`));
+    }, [
+        projectId,
+        formatProfile,
+        sampleScope,
+        includeAssets,
+        bundleLayout,
+        failFast,
+        appendReportIssue,
+    ]);
+
     const exportOneZip = useCallback(async (args: {
         handle: any;
         title: string;
@@ -381,31 +453,13 @@ const ProjectExportWorkspace: React.FC = () => {
 
         const zipWriter = new ZipWriter(writable as WritableStream, {zip64: true});
         try {
-            await streamZipByChunks({
-                projectId: projectId!,
-                resolvedCommitId: resolve.resolvedCommitId,
-                datasetIds,
+            await writeZipPayload({
                 zipWriter,
-                formatProfile,
-                sampleScope,
-                includeAssets,
-                bundleLayout,
-                failFast,
-                signal,
-                appendIssue: appendReportIssue,
-                setProgress,
-            });
-
-            const reportPayload = {
-                exportedAt: new Date().toISOString(),
-                projectId,
                 title,
-                formatProfile,
-                includeAssets,
-                sampleScope,
+                resolve,
                 datasetIds,
-            };
-            await zipWriter.add('export_manifest.json', new TextReader(`${JSON.stringify(reportPayload, null, 2)}\n`));
+                signal,
+            });
             await zipWriter.close();
         } catch (error) {
             await zipWriter.close().catch(() => undefined);
@@ -415,23 +469,36 @@ const ProjectExportWorkspace: React.FC = () => {
             writableRef.current = writableRef.current.filter((item) => item !== writable);
         }
     }, [
-        projectId,
-        formatProfile,
-        sampleScope,
-        includeAssets,
-        bundleLayout,
-        failFast,
-        appendReportIssue,
+        writeZipPayload,
     ]);
+
+    const exportOneZipToBlob = useCallback(async (args: {
+        title: string;
+        resolve: ProjectExportResolveResponse;
+        datasetIds: string[];
+        signal: AbortSignal;
+    }): Promise<Blob> => {
+        const {title, resolve, datasetIds, signal} = args;
+        const zipWriter = new ZipWriter(new BlobWriter('application/zip'), {zip64: true});
+        try {
+            await writeZipPayload({
+                zipWriter,
+                title,
+                resolve,
+                datasetIds,
+                signal,
+            });
+            return await zipWriter.close() as Blob;
+        } catch (error) {
+            await zipWriter.close().catch(() => undefined);
+            throw error;
+        }
+    }, [writeZipPayload]);
 
     const handleStart = useCallback(async () => {
         if (!projectId) return;
         if (!canExport) {
             message.warning(t('common.noPermission'));
-            return;
-        }
-        if (!chromiumSupported) {
-            message.error(t('export.project.browserBlocked'));
             return;
         }
         if (selectedDatasetIds.length === 0) {
@@ -483,39 +550,69 @@ const ProjectExportWorkspace: React.FC = () => {
             setExporting(true);
 
             if (bundleLayout === 'merged_zip') {
-                const picker = (window as any).showSaveFilePicker;
                 const defaultName = `${sanitizePathSegment(project?.name || 'project')}-${formatProfile}.zip`;
-                const handle = await picker({
-                    suggestedName: defaultName,
-                    types: [{description: 'ZIP', accept: {'application/zip': ['.zip']}}],
-                });
-
-                await exportOneZip({
-                    handle,
-                    title: project?.name || projectId,
-                    resolve: resolved,
-                    datasetIds: selectedDatasetIds,
-                    signal: resolveAbort.signal,
-                });
-            } else {
-                const picker = (window as any).showDirectoryPicker;
-                const directoryHandle = await picker();
-                for (const datasetId of selectedDatasetIds) {
-                    if (resolveAbort.signal.aborted) {
-                        throw new DOMException('aborted', 'AbortError');
-                    }
-                    const datasetName = datasetNameById.get(datasetId) || datasetId;
-                    setProgress((prev) => ({...prev, currentDataset: datasetName}));
-                    const fileName = `${sanitizePathSegment(datasetName)}-${formatProfile}.zip`;
-                    const fileHandle = await directoryHandle.getFileHandle(fileName, {create: true});
+                if (runtimeCapability.isSecureContext && runtimeCapability.hasSaveFilePicker) {
+                    const picker = (window as any).showSaveFilePicker;
+                    const handle = await picker({
+                        suggestedName: defaultName,
+                        types: [{description: 'ZIP', accept: {'application/zip': ['.zip']}}],
+                    });
 
                     await exportOneZip({
-                        handle: fileHandle,
-                        title: datasetName,
+                        handle,
+                        title: project?.name || projectId,
                         resolve: resolved,
-                        datasetIds: [datasetId],
+                        datasetIds: selectedDatasetIds,
                         signal: resolveAbort.signal,
                     });
+                } else {
+                    message.warning(t('export.project.browserFallbackNotice'));
+                    const blob = await exportOneZipToBlob({
+                        title: project?.name || projectId,
+                        resolve: resolved,
+                        datasetIds: selectedDatasetIds,
+                        signal: resolveAbort.signal,
+                    });
+                    downloadBlob(blob, defaultName);
+                }
+            } else {
+                if (runtimeCapability.isSecureContext && runtimeCapability.hasDirectoryPicker) {
+                    const picker = (window as any).showDirectoryPicker;
+                    const directoryHandle = await picker();
+                    for (const datasetId of selectedDatasetIds) {
+                        if (resolveAbort.signal.aborted) {
+                            throw new DOMException('aborted', 'AbortError');
+                        }
+                        const datasetName = datasetNameById.get(datasetId) || datasetId;
+                        setProgress((prev) => ({...prev, currentDataset: datasetName}));
+                        const fileName = `${sanitizePathSegment(datasetName)}-${formatProfile}.zip`;
+                        const fileHandle = await directoryHandle.getFileHandle(fileName, {create: true});
+
+                        await exportOneZip({
+                            handle: fileHandle,
+                            title: datasetName,
+                            resolve: resolved,
+                            datasetIds: [datasetId],
+                            signal: resolveAbort.signal,
+                        });
+                    }
+                } else {
+                    message.warning(t('export.project.browserFallbackNotice'));
+                    for (const datasetId of selectedDatasetIds) {
+                        if (resolveAbort.signal.aborted) {
+                            throw new DOMException('aborted', 'AbortError');
+                        }
+                        const datasetName = datasetNameById.get(datasetId) || datasetId;
+                        setProgress((prev) => ({...prev, currentDataset: datasetName}));
+                        const fileName = `${sanitizePathSegment(datasetName)}-${formatProfile}.zip`;
+                        const blob = await exportOneZipToBlob({
+                            title: datasetName,
+                            resolve: resolved,
+                            datasetIds: [datasetId],
+                            signal: resolveAbort.signal,
+                        });
+                        downloadBlob(blob, fileName);
+                    }
                 }
             }
 
@@ -538,7 +635,7 @@ const ProjectExportWorkspace: React.FC = () => {
     }, [
         projectId,
         canExport,
-        chromiumSupported,
+        runtimeCapability,
         selectedDatasetIds,
         snapshotType,
         commitId,
@@ -546,6 +643,7 @@ const ProjectExportWorkspace: React.FC = () => {
         bundleLayout,
         datasetNameById,
         exportOneZip,
+        exportOneZipToBlob,
         formatProfile,
         project,
         cleanupWritables,
@@ -561,7 +659,6 @@ const ProjectExportWorkspace: React.FC = () => {
         && !resolving
         && !exporting
         && canExport
-        && chromiumSupported
         && exportProfiles.length > 0
         && selectedDatasetIds.length > 0;
 
@@ -608,10 +705,13 @@ const ProjectExportWorkspace: React.FC = () => {
             {!canExport ? (
                 <Alert type="warning" showIcon message={t('common.noPermission')}/>
             ) : null}
-            {!chromiumSupported ? (
-                <Alert type="error" showIcon message={t('export.project.browserBlocked')}/>
+            {!runtimeCapability.isSecureContext ? (
+                <Alert type="warning" showIcon message={t('export.project.browserBlocked')}/>
             ) : null}
-            {chromiumSupported && exportProfiles.length === 0 ? (
+            {(runtimeCapability.isSecureContext && (!runtimeCapability.hasSaveFilePicker || !runtimeCapability.hasDirectoryPicker)) ? (
+                <Alert type="warning" showIcon message={t('export.project.browserFallbackNotice')}/>
+            ) : null}
+            {exportProfiles.length === 0 ? (
                 <Alert type="error" showIcon message={t('export.project.noAvailableExportProfile')}/>
             ) : null}
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-[4fr_6fr]">

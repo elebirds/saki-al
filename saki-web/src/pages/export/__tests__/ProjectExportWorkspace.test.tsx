@@ -48,8 +48,8 @@ void sampleScopes;
 void layouts;
 
 export const projectExportWorkspaceManualChecklist = [
-    'Chromium 浏览器：可进入页面并可点击“开始导出”。',
-    '非 Chromium 浏览器：页面提示不支持流式导出且按钮不可用。',
+    'HTTPS + 支持 File System Access API 的浏览器：使用本地文件流式写入导出。',
+    '不支持 File System Access API 或非安全上下文：自动回退为内存打包下载，按钮仍可用。',
     '选择 merged_zip：导出单个 ZIP，目录中包含 datasets/<dataset>/...。',
     '选择 per_dataset_zip：选择目录后，为每个数据集生成一个 ZIP 文件。',
     '导出中点击取消：请求中断，文件流关闭，状态显示已取消。',

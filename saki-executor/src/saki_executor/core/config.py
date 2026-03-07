@@ -23,6 +23,7 @@ class Settings(BaseSettings):
 
     DEFAULT_GPU_IDS: str = "0"
     CPU_WORKERS: int = 4
+    # <=0 表示启动时自动探测物理内存
     MEMORY_MB: int = 0
 
     LOG_LEVEL: str = "INFO"

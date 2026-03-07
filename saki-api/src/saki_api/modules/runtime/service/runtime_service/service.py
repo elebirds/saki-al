@@ -32,6 +32,7 @@ from saki_api.modules.runtime.service.config.loop_config_service import (
     derive_loop_max_rounds,
     derive_query_batch_size,
     extract_training_include_label_ids,
+    extract_training_negative_sample_ratio,
     extract_model_request_config,
     get_loop_global_seed,
     merge_model_request_config,
@@ -75,6 +76,7 @@ class RuntimeService(
     _extract_model_request_config = staticmethod(extract_model_request_config)
     _get_loop_global_seed = staticmethod(get_loop_global_seed)
     _extract_training_include_label_ids = staticmethod(extract_training_include_label_ids)
+    _extract_training_negative_sample_ratio = staticmethod(extract_training_negative_sample_ratio)
 
     def __init__(self, session: AsyncSession):
         super().__init__(Round, RoundRepository, session)

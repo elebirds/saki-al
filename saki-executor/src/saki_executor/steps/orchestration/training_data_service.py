@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import math
+import random
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
@@ -112,20 +114,60 @@ class TrainingDataService:
             for item in train_annotations
             if item.get("sample_id")
         }
-        supervised_samples = [
+
+        positive_samples = [
             dict(item)
             for item in samples
             if str(item.get("id") or "") in labeled_sample_ids
         ]
-        if include_label_ids and not supervised_samples:
-            raise RuntimeError(
-                "training label filter produced empty supervised dataset: "
-                f"include_label_ids={sorted(include_label_ids)}"
-            )
+        negative_candidates = [
+            dict(item)
+            for item in samples
+            if str(item.get("id") or "") not in labeled_sample_ids
+        ]
         try:
             split_seed = max(0, int(runtime_context.split_seed))
         except Exception:
             split_seed = 0
+        negative_sample_ratio = self._extract_training_negative_sample_ratio(request.resolved_params)
+        negative_kept: list[dict[str, Any]] = list(negative_candidates)
+        if task_type == "train":
+            if negative_sample_ratio is None:
+                negative_kept = list(negative_candidates)
+            else:
+                keep_limit = max(0, int(len(positive_samples) * max(0.0, float(negative_sample_ratio))))
+                if keep_limit >= len(negative_candidates):
+                    negative_kept = list(negative_candidates)
+                elif keep_limit <= 0:
+                    negative_kept = []
+                else:
+                    seeded = random.Random(split_seed)
+                    shuffled = list(negative_candidates)
+                    seeded.shuffle(shuffled)
+                    negative_kept = shuffled[:keep_limit]
+            await emit(
+                "log",
+                {
+                    "level": "INFO",
+                    "message": (
+                        "training negative sampling resolved "
+                        f"positive_samples={len(positive_samples)} "
+                        f"negative_candidates={len(negative_candidates)} "
+                        f"negative_kept={len(negative_kept)} "
+                        f"negative_ratio={'inf' if negative_sample_ratio is None else f'{float(negative_sample_ratio):g}'}"
+                    ),
+                },
+            )
+        supervised_samples = (
+            [*positive_samples, *negative_kept]
+            if task_type == "train"
+            else [*positive_samples, *negative_candidates]
+        )
+        if include_label_ids and not positive_samples:
+            raise RuntimeError(
+                "training label filter produced empty supervised dataset: "
+                f"include_label_ids={sorted(include_label_ids)}"
+            )
         plugin_cfg = plugin_params if isinstance(plugin_params, dict) else {}
         val_ratio_raw = plugin_cfg.get("val_split_ratio", 0.2)
         try:
@@ -135,7 +177,7 @@ class TrainingDataService:
         val_ratio = min(0.5, max(0.05, val_ratio))
 
         mode = str(runtime_context.mode or "").strip().lower()
-        snapshot_mode = mode in {"active_learning", "simulation"}
+        snapshot_mode = mode in {"active_learning", "simulation"} and task_type == "train"
         split_source = "random"
         if snapshot_mode:
             snapshot_split = self._split_samples_from_snapshot(samples=supervised_samples)
@@ -241,6 +283,26 @@ class TrainingDataService:
             if str(item or "").strip()
         }
         return normalized
+
+    @staticmethod
+    def _extract_training_negative_sample_ratio(
+        resolved_params: dict[str, Any] | None,
+    ) -> float | None:
+        payload = resolved_params if isinstance(resolved_params, dict) else {}
+        training = payload.get("training")
+        training_cfg = training if isinstance(training, dict) else {}
+        if "negative_sample_ratio" not in training_cfg:
+            return 0.0
+        raw = training_cfg.get("negative_sample_ratio")
+        if raw is None:
+            return None
+        try:
+            value = float(raw)
+        except Exception:
+            return 0.0
+        if not math.isfinite(value):
+            return 0.0
+        return max(0.0, value)
 
     @staticmethod
     def _split_samples_from_snapshot(

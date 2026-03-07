@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import uuid
 from typing import Any
 
@@ -107,12 +108,38 @@ def _normalize_training_include_label_ids(raw: Any) -> list[str]:
     return sorted(normalized)
 
 
+def _normalize_training_negative_sample_ratio(raw: Any) -> float | None:
+    if raw is None:
+        return None
+    if isinstance(raw, str) and not raw.strip():
+        return 0.0
+    try:
+        value = float(raw)
+    except Exception as exc:
+        raise BadRequestAppException(
+            f"invalid config.training.negative_sample_ratio: {raw}"
+        ) from exc
+    if (not math.isfinite(value)) or value < 0:
+        raise BadRequestAppException(
+            f"invalid config.training.negative_sample_ratio: {raw}. must be >= 0"
+        )
+    return value
+
+
 def _normalize_training_config(raw: Any) -> dict[str, Any]:
     payload = raw if isinstance(raw, dict) else {}
     include_label_ids = _normalize_training_include_label_ids(payload.get("include_label_ids"))
-    if not include_label_ids:
-        return {}
-    return {"include_label_ids": include_label_ids}
+    has_negative_sample_ratio = "negative_sample_ratio" in payload
+    negative_sample_ratio = _normalize_training_negative_sample_ratio(
+        payload.get("negative_sample_ratio", 0.0)
+    )
+    normalized: dict[str, Any] = {}
+    if include_label_ids:
+        normalized["include_label_ids"] = include_label_ids
+    # 默认值为 0，不主动写入配置；仅在显式传入或非默认值时持久化。
+    if has_negative_sample_ratio or negative_sample_ratio is None or (negative_sample_ratio or 0.0) > 0:
+        normalized["negative_sample_ratio"] = negative_sample_ratio
+    return normalized
 
 
 def normalize_loop_config(raw_config: dict[str, Any] | None, *, mode: str) -> dict[str, Any]:
@@ -298,3 +325,12 @@ def extract_training_include_label_ids(raw_config: dict[str, Any] | None) -> lis
     training = config.get("training")
     training_map = training if isinstance(training, dict) else {}
     return _normalize_training_include_label_ids(training_map.get("include_label_ids"))
+
+
+def extract_training_negative_sample_ratio(raw_config: dict[str, Any] | None) -> float | None:
+    config = dict(raw_config or {})
+    training = config.get("training")
+    training_map = training if isinstance(training, dict) else {}
+    if "negative_sample_ratio" not in training_map:
+        return 0.0
+    return _normalize_training_negative_sample_ratio(training_map.get("negative_sample_ratio"))

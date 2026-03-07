@@ -323,7 +323,10 @@ func TestCompileRoundConfigIncludesTrainingLabelFilter(t *testing.T) {
 		Config: []byte(`{
 			"sampling": {"strategy": "random_baseline", "topk": 32},
 			"reproducibility": {"global_seed": "seed-fixed"},
-			"training": {"include_label_ids": ["label-b", "label-a", "label-a", ""]}
+			"training": {
+				"include_label_ids": ["label-b", "label-a", "label-a", ""],
+				"negative_sample_ratio": 1.5
+			}
 		}`),
 	}
 	config := compileRoundConfig(loop, 1)
@@ -336,6 +339,34 @@ func TestCompileRoundConfigIncludesTrainingLabelFilter(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("training include_label_ids mismatch: got=%v want=%v", got, want)
 	}
+	if gotRatio := cast.ToFloat64(training["negative_sample_ratio"]); gotRatio != 1.5 {
+		t.Fatalf("training negative_sample_ratio mismatch: got=%v want=%v", gotRatio, 1.5)
+	}
+}
+
+func TestCompileRoundConfigSupportsUnlimitedNegativeSampleRatio(t *testing.T) {
+	loop := loopRow{
+		ID:             mustUUID("f1fa6112-6ea6-4367-a83a-e6f993790acf"),
+		Mode:           modeAL,
+		QueryBatchSize: 128,
+		ModelArch:      "yolo_det_v1",
+		Config: []byte(`{
+			"sampling": {"strategy": "random_baseline", "topk": 32},
+			"reproducibility": {"global_seed": "seed-fixed"},
+			"training": {"negative_sample_ratio": null}
+		}`),
+	}
+	config := compileRoundConfig(loop, 1)
+	training, ok := config["training"].(map[string]any)
+	if !ok {
+		t.Fatalf("training config should be propagated to round config: %T", config["training"])
+	}
+	if _, exists := training["negative_sample_ratio"]; !exists {
+		t.Fatalf("training negative_sample_ratio should be present")
+	}
+	if training["negative_sample_ratio"] != nil {
+		t.Fatalf("training negative_sample_ratio should be nil for unlimited mode: %v", training["negative_sample_ratio"])
+	}
 }
 
 func TestCompileStepConfigKeepsTrainingOnlyForTrainEval(t *testing.T) {
@@ -345,7 +376,8 @@ func TestCompileStepConfigKeepsTrainingOnlyForTrainEval(t *testing.T) {
 			"topk":     32,
 		},
 		"training": map[string]any{
-			"include_label_ids": []string{"label-b", "label-a"},
+			"include_label_ids":     []string{"label-b", "label-a"},
+			"negative_sample_ratio": 2,
 		},
 	}
 
@@ -370,6 +402,12 @@ func TestCompileStepConfigKeepsTrainingOnlyForTrainEval(t *testing.T) {
 	}
 	if got := cast.ToStringSlice(evalTraining["include_label_ids"]); !reflect.DeepEqual(got, want) {
 		t.Fatalf("eval include_label_ids mismatch: got=%v want=%v", got, want)
+	}
+	if got := cast.ToFloat64(trainTraining["negative_sample_ratio"]); got != 2 {
+		t.Fatalf("train negative_sample_ratio mismatch: got=%v want=%v", got, 2)
+	}
+	if got := cast.ToFloat64(evalTraining["negative_sample_ratio"]); got != 2 {
+		t.Fatalf("eval negative_sample_ratio mismatch: got=%v want=%v", got, 2)
 	}
 }
 

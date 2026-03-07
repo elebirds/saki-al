@@ -23,6 +23,7 @@ export type LoopEditorFormValues = {
     samplingStrategy?: string;
     queryBatchSize?: number;
     trainingLabelIds?: string[];
+    negativeSampleRatio?: number | null;
     pluginConfig?: Record<string, any>;
     simulationConfig?: {
         oracleInputMode?: OracleInputMode;
@@ -48,6 +49,11 @@ const normalizePositiveInt = (value: unknown, fallback: number): number => {
     const parsed = Number(value);
     if (!Number.isFinite(parsed)) return fallback;
     return Math.max(1, Math.trunc(parsed));
+};
+const normalizeNonNegativeNumber = (value: unknown, fallback: number): number => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return fallback;
+    return Math.max(0, parsed);
 };
 
 const normalizeText = (value: unknown): string => String(value ?? '').trim();
@@ -126,9 +132,16 @@ export const buildLoopRuntimeConfig = (
         .map((item) => normalizeText(item))
         .filter((item) => !!item)))
         .sort();
-    if (trainingLabelIds.length > 0) {
+    const rawNegativeRatio = values.negativeSampleRatio;
+    const normalizedNegativeRatio = rawNegativeRatio === null
+        ? null
+        : normalizeNonNegativeNumber(rawNegativeRatio, 0);
+    if (trainingLabelIds.length > 0 || normalizedNegativeRatio == null || normalizedNegativeRatio > 0) {
         config.training = {
             includeLabelIds: trainingLabelIds,
+            ...(normalizedNegativeRatio == null || normalizedNegativeRatio > 0
+                ? {negativeSampleRatio: normalizedNegativeRatio}
+                : {}),
         };
     }
 

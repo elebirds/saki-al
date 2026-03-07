@@ -55,6 +55,12 @@ class LoopCommandMixin:
     def _extract_config_training_include_label_ids(self, config: dict[str, Any] | None) -> list[str]:
         return self._extract_training_include_label_ids(dict(config or {}))
 
+    def _extract_config_training_negative_sample_ratio(
+        self,
+        config: dict[str, Any] | None,
+    ) -> float | None:
+        return self._extract_training_negative_sample_ratio(dict(config or {}))
+
     @staticmethod
     def _extract_config_preferred_executor_id(config: dict[str, Any] | None) -> str:
         execution = (config or {}).get("execution")
@@ -257,6 +263,16 @@ class LoopCommandMixin:
             ):
                 raise BadRequestAppException(
                     "config.training.include_label_ids is immutable once lifecycle is not draft"
+                )
+            current_negative_sample_ratio = self._extract_config_training_negative_sample_ratio(loop.config or {})
+            next_negative_sample_ratio = self._extract_config_training_negative_sample_ratio(normalized_config)
+            if (
+                str(loop.lifecycle.value if hasattr(loop.lifecycle, "value") else loop.lifecycle).strip().lower()
+                != "draft"
+                and current_negative_sample_ratio != next_negative_sample_ratio
+            ):
+                raise BadRequestAppException(
+                    "config.training.negative_sample_ratio is immutable once lifecycle is not draft"
                 )
             await self._validate_training_include_labels(
                 project_id=loop.project_id,

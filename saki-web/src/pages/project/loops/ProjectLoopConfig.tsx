@@ -65,6 +65,18 @@ const ProjectLoopConfig: React.FC = () => {
         () => toPluginConfigSchema(selectedPlugin?.requestConfigSchema),
         [selectedPlugin],
     );
+    const pluginSupportsPatience = useMemo(() => {
+        const fields = (selectedPlugin?.requestConfigSchema as any)?.fields;
+        if (!Array.isArray(fields)) return false;
+        return fields.some((item: any) => String(item?.key || item?.name || '').trim() === 'patience');
+    }, [selectedPlugin]);
+    const pluginConfigSchemaForRender = useMemo(() => {
+        if (!pluginSupportsPatience) return pluginConfigSchema;
+        return {
+            ...pluginConfigSchema,
+            fields: pluginConfigSchema.fields.filter((item) => String(item.key || '').trim() !== 'patience'),
+        };
+    }, [pluginConfigSchema, pluginSupportsPatience]);
     const commitOptions = useMemo(
         () => commits.map((item) => ({
             label: `${item.message || t('project.loopConfig.form.oracleCommitUnknownMessage')} (${item.id.slice(0, 8)})`,
@@ -134,6 +146,9 @@ const ProjectLoopConfig: React.FC = () => {
             trainingLabelIds: Array.isArray(loopConfig.training?.includeLabelIds)
                 ? loopConfig.training.includeLabelIds
                 : [],
+            negativeSampleRatio: loopConfig.training?.negativeSampleRatio === null
+                ? null
+                : Number(loopConfig.training?.negativeSampleRatio ?? 0),
         });
     }, [loopId, projectId, configForm]);
 
@@ -317,9 +332,18 @@ const ProjectLoopConfig: React.FC = () => {
                                 }}
                             />
                         </Form.Item>
+                        {pluginSupportsPatience ? (
+                            <Form.Item
+                                name={['pluginConfig', 'patience']}
+                                label={t('project.loopConfig.form.patience')}
+                                extra={t('project.loopConfig.form.patienceHint')}
+                            >
+                                <InputNumber min={1} max={10000} className="w-full"/>
+                            </Form.Item>
+                        ) : null}
                     </div>
 
-                    <div className="grid grid-cols-1 gap-x-4 md:grid-cols-2">
+                    <div className="grid grid-cols-1 gap-x-4 md:grid-cols-3">
                         {selectedMode !== 'manual' ? (
                             <Form.Item
                                 name="samplingStrategy"
@@ -350,6 +374,23 @@ const ProjectLoopConfig: React.FC = () => {
                                     label: item.name,
                                     value: item.id,
                                 }))}
+                                disabled={loop.lifecycle !== 'draft'}
+                            />
+                        </Form.Item>
+                        <Form.Item
+                            name="negativeSampleRatio"
+                            label={t('project.loopConfig.form.negativeSampleRatio')}
+                            extra={
+                                loop.lifecycle === 'draft'
+                                    ? t('project.loopConfig.form.negativeSampleRatioHint')
+                                    : t('project.loopConfig.form.negativeSampleRatioImmutable')
+                            }
+                        >
+                            <InputNumber
+                                min={0}
+                                step={0.1}
+                                className="w-full"
+                                placeholder={t('project.loopConfig.form.negativeSampleRatioPlaceholder')}
                                 disabled={loop.lifecycle !== 'draft'}
                             />
                         </Form.Item>
@@ -532,11 +573,11 @@ const ProjectLoopConfig: React.FC = () => {
                         className="!border-github-border !bg-github-panel"
                         title={selectedPlugin?.requestConfigSchema?.title || t('project.loopConfig.form.modelRequestParams')}
                     >
-                        {pluginConfigSchema.fields.length === 0 ? (
+                        {pluginConfigSchemaForRender.fields.length === 0 ? (
                             <Alert type="info" showIcon message={t('project.loopConfig.form.noDynamicSchema')}/>
                         ) : (
                             <DynamicConfigForm
-                                schema={pluginConfigSchema}
+                                schema={pluginConfigSchemaForRender}
                                 values={pluginConfigValues}
                                 onChange={handlePluginConfigChange}
                                 context={{

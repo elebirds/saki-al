@@ -151,34 +151,45 @@ func compileSamplingConfig(loop loopRow, loopConfig map[string]any) map[string]a
 
 func compileTrainingConfig(raw any) map[string]any {
 	training := ensureMap(raw)
-	includeRaw, ok := training["include_label_ids"]
-	if !ok {
-		return map[string]any{}
-	}
-	values := cast.ToStringSlice(includeRaw)
-	if len(values) == 0 {
-		return map[string]any{}
-	}
-	seen := make(map[string]struct{}, len(values))
-	normalized := make([]string, 0, len(values))
-	for _, item := range values {
-		labelID := strings.TrimSpace(item)
-		if labelID == "" {
-			continue
+	config := map[string]any{}
+
+	if includeRaw, ok := training["include_label_ids"]; ok {
+		values := cast.ToStringSlice(includeRaw)
+		if len(values) > 0 {
+			seen := make(map[string]struct{}, len(values))
+			normalized := make([]string, 0, len(values))
+			for _, item := range values {
+				labelID := strings.TrimSpace(item)
+				if labelID == "" {
+					continue
+				}
+				if _, exists := seen[labelID]; exists {
+					continue
+				}
+				seen[labelID] = struct{}{}
+				normalized = append(normalized, labelID)
+			}
+			if len(normalized) > 0 {
+				sort.Strings(normalized)
+				config["include_label_ids"] = normalized
+			}
 		}
-		if _, exists := seen[labelID]; exists {
-			continue
+	}
+
+	if negativeRaw, ok := training["negative_sample_ratio"]; ok {
+		if negativeRaw == nil {
+			config["negative_sample_ratio"] = nil
+		} else {
+			if ratio, err := cast.ToFloat64E(negativeRaw); err == nil {
+				if ratio < 0 {
+					ratio = 0
+				}
+				config["negative_sample_ratio"] = ratio
+			}
 		}
-		seen[labelID] = struct{}{}
-		normalized = append(normalized, labelID)
 	}
-	if len(normalized) == 0 {
-		return map[string]any{}
-	}
-	sort.Strings(normalized)
-	return map[string]any{
-		"include_label_ids": normalized,
-	}
+
+	return config
 }
 
 func deriveScopedSeed(globalSeed string, scope string) uint32 {

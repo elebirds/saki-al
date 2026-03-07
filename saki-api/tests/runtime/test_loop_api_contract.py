@@ -1254,6 +1254,149 @@ async def test_update_loop_rejects_training_include_label_ids_outside_project(lo
             _session_ctx.reset(token)
 
 
+@pytest.mark.anyio
+async def test_create_loop_persists_training_negative_sample_ratio(loop_api_env):
+    session_local = loop_api_env
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        service = RuntimeService(session)
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-training-negative-ratio",
+                    branch_id=branch.id,
+                    mode=LoopMode.ACTIVE_LEARNING,
+                    model_arch="yolo_det_v1",
+                    config=_loop_config(
+                        {
+                            "sampling": {"strategy": "random_baseline", "topk": 200},
+                            "training": {"negative_sample_ratio": 1.5},
+                        }
+                    ),
+                    lifecycle=LoopLifecycle.DRAFT,
+                ),
+            )
+            training_cfg = loop.config.get("training") if isinstance(loop.config, dict) else {}
+            assert float(training_cfg.get("negative_sample_ratio") or 0.0) == pytest.approx(1.5)
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_create_loop_persists_unlimited_training_negative_sample_ratio(loop_api_env):
+    session_local = loop_api_env
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        service = RuntimeService(session)
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-training-negative-ratio-unlimited",
+                    branch_id=branch.id,
+                    mode=LoopMode.ACTIVE_LEARNING,
+                    model_arch="yolo_det_v1",
+                    config=_loop_config(
+                        {
+                            "sampling": {"strategy": "random_baseline", "topk": 200},
+                            "training": {"negative_sample_ratio": None},
+                        }
+                    ),
+                    lifecycle=LoopLifecycle.DRAFT,
+                ),
+            )
+            training_cfg = loop.config.get("training") if isinstance(loop.config, dict) else {}
+            assert "negative_sample_ratio" in training_cfg
+            assert training_cfg.get("negative_sample_ratio") is None
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_create_loop_rejects_negative_sample_ratio_below_zero(loop_api_env):
+    session_local = loop_api_env
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        service = RuntimeService(session)
+
+        token = _session_ctx.set(session)
+        try:
+            with pytest.raises(
+                BadRequestAppException,
+                match="invalid config.training.negative_sample_ratio",
+            ):
+                await service.create_loop(
+                    project.id,
+                    LoopCreateRequest(
+                        name="loop-training-negative-ratio-invalid",
+                        branch_id=branch.id,
+                        mode=LoopMode.ACTIVE_LEARNING,
+                        model_arch="yolo_det_v1",
+                        config=_loop_config(
+                            {
+                                "sampling": {"strategy": "random_baseline", "topk": 200},
+                                "training": {"negative_sample_ratio": -0.1},
+                            }
+                        ),
+                        lifecycle=LoopLifecycle.DRAFT,
+                    ),
+                )
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_update_loop_rejects_training_negative_sample_ratio_change_after_non_draft(loop_api_env):
+    session_local = loop_api_env
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        service = RuntimeService(session)
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-training-negative-ratio-locked",
+                    branch_id=branch.id,
+                    mode=LoopMode.ACTIVE_LEARNING,
+                    model_arch="yolo_det_v1",
+                    config=_loop_config(
+                        {
+                            "sampling": {"strategy": "random_baseline", "topk": 200},
+                        }
+                    ),
+                    lifecycle=LoopLifecycle.RUNNING,
+                ),
+            )
+            with pytest.raises(
+                BadRequestAppException,
+                match="config.training.negative_sample_ratio is immutable once lifecycle is not draft",
+            ):
+                await service.update_loop(
+                    loop.id,
+                    LoopUpdateRequest(
+                        config=_loop_config(
+                            {
+                                "sampling": {"strategy": "random_baseline", "topk": 200},
+                                "training": {"negative_sample_ratio": 2},
+                            }
+                        )
+                    ),
+                )
+        finally:
+            _session_ctx.reset(token)
+
+
 def test_effective_round_min_required_requires_full_selected():
     assert SnapshotPolicyMixin._effective_round_min_required(selected_count=0, configured_min_required=1) == 0
     assert SnapshotPolicyMixin._effective_round_min_required(selected_count=2, configured_min_required=1) == 2

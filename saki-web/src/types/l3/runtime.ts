@@ -94,6 +94,7 @@ export interface LoopExecutionConfig {
 
 export interface LoopTrainingConfig {
     includeLabelIds?: string[];
+    negativeSampleRatio?: number | null;
 }
 
 export interface LoopRuntimeConfig {

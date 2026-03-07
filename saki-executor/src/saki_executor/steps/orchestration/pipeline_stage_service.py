@@ -324,12 +324,13 @@ class PipelineStageService:
             if not str(key).startswith("_")
         }
         payload = {
-            "version": 1,
+            "version": 2,
             "round_id": self._request.round_id,
             "attempt": self._request.attempt,
             "project_id": self._request.project_id,
             "input_commit_id": self._request.input_commit_id,
             "plugin_id": self._request.plugin_id,
+            "task_type": self._request.task_type,
             "mode": runtime_context.mode,
             "split_seed": runtime_context.split_seed,
             "plugin_subset": plugin_subset,

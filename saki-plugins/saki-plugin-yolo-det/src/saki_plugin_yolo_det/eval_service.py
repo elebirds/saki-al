@@ -21,6 +21,9 @@ _EVAL_ARTIFACT_PATTERNS: tuple[str, ...] = (
     "val_batch*_pred.jpg",
     "val_batch*_pred.png",
 )
+_SCOPE_TEST_ANCHOR = "test_anchor"
+_SCOPE_TEST_BATCH = "test_batch"
+_SCOPE_TEST_COMPOSITE = "test_composite"
 
 
 class YoloEvalService:
@@ -54,6 +57,7 @@ class YoloEvalService:
         model_path = await self._config_service.resolve_best_or_fallback_model(workspace=workspace, params=cfg)
         imgsz = to_int(cfg.imgsz, 640)
         batch = to_int(cfg.batch, 16)
+        mode = str(getattr(context.task_context, "mode", "") or "").strip().lower()
 
         await emit(
             "log",
@@ -62,47 +66,117 @@ class YoloEvalService:
                 "message": (
                     f"YOLO eval started model={model_path} imgsz={imgsz} batch={batch} "
                     f"requested_device={requested_device} resolved_backend={resolved_backend} "
-                    f"device={device} profile={context.profile_id}"
+                    f"device={device} profile={context.profile_id} mode={mode}"
                 ),
             },
         )
 
-        eval_result = await asyncio.to_thread(
-            self._run_eval_sync,
-            workspace=workspace,
-            model_path=model_path,
-            dataset_yaml=dataset_yaml,
-            imgsz=imgsz,
-            batch=batch,
-            device=device,
-        )
-        normalized_metrics = self._normalize_metrics(eval_result.get("metrics", {}))
-        metric_events: list[dict[str, float]] = []
-        if normalized_metrics:
-            first_event_metrics = dict(normalized_metrics)
-            metric_events.append(first_event_metrics)
-            await emit("metric", {"step": 1, "epoch": 0, "metrics": first_event_metrics})
+        manifest = self._load_dataset_manifest(workspace)
+        scope_sample_ids = self._resolve_scope_sample_ids(manifest=manifest)
+        anchor_ids = scope_sample_ids.get(_SCOPE_TEST_ANCHOR, [])
+        batch_ids = scope_sample_ids.get(_SCOPE_TEST_BATCH, [])
+        composite_ids = sorted(set(anchor_ids).union(batch_ids))
 
-        metrics: dict[str, float] = {}
-        metrics_source = "none"
-        for row in metric_events:
-            if row:
-                metrics = dict(row)
-                metrics_source = "first_metric_event"
-                break
-        if not metrics and normalized_metrics:
-            metrics = dict(normalized_metrics)
-            metrics_source = "eval_result"
+        has_partition_scope = bool(anchor_ids or batch_ids)
+        scope_plan: list[tuple[str, int, list[str]]] = []
+        if has_partition_scope:
+            scope_plan = [
+                (_SCOPE_TEST_ANCHOR, 1, anchor_ids),
+                (_SCOPE_TEST_BATCH, 2, batch_ids),
+                (_SCOPE_TEST_COMPOSITE, 3, composite_ids),
+            ]
+        else:
+            scope_plan = [(_SCOPE_TEST_ANCHOR, 1, [])]
 
-        missing_canonical = [key for key in _EVAL_CANONICAL_KEYS if key not in metrics]
-        if (not metrics) or missing_canonical:
+        metrics_by_scope: dict[str, dict[str, float]] = {}
+        sample_count_by_scope: dict[str, int] = {}
+        raw_metrics_by_scope: dict[str, dict[str, Any]] = {}
+        all_extra_artifacts: list[tuple[str, str]] = []
+
+        for scope_key, step_index, sample_ids in scope_plan:
+            scoped_dataset = (
+                self._build_scoped_dataset_file(
+                    workspace=workspace,
+                    base_dataset_yaml=dataset_yaml,
+                    scope_key=scope_key,
+                    sample_ids=sample_ids,
+                )
+                if has_partition_scope
+                else dataset_yaml
+            )
+            if has_partition_scope and scoped_dataset is None:
+                metrics_by_scope[scope_key] = {}
+                sample_count_by_scope[scope_key] = 0
+                raw_metrics_by_scope[scope_key] = {}
+                continue
+
+            eval_result = await asyncio.to_thread(
+                self._run_eval_sync,
+                workspace=workspace,
+                model_path=model_path,
+                dataset_yaml=scoped_dataset or dataset_yaml,
+                imgsz=imgsz,
+                batch=batch,
+                device=device,
+                run_name=f"eval_{scope_key}",
+            )
+            normalized_metrics = self._normalize_metrics(eval_result.get("metrics", {}))
+            metrics_by_scope[scope_key] = dict(normalized_metrics)
+            raw_metrics_by_scope[scope_key] = dict(eval_result.get("metrics", {}))
+            sample_count_by_scope[scope_key] = int(eval_result.get("sample_count") or 0)
+            all_extra_artifacts.extend((scope_key, item) for item in eval_result.get("extra_artifacts", []))
+            if normalized_metrics:
+                await emit("metric", {"step": step_index, "epoch": 0, "metrics": dict(normalized_metrics)})
+            await emit(
+                "log",
+                {
+                    "level": "INFO",
+                    "message": (
+                        "eval scope finished "
+                        f"scope={scope_key} step={step_index} samples={sample_count_by_scope[scope_key]} "
+                        f"metric_keys={sorted(normalized_metrics.keys())}"
+                    ),
+                },
+            )
+
+        if has_partition_scope and _SCOPE_TEST_COMPOSITE not in metrics_by_scope:
+            metrics_by_scope[_SCOPE_TEST_COMPOSITE] = {}
+            raw_metrics_by_scope[_SCOPE_TEST_COMPOSITE] = {}
+            sample_count_by_scope[_SCOPE_TEST_COMPOSITE] = 0
+
+        primary_scope = _SCOPE_TEST_ANCHOR
+        primary_metrics = dict(metrics_by_scope.get(_SCOPE_TEST_ANCHOR) or {})
+        if not primary_metrics:
+            fallback_scope = (
+                _SCOPE_TEST_COMPOSITE
+                if metrics_by_scope.get(_SCOPE_TEST_COMPOSITE)
+                else _SCOPE_TEST_BATCH
+            )
+            fallback_metrics = dict(metrics_by_scope.get(fallback_scope) or {})
+            if fallback_metrics:
+                primary_scope = fallback_scope
+                primary_metrics = fallback_metrics
+                await emit(
+                    "log",
+                    {
+                        "level": "WARN",
+                        "message": (
+                            "eval anchor scope metrics empty, fallback applied "
+                            f"fallback_scope={fallback_scope}"
+                        ),
+                    },
+                )
+
+        metrics_source = f"scope:{primary_scope}" if primary_metrics else "none"
+        missing_canonical = [key for key in _EVAL_CANONICAL_KEYS if key not in primary_metrics]
+        if (not primary_metrics) or missing_canonical:
             await emit(
                 "log",
                 {
                     "level": "WARN",
                     "message": (
                         "eval final metrics incomplete "
-                        f"source={metrics_source} available={sorted(metrics.keys())} "
+                        f"source={metrics_source} available={sorted(primary_metrics.keys())} "
                         f"missing={missing_canonical}"
                     ),
                 },
@@ -112,15 +186,30 @@ class YoloEvalService:
         report_path.write_text(
             json.dumps(
                 {
-                    "metrics": metrics,
-                    "raw_metrics": eval_result.get("metrics", {}),
-                    "save_dir": eval_result.get("save_dir", ""),
+                    "metrics": primary_metrics,
+                    "primary_scope": primary_scope,
+                    "metrics_by_scope": {
+                        _SCOPE_TEST_ANCHOR: metrics_by_scope.get(_SCOPE_TEST_ANCHOR, {}),
+                        _SCOPE_TEST_BATCH: metrics_by_scope.get(_SCOPE_TEST_BATCH, {}),
+                        _SCOPE_TEST_COMPOSITE: metrics_by_scope.get(_SCOPE_TEST_COMPOSITE, {}),
+                    },
+                    "raw_metrics_by_scope": {
+                        _SCOPE_TEST_ANCHOR: raw_metrics_by_scope.get(_SCOPE_TEST_ANCHOR, {}),
+                        _SCOPE_TEST_BATCH: raw_metrics_by_scope.get(_SCOPE_TEST_BATCH, {}),
+                        _SCOPE_TEST_COMPOSITE: raw_metrics_by_scope.get(_SCOPE_TEST_COMPOSITE, {}),
+                    },
+                    "sample_count_by_scope": {
+                        _SCOPE_TEST_ANCHOR: int(sample_count_by_scope.get(_SCOPE_TEST_ANCHOR, 0)),
+                        _SCOPE_TEST_BATCH: int(sample_count_by_scope.get(_SCOPE_TEST_BATCH, 0)),
+                        _SCOPE_TEST_COMPOSITE: int(sample_count_by_scope.get(_SCOPE_TEST_COMPOSITE, 0)),
+                    },
                     "model_path": model_path,
                     "metric_validation": {
                         "source": metrics_source,
                         "missing_canonical_keys": missing_canonical,
-                        "available_keys": sorted(metrics.keys()),
-                        "is_empty": not bool(metrics),
+                        "available_keys": sorted(primary_metrics.keys()),
+                        "is_empty": not bool(primary_metrics),
+                        "fallback_applied": primary_scope != _SCOPE_TEST_ANCHOR,
                     },
                 },
                 ensure_ascii=False,
@@ -138,20 +227,20 @@ class YoloEvalService:
                 required=True,
             )
         ]
-        for item in eval_result.get("extra_artifacts", []):
+        for scope_key, item in all_extra_artifacts:
             path = Path(str(item))
             if not path.exists():
                 continue
             artifacts.append(
                 TrainArtifact(
                     kind="eval_artifact",
-                    name=path.name,
+                    name=f"{scope_key}_{path.name}",
                     path=path,
                     content_type="application/octet-stream",
                     required=False,
                 )
             )
-        return TrainOutput(metrics=metrics, artifacts=artifacts)
+        return TrainOutput(metrics=primary_metrics, artifacts=artifacts)
 
     def _run_eval_sync(
         self,
@@ -162,6 +251,7 @@ class YoloEvalService:
         imgsz: int,
         batch: int,
         device: Any,
+        run_name: str,
     ) -> dict[str, Any]:
         yolo_cls = self._load_yolo()
         model = yolo_cls(model_path)
@@ -177,7 +267,7 @@ class YoloEvalService:
             plots=True,
             verbose=False,
             project=str(project_dir),
-            name="eval",
+            name=run_name,
             exist_ok=True,
         )
         metrics_raw = getattr(result, "results_dict", {}) or {}
@@ -192,8 +282,97 @@ class YoloEvalService:
                         continue
                     discovered.setdefault(path.name, str(path))
             extra_artifacts = [discovered[name] for name in sorted(discovered.keys())]
+        sample_count = self._count_eval_samples_from_dataset_yaml(dataset_yaml)
         return {
             "metrics": dict(metrics_raw) if isinstance(metrics_raw, dict) else {},
             "save_dir": str(save_dir) if save_dir else "",
             "extra_artifacts": extra_artifacts,
+            "sample_count": sample_count,
         }
+
+    def _count_eval_samples_from_dataset_yaml(self, dataset_yaml: Path) -> int:
+        try:
+            payload = json.loads(dataset_yaml.read_text(encoding="utf-8"))
+        except Exception:
+            return 0
+        val_ref = str((payload if isinstance(payload, dict) else {}).get("val") or "").strip()
+        if not val_ref:
+            return 0
+        val_path = Path(val_ref)
+        if not val_path.is_absolute():
+            val_path = dataset_yaml.parent / val_ref
+        if val_path.is_file():
+            try:
+                return len([line for line in val_path.read_text(encoding="utf-8").splitlines() if line.strip()])
+            except Exception:
+                return 0
+        if val_path.is_dir():
+            return len([item for item in val_path.glob("*.jpg") if item.is_file()])
+        return 0
+
+    def _load_dataset_manifest(self, workspace: WorkspaceProtocol) -> dict[str, Any]:
+        manifest_path = workspace.data_dir / "dataset_manifest.json"
+        if not manifest_path.exists():
+            return {}
+        try:
+            payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+        return payload if isinstance(payload, dict) else {}
+
+    def _resolve_scope_sample_ids(self, *, manifest: dict[str, Any]) -> dict[str, list[str]]:
+        raw = manifest.get("snapshot_partition_sample_ids")
+        scope_ids: dict[str, list[str]] = {}
+        if not isinstance(raw, dict):
+            return scope_ids
+        for key in (_SCOPE_TEST_ANCHOR, _SCOPE_TEST_BATCH):
+            rows = raw.get(key)
+            if not isinstance(rows, list):
+                scope_ids[key] = []
+                continue
+            normalized = sorted({str(item).strip() for item in rows if str(item).strip()})
+            scope_ids[key] = normalized
+        return scope_ids
+
+    def _build_scoped_dataset_file(
+        self,
+        *,
+        workspace: WorkspaceProtocol,
+        base_dataset_yaml: Path,
+        scope_key: str,
+        sample_ids: list[str],
+    ) -> Path | None:
+        if not sample_ids:
+            return None
+        try:
+            base_payload = json.loads(base_dataset_yaml.read_text(encoding="utf-8"))
+        except Exception:
+            return None
+        if not isinstance(base_payload, dict):
+            return None
+
+        data_root = workspace.data_dir
+        image_paths: list[str] = []
+        for sample_id in sample_ids:
+            normalized = str(sample_id or "").strip()
+            if not normalized:
+                continue
+            candidates = (
+                data_root / "images" / "train" / f"{normalized}.jpg",
+                data_root / "images" / "val" / f"{normalized}.jpg",
+            )
+            resolved = next((str(path.resolve()) for path in candidates if path.exists()), "")
+            if resolved:
+                image_paths.append(resolved)
+        if not image_paths:
+            return None
+
+        list_path = workspace.artifacts_dir / f"eval_scope_{scope_key}.txt"
+        list_path.write_text("\n".join(image_paths) + "\n", encoding="utf-8")
+
+        scoped_payload = dict(base_payload)
+        scoped_payload["val"] = str(list_path.resolve())
+        scoped_payload["test"] = str(list_path.resolve())
+        scoped_yaml = workspace.artifacts_dir / f"eval_scope_{scope_key}.json"
+        scoped_yaml.write_text(json.dumps(scoped_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        return scoped_yaml

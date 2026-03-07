@@ -37,6 +37,7 @@ from saki_api.modules.runtime.service.application.control_plane_dto import (
 from saki_api.modules.shared.modeling.enums import (
     LoopMode,
     SnapshotPartition,
+    StepType,
     SnapshotValPolicy,
 )
 from saki_api.modules.storage.domain.asset import Asset
@@ -265,8 +266,9 @@ class RuntimeControlIngressService:
 
             snapshot_scope_sample_ids: set[uuid.UUID] | None = None
             snapshot_split_hints: dict[str, str] | None = None
+            snapshot_partition_hints: dict[str, str] | None = None
             if query_type in {pb.SAMPLES, pb.UNLABELED_SAMPLES, pb.ANNOTATIONS}:
-                loop_id, mode, snapshot = await self._resolve_task_snapshot_scope(
+                loop_id, mode, step_type, snapshot = await self._resolve_task_snapshot_scope(
                     session=session,
                     task_id=task_id,
                     project_id=project_id,
@@ -302,23 +304,61 @@ class RuntimeControlIngressService:
                         }
                         snapshot_scope_sample_ids = pool_ids.difference(visible_ids)
                     else:
-                        val_partitions = [SnapshotPartition.VAL_ANCHOR]
-                        if snapshot.val_policy == SnapshotValPolicy.EXPAND_WITH_BATCH_VAL:
-                            val_partitions.append(SnapshotPartition.VAL_BATCH)
-                        val_ids = {
-                            row[0] if isinstance(row, (tuple, list)) else row
-                            for row in (
-                                await session.exec(
-                                    select(ALSnapshotSample.sample_id).where(
-                                        ALSnapshotSample.snapshot_version_id == snapshot.id,
-                                        ALSnapshotSample.partition.in_(val_partitions),
+                        step_type_text = str(
+                            step_type.value if hasattr(step_type, "value") else step_type
+                        ).strip().lower()
+                        if step_type_text == StepType.EVAL.value.lower():
+                            test_anchor_ids = {
+                                row[0] if isinstance(row, (tuple, list)) else row
+                                for row in (
+                                    await session.exec(
+                                        select(ALSnapshotSample.sample_id).where(
+                                            ALSnapshotSample.snapshot_version_id == snapshot.id,
+                                            ALSnapshotSample.partition == SnapshotPartition.TEST_ANCHOR,
+                                        )
                                     )
-                                )
-                            ).all()
-                        }
-                        snapshot_scope_sample_ids = visible_ids.union(val_ids)
-                        snapshot_split_hints = {str(sample_id): "train" for sample_id in visible_ids}
-                        snapshot_split_hints.update({str(sample_id): "val" for sample_id in val_ids})
+                                ).all()
+                            }
+                            test_batch_ids = {
+                                row[0] if isinstance(row, (tuple, list)) else row
+                                for row in (
+                                    await session.exec(
+                                        select(ALSnapshotSample.sample_id).where(
+                                            ALSnapshotSample.snapshot_version_id == snapshot.id,
+                                            ALSnapshotSample.partition == SnapshotPartition.TEST_BATCH,
+                                        )
+                                    )
+                                ).all()
+                            }
+                            snapshot_scope_sample_ids = test_anchor_ids.union(test_batch_ids)
+                            snapshot_partition_hints = {
+                                str(sample_id): SnapshotPartition.TEST_ANCHOR.value.lower()
+                                for sample_id in test_anchor_ids
+                            }
+                            snapshot_partition_hints.update(
+                                {
+                                    str(sample_id): SnapshotPartition.TEST_BATCH.value.lower()
+                                    for sample_id in test_batch_ids
+                                }
+                            )
+                        else:
+                            val_partitions = [SnapshotPartition.VAL_ANCHOR]
+                            if snapshot.val_policy == SnapshotValPolicy.EXPAND_WITH_BATCH_VAL:
+                                val_partitions.append(SnapshotPartition.VAL_BATCH)
+                            val_ids = {
+                                row[0] if isinstance(row, (tuple, list)) else row
+                                for row in (
+                                    await session.exec(
+                                        select(ALSnapshotSample.sample_id).where(
+                                            ALSnapshotSample.snapshot_version_id == snapshot.id,
+                                            ALSnapshotSample.partition.in_(val_partitions),
+                                        )
+                                    )
+                                ).all()
+                            }
+                            snapshot_scope_sample_ids = visible_ids.union(val_ids)
+                            snapshot_split_hints = {str(sample_id): "train" for sample_id in visible_ids}
+                            snapshot_split_hints.update({str(sample_id): "val" for sample_id in val_ids})
 
             if query_type in {pb.SAMPLES, pb.UNLABELED_SAMPLES}:
                 dataset_ids = [
@@ -363,6 +403,7 @@ class RuntimeControlIngressService:
                     session=session,
                     samples=page,
                     snapshot_split_hints=snapshot_split_hints,
+                    snapshot_partition_hints=snapshot_partition_hints,
                 )
                 return irpb.DataBatchIR(items=items), next_cursor
 
@@ -395,16 +436,17 @@ class RuntimeControlIngressService:
             session,
             task_id: str,
             project_id: uuid.UUID,
-    ) -> tuple[uuid.UUID | None, LoopMode | None, ALSnapshotVersion | None]:
+    ) -> tuple[uuid.UUID | None, LoopMode | None, StepType | None, ALSnapshotVersion | None]:
         try:
             task_uuid = uuid.UUID(str(task_id or "").strip())
         except Exception:
-            return None, None, None
+            return None, None, None, None
         row = (
             await session.exec(
                 select(
                     Round.loop_id,
                     Loop.mode,
+                    Step.step_type,
                     Loop.active_snapshot_version_id,
                 )
                 .select_from(Step)
@@ -418,14 +460,14 @@ class RuntimeControlIngressService:
             )
         ).first()
         if not row:
-            return None, None, None
-        loop_id, mode, snapshot_version_id = row
+            return None, None, None, None
+        loop_id, mode, step_type, snapshot_version_id = row
         if mode not in {LoopMode.ACTIVE_LEARNING, LoopMode.SIMULATION} or not snapshot_version_id:
-            return loop_id, mode, None
+            return loop_id, mode, step_type, None
         snapshot = await session.get(ALSnapshotVersion, snapshot_version_id)
         if not snapshot:
-            return loop_id, mode, None
-        return loop_id, mode, snapshot
+            return loop_id, mode, step_type, None
+        return loop_id, mode, step_type, snapshot
 
     async def _to_sample_items(
         self,
@@ -433,6 +475,7 @@ class RuntimeControlIngressService:
         session,
         samples: list[Sample],
         snapshot_split_hints: dict[str, str] | None = None,
+        snapshot_partition_hints: dict[str, str] | None = None,
     ) -> list[irpb.DataItemIR]:
         items: list[irpb.DataItemIR] = []
         for sample in samples:
@@ -456,6 +499,10 @@ class RuntimeControlIngressService:
                 split_hint = snapshot_split_hints.get(str(sample.id))
                 if split_hint in {"train", "val"}:
                     meta_payload["_snapshot_split"] = split_hint
+            if snapshot_partition_hints:
+                partition_hint = snapshot_partition_hints.get(str(sample.id))
+                if partition_hint:
+                    meta_payload["_snapshot_partition"] = partition_hint
             items.append(
                 irpb.DataItemIR(
                     sample=irpb.SampleRecord(

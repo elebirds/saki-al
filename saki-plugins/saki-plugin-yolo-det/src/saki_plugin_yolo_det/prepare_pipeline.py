@@ -119,6 +119,7 @@ def prepare_yolo_dataset(
         val_degraded=val_degraded,
         split_seed=split_seed,
         val_split_ratio=val_ratio,
+        snapshot_partition_sample_ids=_group_snapshot_partition_sample_ids(sample_map),
     )
     (data_root / "dataset_manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2),
@@ -226,12 +227,25 @@ def _build_sample_map(
                 width = max(0, width)
                 height = max(0, height)
 
+        meta = sample.get("meta") if isinstance(sample.get("meta"), dict) else {}
+        snapshot_partition = str(meta.get("_snapshot_partition") or "").strip().lower() if isinstance(meta, dict) else ""
         sample_map[sample_id] = {
             "source_path": src,
             "width": width,
             "height": height,
+            "snapshot_partition": snapshot_partition,
         }
     return sample_map
+
+
+def _group_snapshot_partition_sample_ids(sample_map: dict[str, dict[str, Any]]) -> dict[str, list[str]]:
+    grouped: dict[str, list[str]] = {}
+    for sample_id, row in sample_map.items():
+        partition = str(row.get("snapshot_partition") or "").strip().lower()
+        if not partition:
+            continue
+        grouped.setdefault(partition, []).append(str(sample_id))
+    return {key: sorted(set(value)) for key, value in grouped.items() if value}
 
 
 def _write_dataset_files(
@@ -385,6 +399,7 @@ def _build_manifest(
     val_degraded: bool,
     split_seed: int,
     val_split_ratio: float,
+    snapshot_partition_sample_ids: dict[str, list[str]],
 ) -> dict[str, Any]:
     return {
         "sample_count": sample_count,
@@ -397,4 +412,5 @@ def _build_manifest(
         "val_degraded": val_degraded,
         "split_seed": split_seed,
         "val_split_ratio": val_split_ratio,
+        "snapshot_partition_sample_ids": dict(snapshot_partition_sample_ids or {}),
     }

@@ -1,9 +1,16 @@
-from pydantic import field_validator
+import socket
+
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def _default_executor_id() -> str:
+    hostname = str(socket.gethostname() or "").strip()
+    return hostname or "executor-1"
+
+
 class Settings(BaseSettings):
-    EXECUTOR_ID: str = "executor-1"
+    EXECUTOR_ID: str = Field(default_factory=_default_executor_id)
     EXECUTOR_VERSION: str = "2.0.0"
 
     API_GRPC_TARGET: str = "localhost:50051"
@@ -38,6 +45,14 @@ class Settings(BaseSettings):
 
     ROUND_SHARED_CACHE_ENABLED: bool = True
     STRICT_TRAIN_MODEL_HANDOFF: bool = True
+
+    @field_validator("EXECUTOR_ID", mode="before")
+    @classmethod
+    def parse_executor_id(cls, v: str | None) -> str:
+        value = str(v or "").strip()
+        if value:
+            return value
+        return _default_executor_id()
 
     @field_validator("LOG_COLOR_MODE", mode="before")
     @classmethod

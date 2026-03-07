@@ -24,6 +24,11 @@ import {
     RuntimeExecutorStatsResponse,
     RuntimeExecutorSummary,
 } from '../../types';
+import {
+    buildExecutorCapabilitySummary,
+    extractExecutorHostCapability,
+    formatGpuDetailLine,
+} from './executorCapability';
 
 const POLLING_INTERVAL_MS = 10_000;
 
@@ -208,10 +213,19 @@ const RuntimeExecutors: React.FC = () => {
 
     const summary = data?.summary;
     const plugins = useMemo(() => extractPlugins(selectedExecutor), [selectedExecutor]);
-    const accelerators = useMemo(() => {
-        const raw = selectedExecutor?.resources?.accelerators;
-        return Array.isArray(raw) ? raw : [];
-    }, [selectedExecutor]);
+    const selectedExecutorCapability = useMemo(
+        () => extractExecutorHostCapability(selectedExecutor),
+        [selectedExecutor],
+    );
+    const hasSelectedExecutorCpuInfo = useMemo(
+        () => (
+            Boolean(selectedExecutorCapability.platform)
+            || Boolean(selectedExecutorCapability.arch)
+            || selectedExecutorCapability.cpuWorkers !== null
+            || selectedExecutorCapability.memoryMb !== null
+        ),
+        [selectedExecutorCapability],
+    );
     const trendData = useMemo<RuntimeExecutorStatsPoint[]>(() => {
         if (!stats?.points?.length) return [];
         return [...stats.points].sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
@@ -406,6 +420,9 @@ const RuntimeExecutors: React.FC = () => {
                                                 >
                                                     <td className="px-4 py-3 align-top">
                                                         <code className="rounded bg-github-badge px-1 py-0.5 text-xs">{row.executorId}</code>
+                                                        <div className="mt-1 text-xs text-github-muted">
+                                                            {buildExecutorCapabilitySummary(row)}
+                                                        </div>
                                                     </td>
                                                     <td className="px-4 py-3 align-top">
                                                         <Tag color={STATUS_COLOR[row.status] || 'default'}>{row.status}</Tag>
@@ -495,26 +512,38 @@ const RuntimeExecutors: React.FC = () => {
                                     ) : null}
 
                                     <div className="rounded-md border border-github-border bg-github-panel p-3 shadow-sm" style={{ backgroundColor: 'var(--github-panel)' }}>
-                                        <div className="mb-2 text-sm font-medium text-github-text">{t('runtime.executors.hardware', {count: accelerators.length})}</div>
-                                        {accelerators.length === 0 ? (
-                                            <Empty description={t('runtime.executors.noHardware')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                                        <div className="mb-2 text-sm font-medium text-github-text">{t('runtime.executors.hardware')}</div>
+                                        {selectedExecutorCapability.gpus.length === 0 && hasSelectedExecutorCpuInfo ? (
+                                            <div className="space-y-2">
+                                                <div className="rounded border border-github-border-muted bg-github-header p-2" style={{ backgroundColor: 'var(--github-header)' }}>
+                                                    <div className="text-sm font-medium text-github-text">
+                                                        {t('runtime.executors.detail.cpuHostInfo')}
+                                                    </div>
+                                                    <div className="mt-1 text-xs text-github-muted">
+                                                        platform={selectedExecutorCapability.platform || 'unknown'} · arch={selectedExecutorCapability.arch || 'unknown'}
+                                                    </div>
+                                                    <div className="mt-1 text-xs text-github-muted">
+                                                        cpu_workers={selectedExecutorCapability.cpuWorkers ?? 'unknown'} · memory_mb={selectedExecutorCapability.memoryMb ?? 'unknown'}
+                                                    </div>
+                                                </div>
+                                            </div>
                                         ) : (
                                             <div className="space-y-2">
-                                                {accelerators.map((accelerator: any) => (
-                                                    <div key={`${accelerator.type}-${(accelerator.deviceIds || []).join(',')}`} className="rounded border border-github-border-muted bg-github-header p-2" style={{ backgroundColor: 'var(--github-header)' }}>
-                                                        <div className="flex items-center justify-between">
-                                                            <div className="text-sm font-medium text-github-text">{String(accelerator.type || '').toUpperCase()}</div>
-                                                            <Tag color={accelerator.available ? 'success' : 'default'}>
-                                                                {accelerator.available ? 'available' : 'unavailable'}
-                                                            </Tag>
-                                                        </div>
-                                                        <div className="mt-1 text-xs text-github-muted">
-                                                            count={accelerator.deviceCount || 0} ids={(accelerator.deviceIds || []).join(', ') || '-'}
-                                                        </div>
+                                                <div className="rounded border border-github-border-muted bg-github-header p-2 text-xs text-github-muted" style={{ backgroundColor: 'var(--github-header)' }}>
+                                                    driver={selectedExecutorCapability.driverVersion || 'unknown'} · CUDA={selectedExecutorCapability.cudaVersion || 'unknown'}
+                                                </div>
+                                                {selectedExecutorCapability.gpus.map((gpu) => (
+                                                    <div key={gpu.id} className="rounded border border-github-border-muted bg-github-header p-2" style={{ backgroundColor: 'var(--github-header)' }}>
+                                                        <div className="text-sm font-medium text-github-text">{gpu.name || 'unknown'}</div>
+                                                        <div className="mt-1 text-xs text-github-muted">GPU #{gpu.id}</div>
+                                                        <div className="mt-1 text-xs text-github-muted">{formatGpuDetailLine(gpu)}</div>
                                                     </div>
                                                 ))}
                                             </div>
                                         )}
+                                        {selectedExecutorCapability.gpus.length === 0 && !hasSelectedExecutorCpuInfo ? (
+                                            <Empty description={t('runtime.executors.noHardware')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                                        ) : null}
                                     </div>
 
                                     <div className="rounded-md border border-github-border bg-github-panel p-3 shadow-sm" style={{ backgroundColor: 'var(--github-panel)' }}>

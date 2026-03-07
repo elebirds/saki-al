@@ -15,6 +15,9 @@ from saki_api.modules.runtime.api.round_step import (
 )
 from saki_api.modules.runtime.domain import phase_for_mode
 from saki_api.modules.runtime.domain.loop import Loop
+from saki_api.modules.runtime.service.catalog.runtime_plugin_catalog_service import (
+    extract_executor_plugins,
+)
 from saki_api.modules.shared.modeling.enums import LoopLifecycle, LoopMode
 
 
@@ -51,6 +54,39 @@ class LoopCommandMixin:
 
     def _extract_config_training_include_label_ids(self, config: dict[str, Any] | None) -> list[str]:
         return self._extract_training_include_label_ids(dict(config or {}))
+
+    @staticmethod
+    def _extract_config_preferred_executor_id(config: dict[str, Any] | None) -> str:
+        execution = (config or {}).get("execution")
+        execution_map = execution if isinstance(execution, dict) else {}
+        return str(
+            execution_map.get("preferred_executor_id")
+            or execution_map.get("preferredExecutorId")
+            or ""
+        ).strip()
+
+    async def _validate_preferred_executor_binding(
+        self,
+        *,
+        model_arch: str,
+        config: dict[str, Any] | None,
+    ) -> None:
+        preferred_executor_id = self._extract_config_preferred_executor_id(config)
+        if not preferred_executor_id:
+            return
+        executor = await self.runtime_executor_repo.get_by_executor_id(preferred_executor_id)
+        if executor is None:
+            raise BadRequestAppException(
+                "config.execution.preferred_executor_id does not exist"
+            )
+        plugin_ids = {
+            item.plugin_id
+            for item in extract_executor_plugins(executor.plugin_ids or {})
+        }
+        if str(model_arch or "").strip() not in plugin_ids:
+            raise BadRequestAppException(
+                "config.execution.preferred_executor_id does not support current model_arch"
+            )
 
     async def _validate_training_include_labels(
         self,
@@ -112,6 +148,10 @@ class LoopCommandMixin:
             project_id=project_id,
             config=normalized_config,
         )
+        await self._validate_preferred_executor_binding(
+            model_arch=payload.model_arch,
+            config=normalized_config,
+        )
 
         # Inject project's enabled_annotation_types into the plugin config
         # section so it flows through dispatcher → executor → plugin for
@@ -162,6 +202,8 @@ class LoopCommandMixin:
             patch.lifecycle = payload.lifecycle
 
         next_mode = payload.mode if payload.mode is not None else loop.mode
+        next_model_arch = payload.model_arch if payload.model_arch is not None else loop.model_arch
+        next_config: dict[str, Any] = dict(loop.config or {})
         if payload.mode is not None:
             patch.mode = payload.mode
             patch.phase = phase_for_mode(payload.mode)
@@ -243,8 +285,14 @@ class LoopCommandMixin:
                         "while loop is draft and snapshot is not initialized"
                     )
             patch.config = normalized_config
+            next_config = normalized_config
             patch.max_rounds = self._derive_loop_max_rounds(mode=mode_text, config=normalized_config)
             patch.query_batch_size = self._derive_query_batch_size(mode=mode_text, config=normalized_config)
+
+        await self._validate_preferred_executor_binding(
+            model_arch=next_model_arch,
+            config=next_config,
+        )
 
         patch_payload = patch.model_dump(exclude_none=True)
         if not patch_payload:

@@ -874,6 +874,9 @@
         "samplingStrategyRequired": "Please select a sampling strategy",
         "queryBatchSize": "TopK Per Round",
         "queryBatchSizeRequired": "Please enter TopK per round",
+        "preferredExecutor": "Preferred Executor",
+        "preferredExecutorPlaceholder": "Empty means auto scheduling",
+        "preferredExecutorHint": "Strict binding: when set, DISPATCHABLE steps stay READY if this executor is unavailable.",
         "trainingLabelScope": "Training Label Scope",
         "trainingLabelScopePlaceholder": "Leave empty to include all labels",
         "trainingLabelScopeHint": "Only selected labels are used to build TRAIN/EVAL data.",
@@ -952,6 +955,9 @@
         "samplingStrategy": "Sampling Strategy",
         "samplingStrategyRequired": "Please select sampling strategy",
         "queryBatchSize": "TopK Per Round",
+        "preferredExecutor": "Preferred Executor",
+        "preferredExecutorPlaceholder": "Empty means auto scheduling",
+        "preferredExecutorHint": "Strict binding: when set, DISPATCHABLE steps stay READY if this executor is unavailable.",
         "trainingLabelScope": "Training Label Scope",
         "trainingLabelScopePlaceholder": "Leave empty to include all labels",
         "trainingLabelScopeHint": "Only selected labels are used to build TRAIN/EVAL data.",
@@ -1664,9 +1670,10 @@
       "detail": {
         "version": "Version",
         "status": "Status",
-        "pending": "Pending Assign / Stop"
+        "pending": "Pending Assign / Stop",
+        "cpuHostInfo": "Host base info"
       },
-      "hardware": "Hardware Capability ({{count}})",
+      "hardware": "Capability",
       "noHardware": "No hardware capability reported",
       "pluginCapability": "Plugin Capability ({{count}})",
       "noPluginCapability": "No plugin capability reported",

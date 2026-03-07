@@ -18,7 +18,7 @@ import {useNavigate, useParams} from 'react-router-dom';
 import {DynamicConfigForm} from '../../../components/common';
 import {useResourcePermission} from '../../../hooks';
 import {api} from '../../../services/api';
-import {CommitHistoryItem, Loop, Project, ProjectLabel, RuntimePluginCatalogItem} from '../../../types';
+import {CommitHistoryItem, Loop, Project, ProjectLabel, RuntimeExecutorRead, RuntimePluginCatalogItem} from '../../../types';
 import {toPluginConfigSchema} from './loopFormSchemaAdapter';
 import {
     buildLoopUpdatePayload,
@@ -26,6 +26,7 @@ import {
     mergePluginConfigWithDefaults,
     pickDefaultSamplingStrategy,
 } from './loopPayloadBuilder';
+import {buildExecutorCapabilitySummary, executorSupportsPlugin} from '../../runtime/executorCapability';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -42,6 +43,7 @@ const ProjectLoopConfig: React.FC = () => {
     const [project, setProject] = useState<Project | null>(null);
     const [labels, setLabels] = useState<ProjectLabel[]>([]);
     const [plugins, setPlugins] = useState<RuntimePluginCatalogItem[]>([]);
+    const [executors, setExecutors] = useState<RuntimeExecutorRead[]>([]);
     const [commits, setCommits] = useState<CommitHistoryItem[]>([]);
     const [configForm] = Form.useForm<LoopEditorFormValues>();
 
@@ -74,9 +76,10 @@ const ProjectLoopConfig: React.FC = () => {
 
     const refreshLoopData = useCallback(async () => {
         if (!loopId || !projectId) return;
-        const [loopRow, pluginCatalog, projectRow, commitRows, labelsRows] = await Promise.all([
+        const [loopRow, pluginCatalog, executorResponse, projectRow, commitRows, labelsRows] = await Promise.all([
             api.getLoopById(loopId),
             api.getRuntimePlugins(),
+            api.getRuntimeExecutors(),
             api.getProject(projectId),
             api.getProjectCommits(projectId),
             api.getProjectLabels(projectId),
@@ -85,6 +88,7 @@ const ProjectLoopConfig: React.FC = () => {
         const nextPlugins = pluginCatalog.items || [];
         setLoop(loopRow);
         setPlugins(nextPlugins);
+        setExecutors(Array.isArray(executorResponse?.items) ? executorResponse.items : []);
         setProject(projectRow);
         setLabels(labelsRows);
         setCommits(commitRows);
@@ -94,6 +98,7 @@ const ProjectLoopConfig: React.FC = () => {
         const loopSampling: any = loopConfig.sampling || {};
         const loopModeConfig = loopConfig.mode || {};
         const loopReproducibility = loopConfig.reproducibility || {};
+        const loopExecutionConfig = loopConfig.execution || {};
         const oracleCommitId = String(loopModeConfig.oracleCommitId || '').trim();
         const loopSnapshotInit = (loopModeConfig.snapshotInit || {}) as Record<string, any>;
         const rawDeterministicLevel = String(loopReproducibility.deterministicLevel || '').trim().toLowerCase();
@@ -107,6 +112,8 @@ const ProjectLoopConfig: React.FC = () => {
             name: loopRow.name,
             mode: loopRow.mode || 'active_learning',
             modelArch: loopRow.modelArch,
+            preferredExecutorId: String(loopExecutionConfig.preferredExecutorId || '').trim() || undefined,
+            executionConfig: loopExecutionConfig,
             globalSeed: String(loopReproducibility.globalSeed || ''),
             deterministicLevel,
             samplingStrategy: loopSampling.strategy || pickDefaultSamplingStrategy(plugin),
@@ -129,6 +136,19 @@ const ProjectLoopConfig: React.FC = () => {
                 : [],
         });
     }, [loopId, projectId, configForm]);
+
+    const executorOptions = useMemo(() => (
+        executors.map((executor) => {
+            const supportsSelectedPlugin = executorSupportsPlugin(executor, selectedPluginId);
+            const statusText = executor.isOnline ? executor.status : 'offline';
+            return {
+                value: executor.executorId,
+                label: `${executor.executorId} · ${statusText} · ${buildExecutorCapabilitySummary(executor)}`,
+                searchText: `${executor.executorId} ${statusText} ${buildExecutorCapabilitySummary(executor)}`.toLowerCase(),
+                disabled: selectedPluginId ? !supportsSelectedPlugin : false,
+            };
+        })
+    ), [executors, selectedPluginId]);
 
     const loadData = useCallback(async () => {
         if (!canManageLoops) return;
@@ -259,13 +279,41 @@ const ProjectLoopConfig: React.FC = () => {
                                     if (!plugin) return;
                                     const currentStrategy = configForm.getFieldValue('samplingStrategy');
                                     const currentPluginConfig = configForm.getFieldValue('pluginConfig') || {};
+                                    const currentPreferredExecutorId = String(
+                                        configForm.getFieldValue('preferredExecutorId') || '',
+                                    ).trim();
+                                    const currentPreferredExecutor = executors.find(
+                                        (item) => item.executorId === currentPreferredExecutorId,
+                                    );
                                     configForm.setFieldsValue({
                                         samplingStrategy:
                                             plugin.supportedStrategies.includes(currentStrategy)
                                                 ? currentStrategy
                                                 : pickDefaultSamplingStrategy(plugin),
                                         pluginConfig: mergePluginConfigWithDefaults(plugin, currentPluginConfig),
+                                        preferredExecutorId: (
+                                            currentPreferredExecutor
+                                            && !executorSupportsPlugin(currentPreferredExecutor, String(value))
+                                        )
+                                            ? undefined
+                                            : currentPreferredExecutorId || undefined,
                                     });
+                                }}
+                            />
+                        </Form.Item>
+                        <Form.Item
+                            name="preferredExecutorId"
+                            label={t('project.loopConfig.form.preferredExecutor')}
+                            extra={t('project.loopConfig.form.preferredExecutorHint')}
+                        >
+                            <Select
+                                allowClear
+                                showSearch
+                                placeholder={t('project.loopConfig.form.preferredExecutorPlaceholder')}
+                                options={executorOptions}
+                                filterOption={(input, option) => {
+                                    const haystack = String((option as any)?.searchText || '').toLowerCase();
+                                    return haystack.includes(input.toLowerCase());
                                 }}
                             />
                         </Form.Item>

@@ -160,12 +160,68 @@ def test_build_register_message_with_accelerators():
                 {"type": "cuda", "available": True, "device_count": 1, "device_ids": ["0"]},
                 {"type": "cpu", "available": True, "device_count": 1, "device_ids": ["cpu"]},
             ],
+            "host_capability": {
+                "platform": "linux",
+                "arch": "x86_64",
+                "cpu_workers": 4,
+                "memory_mb": 1024,
+                "gpus": [
+                    {
+                        "id": "0",
+                        "name": "RTX 4090",
+                        "memory_mb": 24564,
+                        "compute_capability": "8.9",
+                        "fp32_tflops": 82.6,
+                    }
+                ],
+                "driver_info": {
+                    "driver_version": "550.54.15",
+                    "cuda_version": "12.4",
+                },
+            },
         },
     )
     assert message.WhichOneof("payload") == "register"
     assert list(message.register.plugins[0].supported_accelerators) == [pb.CPU, pb.CUDA]
     assert message.register.plugins[0].supports_auto_fallback is True
     assert len(message.register.resources.accelerators) >= 2
+    assert message.register.resources.host_capability.fields["platform"].string_value == "linux"
+    assert message.register.resources.host_capability.fields["gpus"].list_value.values[0].struct_value.fields["compute_capability"].string_value == "8.9"
+
+
+def test_parse_assign_task_resource_summary_keeps_host_capability():
+    runtime_message = pb.RuntimeMessage(
+        assign_task=pb.AssignTask(
+            request_id="req-with-host",
+            task=pb.TaskPayload(
+                task_id="task-with-host",
+                round_id="round-1",
+                project_id="project-1",
+                loop_id="loop-1",
+                task_type=pb.TRAIN,
+                plugin_id="demo_det_v1",
+                mode=pb.ACTIVE_LEARNING,
+                resources=pb.ResourceSummary(
+                    gpu_count=1,
+                    gpu_device_ids=[0],
+                    cpu_workers=16,
+                    memory_mb=64000,
+                    host_capability=codec.dict_to_struct(
+                        {
+                            "platform": "linux",
+                            "arch": "x86_64",
+                            "gpus": [{"id": "0", "name": "RTX 4090"}],
+                            "driver_info": {"cuda_version": "12.4"},
+                        }
+                    ),
+                ),
+            ),
+        )
+    )
+
+    payload = codec.parse_assign_task(runtime_message.assign_task)
+    assert payload["resources"]["host_capability"]["platform"] == "linux"
+    assert payload["resources"]["host_capability"]["driver_info"]["cuda_version"] == "12.4"
 
 
 def test_task_status_codec_mapping():

@@ -11,25 +11,53 @@ def _normalize_backend(value: Any) -> str:
     return ""
 
 
+def _to_optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except Exception:
+        return None
+
+
 @dataclass(frozen=True)
 class GpuDeviceCapability:
     id: str
     name: str = ""
     memory_mb: int = 0
+    compute_capability: str = ""
+    fp32_tflops: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
             "name": self.name,
             "memory_mb": int(self.memory_mb),
+            "compute_capability": str(self.compute_capability or "").strip(),
+            "fp32_tflops": (
+                float(self.fp32_tflops)
+                if self.fp32_tflops is not None
+                else None
+            ),
         }
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "GpuDeviceCapability":
+        compute_capability = str(
+            payload.get("compute_capability")
+            or payload.get("computeCapability")
+            or ""
+        ).strip()
         return cls(
             id=str(payload.get("id") or "").strip(),
             name=str(payload.get("name") or "").strip(),
-            memory_mb=max(0, int(payload.get("memory_mb") or 0)),
+            memory_mb=max(0, int(payload.get("memory_mb") or payload.get("memoryMb") or 0)),
+            compute_capability=compute_capability,
+            fp32_tflops=_to_optional_float(
+                payload.get("fp32_tflops")
+                if "fp32_tflops" in payload
+                else payload.get("fp32Tflops")
+            ),
         )
 
 
@@ -70,6 +98,9 @@ class HostCapabilitySnapshot:
             for item in (rows if isinstance(rows, list) else [])
             if isinstance(item, dict)
         ]
+        driver_info = payload.get("driver_info")
+        if not isinstance(driver_info, dict):
+            driver_info = payload.get("driverInfo")
         return cls(
             cpu_workers=max(1, int(payload.get("cpu_workers") or 1)),
             memory_mb=max(0, int(payload.get("memory_mb") or 0)),
@@ -77,7 +108,7 @@ class HostCapabilitySnapshot:
             metal_available=bool(payload.get("metal_available")),
             platform=str(payload.get("platform") or "").strip().lower(),
             arch=str(payload.get("arch") or "").strip().lower(),
-            driver_info=dict(payload.get("driver_info") or {}),
+            driver_info=dict(driver_info or {}),
         )
 
 

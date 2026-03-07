@@ -25,6 +25,7 @@ import {
     Project,
     ProjectLabel,
     ProjectBranch,
+    RuntimeExecutorRead,
     RuntimePluginCatalogItem,
 } from '../../../types';
 import {toPluginConfigSchema} from './loopFormSchemaAdapter';
@@ -35,6 +36,7 @@ import {
     pickDefaultSamplingStrategy,
     RANDOM_BASELINE_STRATEGY,
 } from './loopPayloadBuilder';
+import {buildExecutorCapabilitySummary, executorSupportsPlugin} from '../../runtime/executorCapability';
 
 const {Title, Text} = Typography;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -51,6 +53,7 @@ const ProjectLoopCreate: React.FC = () => {
     const [loops, setLoops] = useState<Loop[]>([]);
     const [branches, setBranches] = useState<ProjectBranch[]>([]);
     const [plugins, setPlugins] = useState<RuntimePluginCatalogItem[]>([]);
+    const [executors, setExecutors] = useState<RuntimeExecutorRead[]>([]);
     const [commits, setCommits] = useState<CommitHistoryItem[]>([]);
     const [project, setProject] = useState<Project | null>(null);
     const [labels, setLabels] = useState<ProjectLabel[]>([]);
@@ -93,18 +96,23 @@ const ProjectLoopCreate: React.FC = () => {
         if (!projectId || !canManageLoops) return;
         setLoading(true);
         try {
-            const [loopRows, branchRows, pluginCatalog, commitRows, projectRow, labelsRows] = await Promise.all([
+            const [loopRows, branchRows, pluginCatalog, executorResponse, commitRows, projectRow, labelsRows] = await Promise.all([
                 api.getProjectLoops(projectId),
                 api.getProjectBranches(projectId),
                 api.getRuntimePlugins(),
+                api.getRuntimeExecutors(),
                 api.getProjectCommits(projectId),
                 api.getProject(projectId),
                 api.getProjectLabels(projectId),
             ]);
+            const runtimeExecutors = Array.isArray(executorResponse?.items)
+                ? executorResponse.items as RuntimeExecutorRead[]
+                : [];
             const nextPlugins = pluginCatalog.items || [];
             setLoops(loopRows);
             setBranches(branchRows);
             setPlugins(nextPlugins);
+            setExecutors(runtimeExecutors);
             setCommits(commitRows);
             setProject(projectRow);
             setLabels(labelsRows);
@@ -118,6 +126,8 @@ const ProjectLoopCreate: React.FC = () => {
                 branchId: openBranches[0]?.id,
                 mode: 'active_learning',
                 modelArch: firstPlugin?.pluginId,
+                preferredExecutorId: undefined,
+                executionConfig: {},
                 globalSeed: '',
                 deterministicLevel: 'off',
                 samplingStrategy: defaultStrategy || RANDOM_BASELINE_STRATEGY,
@@ -143,6 +153,19 @@ const ProjectLoopCreate: React.FC = () => {
             setLoading(false);
         }
     }, [projectId, canManageLoops, createForm, t]);
+
+    const executorOptions = useMemo(() => (
+        executors.map((executor) => {
+            const supportsSelectedPlugin = executorSupportsPlugin(executor, selectedPluginId);
+            const statusText = executor.isOnline ? executor.status : 'offline';
+            return {
+                value: executor.executorId,
+                label: `${executor.executorId} · ${statusText} · ${buildExecutorCapabilitySummary(executor)}`,
+                searchText: `${executor.executorId} ${statusText} ${buildExecutorCapabilitySummary(executor)}`.toLowerCase(),
+                disabled: selectedPluginId ? !supportsSelectedPlugin : false,
+            };
+        })
+    ), [executors, selectedPluginId]);
 
     useEffect(() => {
         if (!canManageLoops) return;
@@ -282,12 +305,24 @@ const ProjectLoopCreate: React.FC = () => {
                                     if (!plugin) return;
                                     const currentStrategy = createForm.getFieldValue('samplingStrategy');
                                     const currentPluginConfig = createForm.getFieldValue('pluginConfig') || {};
+                                    const currentPreferredExecutorId = String(
+                                        createForm.getFieldValue('preferredExecutorId') || '',
+                                    ).trim();
+                                    const currentPreferredExecutor = executors.find(
+                                        (item) => item.executorId === currentPreferredExecutorId,
+                                    );
                                     createForm.setFieldsValue({
                                         samplingStrategy:
                                             plugin.supportedStrategies.includes(currentStrategy)
                                                 ? currentStrategy
                                                 : pickDefaultSamplingStrategy(plugin),
                                         pluginConfig: mergePluginConfigWithDefaults(plugin, currentPluginConfig),
+                                        preferredExecutorId: (
+                                            currentPreferredExecutor
+                                            && !executorSupportsPlugin(currentPreferredExecutor, String(value))
+                                        )
+                                            ? undefined
+                                            : currentPreferredExecutorId || undefined,
                                     });
                                 }}
                             />
@@ -334,6 +369,24 @@ const ProjectLoopCreate: React.FC = () => {
                                 message={t('project.loopCreate.form.deterministicLevelPerfHint')}
                             />
                         ) : null}
+                    </div>
+                    <div className="grid grid-cols-1 gap-x-4 md:grid-cols-2">
+                        <Form.Item
+                            name="preferredExecutorId"
+                            label={t('project.loopCreate.form.preferredExecutor')}
+                            extra={t('project.loopCreate.form.preferredExecutorHint')}
+                        >
+                            <Select
+                                allowClear
+                                showSearch
+                                placeholder={t('project.loopCreate.form.preferredExecutorPlaceholder')}
+                                options={executorOptions}
+                                filterOption={(input, option) => {
+                                    const haystack = String((option as any)?.searchText || '').toLowerCase();
+                                    return haystack.includes(input.toLowerCase());
+                                }}
+                            />
+                        </Form.Item>
                     </div>
                 </Card>
 

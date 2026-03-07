@@ -155,6 +155,12 @@ def normalize_loop_config(raw_config: dict[str, Any] | None, *, mode: str) -> di
     normalized_execution["preferred_accelerator"] = str(
         normalized_execution.get("preferred_accelerator") or "auto"
     ).strip()
+    normalized_execution["preferred_executor_id"] = str(
+        normalized_execution.get("preferred_executor_id")
+        or normalized_execution.get("preferredExecutorId")
+        or ""
+    ).strip()
+    normalized_execution.pop("preferredExecutorId", None)
     normalized_execution["allow_fallback"] = to_bool(normalized_execution.get("allow_fallback"), True)
     round_resources_default = normalized_execution.get("round_resources_default")
     normalized_execution["round_resources_default"] = (

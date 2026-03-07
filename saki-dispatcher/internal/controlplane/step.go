@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/spf13/cast"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/structpb"
 
@@ -158,15 +159,34 @@ func (s *Service) dispatchStepTaskByID(ctx context.Context, taskID uuid.UUID) (b
 		return executed, tx.Commit(ctx)
 	}
 
-	preferredExecutorID, err := s.resolvePreferredExecutorIDByDependenciesTx(ctx, tx, stepPayload.DependsOnTaskIDs)
-	if err != nil {
-		return false, err
+	loopPreferredExecutorID := preferredExecutorIDFromResolvedParams(stepPayload.Params)
+	dependencyPreferredExecutorID := ""
+	if loopPreferredExecutorID == "" {
+		preferredExecutorID, resolveErr := s.resolvePreferredExecutorIDByDependenciesTx(
+			ctx,
+			tx,
+			stepPayload.DependsOnTaskIDs,
+		)
+		if resolveErr != nil {
+			return false, resolveErr
+		}
+		dependencyPreferredExecutorID = preferredExecutorID
 	}
-	executorID, deferredByAffinity := s.pickExecutorWithRoundAffinity(
+	executorID, deferredByAffinity, blockedByLoopBinding := s.pickExecutorForStepDispatch(
 		stepPayload.PluginID,
-		preferredExecutorID,
 		stepPayload.UpdatedAt,
+		dependencyPreferredExecutorID,
+		loopPreferredExecutorID,
 	)
+	if blockedByLoopBinding {
+		s.logger.Debug().
+			Str("task_id", taskID.String()).
+			Str("step_id", stepPayload.StepID.String()).
+			Str("preferred_executor_id", loopPreferredExecutorID).
+			Str("plugin_id", stepPayload.PluginID).
+			Msg("loop 指定 executor 不可用或不支持插件，保持 READY 等待")
+		return false, tx.Commit(ctx)
+	}
 	if deferredByAffinity || strings.TrimSpace(executorID) == "" {
 		return false, tx.Commit(ctx)
 	}
@@ -1089,6 +1109,44 @@ func (s *Service) resolvePreferredExecutorIDByDependenciesTx(
 		return "", err
 	}
 	return strings.TrimSpace(executorID), nil
+}
+
+func preferredExecutorIDFromResolvedParams(params *structpb.Struct) string {
+	payload := structToMap(params)
+	executionRaw, ok := payload["execution"]
+	if !ok {
+		return ""
+	}
+	executionMap, ok := executionRaw.(map[string]any)
+	if !ok {
+		return ""
+	}
+	preferredRaw := strings.TrimSpace(cast.ToString(executionMap["preferred_executor_id"]))
+	if preferredRaw != "" {
+		return preferredRaw
+	}
+	return strings.TrimSpace(cast.ToString(executionMap["preferredExecutorId"]))
+}
+
+func (s *Service) pickExecutorForStepDispatch(
+	pluginID string,
+	readyAt *time.Time,
+	dependencyPreferredExecutorID string,
+	loopPreferredExecutorID string,
+) (executorID string, deferredByAffinity bool, blockedByLoopBinding bool) {
+	loopPreferredExecutorID = strings.TrimSpace(loopPreferredExecutorID)
+	if loopPreferredExecutorID != "" {
+		if s.dispatcher.IsExecutorAvailable(loopPreferredExecutorID, pluginID) {
+			return loopPreferredExecutorID, false, false
+		}
+		return "", false, true
+	}
+	executorID, deferredByAffinity = s.pickExecutorWithRoundAffinity(
+		pluginID,
+		dependencyPreferredExecutorID,
+		readyAt,
+	)
+	return executorID, deferredByAffinity, false
 }
 
 func (s *Service) pickExecutorWithRoundAffinity(

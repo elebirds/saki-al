@@ -901,6 +901,9 @@
         "samplingStrategyRequired": "请选择采样策略",
         "queryBatchSize": "每轮 TopK",
         "queryBatchSizeRequired": "请填写每轮 TopK",
+        "preferredExecutor": "指定 Executor",
+        "preferredExecutorPlaceholder": "留空表示自动调度",
+        "preferredExecutorHint": "严格绑定：指定后该 Executor 不可用时，任务会保持 READY 等待，不自动回退。",
         "trainingLabelScope": "训练标签范围",
         "trainingLabelScopePlaceholder": "不选择表示使用全部标签",
         "trainingLabelScopeHint": "仅选中标签会参与 TRAIN/EVAL 的训练数据构建。",
@@ -979,6 +982,9 @@
         "samplingStrategy": "采样策略",
         "samplingStrategyRequired": "请选择采样策略",
         "queryBatchSize": "每轮 TopK",
+        "preferredExecutor": "指定 Executor",
+        "preferredExecutorPlaceholder": "留空表示自动调度",
+        "preferredExecutorHint": "严格绑定：指定后该 Executor 不可用时，任务会保持 READY 等待，不自动回退。",
         "trainingLabelScope": "训练标签范围",
         "trainingLabelScopePlaceholder": "不选择表示使用全部标签",
         "trainingLabelScopeHint": "仅选中标签会参与 TRAIN/EVAL 的训练数据构建。",
@@ -1664,9 +1670,10 @@
       "detail": {
         "version": "版本",
         "status": "状态",
-        "pending": "待派发 / 待停止"
+        "pending": "待派发 / 待停止",
+        "cpuHostInfo": "主机基础信息"
       },
-      "hardware": "硬件能力 ({{count}})",
+      "hardware": "算力信息",
       "noHardware": "未上报硬件能力",
       "pluginCapability": "插件能力 ({{count}})",
       "noPluginCapability": "未上报插件能力",

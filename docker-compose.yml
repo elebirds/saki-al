@@ -195,7 +195,7 @@ services:
     profiles:
       - saki-executor
     environment:
-      - EXECUTOR_ID=${EXECUTOR_ID:-executor-1}
+      - EXECUTOR_ID=${EXECUTOR_ID:-}
       - EXECUTOR_VERSION=${EXECUTOR_VERSION:-0.1.0}
       - API_GRPC_TARGET=${API_GRPC_TARGET:-saki-dispatcher:50051}
       - INTERNAL_TOKEN=${INTERNAL_TOKEN:-dev-secret}

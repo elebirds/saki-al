@@ -111,6 +111,7 @@ message ResourceSummary {
   int32 cpu_workers = 3;
   int32 memory_mb = 4;
   repeated AcceleratorCapability accelerators = 5;
+  google.protobuf.Struct host_capability = 6;
 }
 
 message Register {

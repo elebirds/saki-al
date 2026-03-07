@@ -273,10 +273,49 @@ func toResourceSummary(raw []byte) *runtimecontrolv1.ResourceSummary {
 
 	if ids, ok := payload["gpu_device_ids"].([]any); ok {
 		for _, item := range ids {
-			id := cast.ToInt32(item)
-			if id != 0 {
-				summary.GpuDeviceIds = append(summary.GpuDeviceIds, id)
+			summary.GpuDeviceIds = append(summary.GpuDeviceIds, cast.ToInt32(item))
+		}
+	}
+	if acceleratorsRaw, ok := payload["accelerators"].([]any); ok {
+		for _, acceleratorRaw := range acceleratorsRaw {
+			acceleratorMap, mapOK := acceleratorRaw.(map[string]any)
+			if !mapOK {
+				continue
 			}
+			acceleratorType := strings.ToLower(strings.TrimSpace(cast.ToString(acceleratorMap["type"])))
+			enumType := runtimecontrolv1.AcceleratorType_ACCELERATOR_TYPE_UNSPECIFIED
+			switch acceleratorType {
+			case "cpu":
+				enumType = runtimecontrolv1.AcceleratorType_CPU
+			case "cuda":
+				enumType = runtimecontrolv1.AcceleratorType_CUDA
+			case "mps":
+				enumType = runtimecontrolv1.AcceleratorType_MPS
+			default:
+				continue
+			}
+			deviceIDs := make([]string, 0)
+			if rawDeviceIDs, idsOK := acceleratorMap["device_ids"].([]any); idsOK {
+				for _, item := range rawDeviceIDs {
+					text := strings.TrimSpace(cast.ToString(item))
+					if text == "" {
+						continue
+					}
+					deviceIDs = append(deviceIDs, text)
+				}
+			}
+			summary.Accelerators = append(summary.Accelerators, &runtimecontrolv1.AcceleratorCapability{
+				Type:        enumType,
+				Available:   cast.ToBool(acceleratorMap["available"]),
+				DeviceCount: cast.ToInt32(acceleratorMap["device_count"]),
+				DeviceIds:   deviceIDs,
+			})
+		}
+	}
+	if hostCapabilityRaw, ok := payload["host_capability"].(map[string]any); ok {
+		hostCapability, err := structpb.NewStruct(hostCapabilityRaw)
+		if err == nil {
+			summary.HostCapability = hostCapability
 		}
 	}
 	return summary
@@ -340,11 +379,12 @@ func resourceSummaryToMap(summary *runtimecontrolv1.ResourceSummary) map[string]
 		gpuDeviceIDs = append(gpuDeviceIDs, item)
 	}
 	return map[string]any{
-		"gpu_count":      summary.GetGpuCount(),
-		"gpu_device_ids": gpuDeviceIDs,
-		"cpu_workers":    summary.GetCpuWorkers(),
-		"memory_mb":      summary.GetMemoryMb(),
-		"accelerators":   accelerators,
+		"gpu_count":       summary.GetGpuCount(),
+		"gpu_device_ids":  gpuDeviceIDs,
+		"cpu_workers":     summary.GetCpuWorkers(),
+		"memory_mb":       summary.GetMemoryMb(),
+		"accelerators":    accelerators,
+		"host_capability": structToMap(summary.GetHostCapability()),
 	}
 }
 

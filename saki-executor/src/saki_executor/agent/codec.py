@@ -217,13 +217,17 @@ def _dict_to_resource_summary(resources: Mapping[str, Any] | None) -> pb.Resourc
             )
         )
 
-    return pb.ResourceSummary(
+    summary = pb.ResourceSummary(
         gpu_count=gpu_count,
         gpu_device_ids=gpu_ids,
         cpu_workers=int(payload.get("cpu_workers") or 0),
         memory_mb=int(payload.get("memory_mb") or 0),
         accelerators=accelerators,
     )
+    host_capability = payload.get("host_capability")
+    if isinstance(host_capability, Mapping):
+        summary.host_capability.CopyFrom(dict_to_struct(host_capability))
+    return summary
 
 
 def _resource_summary_to_dict(resources: pb.ResourceSummary) -> dict[str, Any]:
@@ -261,13 +265,17 @@ def _resource_summary_to_dict(resources: pb.ResourceSummary) -> dict[str, Any]:
             }
         )
 
-    return {
+    payload = {
         "gpu_count": int(resources.gpu_count),
         "gpu_device_ids": [int(item) for item in resources.gpu_device_ids],
         "cpu_workers": int(resources.cpu_workers),
         "memory_mb": int(resources.memory_mb),
         "accelerators": accelerators,
     }
+    host_capability = struct_to_dict(resources.host_capability)
+    if host_capability:
+        payload["host_capability"] = host_capability
+    return payload
 
 
 def build_register_message(

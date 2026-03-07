@@ -16,6 +16,8 @@ export type LoopEditorFormValues = {
     branchId?: string;
     mode?: LoopMode;
     modelArch: string;
+    preferredExecutorId?: string;
+    executionConfig?: Record<string, any>;
     globalSeed: string;
     deterministicLevel?: DeterministicLevel;
     samplingStrategy?: string;
@@ -115,6 +117,10 @@ export const buildLoopRuntimeConfig = (
             },
         };
     }
+    config.execution = {
+        ...(values.executionConfig || {}),
+        preferredExecutorId: normalizeText(values.preferredExecutorId),
+    };
 
     const trainingLabelIds = Array.from(new Set((values.trainingLabelIds || [])
         .map((item) => normalizeText(item))

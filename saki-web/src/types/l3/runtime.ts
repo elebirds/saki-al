@@ -85,6 +85,7 @@ export interface LoopReproducibilityConfig {
 }
 
 export interface LoopExecutionConfig {
+    preferredExecutorId?: string;
     preferredAccelerator?: string;
     allowFallback?: boolean;
     roundResourcesDefault?: Record<string, any>;
@@ -763,6 +764,28 @@ export interface RuntimeAcceleratorCapability {
     deviceIds: string[];
 }
 
+export interface RuntimeGpuDeviceCapability {
+    id: string;
+    name?: string;
+    memoryMb?: number;
+    computeCapability?: string;
+    fp32Tflops?: number | null;
+}
+
+export interface RuntimeHostDriverInfo {
+    driverVersion?: string;
+    cudaVersion?: string;
+}
+
+export interface RuntimeHostCapability {
+    platform?: string;
+    arch?: string;
+    cpuWorkers?: number;
+    memoryMb?: number;
+    gpus?: RuntimeGpuDeviceCapability[];
+    driverInfo?: RuntimeHostDriverInfo;
+}
+
 export interface RuntimeExecutorRead {
     id: string;
     executorId: string;
@@ -776,6 +799,7 @@ export interface RuntimeExecutorRead {
     } & Record<string, any>;
     resources: {
         accelerators?: RuntimeAcceleratorCapability[];
+        hostCapability?: RuntimeHostCapability;
     } & Record<string, any>;
     lastSeenAt?: string | null;
     lastError?: string | null;

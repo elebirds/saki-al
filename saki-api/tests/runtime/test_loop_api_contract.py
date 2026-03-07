@@ -49,6 +49,7 @@ from saki_api.modules.runtime.domain.task import Task
 from saki_api.modules.runtime.domain.task_event import TaskEvent
 from saki_api.modules.runtime.domain.task_metric_point import TaskMetricPoint
 from saki_api.modules.runtime.domain.al_snapshot_version import ALSnapshotVersion
+from saki_api.modules.runtime.domain.runtime_executor import RuntimeExecutor
 from saki_api.modules.storage.domain.dataset import Dataset
 from saki_api.modules.storage.domain.sample import Sample
 from saki_api.modules.access.domain.access.user import User
@@ -245,6 +246,39 @@ def _loop_config(config: dict) -> dict:
     reproducibility.setdefault("global_seed", "test-global-seed")
     merged["reproducibility"] = reproducibility
     return merged
+
+
+async def _seed_runtime_executor(
+    session: AsyncSession,
+    *,
+    executor_id: str,
+    plugin_ids: list[str],
+) -> RuntimeExecutor:
+    plugins_payload = [
+        {
+            "plugin_id": plugin_id,
+            "display_name": plugin_id,
+            "version": "0.1.0",
+            "supported_task_types": ["train", "eval", "score", "custom"],
+            "supported_strategies": ["random_baseline"],
+            "supported_accelerators": ["cpu", "cuda"],
+            "supports_auto_fallback": True,
+        }
+        for plugin_id in plugin_ids
+    ]
+    executor = RuntimeExecutor(
+        executor_id=executor_id,
+        version="0.1.0",
+        status="idle",
+        is_online=True,
+        plugin_ids={"plugins": plugins_payload},
+        resources={},
+        last_seen_at=datetime.now(UTC),
+    )
+    session.add(executor)
+    await session.commit()
+    await session.refresh(executor)
+    return executor
 
 
 async def _attach_step_task(
@@ -456,6 +490,169 @@ async def test_create_loop_requires_global_seed(loop_api_env):
                         model_arch="yolo_det_v1",
                         config={"sampling": {"strategy": "random_baseline", "topk": 200}},
                     ),
+                )
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_create_loop_rejects_unknown_preferred_executor_id(loop_api_env):
+    session_local = loop_api_env
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        await _seed_runtime_executor(
+            session,
+            executor_id="executor-known",
+            plugin_ids=["yolo_det_v1"],
+        )
+        service = RuntimeService(session)
+
+        token = _session_ctx.set(session)
+        try:
+            with pytest.raises(BadRequestAppException, match="preferred_executor_id does not exist"):
+                await service.create_loop(
+                    project.id,
+                    LoopCreateRequest(
+                        name="loop-missing-preferred-executor",
+                        branch_id=branch.id,
+                        model_arch="yolo_det_v1",
+                        config=_loop_config(
+                            {
+                                "sampling": {"strategy": "random_baseline", "topk": 200},
+                                "execution": {"preferred_executor_id": "executor-missing"},
+                            }
+                        ),
+                    ),
+                )
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_create_loop_rejects_preferred_executor_without_model_arch_support(loop_api_env):
+    session_local = loop_api_env
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        await _seed_runtime_executor(
+            session,
+            executor_id="executor-a",
+            plugin_ids=["mmcls_v1"],
+        )
+        await _seed_runtime_executor(
+            session,
+            executor_id="executor-b",
+            plugin_ids=["yolo_det_v1"],
+        )
+        service = RuntimeService(session)
+
+        token = _session_ctx.set(session)
+        try:
+            with pytest.raises(BadRequestAppException, match="does not support current model_arch"):
+                await service.create_loop(
+                    project.id,
+                    LoopCreateRequest(
+                        name="loop-preferred-executor-plugin-mismatch",
+                        branch_id=branch.id,
+                        model_arch="yolo_det_v1",
+                        config=_loop_config(
+                            {
+                                "sampling": {"strategy": "random_baseline", "topk": 200},
+                                "execution": {"preferred_executor_id": "executor-a"},
+                            }
+                        ),
+                    ),
+                )
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_update_loop_allows_clearing_preferred_executor_id(loop_api_env):
+    session_local = loop_api_env
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        await _seed_runtime_executor(
+            session,
+            executor_id="executor-a",
+            plugin_ids=["yolo_det_v1"],
+        )
+        service = RuntimeService(session)
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-preferred-executor-clear",
+                    branch_id=branch.id,
+                    model_arch="yolo_det_v1",
+                    config=_loop_config(
+                        {
+                            "sampling": {"strategy": "random_baseline", "topk": 200},
+                            "execution": {"preferred_executor_id": "executor-a"},
+                        }
+                    ),
+                ),
+            )
+            assert loop.config.get("execution", {}).get("preferred_executor_id") == "executor-a"
+
+            updated = await service.update_loop(
+                loop.id,
+                LoopUpdateRequest(
+                    config=_loop_config(
+                        {
+                            "sampling": {"strategy": "random_baseline", "topk": 200},
+                            "execution": {"preferred_executor_id": ""},
+                        }
+                    )
+                ),
+            )
+            assert updated.config.get("execution", {}).get("preferred_executor_id") == ""
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_update_loop_rejects_model_arch_change_when_preferred_executor_incompatible(loop_api_env):
+    session_local = loop_api_env
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        await _seed_runtime_executor(
+            session,
+            executor_id="executor-a",
+            plugin_ids=["yolo_det_v1"],
+        )
+        await _seed_runtime_executor(
+            session,
+            executor_id="executor-b",
+            plugin_ids=["mm_det_v1"],
+        )
+        service = RuntimeService(session)
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-model-arch-switch",
+                    branch_id=branch.id,
+                    model_arch="yolo_det_v1",
+                    config=_loop_config(
+                        {
+                            "sampling": {"strategy": "random_baseline", "topk": 200},
+                            "execution": {"preferred_executor_id": "executor-a"},
+                        }
+                    ),
+                ),
+            )
+            with pytest.raises(BadRequestAppException, match="does not support current model_arch"):
+                await service.update_loop(
+                    loop.id,
+                    LoopUpdateRequest(model_arch="mm_det_v1"),
                 )
         finally:
             _session_ctx.reset(token)

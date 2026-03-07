@@ -931,6 +931,10 @@ const ProjectLoopDetail: React.FC = () => {
             </Card>
         );
     }
+    const loopExecutionConfig = (loop.config?.execution || {}) as Record<string, any>;
+    const preferredExecutorId = String(
+        loopExecutionConfig.preferredExecutorId || loopExecutionConfig.preferred_executor_id || '',
+    ).trim();
 
     return (
         <div className="flex h-full flex-col gap-4 overflow-auto pr-1">
@@ -1009,6 +1013,7 @@ const ProjectLoopDetail: React.FC = () => {
                     <Descriptions.Item label="Gate">
                         {loop.gate ? <Tag color={LOOP_GATE_COLOR[loop.gate] || 'default'}>{loop.gate}</Tag> : '-'}
                     </Descriptions.Item>
+                    <Descriptions.Item label="绑定 Executor">{preferredExecutorId || '自动调度'}</Descriptions.Item>
                     <Descriptions.Item label="Rounds 总数">{summary?.roundsTotal ?? 0}</Descriptions.Item>
                     <Descriptions.Item label="Attempts 总数">{summary?.attemptsTotal ?? 0}</Descriptions.Item>
                     <Descriptions.Item label="Rounds 成功">{summary?.roundsSucceeded ?? 0}</Descriptions.Item>
@@ -1025,6 +1030,15 @@ const ProjectLoopDetail: React.FC = () => {
                         </div>
                     </Descriptions.Item>
                 </Descriptions>
+                {preferredExecutorId ? (
+                    <Alert
+                        className="!mt-3"
+                        type="info"
+                        showIcon
+                        message={`已固定绑定 Executor: ${preferredExecutorId}`}
+                        description="严格绑定：该 Executor 不可用时，DISPATCHABLE 步骤会保持 READY 等待，不会自动回退到其他机器。"
+                    />
+                ) : null}
             </Card>
 
             {loop.mode === 'active_learning' ? (

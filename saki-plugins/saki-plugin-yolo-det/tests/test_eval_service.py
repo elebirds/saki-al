@@ -111,6 +111,10 @@ async def test_eval_runs_three_scopes_and_uses_anchor_as_primary(tmp_path, monke
 
     def _fake_run_eval_sync(**kwargs):
         run_name = str(kwargs.get("run_name") or "")
+        dataset_path = Path(str(kwargs.get("dataset_yaml") or ""))
+        if run_name.startswith("eval_test_"):
+            assert dataset_path.suffix == ".yaml"
+            assert dataset_path.name.startswith("eval_scope_")
         if run_name.endswith("test_anchor"):
             return {"metrics": {"map50": 0.8, "map50_95": 0.7, "precision": 0.9, "recall": 0.6}, "extra_artifacts": [], "sample_count": 2}
         if run_name.endswith("test_batch"):
@@ -144,6 +148,9 @@ async def test_eval_runs_three_scopes_and_uses_anchor_as_primary(tmp_path, monke
     assert report["sample_count_by_scope"]["test_anchor"] == 2
     assert report["sample_count_by_scope"]["test_batch"] == 1
     assert report["sample_count_by_scope"]["test_composite"] == 3
+    assert (workspace.artifacts_dir / "eval_scope_test_anchor.yaml").exists()
+    assert (workspace.artifacts_dir / "eval_scope_test_batch.yaml").exists()
+    assert (workspace.artifacts_dir / "eval_scope_test_composite.yaml").exists()
 
 
 @pytest.mark.anyio

@@ -373,6 +373,8 @@ class YoloEvalService:
         scoped_payload = dict(base_payload)
         scoped_payload["val"] = str(list_path.resolve())
         scoped_payload["test"] = str(list_path.resolve())
-        scoped_yaml = workspace.artifacts_dir / f"eval_scope_{scope_key}.json"
+        # Ultralytics expects a YAML-style dataset config path in `data=...`.
+        # JSON content is still valid YAML, but the file extension must be `.yaml`.
+        scoped_yaml = workspace.artifacts_dir / f"eval_scope_{scope_key}.yaml"
         scoped_yaml.write_text(json.dumps(scoped_payload, ensure_ascii=False, indent=2), encoding="utf-8")
         return scoped_yaml

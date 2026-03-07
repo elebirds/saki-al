@@ -733,7 +733,6 @@ export interface RuntimePluginCatalogItem {
     supportedAccelerators: ('cpu' | 'cuda' | 'mps')[];
     supportsAutoFallback: boolean;
     requestConfigSchema: RuntimeRequestConfigSchema;
-    defaultRequestConfig: Record<string, any>;
     executorsTotal: number;
     executorsOnline: number;
     executorsAvailable: number;
@@ -755,7 +754,6 @@ export interface RuntimeExecutorPluginCapability {
     supportedAccelerators: ('cpu' | 'cuda' | 'mps')[];
     supportsAutoFallback: boolean;
     requestConfigSchema: RuntimeRequestConfigSchema;
-    defaultRequestConfig: Record<string, any>;
 }
 
 export interface RuntimeAcceleratorCapability {

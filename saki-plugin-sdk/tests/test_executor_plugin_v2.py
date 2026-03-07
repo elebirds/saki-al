@@ -45,10 +45,6 @@ class _DummyPlugin(ExecutorPlugin):
                         {"key": "batch", "label": "Batch", "type": "integer", "required": True, "min": 1, "default": 8},
                     ],
                 },
-                "default_config": {
-                    "epochs": 5,
-                    "batch": 8,
-                },
                 "task_runtime_requirements": {
                     "score": {
                         "requires_prepare_data": True,

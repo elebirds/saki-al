@@ -147,7 +147,6 @@ class AgentClient:
                     "supported_accelerators": plugin.supported_accelerators,
                     "supports_auto_fallback": plugin.supports_auto_fallback,
                     "request_config_schema": plugin.request_config_schema,
-                    "default_request_config": plugin.default_request_config,
                 }
             )
         return runtime_codec.build_register_message(

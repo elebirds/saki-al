@@ -69,10 +69,6 @@ class SubprocessPluginProxy(ExecutorPlugin):
         return dict(self._metadata.request_config_schema)
 
     @property
-    def default_request_config(self) -> dict[str, Any]:
-        return dict(self._metadata.default_request_config)
-
-    @property
     def supported_accelerators(self) -> list[str]:
         return list(self._metadata.supported_accelerators)
 

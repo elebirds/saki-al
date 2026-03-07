@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 import yaml
 
 from saki_plugin_sdk.profile_spec import parse_runtime_profiles
@@ -27,7 +27,6 @@ class PluginManifest(BaseModel):
     runtime_profiles: list[dict[str, Any]] = Field(default_factory=list)
 
     config_schema: dict[str, Any] = Field(default_factory=dict)
-    default_config: dict[str, Any] = Field(default_factory=dict)
 
     entrypoint: str = ""
     """Module path used to start the plugin worker, e.g. ``saki_plugin_demo_det.worker:main``."""
@@ -37,6 +36,13 @@ class PluginManifest(BaseModel):
     def validate_runtime_profiles(cls, value: list[dict[str, Any]]) -> list[dict[str, Any]]:
         profiles = parse_runtime_profiles(value)
         return [item.to_dict() for item in profiles]
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_legacy_default_config(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "default_config" in data:
+            raise ValueError("plugin.yml no longer supports default_config; use config_schema.fields[*].default")
+        return data
 
     @classmethod
     def from_yaml(cls, path: Path) -> "PluginManifest":

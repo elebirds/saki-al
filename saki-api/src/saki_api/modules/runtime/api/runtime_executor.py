@@ -71,7 +71,6 @@ class RuntimePluginRead(BaseModel):
     supported_accelerators: list[str] = Field(default_factory=list)
     supports_auto_fallback: bool = True
     request_config_schema: dict[str, Any] = Field(default_factory=dict)
-    default_request_config: dict[str, Any] = Field(default_factory=dict)
     executors_total: int = 0
     executors_online: int = 0
     executors_available: int = 0

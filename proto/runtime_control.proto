@@ -100,7 +100,7 @@ message PluginCapability {
   repeated string supported_strategies = 4;
   string display_name = 5;
   google.protobuf.Struct request_config_schema = 6;
-  google.protobuf.Struct default_request_config = 7;
+  reserved 7;
   repeated AcceleratorType supported_accelerators = 8;
   bool supports_auto_fallback = 9;
 }

@@ -251,13 +251,6 @@ class ExecutorPlugin(ABC):
             return dict(manifest.config_schema)
         return {}
 
-    @property
-    def default_request_config(self) -> dict[str, Any]:
-        manifest = self.manifest
-        if manifest and isinstance(getattr(manifest, "default_config", None), dict):
-            return dict(manifest.default_config)
-        return {}
-
     def resolve_config(
         self,
         mode: str,

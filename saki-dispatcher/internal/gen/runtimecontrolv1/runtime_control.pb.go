@@ -608,7 +608,6 @@ type PluginCapability struct {
 	SupportedStrategies   []string               `protobuf:"bytes,4,rep,name=supported_strategies,json=supportedStrategies,proto3" json:"supported_strategies,omitempty"`
 	DisplayName           string                 `protobuf:"bytes,5,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
 	RequestConfigSchema   *structpb.Struct       `protobuf:"bytes,6,opt,name=request_config_schema,json=requestConfigSchema,proto3" json:"request_config_schema,omitempty"`
-	DefaultRequestConfig  *structpb.Struct       `protobuf:"bytes,7,opt,name=default_request_config,json=defaultRequestConfig,proto3" json:"default_request_config,omitempty"`
 	SupportedAccelerators []AcceleratorType      `protobuf:"varint,8,rep,packed,name=supported_accelerators,json=supportedAccelerators,proto3,enum=saki.runtime.v1.AcceleratorType" json:"supported_accelerators,omitempty"`
 	SupportsAutoFallback  bool                   `protobuf:"varint,9,opt,name=supports_auto_fallback,json=supportsAutoFallback,proto3" json:"supports_auto_fallback,omitempty"`
 	unknownFields         protoimpl.UnknownFields
@@ -683,13 +682,6 @@ func (x *PluginCapability) GetDisplayName() string {
 func (x *PluginCapability) GetRequestConfigSchema() *structpb.Struct {
 	if x != nil {
 		return x.RequestConfigSchema
-	}
-	return nil
-}
-
-func (x *PluginCapability) GetDefaultRequestConfig() *structpb.Struct {
-	if x != nil {
-		return x.DefaultRequestConfig
 	}
 	return nil
 }
@@ -3080,17 +3072,16 @@ const file_runtime_control_proto_rawDesc = "" +
 	"\tavailable\x18\x02 \x01(\bR\tavailable\x12!\n" +
 	"\fdevice_count\x18\x03 \x01(\x05R\vdeviceCount\x12\x1d\n" +
 	"\n" +
-	"device_ids\x18\x04 \x03(\tR\tdeviceIds\"\xfc\x03\n" +
+	"device_ids\x18\x04 \x03(\tR\tdeviceIds\"\xb3\x03\n" +
 	"\x10PluginCapability\x12\x1b\n" +
 	"\tplugin_id\x18\x01 \x01(\tR\bpluginId\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x120\n" +
 	"\x14supported_task_types\x18\x03 \x03(\tR\x12supportedTaskTypes\x121\n" +
 	"\x14supported_strategies\x18\x04 \x03(\tR\x13supportedStrategies\x12!\n" +
 	"\fdisplay_name\x18\x05 \x01(\tR\vdisplayName\x12K\n" +
-	"\x15request_config_schema\x18\x06 \x01(\v2\x17.google.protobuf.StructR\x13requestConfigSchema\x12M\n" +
-	"\x16default_request_config\x18\a \x01(\v2\x17.google.protobuf.StructR\x14defaultRequestConfig\x12W\n" +
+	"\x15request_config_schema\x18\x06 \x01(\v2\x17.google.protobuf.StructR\x13requestConfigSchema\x12W\n" +
 	"\x16supported_accelerators\x18\b \x03(\x0e2 .saki.runtime.v1.AcceleratorTypeR\x15supportedAccelerators\x124\n" +
-	"\x16supports_auto_fallback\x18\t \x01(\bR\x14supportsAutoFallback\"\xa0\x02\n" +
+	"\x16supports_auto_fallback\x18\t \x01(\bR\x14supportsAutoFallbackJ\x04\b\a\x10\b\"\xa0\x02\n" +
 	"\x0fResourceSummary\x12\x1b\n" +
 	"\tgpu_count\x18\x01 \x01(\x05R\bgpuCount\x12$\n" +
 	"\x0egpu_device_ids\x18\x02 \x03(\x05R\fgpuDeviceIds\x12\x1f\n" +
@@ -3458,66 +3449,65 @@ var file_runtime_control_proto_goTypes = []any{
 var file_runtime_control_proto_depIdxs = []int32{
 	8,  // 0: saki.runtime.v1.AcceleratorCapability.type:type_name -> saki.runtime.v1.AcceleratorType
 	40, // 1: saki.runtime.v1.PluginCapability.request_config_schema:type_name -> google.protobuf.Struct
-	40, // 2: saki.runtime.v1.PluginCapability.default_request_config:type_name -> google.protobuf.Struct
-	8,  // 3: saki.runtime.v1.PluginCapability.supported_accelerators:type_name -> saki.runtime.v1.AcceleratorType
-	9,  // 4: saki.runtime.v1.ResourceSummary.accelerators:type_name -> saki.runtime.v1.AcceleratorCapability
-	40, // 5: saki.runtime.v1.ResourceSummary.host_capability:type_name -> google.protobuf.Struct
-	10, // 6: saki.runtime.v1.Register.plugins:type_name -> saki.runtime.v1.PluginCapability
-	11, // 7: saki.runtime.v1.Register.resources:type_name -> saki.runtime.v1.ResourceSummary
-	11, // 8: saki.runtime.v1.Heartbeat.resources:type_name -> saki.runtime.v1.ResourceSummary
-	4,  // 9: saki.runtime.v1.TaskPayload.task_type:type_name -> saki.runtime.v1.RuntimeTaskType
-	6,  // 10: saki.runtime.v1.TaskPayload.mode:type_name -> saki.runtime.v1.RuntimeLoopMode
-	40, // 11: saki.runtime.v1.TaskPayload.resolved_params:type_name -> google.protobuf.Struct
-	11, // 12: saki.runtime.v1.TaskPayload.resources:type_name -> saki.runtime.v1.ResourceSummary
-	5,  // 13: saki.runtime.v1.TaskPayload.dispatch_kind:type_name -> saki.runtime.v1.RuntimeTaskDispatchKind
-	14, // 14: saki.runtime.v1.AssignTask.task:type_name -> saki.runtime.v1.TaskPayload
-	0,  // 15: saki.runtime.v1.StatusEvent.status:type_name -> saki.runtime.v1.RuntimeTaskStatus
-	40, // 16: saki.runtime.v1.LogEvent.message_args:type_name -> google.protobuf.Struct
-	40, // 17: saki.runtime.v1.LogEvent.meta:type_name -> google.protobuf.Struct
-	37, // 18: saki.runtime.v1.MetricEvent.metrics:type_name -> saki.runtime.v1.MetricEvent.MetricsEntry
-	40, // 19: saki.runtime.v1.ArtifactItem.meta:type_name -> google.protobuf.Struct
-	21, // 20: saki.runtime.v1.ArtifactEvent.artifact:type_name -> saki.runtime.v1.ArtifactItem
-	17, // 21: saki.runtime.v1.TaskEvent.status_event:type_name -> saki.runtime.v1.StatusEvent
-	18, // 22: saki.runtime.v1.TaskEvent.log_event:type_name -> saki.runtime.v1.LogEvent
-	19, // 23: saki.runtime.v1.TaskEvent.progress_event:type_name -> saki.runtime.v1.ProgressEvent
-	20, // 24: saki.runtime.v1.TaskEvent.metric_event:type_name -> saki.runtime.v1.MetricEvent
-	22, // 25: saki.runtime.v1.TaskEvent.artifact_event:type_name -> saki.runtime.v1.ArtifactEvent
-	40, // 26: saki.runtime.v1.QueryCandidate.reason:type_name -> google.protobuf.Struct
-	0,  // 27: saki.runtime.v1.TaskResult.status:type_name -> saki.runtime.v1.RuntimeTaskStatus
-	38, // 28: saki.runtime.v1.TaskResult.metrics:type_name -> saki.runtime.v1.TaskResult.MetricsEntry
-	21, // 29: saki.runtime.v1.TaskResult.artifacts:type_name -> saki.runtime.v1.ArtifactItem
-	24, // 30: saki.runtime.v1.TaskResult.candidates:type_name -> saki.runtime.v1.QueryCandidate
-	7,  // 31: saki.runtime.v1.DataRequest.query_type:type_name -> saki.runtime.v1.RuntimeQueryType
-	40, // 32: saki.runtime.v1.SampleItem.meta:type_name -> google.protobuf.Struct
-	40, // 33: saki.runtime.v1.AnnotationItem.obb:type_name -> google.protobuf.Struct
-	27, // 34: saki.runtime.v1.DataItem.label_item:type_name -> saki.runtime.v1.LabelItem
-	28, // 35: saki.runtime.v1.DataItem.sample_item:type_name -> saki.runtime.v1.SampleItem
-	29, // 36: saki.runtime.v1.DataItem.annotation_item:type_name -> saki.runtime.v1.AnnotationItem
-	7,  // 37: saki.runtime.v1.DataResponse.query_type:type_name -> saki.runtime.v1.RuntimeQueryType
-	39, // 38: saki.runtime.v1.UploadTicketResponse.headers:type_name -> saki.runtime.v1.UploadTicketResponse.HeadersEntry
-	1,  // 39: saki.runtime.v1.Ack.status:type_name -> saki.runtime.v1.AckStatus
-	2,  // 40: saki.runtime.v1.Ack.type:type_name -> saki.runtime.v1.AckType
-	3,  // 41: saki.runtime.v1.Ack.reason:type_name -> saki.runtime.v1.AckReason
-	7,  // 42: saki.runtime.v1.Error.query_type:type_name -> saki.runtime.v1.RuntimeQueryType
-	12, // 43: saki.runtime.v1.RuntimeMessage.register:type_name -> saki.runtime.v1.Register
-	13, // 44: saki.runtime.v1.RuntimeMessage.heartbeat:type_name -> saki.runtime.v1.Heartbeat
-	15, // 45: saki.runtime.v1.RuntimeMessage.assign_task:type_name -> saki.runtime.v1.AssignTask
-	16, // 46: saki.runtime.v1.RuntimeMessage.stop_task:type_name -> saki.runtime.v1.StopTask
-	23, // 47: saki.runtime.v1.RuntimeMessage.task_event:type_name -> saki.runtime.v1.TaskEvent
-	25, // 48: saki.runtime.v1.RuntimeMessage.task_result:type_name -> saki.runtime.v1.TaskResult
-	26, // 49: saki.runtime.v1.RuntimeMessage.data_request:type_name -> saki.runtime.v1.DataRequest
-	31, // 50: saki.runtime.v1.RuntimeMessage.data_response:type_name -> saki.runtime.v1.DataResponse
-	32, // 51: saki.runtime.v1.RuntimeMessage.upload_ticket_request:type_name -> saki.runtime.v1.UploadTicketRequest
-	33, // 52: saki.runtime.v1.RuntimeMessage.upload_ticket_response:type_name -> saki.runtime.v1.UploadTicketResponse
-	34, // 53: saki.runtime.v1.RuntimeMessage.ack:type_name -> saki.runtime.v1.Ack
-	35, // 54: saki.runtime.v1.RuntimeMessage.error:type_name -> saki.runtime.v1.Error
-	36, // 55: saki.runtime.v1.RuntimeControl.Stream:input_type -> saki.runtime.v1.RuntimeMessage
-	36, // 56: saki.runtime.v1.RuntimeControl.Stream:output_type -> saki.runtime.v1.RuntimeMessage
-	56, // [56:57] is the sub-list for method output_type
-	55, // [55:56] is the sub-list for method input_type
-	55, // [55:55] is the sub-list for extension type_name
-	55, // [55:55] is the sub-list for extension extendee
-	0,  // [0:55] is the sub-list for field type_name
+	8,  // 2: saki.runtime.v1.PluginCapability.supported_accelerators:type_name -> saki.runtime.v1.AcceleratorType
+	9,  // 3: saki.runtime.v1.ResourceSummary.accelerators:type_name -> saki.runtime.v1.AcceleratorCapability
+	40, // 4: saki.runtime.v1.ResourceSummary.host_capability:type_name -> google.protobuf.Struct
+	10, // 5: saki.runtime.v1.Register.plugins:type_name -> saki.runtime.v1.PluginCapability
+	11, // 6: saki.runtime.v1.Register.resources:type_name -> saki.runtime.v1.ResourceSummary
+	11, // 7: saki.runtime.v1.Heartbeat.resources:type_name -> saki.runtime.v1.ResourceSummary
+	4,  // 8: saki.runtime.v1.TaskPayload.task_type:type_name -> saki.runtime.v1.RuntimeTaskType
+	6,  // 9: saki.runtime.v1.TaskPayload.mode:type_name -> saki.runtime.v1.RuntimeLoopMode
+	40, // 10: saki.runtime.v1.TaskPayload.resolved_params:type_name -> google.protobuf.Struct
+	11, // 11: saki.runtime.v1.TaskPayload.resources:type_name -> saki.runtime.v1.ResourceSummary
+	5,  // 12: saki.runtime.v1.TaskPayload.dispatch_kind:type_name -> saki.runtime.v1.RuntimeTaskDispatchKind
+	14, // 13: saki.runtime.v1.AssignTask.task:type_name -> saki.runtime.v1.TaskPayload
+	0,  // 14: saki.runtime.v1.StatusEvent.status:type_name -> saki.runtime.v1.RuntimeTaskStatus
+	40, // 15: saki.runtime.v1.LogEvent.message_args:type_name -> google.protobuf.Struct
+	40, // 16: saki.runtime.v1.LogEvent.meta:type_name -> google.protobuf.Struct
+	37, // 17: saki.runtime.v1.MetricEvent.metrics:type_name -> saki.runtime.v1.MetricEvent.MetricsEntry
+	40, // 18: saki.runtime.v1.ArtifactItem.meta:type_name -> google.protobuf.Struct
+	21, // 19: saki.runtime.v1.ArtifactEvent.artifact:type_name -> saki.runtime.v1.ArtifactItem
+	17, // 20: saki.runtime.v1.TaskEvent.status_event:type_name -> saki.runtime.v1.StatusEvent
+	18, // 21: saki.runtime.v1.TaskEvent.log_event:type_name -> saki.runtime.v1.LogEvent
+	19, // 22: saki.runtime.v1.TaskEvent.progress_event:type_name -> saki.runtime.v1.ProgressEvent
+	20, // 23: saki.runtime.v1.TaskEvent.metric_event:type_name -> saki.runtime.v1.MetricEvent
+	22, // 24: saki.runtime.v1.TaskEvent.artifact_event:type_name -> saki.runtime.v1.ArtifactEvent
+	40, // 25: saki.runtime.v1.QueryCandidate.reason:type_name -> google.protobuf.Struct
+	0,  // 26: saki.runtime.v1.TaskResult.status:type_name -> saki.runtime.v1.RuntimeTaskStatus
+	38, // 27: saki.runtime.v1.TaskResult.metrics:type_name -> saki.runtime.v1.TaskResult.MetricsEntry
+	21, // 28: saki.runtime.v1.TaskResult.artifacts:type_name -> saki.runtime.v1.ArtifactItem
+	24, // 29: saki.runtime.v1.TaskResult.candidates:type_name -> saki.runtime.v1.QueryCandidate
+	7,  // 30: saki.runtime.v1.DataRequest.query_type:type_name -> saki.runtime.v1.RuntimeQueryType
+	40, // 31: saki.runtime.v1.SampleItem.meta:type_name -> google.protobuf.Struct
+	40, // 32: saki.runtime.v1.AnnotationItem.obb:type_name -> google.protobuf.Struct
+	27, // 33: saki.runtime.v1.DataItem.label_item:type_name -> saki.runtime.v1.LabelItem
+	28, // 34: saki.runtime.v1.DataItem.sample_item:type_name -> saki.runtime.v1.SampleItem
+	29, // 35: saki.runtime.v1.DataItem.annotation_item:type_name -> saki.runtime.v1.AnnotationItem
+	7,  // 36: saki.runtime.v1.DataResponse.query_type:type_name -> saki.runtime.v1.RuntimeQueryType
+	39, // 37: saki.runtime.v1.UploadTicketResponse.headers:type_name -> saki.runtime.v1.UploadTicketResponse.HeadersEntry
+	1,  // 38: saki.runtime.v1.Ack.status:type_name -> saki.runtime.v1.AckStatus
+	2,  // 39: saki.runtime.v1.Ack.type:type_name -> saki.runtime.v1.AckType
+	3,  // 40: saki.runtime.v1.Ack.reason:type_name -> saki.runtime.v1.AckReason
+	7,  // 41: saki.runtime.v1.Error.query_type:type_name -> saki.runtime.v1.RuntimeQueryType
+	12, // 42: saki.runtime.v1.RuntimeMessage.register:type_name -> saki.runtime.v1.Register
+	13, // 43: saki.runtime.v1.RuntimeMessage.heartbeat:type_name -> saki.runtime.v1.Heartbeat
+	15, // 44: saki.runtime.v1.RuntimeMessage.assign_task:type_name -> saki.runtime.v1.AssignTask
+	16, // 45: saki.runtime.v1.RuntimeMessage.stop_task:type_name -> saki.runtime.v1.StopTask
+	23, // 46: saki.runtime.v1.RuntimeMessage.task_event:type_name -> saki.runtime.v1.TaskEvent
+	25, // 47: saki.runtime.v1.RuntimeMessage.task_result:type_name -> saki.runtime.v1.TaskResult
+	26, // 48: saki.runtime.v1.RuntimeMessage.data_request:type_name -> saki.runtime.v1.DataRequest
+	31, // 49: saki.runtime.v1.RuntimeMessage.data_response:type_name -> saki.runtime.v1.DataResponse
+	32, // 50: saki.runtime.v1.RuntimeMessage.upload_ticket_request:type_name -> saki.runtime.v1.UploadTicketRequest
+	33, // 51: saki.runtime.v1.RuntimeMessage.upload_ticket_response:type_name -> saki.runtime.v1.UploadTicketResponse
+	34, // 52: saki.runtime.v1.RuntimeMessage.ack:type_name -> saki.runtime.v1.Ack
+	35, // 53: saki.runtime.v1.RuntimeMessage.error:type_name -> saki.runtime.v1.Error
+	36, // 54: saki.runtime.v1.RuntimeControl.Stream:input_type -> saki.runtime.v1.RuntimeMessage
+	36, // 55: saki.runtime.v1.RuntimeControl.Stream:output_type -> saki.runtime.v1.RuntimeMessage
+	55, // [55:56] is the sub-list for method output_type
+	54, // [54:55] is the sub-list for method input_type
+	54, // [54:54] is the sub-list for extension type_name
+	54, // [54:54] is the sub-list for extension extendee
+	0,  // [0:54] is the sub-list for field type_name
 }
 
 func init() { file_runtime_control_proto_init() }

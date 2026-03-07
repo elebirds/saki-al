@@ -64,11 +64,10 @@ class MyPlugin(ExecutorPlugin):
 `ExecutorPlugin` 默认提供：
 
 1. `request_config_schema`
-2. `default_request_config`
-3. `resolve_config(...)`
-4. `validate_params(...)`
+2. `resolve_config(...)`
+3. `validate_params(...)`
 
-默认实现基于 `plugin.yml` 的 `config_schema/default_config`，插件可按需覆写。
+默认实现基于 `plugin.yml` 的 `config_schema`，插件可按需覆写。
 配置模型仅保留 `PluginConfig.resolve(...)`、`PluginConfig.from_manifest(...)` 与 `PluginConfig.model_validate(...)` 三条入口。
 
 ## Worker 协议

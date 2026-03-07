@@ -36,24 +36,22 @@ config_schema:
       label: Epochs
       type: integer
       required: true
+      default: 5
       min: 1
       max: 500
     - key: batch_size
       label: Batch Size
       type: integer
       required: true
+      default: 8
       min: 1
       max: 2048
     - key: steps_per_epoch
       label: Steps / Epoch
       type: integer
       required: false
+      default: 20
       min: 1
       max: 5000
-
-default_config:
-  epochs: 5
-  batch_size: 8
-  steps_per_epoch: 20
 
 entrypoint: "saki_plugin_demo_det.worker:main"

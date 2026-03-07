@@ -73,11 +73,32 @@ export const pickDefaultSamplingStrategy = (
     plugin: RuntimePluginCatalogItem | undefined,
 ): string => plugin?.supportedStrategies?.[0] || RANDOM_BASELINE_STRATEGY;
 
+const extractSchemaDefaults = (
+    plugin: RuntimePluginCatalogItem | undefined,
+): Record<string, any> => {
+    const fields = plugin?.requestConfigSchema?.fields;
+    if (!Array.isArray(fields)) {
+        return {};
+    }
+    return fields.reduce((acc, field) => {
+        const key = String((field as any)?.key || '').trim();
+        if (!key) {
+            return acc;
+        }
+        const defaultValue = (field as any)?.default;
+        if (defaultValue === null || defaultValue === undefined) {
+            return acc;
+        }
+        acc[key] = defaultValue;
+        return acc;
+    }, {} as Record<string, any>);
+};
+
 export const mergePluginConfigWithDefaults = (
     plugin: RuntimePluginCatalogItem | undefined,
     pluginConfig: Record<string, any> | undefined,
 ): Record<string, any> => ({
-    ...(plugin?.defaultRequestConfig || {}),
+    ...extractSchemaDefaults(plugin),
     ...(pluginConfig || {}),
 });
 

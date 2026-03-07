@@ -36,7 +36,6 @@ class RuntimePluginCapabilityDTO:
     supported_strategies: list[str] = field(default_factory=list)
     display_name: str = ""
     request_config_schema: dict[str, Any] = field(default_factory=dict)
-    default_request_config: dict[str, Any] = field(default_factory=dict)
     supported_accelerators: list[str] = field(default_factory=list)
     supports_auto_fallback: bool = False
 

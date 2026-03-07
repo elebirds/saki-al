@@ -62,10 +62,6 @@ class ExternalPluginDescriptor:
         return dict(self._manifest.config_schema) if self._manifest.config_schema else {}
 
     @property
-    def default_request_config(self) -> dict[str, Any]:
-        return dict(self._manifest.default_config) if self._manifest.default_config else {}
-
-    @property
     def plugin_dir(self) -> Path:
         return self._plugin_dir
 

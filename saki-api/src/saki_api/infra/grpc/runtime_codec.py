@@ -454,7 +454,6 @@ def parse_register(message: pb.Register) -> RuntimeRegisterDTO:
                 supported_strategies=[str(v) for v in item.supported_strategies],
                 display_name=str(item.display_name),
                 request_config_schema=struct_to_dict(item.request_config_schema),
-                default_request_config=struct_to_dict(item.default_request_config),
                 supported_accelerators=[
                     accelerator_type_to_text(v)
                     for v in item.supported_accelerators

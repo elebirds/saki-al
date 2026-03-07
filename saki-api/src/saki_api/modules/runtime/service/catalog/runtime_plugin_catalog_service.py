@@ -14,7 +14,6 @@ PLUGIN_COMPARE_FIELDS = (
     "supported_accelerators",
     "supports_auto_fallback",
     "request_config_schema",
-    "default_request_config",
 )
 
 
@@ -28,7 +27,6 @@ class RuntimePluginCapabilityVO:
     supported_accelerators: list[str] = field(default_factory=list)
     supports_auto_fallback: bool = True
     request_config_schema: dict[str, Any] = field(default_factory=dict)
-    default_request_config: dict[str, Any] = field(default_factory=dict)
     executors_total: int = 0
     executors_online: int = 0
     executors_available: int = 0
@@ -68,7 +66,6 @@ def extract_executor_plugins(raw_payload: dict[str, Any] | None) -> list[Runtime
                 supported_accelerators=_normalize_text_list(item.get("supported_accelerators")),
                 supports_auto_fallback=bool(item.get("supports_auto_fallback", True)),
                 request_config_schema=dict(item.get("request_config_schema") or {}),
-                default_request_config=dict(item.get("default_request_config") or {}),
             )
         )
     return plugins

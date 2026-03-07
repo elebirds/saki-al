@@ -65,18 +65,6 @@ const ProjectLoopConfig: React.FC = () => {
         () => toPluginConfigSchema(selectedPlugin?.requestConfigSchema),
         [selectedPlugin],
     );
-    const pluginSupportsPatience = useMemo(() => {
-        const fields = (selectedPlugin?.requestConfigSchema as any)?.fields;
-        if (!Array.isArray(fields)) return false;
-        return fields.some((item: any) => String(item?.key || item?.name || '').trim() === 'patience');
-    }, [selectedPlugin]);
-    const pluginConfigSchemaForRender = useMemo(() => {
-        if (!pluginSupportsPatience) return pluginConfigSchema;
-        return {
-            ...pluginConfigSchema,
-            fields: pluginConfigSchema.fields.filter((item) => String(item.key || '').trim() !== 'patience'),
-        };
-    }, [pluginConfigSchema, pluginSupportsPatience]);
     const commitOptions = useMemo(
         () => commits.map((item) => ({
             label: `${item.message || t('project.loopConfig.form.oracleCommitUnknownMessage')} (${item.id.slice(0, 8)})`,
@@ -332,15 +320,6 @@ const ProjectLoopConfig: React.FC = () => {
                                 }}
                             />
                         </Form.Item>
-                        {pluginSupportsPatience ? (
-                            <Form.Item
-                                name={['pluginConfig', 'patience']}
-                                label={t('project.loopConfig.form.patience')}
-                                extra={t('project.loopConfig.form.patienceHint')}
-                            >
-                                <InputNumber min={1} max={10000} className="w-full"/>
-                            </Form.Item>
-                        ) : null}
                     </div>
 
                     <div className="grid grid-cols-1 gap-x-4 md:grid-cols-3">
@@ -573,11 +552,11 @@ const ProjectLoopConfig: React.FC = () => {
                         className="!border-github-border !bg-github-panel"
                         title={selectedPlugin?.requestConfigSchema?.title || t('project.loopConfig.form.modelRequestParams')}
                     >
-                        {pluginConfigSchemaForRender.fields.length === 0 ? (
+                        {pluginConfigSchema.fields.length === 0 ? (
                             <Alert type="info" showIcon message={t('project.loopConfig.form.noDynamicSchema')}/>
                         ) : (
                             <DynamicConfigForm
-                                schema={pluginConfigSchemaForRender}
+                                schema={pluginConfigSchema}
                                 values={pluginConfigValues}
                                 onChange={handlePluginConfigChange}
                                 context={{

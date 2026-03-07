@@ -348,7 +348,6 @@ func pluginCapabilitiesToMaps(plugins []*runtimecontrolv1.PluginCapability) []ma
 			"supported_accelerators": supportedAccelerators,
 			"supports_auto_fallback": item.GetSupportsAutoFallback(),
 			"request_config_schema":  structToMap(item.GetRequestConfigSchema()),
-			"default_request_config": structToMap(item.GetDefaultRequestConfig()),
 		})
 	}
 	return items

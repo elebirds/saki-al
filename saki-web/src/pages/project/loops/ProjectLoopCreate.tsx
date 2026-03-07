@@ -77,18 +77,6 @@ const ProjectLoopCreate: React.FC = () => {
         () => toPluginConfigSchema(selectedPlugin?.requestConfigSchema),
         [selectedPlugin],
     );
-    const pluginSupportsPatience = useMemo(() => {
-        const fields = (selectedPlugin?.requestConfigSchema as any)?.fields;
-        if (!Array.isArray(fields)) return false;
-        return fields.some((item: any) => String(item?.key || item?.name || '').trim() === 'patience');
-    }, [selectedPlugin]);
-    const pluginConfigSchemaForRender = useMemo(() => {
-        if (!pluginSupportsPatience) return pluginConfigSchema;
-        return {
-            ...pluginConfigSchema,
-            fields: pluginConfigSchema.fields.filter((item) => String(item.key || '').trim() !== 'patience'),
-        };
-    }, [pluginConfigSchema, pluginSupportsPatience]);
 
     const availableBranches = useMemo(() => {
         const bound = new Set(loops.map((item) => item.branchId));
@@ -400,15 +388,6 @@ const ProjectLoopCreate: React.FC = () => {
                                 }}
                             />
                         </Form.Item>
-                        {pluginSupportsPatience ? (
-                            <Form.Item
-                                name={['pluginConfig', 'patience']}
-                                label={t('project.loopCreate.form.patience')}
-                                extra={t('project.loopCreate.form.patienceHint')}
-                            >
-                                <InputNumber min={1} max={10000} className="w-full"/>
-                            </Form.Item>
-                        ) : null}
                     </div>
                 </Card>
 
@@ -588,11 +567,11 @@ const ProjectLoopCreate: React.FC = () => {
                     title={selectedPlugin?.requestConfigSchema?.title || t('project.loopCreate.form.modelRequestParams')}
                     extra={<Text type="secondary">{t('project.loopCreate.form.pluginSchemaHint')}</Text>}
                 >
-                    {pluginConfigSchemaForRender.fields.length === 0 ? (
+                    {pluginConfigSchema.fields.length === 0 ? (
                         <Alert type="info" showIcon message={t('project.loopCreate.form.noDynamicSchema')}/>
                     ) : (
                         <DynamicConfigForm
-                            schema={pluginConfigSchemaForRender}
+                            schema={pluginConfigSchema}
                             values={pluginConfigValues}
                             onChange={handlePluginConfigChange}
                             context={{

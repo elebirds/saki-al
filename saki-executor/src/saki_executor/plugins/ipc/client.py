@@ -24,6 +24,9 @@ except Exception as exc:  # pragma: no cover
 
 EventHandler = Callable[[str, dict[str, Any]], Awaitable[None]]
 
+_STREAM_READ_CHUNK_BYTES = 16 * 1024
+_STREAM_TAIL_BUFFER_LIMIT_BYTES = 256 * 1024
+
 
 class WorkerCommandError(RuntimeError):
     def __init__(self, *, error_code: str, error_message: str) -> None:
@@ -358,33 +361,53 @@ class PluginWorkerClient:
 
     async def _stream_log_loop(self, stream: asyncio.StreamReader, stream_name: str) -> None:
         coalescer = self._stream_coalescers.get(stream_name)
+        tail_buffer = ""
         try:
             while True:
-                raw = await stream.readline()
-                if not raw:
+                raw_chunk = await stream.read(_STREAM_READ_CHUNK_BYTES)
+                if not raw_chunk:
                     break
-                raw_line = raw.decode("utf-8", errors="replace")
-                payload = normalize_stdio_log_line(
-                    raw_line=raw_line,
-                    plugin_id=self._plugin_id,
-                    stream=stream_name,
-                )
-                if not payload:
-                    continue
-                try:
-                    if coalescer is not None:
-                        await coalescer.add(payload)
-                    else:
-                        await self._emit_log_event(payload)
-                except asyncio.CancelledError:
-                    raise
-                except Exception:
-                    logger.exception("工作进程流日志转发失败，task_id={}", self._task_id)
+                chunk_text = raw_chunk.decode("utf-8", errors="replace").replace("\r", "\n")
+                tail_buffer += chunk_text
+
+                while True:
+                    newline_index = tail_buffer.find("\n")
+                    if newline_index < 0:
+                        break
+                    raw_line = tail_buffer[: newline_index + 1]
+                    tail_buffer = tail_buffer[newline_index + 1 :]
+                    await self._forward_stream_log_line(
+                        raw_line=raw_line,
+                        stream_name=stream_name,
+                        coalescer=coalescer,
+                    )
+
+                while len(tail_buffer.encode("utf-8")) > _STREAM_TAIL_BUFFER_LIMIT_BYTES:
+                    forced_line = tail_buffer[: _STREAM_TAIL_BUFFER_LIMIT_BYTES]
+                    tail_buffer = tail_buffer[_STREAM_TAIL_BUFFER_LIMIT_BYTES :]
+                    await self._forward_stream_log_line(
+                        raw_line=forced_line,
+                        stream_name=stream_name,
+                        coalescer=coalescer,
+                    )
         except asyncio.CancelledError:
             raise
         except Exception:
             logger.exception("工作进程流读取失败，task_id={} 流={}", self._task_id, stream_name)
         finally:
+            if tail_buffer:
+                try:
+                    await self._forward_stream_log_line(
+                        raw_line=tail_buffer,
+                        stream_name=stream_name,
+                        coalescer=coalescer,
+                    )
+                except Exception:
+                    logger.exception(
+                        "工作进程流尾缓冲刷新失败，task_id={} 流={}",
+                        self._task_id,
+                        stream_name,
+                    )
             if coalescer is not None:
                 try:
                     await coalescer.flush()
@@ -397,6 +420,30 @@ class PluginWorkerClient:
 
     async def _emit_log_event(self, payload: dict[str, Any]) -> None:
         await self._event_handler("log", payload)
+
+    async def _forward_stream_log_line(
+        self,
+        *,
+        raw_line: str,
+        stream_name: str,
+        coalescer: LogCoalescer | None,
+    ) -> None:
+        payload = normalize_stdio_log_line(
+            raw_line=raw_line,
+            plugin_id=self._plugin_id,
+            stream=stream_name,
+        )
+        if not payload:
+            return
+        try:
+            if coalescer is not None:
+                await coalescer.add(payload)
+            else:
+                await self._emit_log_event(payload)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("工作进程流日志转发失败，task_id={}", self._task_id)
 
     async def _stop_background_tasks(self) -> None:
         tasks = [task for task in (self._event_task, self._stdout_task, self._stderr_task) if task]

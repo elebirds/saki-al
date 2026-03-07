@@ -8,6 +8,14 @@ from pathlib import Path
 from typing import Any
 
 
+def _normalize_root_path(path: str) -> Path:
+    root = Path(str(path or "")).expanduser()
+    try:
+        return root.resolve()
+    except Exception:
+        return root.absolute()
+
+
 class Workspace:
     def __init__(
         self,
@@ -18,7 +26,7 @@ class Workspace:
         attempt: int = 1,
     ):
         self.task_id = str(task_id or "").strip()
-        self.runs_root = Path(runs_dir)
+        self.runs_root = _normalize_root_path(runs_dir)
         self.round_id = str(round_id or "").strip()
         self.attempt = max(1, int(attempt or 1))
 

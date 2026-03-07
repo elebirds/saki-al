@@ -3,12 +3,21 @@ from pathlib import Path
 from typing import Any
 
 
+def _normalize_root_path(path: str) -> Path:
+    root = Path(str(path or "")).expanduser()
+    try:
+        return root.resolve()
+    except Exception:
+        return root.absolute()
+
+
 class Workspace:
     """Manages a step's working directory layout under ``runs/{task_id}``."""
 
     def __init__(self, runs_dir: str, task_id: str):
         self.task_id = task_id
-        self.root = Path(runs_dir) / task_id
+        self.runs_root = _normalize_root_path(runs_dir)
+        self.root = self.runs_root / task_id
 
     @property
     def config_path(self) -> Path:

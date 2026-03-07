@@ -10,6 +10,17 @@ from saki_plugin_yolo_det.common import to_int, to_yolo_device
 from saki_plugin_yolo_det.config_service import YoloConfigService
 
 _EVAL_CANONICAL_KEYS: tuple[str, ...] = ("map50", "map50_95", "precision", "recall")
+_EVAL_ARTIFACT_PATTERNS: tuple[str, ...] = (
+    "confusion_matrix*.png",
+    "*F1_curve.png",
+    "*PR_curve.png",
+    "*P_curve.png",
+    "*R_curve.png",
+    "val_batch*_labels.jpg",
+    "val_batch*_labels.png",
+    "val_batch*_pred.jpg",
+    "val_batch*_pred.png",
+)
 
 
 class YoloEvalService:
@@ -154,6 +165,10 @@ class YoloEvalService:
     ) -> dict[str, Any]:
         yolo_cls = self._load_yolo()
         model = yolo_cls(model_path)
+        try:
+            project_dir = workspace.artifacts_dir.resolve()
+        except Exception:
+            project_dir = workspace.artifacts_dir.absolute()
         result = model.val(
             data=str(dataset_yaml),
             imgsz=imgsz,
@@ -161,7 +176,7 @@ class YoloEvalService:
             device=device,
             plots=True,
             verbose=False,
-            project=str(workspace.artifacts_dir),
+            project=str(project_dir),
             name="eval",
             exist_ok=True,
         )
@@ -170,17 +185,13 @@ class YoloEvalService:
         save_dir = Path(str(save_dir_raw)) if save_dir_raw else None
         extra_artifacts: list[str] = []
         if save_dir and save_dir.exists():
-            for filename in (
-                "confusion_matrix.png",
-                "confusion_matrix_normalized.png",
-                "F1_curve.png",
-                "P_curve.png",
-                "R_curve.png",
-                "PR_curve.png",
-            ):
-                path = save_dir / filename
-                if path.exists():
-                    extra_artifacts.append(str(path))
+            discovered: dict[str, str] = {}
+            for pattern in _EVAL_ARTIFACT_PATTERNS:
+                for path in sorted(save_dir.glob(pattern)):
+                    if not path.is_file():
+                        continue
+                    discovered.setdefault(path.name, str(path))
+            extra_artifacts = [discovered[name] for name in sorted(discovered.keys())]
         return {
             "metrics": dict(metrics_raw) if isinstance(metrics_raw, dict) else {},
             "save_dir": str(save_dir) if save_dir else "",

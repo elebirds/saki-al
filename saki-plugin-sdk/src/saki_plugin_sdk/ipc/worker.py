@@ -74,7 +74,11 @@ def _publish_event(
 
 
 def _build_workspace(workspace_root: str) -> Workspace:
-    root = Path(str(workspace_root or ""))
+    root_raw = Path(str(workspace_root or "")).expanduser()
+    try:
+        root = root_raw.resolve()
+    except Exception:
+        root = root_raw.absolute()
     if not root.name:
         raise RuntimeError("workspace_root is required")
     workspace = Workspace(str(root.parent), root.name)

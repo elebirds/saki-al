@@ -37,6 +37,7 @@ class ImportUploadSession(UUIDMixin, TimestampMixin, SQLModel, table=True):
     filename: str = Field(max_length=255)
     size: int = Field(ge=0)
     content_type: str = Field(max_length=127)
+    file_sha256: str | None = Field(default=None, max_length=64)
 
     object_key: str = Field(max_length=1024)
     bucket: str | None = Field(default=None, max_length=255)

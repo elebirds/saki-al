@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.modules.importing.domain import ImportUploadSession
@@ -36,3 +36,49 @@ class ImportUploadSessionRepository:
         )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
+
+    async def find_latest_reusable_uploaded_session(
+        self,
+        *,
+        user_id: uuid.UUID,
+        file_sha256: str,
+        size: int,
+        now: datetime | None = None,
+    ) -> ImportUploadSession | None:
+        ts = now or datetime.now(UTC)
+        stmt = (
+            select(ImportUploadSession)
+            .where(
+                ImportUploadSession.user_id == user_id,
+                ImportUploadSession.file_sha256 == file_sha256,
+                ImportUploadSession.size == size,
+                ImportUploadSession.status.in_(["uploaded", "consumed"]),
+                or_(ImportUploadSession.expires_at.is_(None), ImportUploadSession.expires_at > ts),
+            )
+            .order_by(
+                ImportUploadSession.completed_at.desc().nullslast(),
+                ImportUploadSession.updated_at.desc(),
+            )
+            .limit(1)
+        )
+        result = await self.session.execute(stmt)
+        return result.scalars().first()
+
+    async def has_live_object_reference(
+        self,
+        *,
+        object_key: str,
+        exclude_session_id: uuid.UUID | None = None,
+        now: datetime | None = None,
+    ) -> bool:
+        ts = now or datetime.now(UTC)
+        stmt = select(ImportUploadSession.id).where(
+            ImportUploadSession.object_key == object_key,
+            ImportUploadSession.status.in_(["initiated", "uploading", "uploaded", "consumed"]),
+            or_(ImportUploadSession.expires_at.is_(None), ImportUploadSession.expires_at > ts),
+        )
+        if exclude_session_id is not None:
+            stmt = stmt.where(ImportUploadSession.id != exclude_session_id)
+        stmt = stmt.limit(1)
+        result = await self.session.execute(stmt)
+        return result.first() is not None

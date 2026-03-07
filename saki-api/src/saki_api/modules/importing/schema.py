@@ -135,11 +135,14 @@ class ImportUploadInitRequest(BaseModel):
     filename: str
     size: int = Field(ge=1)
     content_type: str = "application/zip"
+    file_sha256: str | None = Field(default=None, min_length=64, max_length=64)
 
 
 class ImportUploadInitResponse(BaseModel):
     session_id: uuid.UUID
     strategy: ImportUploadStrategy
+    status: ImportUploadSessionStatus
+    reuse_hit: bool = False
     object_key: str
     expires_at: datetime
     part_size: int

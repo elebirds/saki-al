@@ -81,11 +81,14 @@ export interface ImportUploadInitRequest {
     filename: string;
     size: number;
     contentType: string;
+    fileSha256?: string;
 }
 
 export interface ImportUploadInitResponse {
     sessionId: string;
     strategy: ImportUploadStrategy;
+    status: 'initiated' | 'uploaded';
+    reuseHit: boolean;
     objectKey: string;
     expiresAt: string;
     partSize: number;

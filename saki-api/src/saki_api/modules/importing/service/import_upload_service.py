@@ -28,6 +28,7 @@ from saki_api.modules.system.service.system_settings import SystemSettingsServic
 
 
 _SAFE_FILENAME_RE = re.compile(r"[^a-zA-Z0-9._-]+")
+_SHA256_HEX_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 
 
 class ImportUploadService:
@@ -68,14 +69,71 @@ class ImportUploadService:
                 f"ZIP size exceeds limit ({size} > {max_zip_bytes})"
             )
 
+        file_sha256 = self._normalize_file_sha256(payload.file_sha256)
+
+        now = datetime.now(UTC)
+        expires_at = now + timedelta(minutes=max(1, int(settings.IMPORT_UPLOAD_SESSION_TTL_MINUTES)))
+
+        if file_sha256:
+            reusable = await self.repo.find_latest_reusable_uploaded_session(
+                user_id=user_id,
+                file_sha256=file_sha256,
+                size=size,
+                now=now,
+            )
+            if reusable:
+                can_reuse = False
+                try:
+                    stat = self.storage.head_object(reusable.object_key)
+                    can_reuse = int(stat.size or 0) == size
+                except StorageError:
+                    can_reuse = False
+
+                if can_reuse:
+                    row = await self.repo.create(
+                        {
+                            "user_id": user_id,
+                            "mode": payload.mode,
+                            "resource_type": resource_type.value,
+                            "resource_id": payload.resource_id,
+                            "filename": filename,
+                            "size": size,
+                            "content_type": str(payload.content_type or "application/zip"),
+                            "file_sha256": file_sha256,
+                            "object_key": reusable.object_key,
+                            "bucket": reusable.bucket or settings.MINIO_BUCKET_NAME,
+                            "strategy": reusable.strategy,
+                            "multipart_upload_id": None,
+                            "status": ImportUploadSessionStatus.UPLOADED.value,
+                            "uploaded_size": size,
+                            "expires_at": expires_at,
+                            "completed_at": now,
+                            "meta_info": {
+                                "reuse_hit": True,
+                                "reuse_from_session_id": str(reusable.id),
+                            },
+                        }
+                    )
+                    await self.session.commit()
+                    return ImportUploadInitResponse(
+                        session_id=row.id,
+                        strategy=ImportUploadStrategy(str(row.strategy)),
+                        status=ImportUploadSessionStatus.UPLOADED,
+                        reuse_hit=True,
+                        object_key=row.object_key,
+                        expires_at=expires_at,
+                        part_size=int(settings.IMPORT_UPLOAD_PART_SIZE_BYTES),
+                        upload_id=None,
+                        url=None,
+                        headers={},
+                    )
+
         strategy = (
             ImportUploadStrategy.MULTIPART.value
             if size >= int(settings.IMPORT_UPLOAD_MULTIPART_THRESHOLD_BYTES)
             else ImportUploadStrategy.SINGLE_PUT.value
         )
 
-        now = datetime.now(UTC)
-        expires_at = now + timedelta(minutes=max(1, int(settings.IMPORT_UPLOAD_SESSION_TTL_MINUTES)))
         object_key = self._build_object_key(
             user_id=user_id,
             mode=payload.mode,
@@ -101,6 +159,7 @@ class ImportUploadService:
                 "filename": filename,
                 "size": size,
                 "content_type": str(payload.content_type or "application/zip"),
+                "file_sha256": file_sha256,
                 "object_key": object_key,
                 "bucket": settings.MINIO_BUCKET_NAME,
                 "strategy": strategy,
@@ -126,6 +185,8 @@ class ImportUploadService:
         return ImportUploadInitResponse(
             session_id=row.id,
             strategy=ImportUploadStrategy(strategy),
+            status=ImportUploadSessionStatus.INITIATED,
+            reuse_hit=False,
             object_key=object_key,
             expires_at=expires_at,
             part_size=int(settings.IMPORT_UPLOAD_PART_SIZE_BYTES),
@@ -259,11 +320,10 @@ class ImportUploadService:
                 pass
 
         if row.status != ImportUploadSessionStatus.CONSUMED.value:
-            try:
-                if self.storage.object_exists(row.object_key):
-                    self.storage.delete_object(row.object_key)
-            except StorageError:
-                pass
+            await self._delete_object_if_unreferenced(
+                object_key=row.object_key,
+                exclude_session_id=row.id,
+            )
 
         row.status = ImportUploadSessionStatus.ABORTED.value
         row.error = "aborted by user"
@@ -328,6 +388,17 @@ class ImportUploadService:
             return ResourceType(value)
         except ValueError as exc:
             raise BadRequestAppException(f"invalid resource_type: {raw}") from exc
+
+    @staticmethod
+    def _normalize_file_sha256(raw: str | None) -> str | None:
+        if raw is None:
+            return None
+        value = str(raw).strip().lower()
+        if not value:
+            return None
+        if not _SHA256_HEX_RE.fullmatch(value):
+            raise BadRequestAppException("file_sha256 must be 64-char hex string")
+        return value
 
     async def _ensure_mode_permission(
         self,
@@ -427,12 +498,32 @@ class ImportUploadService:
                     self.storage.abort_multipart_upload(row.object_key, row.multipart_upload_id)
                 except StorageError:
                     pass
-            try:
-                if self.storage.object_exists(row.object_key):
-                    self.storage.delete_object(row.object_key)
-            except StorageError:
-                pass
+            await self._delete_object_if_unreferenced(
+                object_key=row.object_key,
+                exclude_session_id=row.id,
+                now=now,
+            )
             row.status = ImportUploadSessionStatus.EXPIRED.value
             row.error = "upload session expired"
             row.completed_at = now
         await self.session.commit()
+
+    async def _delete_object_if_unreferenced(
+        self,
+        *,
+        object_key: str,
+        exclude_session_id: uuid.UUID | None = None,
+        now: datetime | None = None,
+    ) -> None:
+        has_live_reference = await self.repo.has_live_object_reference(
+            object_key=object_key,
+            exclude_session_id=exclude_session_id,
+            now=now,
+        )
+        if has_live_reference:
+            return
+        try:
+            if self.storage.object_exists(object_key):
+                self.storage.delete_object(object_key)
+        except StorageError:
+            pass

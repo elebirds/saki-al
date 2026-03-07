@@ -575,6 +575,7 @@ CREATE TABLE public.import_upload_session (
     filename character varying(255) NOT NULL,
     size integer NOT NULL,
     content_type character varying(127) NOT NULL,
+    file_sha256 character varying(64),
     object_key character varying(1024) NOT NULL,
     bucket character varying(255),
     strategy character varying(32) NOT NULL,
@@ -1997,6 +1998,13 @@ CREATE INDEX ix_import_upload_session_status ON public.import_upload_session USI
 --
 
 CREATE INDEX ix_import_upload_session_user_id ON public.import_upload_session USING btree (user_id);
+
+
+--
+-- Name: ix_import_upload_session_user_hash_size_status_expires; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_import_upload_session_user_hash_size_status_expires ON public.import_upload_session USING btree (user_id, file_sha256, size, status, expires_at);
 
 
 --

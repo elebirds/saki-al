@@ -1,4 +1,5 @@
 import {useCallback, useState} from 'react';
+import {createSHA256} from 'hash-wasm';
 import {api} from '../../services/api';
 import {
     ImportUploadCompletedPart,
@@ -32,6 +33,7 @@ interface UploadZipResult {
 
 const MAX_PART_RETRIES = 3;
 const MAX_PART_CONCURRENCY = 3;
+const HASH_CHUNK_SIZE = 8 * 1024 * 1024;
 
 function computePercent(uploaded: number, total: number): number {
     if (!total) return 0;
@@ -87,6 +89,21 @@ function uploadBlobByXhr(
     });
 }
 
+async function calculateFileSha256(file: File, signal?: AbortSignal): Promise<string> {
+    const hasher = await createSHA256();
+    hasher.init();
+
+    for (let offset = 0; offset < file.size; offset += HASH_CHUNK_SIZE) {
+        if (signal?.aborted) {
+            throw new DOMException('The operation was aborted.', 'AbortError');
+        }
+        const chunk = file.slice(offset, Math.min(file.size, offset + HASH_CHUNK_SIZE));
+        const buffer = await chunk.arrayBuffer();
+        hasher.update(new Uint8Array(buffer));
+    }
+    return hasher.digest('hex');
+}
+
 export function useObjectUpload() {
     const [progress, setProgress] = useState<UseObjectUploadProgress>({
         phase: 'idle',
@@ -116,6 +133,17 @@ export function useObjectUpload() {
 
         let sessionId: string | null = null;
         try {
+            let fileSha256: string | undefined;
+            try {
+                fileSha256 = await calculateFileSha256(file, signal);
+            } catch (error) {
+                if (error instanceof DOMException && error.name === 'AbortError') {
+                    throw error;
+                }
+                // Hash 计算失败时退化为原上传路径，避免阻塞导入流程。
+                fileSha256 = undefined;
+            }
+
             const init = await api.initImportUploadSession({
                 mode,
                 resourceType,
@@ -123,6 +151,7 @@ export function useObjectUpload() {
                 filename: file.name,
                 size: file.size,
                 contentType: file.type || 'application/zip',
+                fileSha256,
             });
 
             sessionId = init.sessionId;
@@ -133,6 +162,18 @@ export function useObjectUpload() {
                 strategy,
                 sessionId: sessionId || undefined,
             }));
+
+            if (init.status === 'uploaded' && init.reuseHit) {
+                const session = await api.getImportUploadSession(sessionId);
+                setProgress((prev) => ({
+                    ...prev,
+                    phase: 'completed',
+                    uploadedBytes: file.size,
+                    totalBytes: file.size,
+                    percent: 100,
+                }));
+                return {sessionId, session};
+            }
 
             if (strategy === 'single_put') {
                 if (!init.url) {

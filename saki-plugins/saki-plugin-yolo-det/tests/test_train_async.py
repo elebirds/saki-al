@@ -86,7 +86,7 @@ async def test_run_train_with_epoch_stream_emits_progress_then_log_then_metric(t
 
 
 @pytest.mark.anyio
-async def test_run_train_with_epoch_stream_prefers_last_metric_callback_as_final_metrics(tmp_path):
+async def test_run_train_with_epoch_stream_uses_train_output_best_metrics_as_final(tmp_path):
     workspace = _WorkspaceStub(tmp_path)
     (workspace.data_dir / "dataset.yaml").write_text("path: .\ntrain: images\nval: images\n", encoding="utf-8")
     config = _make_train_config()
@@ -127,12 +127,13 @@ async def test_run_train_with_epoch_stream_prefers_last_metric_callback_as_final
         to_int=lambda value, default: int(value) if value is not None else default,
     )
 
-    assert output["metrics"]["loss"] == pytest.approx(0.45)
-    assert output["metrics"]["map50"] == pytest.approx(0.35)
-    assert output["metrics"]["map50_95"] == pytest.approx(0.25)
-    assert output["metrics"]["precision"] == pytest.approx(0.55)
-    assert output["metrics"]["recall"] == pytest.approx(0.65)
-    assert output["metrics_source"] == "last_metric_event"
+    assert output["metrics"]["loss"] == pytest.approx(0.4)
+    assert output["metrics"]["map50"] == pytest.approx(0.3)
+    assert output["metrics"]["map50_95"] == pytest.approx(0.2)
+    assert output["metrics"]["precision"] == pytest.approx(0.5)
+    assert output["metrics"]["recall"] == pytest.approx(0.6)
+    assert output["metrics_source"] == "train_output_best"
+    assert output["last_epoch_metrics"]["loss"] == pytest.approx(0.45)
 
 
 def test_format_epoch_metric_summary_prioritizes_common_keys():

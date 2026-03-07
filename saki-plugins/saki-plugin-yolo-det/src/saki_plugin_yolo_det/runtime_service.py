@@ -158,6 +158,25 @@ class YoloRuntimeService:
             run_train_sync=self._run_train_sync,
             to_int=to_int,
         )
+        train_summary = (
+            dict(train_result.get("train_summary"))
+            if isinstance(train_result.get("train_summary"), dict)
+            else {}
+        )
+        if train_summary:
+            await emit(
+                "log",
+                {
+                    "level": "INFO",
+                    "message": (
+                        "training stop summary "
+                        f"patience={train_summary.get('patience')} "
+                        f"best_epoch={train_summary.get('best_epoch')} "
+                        f"stopped_epoch={train_summary.get('stopped_epoch')} "
+                        f"early_stop_triggered={bool(train_summary.get('early_stop_triggered', False))}"
+                    ),
+                },
+            )
         prepare_stats = load_prepare_stats(workspace)
         metrics = normalize_training_metrics(
             metrics=dict(train_result["metrics"]),
@@ -170,6 +189,7 @@ class YoloRuntimeService:
             to_int=to_int,
             to_bool=to_bool,
         )
+        report_meta["train_summary"] = train_summary
         metrics_source = str(train_result.get("metrics_source") or "unknown")
         missing_canonical = [key for key in _TRAIN_CANONICAL_KEYS if key not in metrics]
         report_meta["metric_validation"] = {
@@ -377,6 +397,8 @@ class YoloRuntimeService:
             json.dumps(
                 {
                     "metrics": metrics,
+                    "best_metrics": train_result.get("best_metrics", {}),
+                    "last_epoch_metrics": train_result.get("last_epoch_metrics", {}),
                     "history": train_result["history"],
                     "train_dir": str(train_result["save_dir"]),
                     "data_stats": prepare_stats,

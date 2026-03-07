@@ -178,6 +178,32 @@ def run_train_sync(
         history=history,
         to_float=to_float,
     )
+    trainer = getattr(model, "trainer", None)
+    stopped_epoch_raw = getattr(trainer, "epoch", None) if trainer is not None else None
+    stopped_epoch = (
+        max(1, to_int(stopped_epoch_raw, 0) + 1)
+        if stopped_epoch_raw is not None
+        else len(history)
+    )
+    best_epoch_raw = getattr(trainer, "best_epoch", None) if trainer is not None else None
+    best_epoch = (
+        max(1, to_int(best_epoch_raw, 0) + 1)
+        if best_epoch_raw is not None and to_int(best_epoch_raw, -1) >= 0
+        else (stopped_epoch if history else 0)
+    )
+    early_stop_triggered = (
+        (not stop_flag.is_set())
+        and int(epochs) > 0
+        and int(stopped_epoch) > 0
+        and int(stopped_epoch) < int(epochs)
+    )
+    train_summary = {
+        "patience": int(patience),
+        "requested_epochs": int(epochs),
+        "best_epoch": int(best_epoch) if best_epoch > 0 else None,
+        "stopped_epoch": int(stopped_epoch) if stopped_epoch > 0 else None,
+        "early_stop_triggered": bool(early_stop_triggered),
+    }
     extra_artifacts = collect_optional_artifacts(save_dir=save_dir, workspace=workspace)
     return {
         "metrics": metrics,
@@ -185,6 +211,7 @@ def run_train_sync(
         "save_dir": str(save_dir),
         "best_path": str(final_best),
         "extra_artifacts": extra_artifacts,
+        "train_summary": train_summary,
     }
 
 

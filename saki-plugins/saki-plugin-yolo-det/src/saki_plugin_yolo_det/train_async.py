@@ -174,17 +174,22 @@ async def run_train_with_epoch_stream(
         raise train_error
     if train_result is None:
         raise RuntimeError("training thread finished without result")
-    final_metrics = (
+    best_metrics = (
         dict(train_result.get("metrics"))
         if isinstance(train_result.get("metrics"), dict)
         else {}
     )
-    if latest_epoch_metrics:
+    if best_metrics:
+        train_result["metrics"] = dict(best_metrics)
+        train_result["metrics_source"] = "train_output_best"
+    elif latest_epoch_metrics:
         train_result["metrics"] = dict(latest_epoch_metrics)
-        train_result["metrics_source"] = "last_metric_event"
+        train_result["metrics_source"] = "last_metric_event_fallback"
     else:
-        train_result["metrics"] = final_metrics
-        train_result["metrics_source"] = "train_output"
+        train_result["metrics"] = {}
+        train_result["metrics_source"] = "none"
+    train_result["best_metrics"] = dict(best_metrics)
+    train_result["last_epoch_metrics"] = dict(latest_epoch_metrics)
 
     return train_result
 

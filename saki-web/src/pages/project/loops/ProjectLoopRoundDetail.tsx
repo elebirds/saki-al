@@ -18,6 +18,7 @@ import RoundOverviewDrawer from './roundDetail/RoundOverviewDrawer';
 import StepDetailDrawer from './roundDetail/StepDetailDrawer';
 import TopKCandidatesCard from './roundDetail/TopKCandidatesCard';
 import TrainCurveCard from './roundDetail/TrainCurveCard';
+import EvalScopeCompareCard from './roundDetail/EvalScopeCompareCard';
 import {useRoundArtifactsAndCandidates} from './roundDetail/useRoundArtifactsAndCandidates';
 import {useRoundCoreData} from './roundDetail/useRoundCoreData';
 import {useRoundEventStream} from './roundDetail/useRoundEventStream';
@@ -88,16 +89,18 @@ const ProjectLoopRoundDetail: React.FC = () => {
     const {
         trainMetricPoints,
         setTrainMetricPoints,
+        evalMetricPoints,
         topkCandidates,
         topkSource,
         roundArtifacts,
         setRoundArtifacts,
         artifactUrls,
-        ensureArtifactUrls,
+        resolveArtifactUrl,
     } = useRoundArtifactsAndCandidates({
         canManageLoops,
         round,
         trainStep,
+        evalStep,
         selectStep,
         scoreStep,
     });
@@ -126,7 +129,6 @@ const ProjectLoopRoundDetail: React.FC = () => {
         steps,
         activeConsoleStages,
         scheduleRoundMetaRefresh,
-        ensureArtifactUrls,
         setSteps,
         setTrainMetricPoints,
         setRoundArtifacts,
@@ -242,6 +244,41 @@ const ProjectLoopRoundDetail: React.FC = () => {
         return Math.max(0.05, Number(padded.toFixed(4)));
     }, [trainMetricPoints]);
 
+    const evalScopeRows = useMemo(() => {
+        const rows = new Map<number, Record<string, number | string>>();
+        evalMetricPoints.forEach((point) => {
+            const step = Number(point.step || 0);
+            if (![1, 2, 3].includes(step)) return;
+            const current = rows.get(step) || {
+                step,
+                scope: step === 1 ? 'test_anchor' : (step === 2 ? 'test_batch' : 'test_composite'),
+            };
+            current[point.metricName] = Number(point.metricValue);
+            rows.set(step, current);
+        });
+        return Array.from(rows.values()).sort((a, b) => Number(a.step || 0) - Number(b.step || 0));
+    }, [evalMetricPoints]);
+
+    const trainingStopSummary = useMemo(() => {
+        const summaryEvent = [...events].reverse().find((item) => (
+            item.eventType === 'log'
+            && item.stage === 'train'
+            && String(item.messageText || item.rawMessage || '').includes('training stop summary')
+        ));
+        if (!summaryEvent) return null;
+        const text = String(summaryEvent.messageText || summaryEvent.rawMessage || '');
+        const matched = text.match(
+            /patience=([^\s]+)\s+best_epoch=([^\s]+)\s+stopped_epoch=([^\s]+)\s+early_stop_triggered=(true|false)/i,
+        );
+        if (!matched) return null;
+        return {
+            patience: matched[1],
+            bestEpoch: matched[2],
+            stoppedEpoch: matched[3],
+            earlyStopTriggered: String(matched[4]).toLowerCase() === 'true',
+        };
+    }, [events]);
+
     const roundArtifactRows = useMemo<RoundArtifactTableRow[]>(() => {
         return (roundArtifacts || [])
             .filter((item) => String(item.taskId || '').trim().length > 0)
@@ -323,7 +360,16 @@ const ProjectLoopRoundDetail: React.FC = () => {
                 trainScoreAxisUpperBound={trainScoreAxisUpperBound}
             />
 
-            <ArtifactTableCard roundArtifactRows={roundArtifactRows} artifactUrls={artifactUrls}/>
+            <EvalScopeCompareCard
+                evalStep={evalStep}
+                rows={evalScopeRows}
+            />
+
+            <ArtifactTableCard
+                roundArtifactRows={roundArtifactRows}
+                artifactUrls={artifactUrls}
+                resolveArtifactUrl={resolveArtifactUrl}
+            />
 
             <TopKCandidatesCard
                 roundMode={round.mode}
@@ -336,6 +382,7 @@ const ProjectLoopRoundDetail: React.FC = () => {
                 evalFinalMetricPairs={evalFinalMetricPairs}
                 finalMetricPairs={finalMetricPairs}
                 finalMetricsSource={finalMetricsSource}
+                trainingStopSummary={trainingStopSummary}
             />
 
             <RoundConsolePanel

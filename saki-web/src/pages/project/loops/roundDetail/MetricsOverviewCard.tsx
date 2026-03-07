@@ -11,6 +11,12 @@ interface MetricsOverviewCardProps {
     evalFinalMetricPairs: Array<[string, any]>;
     finalMetricPairs: Array<[string, any]>;
     finalMetricsSource: 'eval' | 'train' | 'other' | 'none';
+    trainingStopSummary?: {
+        patience: string;
+        bestEpoch: string;
+        stoppedEpoch: string;
+        earlyStopTriggered: boolean;
+    } | null;
 }
 
 const MetricsOverviewCard: React.FC<MetricsOverviewCardProps> = ({
@@ -18,12 +24,23 @@ const MetricsOverviewCard: React.FC<MetricsOverviewCardProps> = ({
     evalFinalMetricPairs,
     finalMetricPairs,
     finalMetricsSource,
+    trainingStopSummary,
 }) => {
     return (
         <Card className="!border-github-border !bg-github-panel" title="指标总览">
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
                 <div>
                     <Text strong>Train 终态</Text>
+                    {trainingStopSummary ? (
+                        <Descriptions size="small" column={1} className="!mt-2 !mb-2">
+                            <Descriptions.Item label="patience">{trainingStopSummary.patience}</Descriptions.Item>
+                            <Descriptions.Item label="best_epoch">{trainingStopSummary.bestEpoch}</Descriptions.Item>
+                            <Descriptions.Item label="stopped_epoch">{trainingStopSummary.stoppedEpoch}</Descriptions.Item>
+                            <Descriptions.Item label="early_stop_triggered">
+                                {trainingStopSummary.earlyStopTriggered ? 'true' : 'false'}
+                            </Descriptions.Item>
+                        </Descriptions>
+                    ) : null}
                     {trainFinalMetricPairs.length === 0 ? (
                         <Empty description="暂无指标"/>
                     ) : (

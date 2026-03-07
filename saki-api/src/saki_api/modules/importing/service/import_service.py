@@ -59,6 +59,8 @@ from saki_api.modules.importing.schema import (
 )
 from saki_api.modules.importing.service.import_upload_service import ImportUploadService
 from saki_api.modules.importing.service.task_service import TaskService
+from saki_api.modules.system.service.system_setting_keys import SystemSettingKeys
+from saki_api.modules.system.service.system_settings import SystemSettingsService
 from saki_ir import ConversionContext, ConversionReport, load_coco_dataset, load_dota_dataset, load_voc_dataset, load_yolo_dataset
 from saki_ir.convert import split_batch, struct_to_dict
 
@@ -161,6 +163,7 @@ class ImportService:
         self.label_service = LabelService(session)
         self.asset_service = AssetService(session)
         self.task_service = TaskService(session)
+        self.system_settings = SystemSettingsService(session)
         self.upload_service = ImportUploadService(session)
         self.annotation_gateway = AnnotationReadGateway(session)
         self._last_scan_total_files = 0
@@ -180,7 +183,7 @@ class ImportService:
     ) -> ImportDryRunResponse:
         dataset = await self.dataset_service.get_by_id_or_raise(dataset_id)
         self._ensure_dataset_type_classic(dataset.type)
-        await self._validate_zip_upload(zip_file)
+        max_zip_bytes = await self._validate_zip_upload(zip_file)
 
         zip_asset = await self.asset_service.upload_file(
             zip_file,
@@ -196,6 +199,7 @@ class ImportService:
                 archive,
                 warnings=issues_warnings,
                 errors=issues_errors,
+                max_zip_bytes=max_zip_bytes,
             )
         image_entries = self._build_image_entries(
             image_paths=image_paths,
@@ -274,7 +278,7 @@ class ImportService:
         path_flatten_mode: PathFlattenMode = PathFlattenMode.BASENAME,
         name_collision_policy: NameCollisionPolicy = NameCollisionPolicy.ABORT,
     ) -> ImportDryRunResponse:
-        await self._validate_zip_upload(zip_file)
+        max_zip_bytes = await self._validate_zip_upload(zip_file)
         await self._ensure_project_dataset_context(
             user_id=user_id,
             project_id=project_id,
@@ -296,7 +300,7 @@ class ImportService:
             extract_root = Path(temp_dir)
             await zip_file.seek(0)
             with zipfile.ZipFile(zip_file.file) as archive:
-                self._extract_zip_archive(archive, extract_root)
+                self._extract_zip_archive(archive, extract_root, max_zip_bytes=max_zip_bytes)
             prepared_annotations, raw_labels, report = self._parse_annotations_from_dir(extract_root, fmt)
 
         self._append_conversion_report(report, warnings, errors)
@@ -425,7 +429,7 @@ class ImportService:
         new_dataset_description: str | None,
         zip_file: UploadFile,
     ) -> ImportDryRunResponse:
-        await self._validate_zip_upload(zip_file)
+        max_zip_bytes = await self._validate_zip_upload(zip_file)
         await self.project_service.get_by_id_or_raise(project_id)
         await self._ensure_branch_exists(project_id=project_id, branch_name=branch_name)
 
@@ -465,6 +469,7 @@ class ImportService:
                     archive,
                     warnings=warnings,
                     errors=errors,
+                    max_zip_bytes=max_zip_bytes,
                 )
                 image_entries = self._build_image_entries(
                     image_paths=image_paths,
@@ -473,7 +478,7 @@ class ImportService:
                     warnings=warnings,
                     errors=errors,
                 )
-                self._extract_zip_archive(archive, extract_root)
+                self._extract_zip_archive(archive, extract_root, max_zip_bytes=max_zip_bytes)
 
             prepared_annotations, raw_labels, report = self._parse_annotations_from_dir(extract_root, fmt)
 
@@ -1778,15 +1783,29 @@ class ImportService:
     # Zip helpers
     # ---------------------------------------------------------------------
 
-    async def _validate_zip_upload(self, file: UploadFile) -> None:
+    async def _get_import_max_zip_bytes(self) -> int:
+        value = await self.system_settings.get_value(
+            SystemSettingKeys.IMPORT_MAX_ZIP_BYTES,
+            default=int(settings.IMPORT_MAX_ZIP_BYTES),
+        )
+        try:
+            parsed = int(value)
+        except Exception as exc:  # noqa: BLE001
+            raise BadRequestAppException(f"invalid import max zip bytes setting: {value}") from exc
+        if parsed <= 0:
+            raise BadRequestAppException(f"invalid import max zip bytes setting: {parsed}")
+        return parsed
+
+    async def _validate_zip_upload(self, file: UploadFile) -> int:
         filename = str(file.filename or "").lower()
         if not filename.endswith(".zip"):
             raise BadRequestAppException("Only ZIP archives are supported")
 
+        max_zip_bytes = await self._get_import_max_zip_bytes()
         size = self._upload_file_size(file)
-        if size > settings.IMPORT_MAX_ZIP_BYTES:
+        if size > max_zip_bytes:
             raise BadRequestAppException(
-                f"ZIP size exceeds limit ({size} > {settings.IMPORT_MAX_ZIP_BYTES})"
+                f"ZIP size exceeds limit ({size} > {max_zip_bytes})"
             )
 
         await file.seek(0)
@@ -1794,6 +1813,7 @@ class ImportService:
         await file.seek(0)
         if magic not in _ZIP_MAGIC:
             raise BadRequestAppException("Invalid ZIP file")
+        return max_zip_bytes
 
     @staticmethod
     def _upload_file_size(file: UploadFile) -> int:
@@ -1808,6 +1828,7 @@ class ImportService:
         *,
         warnings: list[ImportIssue],
         errors: list[ImportIssue],
+        max_zip_bytes: int,
     ) -> list[str]:
         image_paths: list[str] = []
         del errors
@@ -1842,7 +1863,7 @@ class ImportService:
 
             total_files += 1
             total_uncompressed += max(0, int(info.file_size or 0))
-            if total_uncompressed > settings.IMPORT_MAX_ZIP_BYTES * 8:
+            if total_uncompressed > max_zip_bytes * 8:
                 raise BadRequestAppException("ZIP appears to be a decompression bomb")
 
             ext = Path(normalized).suffix.lower()
@@ -2049,7 +2070,7 @@ class ImportService:
                 return candidate
             counter += 1
 
-    def _extract_zip_archive(self, archive: zipfile.ZipFile, output_dir: Path) -> None:
+    def _extract_zip_archive(self, archive: zipfile.ZipFile, output_dir: Path, *, max_zip_bytes: int) -> None:
         infos = archive.infolist()
         if len(infos) > settings.IMPORT_MAX_ENTRIES:
             raise BadRequestAppException(
@@ -2068,7 +2089,7 @@ class ImportService:
                 continue
 
             total_uncompressed += max(0, int(info.file_size or 0))
-            if total_uncompressed > settings.IMPORT_MAX_ZIP_BYTES * 8:
+            if total_uncompressed > max_zip_bytes * 8:
                 raise BadRequestAppException("ZIP appears to be a decompression bomb")
 
             target = (output_dir / normalized).resolve()

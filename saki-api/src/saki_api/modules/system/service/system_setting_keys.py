@@ -11,6 +11,7 @@ class SystemSettingKeys:
     AUTH_ALLOW_SELF_REGISTER = "auth.allow_self_register"
 
     DATASET_ALLOW_DUPLICATE_SAMPLE_NAMES_DEFAULT = "dataset.allow_duplicate_sample_names_default"
+    IMPORT_MAX_ZIP_BYTES = "import.max_zip_bytes"
 
     SIMULATION_SEED_RATIO = "simulation.seed_ratio"
     SIMULATION_STEP_RATIO = "simulation.step_ratio"

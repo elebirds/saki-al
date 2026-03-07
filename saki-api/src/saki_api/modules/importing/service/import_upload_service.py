@@ -23,6 +23,8 @@ from saki_api.modules.importing.schema import (
     ImportUploadPartSignedItem,
     ImportUploadSessionResponse,
 )
+from saki_api.modules.system.service.system_setting_keys import SystemSettingKeys
+from saki_api.modules.system.service.system_settings import SystemSettingsService
 
 
 _SAFE_FILENAME_RE = re.compile(r"[^a-zA-Z0-9._-]+")
@@ -33,6 +35,7 @@ class ImportUploadService:
         self.session = session
         self.repo = ImportUploadSessionRepository(session)
         self.storage = get_storage_provider()
+        self.system_settings = SystemSettingsService(session)
 
     async def init_upload_session(
         self,
@@ -59,9 +62,10 @@ class ImportUploadService:
         size = int(payload.size or 0)
         if size <= 0:
             raise BadRequestAppException("size must be > 0")
-        if size > int(settings.IMPORT_MAX_ZIP_BYTES):
+        max_zip_bytes = await self._get_import_max_zip_bytes()
+        if size > max_zip_bytes:
             raise BadRequestAppException(
-                f"ZIP size exceeds limit ({size} > {settings.IMPORT_MAX_ZIP_BYTES})"
+                f"ZIP size exceeds limit ({size} > {max_zip_bytes})"
             )
 
         strategy = (
@@ -398,6 +402,19 @@ class ImportUploadService:
             expires_at=row.expires_at,
             error=row.error,
         )
+
+    async def _get_import_max_zip_bytes(self) -> int:
+        value = await self.system_settings.get_value(
+            SystemSettingKeys.IMPORT_MAX_ZIP_BYTES,
+            default=int(settings.IMPORT_MAX_ZIP_BYTES),
+        )
+        try:
+            parsed = int(value)
+        except Exception as exc:  # noqa: BLE001
+            raise BadRequestAppException(f"invalid import max zip bytes setting: {value}") from exc
+        if parsed <= 0:
+            raise BadRequestAppException(f"invalid import max zip bytes setting: {parsed}")
+        return parsed
 
     async def _expire_stale_sessions(self) -> None:
         rows = await self.repo.list_expired_active(limit=500)

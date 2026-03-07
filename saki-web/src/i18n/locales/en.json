@@ -1561,6 +1561,7 @@
       "general": "General",
       "auth": "Authentication",
       "dataset": "Dataset",
+      "import": "Import",
       "simulation": "Simulation",
       "maintenance": "Maintenance"
     }

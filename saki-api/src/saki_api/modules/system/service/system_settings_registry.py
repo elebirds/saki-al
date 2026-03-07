@@ -97,6 +97,21 @@ _DEFS: list[SystemSettingDef] = [
         group_order=30,
     ),
     SystemSettingDef(
+        key=SystemSettingKeys.IMPORT_MAX_ZIP_BYTES,
+        group="import",
+        title="导入 ZIP 最大体积（字节）",
+        description="导入上传会话与预检统一体积上限。2C4G 推荐 2147483648（2GB）。",
+        type="integer",
+        default=int(settings.IMPORT_MAX_ZIP_BYTES),
+        constraints={
+            "min": 64 * 1024 * 1024,
+            "max": 20 * 1024 * 1024 * 1024,
+        },
+        ui={"component": "number", "step": 1024 * 1024},
+        order=10,
+        group_order=35,
+    ),
+    SystemSettingDef(
         key=SystemSettingKeys.SIMULATION_SEED_RATIO,
         group="simulation",
         title="Simulation 默认 seed_ratio",

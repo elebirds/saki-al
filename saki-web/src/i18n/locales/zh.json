@@ -1561,6 +1561,7 @@
       "general": "通用",
       "auth": "认证",
       "dataset": "数据集",
+      "import": "导入",
       "simulation": "Simulation",
       "maintenance": "维护"
     }

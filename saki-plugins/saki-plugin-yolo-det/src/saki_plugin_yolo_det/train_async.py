@@ -19,7 +19,7 @@ ResolveModelRefFn = Callable[..., Awaitable[str]]
 
 def _format_epoch_metric_summary(metrics_row: dict[str, Any]) -> str:
     if not metrics_row:
-        return "epoch metrics: no data"
+        return "轮次指标：无数据"
     preferred = ("loss", "map50", "map50_95", "precision", "recall")
     ordered_keys: list[str] = []
     for key in preferred:
@@ -35,7 +35,7 @@ def _format_epoch_metric_summary(metrics_row: dict[str, Any]) -> str:
             chunks.append(f"{key}={value:.6f}")
         except Exception:
             chunks.append(f"{key}={metrics_row[key]}")
-    return "epoch metrics: " + ", ".join(chunks)
+    return "轮次指标：" + ", ".join(chunks)
 
 
 async def resolve_train_config(
@@ -93,7 +93,7 @@ async def run_train_with_epoch_stream(
         {
             "level": "INFO",
             "message": (
-                f"YOLO training started base_model={config.resolved_base_model} "
+                f"YOLO 训练开始 base_model={config.resolved_base_model} "
                 f"epochs={config.epochs} batch={config.batch} imgsz={config.imgsz} "
                 f"patience={config.patience} requested_device={config.requested_device} "
                 f"resolved_backend={config.resolved_backend} device={config.device} "

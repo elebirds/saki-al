@@ -38,7 +38,7 @@ async def dispatch_loop_command(
     dispatcher_admin_client: DispatcherAdminClientDep,
 ) -> object:
     if not dispatcher_admin_client.enabled:
-        raise InternalServerErrorAppException("dispatcher_admin is not configured")
+        raise InternalServerErrorAppException("dispatcher_admin 未配置")
 
     loop_id_text = str(loop_id)
     try:
@@ -56,15 +56,15 @@ async def dispatch_loop_command(
             return await dispatcher_admin_client.start_next_round(loop_id_text)
         if command == "retry_round":
             if not round_id:
-                raise BadRequestAppException("round_id is required for retry_round")
+                raise BadRequestAppException("retry_round 必须提供 round_id")
             return await dispatcher_admin_client.retry_round(
                 str(round_id),
                 reason=reason,
             )
-        raise BadRequestAppException(f"unsupported dispatcher command: {command}")
+        raise BadRequestAppException(f"不支持的 dispatcher 命令: {command}")
     except Exception as exc:
-        logger.warning("dispatcher loop command failed command={} loop_id={} error={}", command, loop_id, exc)
-        raise InternalServerErrorAppException("dispatcher loop command failed") from exc
+        logger.warning("dispatcher loop 命令失败 command={} loop_id={} error={}", command, loop_id, exc)
+        raise InternalServerErrorAppException("dispatcher loop 命令失败") from exc
 
 
 def to_prediction_read(row, *, task=None) -> PredictionRead:

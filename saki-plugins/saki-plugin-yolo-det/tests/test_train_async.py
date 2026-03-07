@@ -140,7 +140,7 @@ def test_format_epoch_metric_summary_prioritizes_common_keys():
     text = _format_epoch_metric_summary(
         {"map50": 0.22, "extra": 1.0, "loss": 0.44, "precision": 0.33}
     )
-    assert text.startswith("epoch metrics: loss=")
+    assert text.startswith("轮次指标：loss=")
     assert "map50=" in text
     assert "precision=" in text
     assert "extra=" in text

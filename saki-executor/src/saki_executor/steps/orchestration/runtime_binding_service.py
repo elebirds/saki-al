@@ -50,7 +50,7 @@ class RuntimeBindingService:
                 default_code=TaskErrorCode.ENV_SYNC_FAILED,
                 exc=exc,
                 message=(
-                    f"profile environment sync failed plugin_id={plan.request.plugin_id} "
+                    f"配置环境同步失败 plugin_id={plan.request.plugin_id} "
                     f"task_id={plan.request.task_id}: {exc}"
                 ),
             ) from exc
@@ -72,7 +72,7 @@ class RuntimeBindingService:
                 default_code=TaskErrorCode.RUNTIME_PROBE_FAILED,
                 exc=exc,
                 message=(
-                    f"runtime capability probe failed plugin_id={plan.request.plugin_id} "
+                    f"运行能力探测失败 plugin_id={plan.request.plugin_id} "
                     f"task_id={plan.request.task_id}: {exc}"
                 ),
             ) from exc
@@ -99,7 +99,7 @@ class RuntimeBindingService:
                 default_code=TaskErrorCode.DEVICE_BINDING_CONFLICT,
                 exc=exc,
                 message=(
-                    f"device binding failed plugin_id={plan.request.plugin_id} "
+                    f"设备绑定失败 plugin_id={plan.request.plugin_id} "
                     f"task_id={plan.request.task_id}: {exc}"
                 ),
             ) from exc
@@ -124,7 +124,7 @@ class RuntimeBindingService:
                     default_code=TaskErrorCode.BIND_CONTEXT_FAILED,
                     exc=exc,
                     message=(
-                        f"bind execution context failed plugin_id={plan.request.plugin_id} "
+                        f"绑定执行上下文失败 plugin_id={plan.request.plugin_id} "
                         f"task_id={plan.request.task_id}: {exc}"
                     ),
                 ) from exc
@@ -137,7 +137,7 @@ class RuntimeBindingService:
                 default_code=TaskErrorCode.PARAM_VALIDATE_FAILED,
                 exc=exc,
                 message=(
-                    f"plugin params validate failed after binding plugin_id={plan.request.plugin_id} "
+                    f"绑定后插件参数校验失败 plugin_id={plan.request.plugin_id} "
                     f"task_id={plan.request.task_id}: {exc}"
                 ),
             ) from exc

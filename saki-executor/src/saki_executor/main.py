@@ -66,7 +66,7 @@ async def run() -> None:
         host_backends.insert(1 if "cuda" in host_backends else 0, "mps")
 
     logger.info(
-        "saki-executor 启动完成 executor_id={} version={} grpc_target={} plugins={} host.backends={}",
+        "saki-executor 启动完成 executor_id={} version={} grpc_target={} plugins={} host_backends={}",
         settings.EXECUTOR_ID,
         settings.EXECUTOR_VERSION,
         settings.API_GRPC_TARGET,
@@ -89,7 +89,7 @@ async def run() -> None:
     command_task.add_done_callback(_on_task_done)
 
     await shutdown_event.wait()
-    logger.info("收到关闭信号，准备停止 executor。")
+    logger.info("收到关闭信号，准备停止执行器。")
 
     for task in (client_task, command_task):
         if not task.done():
@@ -98,7 +98,7 @@ async def run() -> None:
         with suppress(asyncio.CancelledError):
             await task
 
-    logger.info("executor 已退出。")
+    logger.info("执行器已退出。")
 
 
 def main() -> None:

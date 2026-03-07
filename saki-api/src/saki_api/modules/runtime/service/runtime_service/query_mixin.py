@@ -395,7 +395,7 @@ class RuntimeQueryMixin:
             epoch = int(payload.get("epoch") or 0)
             step = int(payload.get("step") or 0)
             total_steps = int(payload.get("total_steps") or payload.get("totalSteps") or 0)
-            return f"epoch {epoch}, step {step}/{total_steps}"
+            return f"轮次 {epoch}，步骤 {step}/{total_steps}"
         if event_type == "metric":
             metrics = payload.get("metrics") if isinstance(payload.get("metrics"), dict) else {}
             keys = sorted(str(key) for key in metrics.keys() if str(key).strip())
@@ -410,8 +410,8 @@ class RuntimeQueryMixin:
                         text = str(raw_value)
                     preview_chunks.append(f"{key}={text}")
                 suffix = ", ..." if len(keys) > 5 else ""
-                return "metrics updated: " + ", ".join(preview_chunks) + suffix
-            return "metrics updated"
+                return "指标已更新: " + ", ".join(preview_chunks) + suffix
+            return "指标已更新"
         if event_type == "artifact":
             name = str(payload.get("name") or "").strip()
             uri = str(payload.get("uri") or "").strip()
@@ -523,7 +523,7 @@ class RuntimeQueryMixin:
         decoded = base64.urlsafe_b64decode(f"{raw_cursor}{pad}".encode("utf-8"))
         payload = json.loads(decoded.decode("utf-8"))
         if not isinstance(payload, dict):
-            raise ValueError("cursor payload must be object")
+            raise ValueError("cursor 载荷必须是对象")
         return payload
 
     def decode_round_events_cursor(self, after_cursor: str | None) -> dict[str, int]:
@@ -534,10 +534,10 @@ class RuntimeQueryMixin:
             payload = self._decode_round_events_cursor_payload(raw)
             version = int(payload.get("v", 0))
             if version != self._ROUND_EVENT_CURSOR_VERSION:
-                raise ValueError("cursor version mismatch")
+                raise ValueError("cursor 版本不匹配")
             task_seq_raw = payload.get("task_seq")
             if not isinstance(task_seq_raw, dict):
-                raise ValueError("cursor task_seq must be object")
+                raise ValueError("cursor task_seq 必须是对象")
             task_seq: dict[str, int] = {}
             for key, value in task_seq_raw.items():
                 task_id = str(uuid.UUID(str(key)))
@@ -545,7 +545,7 @@ class RuntimeQueryMixin:
                 task_seq[task_id] = seq_value
             return task_seq
         except Exception as exc:
-            raise BadRequestAppException("invalid after_cursor") from exc
+            raise BadRequestAppException("after_cursor 无效") from exc
 
     def encode_round_events_cursor(self, task_seq: dict[str, int]) -> str | None:
         if not task_seq:
@@ -830,13 +830,13 @@ class RuntimeQueryMixin:
     ) -> str:
         uri = str(uri or "").strip()
         if not uri:
-            raise BadRequestAppException("Artifact URI is empty")
+            raise BadRequestAppException("制品 URI 为空")
 
         if uri.startswith("s3://"):
             _, _, bucket_and_path = uri.partition("s3://")
             _, _, object_path = bucket_and_path.partition("/")
             if not object_path:
-                raise BadRequestAppException(f"Invalid S3 URI: {uri}")
+                raise BadRequestAppException(f"无效的 S3 URI: {uri}")
             return self.storage.get_presigned_url(
                 object_name=object_path,
                 expires_delta=timedelta(hours=expires_in_hours),
@@ -845,7 +845,7 @@ class RuntimeQueryMixin:
         if uri.startswith("http://") or uri.startswith("https://"):
             return uri
 
-        raise BadRequestAppException(f"Unsupported artifact URI: {uri}")
+        raise BadRequestAppException(f"不支持的制品 URI: {uri}")
 
     async def get_task_artifact_download_url(
         self,

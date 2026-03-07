@@ -1803,7 +1803,7 @@ async def test_legacy_task_type_is_rejected_on_executor(tmp_path: Path):
     assert len(result_messages) == 1
     result = result_messages[0].task_result
     assert result.status == pb.FAILED
-    assert "unsupported task_type for executor pipeline" in result.error_message
+    assert "executor 流水线不支持的 task_type" in result.error_message
     assert request_calls == 0
 
 

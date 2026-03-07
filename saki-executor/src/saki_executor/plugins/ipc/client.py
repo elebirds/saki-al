@@ -20,7 +20,7 @@ try:
     import zmq
     import zmq.asyncio
 except Exception as exc:  # pragma: no cover
-    raise RuntimeError("pyzmq is required for subprocess plugin worker") from exc
+    raise RuntimeError("子进程插件工作进程需要 pyzmq") from exc
 
 EventHandler = Callable[[str, dict[str, Any]], Awaitable[None]]
 
@@ -30,9 +30,9 @@ _STREAM_TAIL_BUFFER_LIMIT_BYTES = 256 * 1024
 
 class WorkerCommandError(RuntimeError):
     def __init__(self, *, error_code: str, error_message: str) -> None:
-        super().__init__(error_message or error_code or "worker command failed")
+        super().__init__(error_message or error_code or "工作进程命令执行失败")
         self.error_code = error_code
-        self.error_message = error_message or error_code or "worker command failed"
+        self.error_message = error_message or error_code or "工作进程命令执行失败"
 
 
 class PluginWorkerClient:
@@ -99,11 +99,11 @@ class PluginWorkerClient:
         timeout_sec: int | None = None,
     ) -> protocol.WorkerReplyEnvelope:
         if self._closed:
-            raise RuntimeError("worker client is closed")
+            raise RuntimeError("工作进程客户端已关闭")
         if not self._started:
             await self.start()
         if self._req_socket is None:
-            raise RuntimeError("worker request socket is not initialized")
+            raise RuntimeError("工作进程请求套接字未初始化")
 
         async with self._request_lock:
             request_id = str(uuid.uuid4())
@@ -187,8 +187,8 @@ class PluginWorkerClient:
         module = self._entrypoint_module
         if not module:
             raise RuntimeError(
-                f"entrypoint_module is not set for plugin {self._plugin_id}; "
-                "external plugins must declare 'entrypoint' in plugin.yml"
+                f"插件 {self._plugin_id} 未设置 entrypoint_module; "
+                "外部插件必须在 plugin.yml 中声明 entrypoint"
             )
         if ":" in module:
             module = module.split(":")[0]
@@ -250,7 +250,7 @@ class PluginWorkerClient:
         while asyncio.get_running_loop().time() < deadline:
             if self._process and self._process.returncode is not None:
                 raise RuntimeError(
-                    f"worker exited before ready plugin_id={self._plugin_id} "
+                    f"工作进程在就绪前已退出 plugin_id={self._plugin_id} "
                     f"task_id={self._task_id} return_code={self._process.returncode}"
                 )
             try:
@@ -261,14 +261,14 @@ class PluginWorkerClient:
                 self._reset_request_socket()
                 await asyncio.sleep(poll_sec)
         raise RuntimeError(
-            f"worker startup timeout plugin_id={self._plugin_id} "
+            f"工作进程启动超时 plugin_id={self._plugin_id} "
             f"command_endpoint={self._command_endpoint} "
             f"event_endpoint={self._event_endpoint} error={last_error}"
         )
 
     async def _recv_reply_or_raise(self, *, timeout_sec: int | None) -> dict[str, Any]:
         if self._req_socket is None:
-            raise RuntimeError("worker request socket is missing")
+            raise RuntimeError("工作进程请求套接字缺失")
         if timeout_sec is None:
             raw = await self._req_socket.recv_json()
         else:
@@ -281,12 +281,12 @@ class PluginWorkerClient:
                 self._reset_request_socket()
                 if self._process and self._process.returncode is not None:
                     raise RuntimeError(
-                        f"worker process exited plugin_id={self._plugin_id} "
+                        f"工作进程已退出 plugin_id={self._plugin_id} "
                         f"return_code={self._process.returncode}"
                     ) from exc
-                raise RuntimeError(f"worker request timeout action endpoint={self._command_endpoint}") from exc
+                raise RuntimeError(f"工作进程请求超时 endpoint={self._command_endpoint}") from exc
         if not isinstance(raw, dict):
-            raise RuntimeError("invalid worker reply payload")
+            raise RuntimeError("工作进程响应载荷无效")
         return raw
 
     def _reset_request_socket(self) -> None:

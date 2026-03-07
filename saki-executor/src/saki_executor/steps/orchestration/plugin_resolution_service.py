@@ -20,7 +20,7 @@ class PluginResolutionService:
             raise TaskPipelineError(
                 code=TaskErrorCode.PLUGIN_NOT_FOUND,
                 stage=TaskStage.PLUGIN_RESOLUTION,
-                message=f"plugin not found: {request.plugin_id}",
+                message=f"未找到插件: {request.plugin_id}",
             )
 
         manager.plugin_registry.ensure_worker_loadable(request.plugin_id)
@@ -34,8 +34,8 @@ class PluginResolutionService:
                 code=TaskErrorCode.PLUGIN_UNSUPPORTED_TASK_TYPE,
                 stage=TaskStage.PLUGIN_RESOLUTION,
                 message=(
-                    f"plugin {request.plugin_id} does not support task_type={request.task_type}; "
-                    f"supported={sorted(supported_task_types)}"
+                    f"插件 {request.plugin_id} 不支持 task_type={request.task_type}; "
+                    f"支持列表={sorted(supported_task_types)}"
                 ),
             )
 
@@ -58,7 +58,7 @@ class PluginResolutionService:
                 default_code=TaskErrorCode.CONFIG_RESOLVE_FAILED,
                 exc=exc,
                 message=(
-                    f"plugin config resolve failed plugin_id={request.plugin_id} "
+                    f"插件配置解析失败 plugin_id={request.plugin_id} "
                     f"task_id={request.task_id}: {exc}"
                 ),
             ) from exc
@@ -86,7 +86,7 @@ class PluginResolutionService:
                 default_code=TaskErrorCode.PARAM_VALIDATE_FAILED,
                 exc=exc,
                 message=(
-                    f"plugin params validate failed plugin_id={request.plugin_id} "
+                    f"插件参数校验失败 plugin_id={request.plugin_id} "
                     f"task_id={request.task_id}: {exc}"
                 ),
             ) from exc
@@ -105,7 +105,7 @@ class PluginResolutionService:
                 default_code=TaskErrorCode.PROFILE_UNSATISFIED,
                 exc=exc,
                 message=(
-                    f"runtime profile select failed plugin_id={request.plugin_id} "
+                    f"运行时配置选择失败 plugin_id={request.plugin_id} "
                     f"task_id={request.task_id}: {exc}"
                 ),
             ) from exc

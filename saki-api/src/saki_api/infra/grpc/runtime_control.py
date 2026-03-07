@@ -196,9 +196,9 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
                 )
             except Exception as exc:
                 await session.rollback()
-                logger.exception("resolve round reveal failed loop_id={} round_id={} error={}", loop_id, round_id, exc)
+                logger.exception("解析轮次揭示失败 loop_id={} round_id={} error={}", loop_id, round_id, exc)
                 context.set_code(grpc.StatusCode.INTERNAL)
-                context.set_details("resolve round reveal failed")
+                context.set_details("解析轮次揭示失败")
                 return domain_pb.ResolveRoundRevealResponse(
                     revealed_count=0,
                     selected_count=0,
@@ -640,7 +640,7 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
 
             if not uri.startswith("s3://"):
                 context.set_code(grpc.StatusCode.FAILED_PRECONDITION)
-                context.set_details("unsupported artifact uri")
+                context.set_details("不支持的制品 URI")
                 return domain_pb.DownloadTicketResponse(
                     request_id=request_id,
                     reply_to=request_id,
@@ -656,7 +656,7 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
             object_path = object_path.strip()
             if not object_path:
                 context.set_code(grpc.StatusCode.FAILED_PRECONDITION)
-                context.set_details("invalid s3 uri")
+                context.set_details("无效的 S3 URI")
                 return domain_pb.DownloadTicketResponse(
                     request_id=request_id,
                     reply_to=request_id,
@@ -674,13 +674,13 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
                 )
             except Exception as exc:
                 logger.exception(
-                    "failed to issue download ticket task_id={} artifact={} error={}",
+                    "生成下载凭证失败 task_id={} artifact={} error={}",
                     task_id,
                     artifact_name,
                     exc,
                 )
                 context.set_code(grpc.StatusCode.INTERNAL)
-                context.set_details("failed to issue download ticket")
+                context.set_details("生成下载凭证失败")
                 return domain_pb.DownloadTicketResponse(
                     request_id=request_id,
                     reply_to=request_id,
@@ -711,7 +711,7 @@ class RuntimeGrpcServer:
         if self._server is not None:
             return
         if not settings.RUNTIME_DOMAIN_GRPC_SERVER_ENABLED:
-            logger.info("runtime domain grpc startup skipped: service disabled")
+            logger.info("runtime domain grpc 启动跳过：服务已禁用")
             return
 
         self._server = grpc.aio.server()
@@ -720,7 +720,7 @@ class RuntimeGrpcServer:
 
         self._server.add_insecure_port(bind_address)
         await self._server.start()
-        logger.info("runtime domain grpc server started bind={}", bind_address)
+        logger.info("runtime domain grpc 服务已启动 bind={}", bind_address)
 
     async def stop(self) -> None:
         if self._server is None:
@@ -728,7 +728,7 @@ class RuntimeGrpcServer:
         await self._server.stop(grace=2)
         await self._server.wait_for_termination()
         self._server = None
-        logger.info("runtime grpc server stopped")
+        logger.info("runtime grpc 服务已停止")
 
 
 runtime_grpc_server = RuntimeGrpcServer()

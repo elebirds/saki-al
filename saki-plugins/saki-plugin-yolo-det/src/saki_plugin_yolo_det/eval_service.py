@@ -64,7 +64,7 @@ class YoloEvalService:
             {
                 "level": "INFO",
                 "message": (
-                    f"YOLO eval started model={model_path} imgsz={imgsz} batch={batch} "
+                    f"YOLO 评估开始 model={model_path} imgsz={imgsz} batch={batch} "
                     f"requested_device={requested_device} resolved_backend={resolved_backend} "
                     f"device={device} profile={context.profile_id} mode={mode}"
                 ),
@@ -132,7 +132,7 @@ class YoloEvalService:
                 {
                     "level": "INFO",
                     "message": (
-                        "eval scope finished "
+                        "评估分口径完成 "
                         f"scope={scope_key} step={step_index} samples={sample_count_by_scope[scope_key]} "
                         f"metric_keys={sorted(normalized_metrics.keys())}"
                     ),
@@ -161,7 +161,7 @@ class YoloEvalService:
                     {
                         "level": "WARN",
                         "message": (
-                            "eval anchor scope metrics empty, fallback applied "
+                            "评估 anchor 口径指标为空，已回退 "
                             f"fallback_scope={fallback_scope}"
                         ),
                     },
@@ -175,7 +175,7 @@ class YoloEvalService:
                 {
                     "level": "WARN",
                     "message": (
-                        "eval final metrics incomplete "
+                        "评估最终指标不完整 "
                         f"source={metrics_source} available={sorted(primary_metrics.keys())} "
                         f"missing={missing_canonical}"
                     ),

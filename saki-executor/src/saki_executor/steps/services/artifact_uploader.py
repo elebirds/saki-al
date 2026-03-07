@@ -30,7 +30,7 @@ class ArtifactUploader:
         headers: dict[str, str],
     ) -> None:
         if not upload_url:
-            raise RuntimeError("upload url is empty")
+            raise RuntimeError("上传 URL 为空")
 
         payload = await asyncio.to_thread(artifact_path.read_bytes)
         request_headers = dict(headers)
@@ -77,7 +77,7 @@ class ArtifactUploader:
                 )
                 if 400 <= status_code < 500:
                     raise RuntimeError(
-                        f"upload failed with non-retryable status={status_code} artifact={artifact_path.name}"
+                        f"上传失败且状态码不可重试 status={status_code} artifact={artifact_path.name}"
                     ) from exc
                 if attempt >= self._max_attempts:
                     break
@@ -97,6 +97,5 @@ class ArtifactUploader:
                 await asyncio.sleep(backoff)
 
         raise RuntimeError(
-            f"upload failed after {self._max_attempts} attempts artifact={artifact_path.name}"
+            f"上传失败，已重试 {self._max_attempts} 次 artifact={artifact_path.name}"
         ) from last_error
-

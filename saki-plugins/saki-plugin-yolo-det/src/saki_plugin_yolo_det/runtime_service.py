@@ -144,7 +144,7 @@ class YoloRuntimeService:
             {
                 "level": "INFO",
                 "message": (
-                    f"training reproducibility train_seed={config.train_seed} "
+                    f"训练复现实验参数 train_seed={config.train_seed} "
                     f"deterministic={config.deterministic} "
                     f"strong_deterministic={config.strong_deterministic} "
                     f"split_seed={getattr(resolved_params, 'split_seed', 0)}"
@@ -169,7 +169,7 @@ class YoloRuntimeService:
                 {
                     "level": "INFO",
                     "message": (
-                        "training stop summary "
+                        "训练停止摘要 "
                         f"patience={train_summary.get('patience')} "
                         f"best_epoch={train_summary.get('best_epoch')} "
                         f"stopped_epoch={train_summary.get('stopped_epoch')} "
@@ -204,7 +204,7 @@ class YoloRuntimeService:
                 {
                     "level": "WARN",
                     "message": (
-                        "train final metrics incomplete "
+                        "训练最终指标不完整 "
                         f"source={metrics_source} available={sorted(metrics.keys())} "
                         f"missing={missing_canonical}"
                     ),

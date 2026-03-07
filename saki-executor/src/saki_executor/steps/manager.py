@@ -216,7 +216,7 @@ class TaskManager:
         request = TaskExecutionRequest.from_payload(payload)
         async with self._lock:
             if self.busy:
-                logger.warning("拒绝任务分配：executor 忙碌，request_id={}", request_id)
+                logger.warning("拒绝任务分配：执行器忙碌，request_id={}", request_id)
                 return False
             self.current_task_id = request.task_id
             self.executor_state = ExecutorState.RESERVED
@@ -253,7 +253,7 @@ class TaskManager:
 
     async def _run_task(self, request: TaskExecutionRequest) -> None:
         if self._send_message is None or self._request_message is None:
-            raise RuntimeError("task manager transport is not configured")
+            raise RuntimeError("任务管理器传输通道未配置")
         final_status = TaskStatus.FAILED
         strategy = ""
         if request.task_type in {"score", "custom"}:
@@ -299,12 +299,12 @@ class TaskManager:
 
     async def _publish_cancelled_result(self, request: TaskExecutionRequest) -> TaskStatus:
         if self._send_message is None:
-            raise RuntimeError("task manager send transport is not configured")
+            raise RuntimeError("任务管理器发送通道未配置")
         self.executor_state = ExecutorState.FINALIZING
         reporter = self._ensure_reporter(request)
         await self._push_event(
             request.task_id,
-            reporter.status(TaskStatus.CANCELLED.value, "task cancelled"),
+            reporter.status(TaskStatus.CANCELLED.value, "任务已取消"),
         )
         await self._send_message(
             runtime_codec.build_task_result_message(
@@ -314,7 +314,7 @@ class TaskManager:
                 metrics={},
                 artifacts={},
                 candidates=[],
-                error_message="cancelled by request",
+                error_message="已按请求取消",
             )
         )
         logger.warning("任务被取消 task_id={}", request.task_id)
@@ -322,7 +322,7 @@ class TaskManager:
 
     async def _publish_failed_result(self, request: TaskExecutionRequest, exc: Exception) -> TaskStatus:
         if self._send_message is None:
-            raise RuntimeError("task manager send transport is not configured")
+            raise RuntimeError("任务管理器发送通道未配置")
         self.executor_state = ExecutorState.FINALIZING
         if isinstance(exc, TaskPipelineError):
             error_message = exc.to_user_message()
@@ -389,7 +389,7 @@ class TaskManager:
 
     async def _push_event(self, task_id: str, event: dict[str, Any]) -> None:
         if self._send_message is None:
-            raise RuntimeError("task manager send transport is not configured")
+            raise RuntimeError("任务管理器发送通道未配置")
         await self._send_message(
             runtime_codec.build_task_event_message(
                 request_id=str(uuid.uuid4()),

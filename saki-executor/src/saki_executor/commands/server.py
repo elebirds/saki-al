@@ -111,7 +111,7 @@ class CommandServer:
             return
 
         if command in {"quit", "exit"}:
-            logger.info("收到退出命令，准备关闭 executor。")
+            logger.info("收到退出命令，准备关闭执行器。")
             self.shutdown_event.set()
             return
 

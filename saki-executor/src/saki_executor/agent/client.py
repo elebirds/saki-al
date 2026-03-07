@@ -43,7 +43,7 @@ class AgentClient:
 
     async def send_message(self, message: pb.RuntimeMessage) -> None:
         if not isinstance(message, pb.RuntimeMessage):
-            raise TypeError("send_message only accepts RuntimeMessage")
+            raise TypeError("send_message 仅接受 RuntimeMessage")
         await self._outbox.put(message)
 
     async def request_message(
@@ -52,7 +52,7 @@ class AgentClient:
         timeout_sec: int = 60,
     ) -> pb.RuntimeMessage | list[pb.RuntimeMessage]:
         if not isinstance(message, pb.RuntimeMessage):
-            raise TypeError("request_message only accepts RuntimeMessage")
+            raise TypeError("request_message 仅接受 RuntimeMessage")
 
         request_id = runtime_codec.get_message_request_id(message)
         if not request_id:
@@ -71,12 +71,12 @@ class AgentClient:
                     first = result[0]
                     if first.WhichOneof("payload") == "error":
                         parsed = runtime_codec.parse_error(first.error)
-                        raise RuntimeError(str(parsed.get("error") or parsed.get("message") or "runtime error"))
+                        raise RuntimeError(str(parsed.get("error") or parsed.get("message") or "运行时错误"))
                 return result
             payload_type = result.WhichOneof("payload")
             if payload_type == "error":
                 parsed = runtime_codec.parse_error(result.error)
-                raise RuntimeError(str(parsed.get("error") or parsed.get("message") or "runtime error"))
+                raise RuntimeError(str(parsed.get("error") or parsed.get("message") or "运行时错误"))
             return result
         finally:
             self._pending.pop(request_id, None)
@@ -97,7 +97,7 @@ class AgentClient:
             logger.info("连接已是启用状态。")
             return
         self._connect_enabled = True
-        logger.info("已启用连接，executor 将自动尝试连接 dispatcher。")
+        logger.info("已启用连接，执行器将自动尝试连接调度器。")
 
     async def disconnect(self, *, force: bool = False) -> bool:
         if self.task_manager.busy and not force:
@@ -126,7 +126,7 @@ class AgentClient:
         call = self._active_call
         if call is not None:
             call.cancel()
-        self._fail_pending("connection disabled by command")
+        self._fail_pending("连接已通过命令禁用")
         self._drain_outbox()
         logger.info("已禁用连接，当前连接将断开。")
         return True
@@ -269,7 +269,7 @@ class AgentClient:
                 self.task_manager.executor_state = ExecutorState.IDLE
                 self._connected = True
                 logger.info(
-                    "已与 dispatcher 建立连接并注册成功 executor_id={} target={}",
+                    "已与调度器建立连接并注册成功 executor_id={} target={}",
                     settings.EXECUTOR_ID,
                     settings.API_GRPC_TARGET,
                 )
@@ -363,11 +363,11 @@ class AgentClient:
             self._handled_control_acks.clear()
             self.task_manager.executor_state = ExecutorState.CONNECTING
             self._running = True
-            disconnect_reason = "stream closed by dispatcher"
+            disconnect_reason = "调度器流已关闭"
             heartbeat_task = None
             try:
                 logger.info(
-                    "开始连接 dispatcher gRPC target={} executor_id={}",
+                    "开始连接调度器 gRPC target={} executor_id={}",
                     settings.API_GRPC_TARGET,
                     settings.EXECUTOR_ID,
                 )
@@ -383,10 +383,10 @@ class AgentClient:
 
                     async for runtime_message in call:
                         if stop_event.is_set():
-                            disconnect_reason = "shutdown requested"
+                            disconnect_reason = "收到关闭请求"
                             break
                         if not self._connect_enabled:
-                            disconnect_reason = "connection disabled"
+                            disconnect_reason = "连接已禁用"
                             break
                         await self._handle_incoming(runtime_message)
 
@@ -419,12 +419,12 @@ class AgentClient:
                 self._active_call = None
                 if heartbeat_task:
                     heartbeat_task.cancel()
-                self._fail_pending("grpc session ended")
+                self._fail_pending("gRPC 会话已结束")
                 self._drain_outbox()
                 if not self.task_manager.busy:
                     self.task_manager.executor_state = ExecutorState.OFFLINE
                 logger.info(
-                    "已断开与 dispatcher 的 gRPC 连接 target={} reason={} executor_state={} connect_enabled={}",
+                    "已断开与调度器的 gRPC 连接 target={} reason={} executor_state={} connect_enabled={}",
                     settings.API_GRPC_TARGET,
                     disconnect_reason,
                     self.task_manager.executor_state.value,

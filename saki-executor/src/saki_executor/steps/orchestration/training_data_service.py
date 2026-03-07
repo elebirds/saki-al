@@ -100,7 +100,7 @@ class TrainingDataService:
                 {
                     "level": "INFO",
                     "message": (
-                        "training label filter applied "
+                        "训练标签筛选完成 "
                         f"include_label_count={len(include_label_ids)} "
                         f"labels_kept={len(labels)} labels_filtered={max(0, original_label_count - len(labels))} "
                         f"annotations_kept={len(train_annotations)} "
@@ -150,7 +150,7 @@ class TrainingDataService:
                 {
                     "level": "INFO",
                     "message": (
-                        "training negative sampling resolved "
+                        "训练负样本采样完成 "
                         f"positive_samples={len(positive_samples)} "
                         f"negative_candidates={len(negative_candidates)} "
                         f"negative_kept={len(negative_kept)} "
@@ -214,7 +214,7 @@ class TrainingDataService:
             {
                 "level": "INFO",
                 "message": (
-                    f"training split resolved round_index={runtime_context.round_index} "
+                    f"训练数据划分完成 round_index={runtime_context.round_index} "
                     f"source={split_source} "
                     f"seed={split_seed} val_ratio={val_ratio:.3f} "
                     f"train={len(splits['train'])} val={len(splits['val'])} "
@@ -250,7 +250,7 @@ class TrainingDataService:
             {
                 "level": "INFO",
                 "message": (
-                    "ir training batch prepared "
+                    "IR 训练批次构建完成 "
                     f"labels={ir_report.label_count} "
                     f"samples={ir_report.sample_count} "
                     f"annotations={ir_report.annotation_count} "

@@ -56,10 +56,10 @@ async def create_prediction(
         try:
             await dispatcher_admin_client.dispatch_task(str(dispatch_task_id))
         except Exception as exc:
-            logger.warning("dispatch prediction task failed task_id={} error={}", dispatch_task_id, exc)
+            logger.warning("派发预测任务失败 task_id={} error={}", dispatch_task_id, exc)
             await runtime_service.prediction_repo.update(
                 result.id,
-                {"last_error": f"dispatch failed: {exc}"},
+                {"last_error": f"派发失败: {exc}"},
             )
     settled = await runtime_service.get_prediction_task(task_id=result.task_id)
     task = await runtime_service.task_repo.get_by_id(settled.task_id)

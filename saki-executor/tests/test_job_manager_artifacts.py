@@ -487,7 +487,7 @@ async def test_required_artifact_failure_marks_failed(tmp_path: Path, monkeypatc
     assert len(result_messages) == 1
     result = result_messages[0].task_result
     assert result.status == pb.FAILED
-    assert "required artifact upload failed" in result.error_message
+    assert "必需制品上传失败" in result.error_message
 
 
 @pytest.mark.anyio
@@ -577,4 +577,4 @@ async def test_http_4xx_not_retried_and_fails_fast(tmp_path: Path, monkeypatch):
     assert len(result_messages) == 1
     result = result_messages[0].task_result
     assert result.status == pb.FAILED
-    assert "non-retryable status=403" in result.error_message
+    assert "状态码不可重试 status=403" in result.error_message

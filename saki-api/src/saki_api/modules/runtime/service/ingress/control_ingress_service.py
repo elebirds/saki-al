@@ -102,7 +102,7 @@ class RuntimeControlIngressService:
             )
         except Exception as exc:
             logger.exception(
-                "data request failed request_id={} task_id={} error={}",
+                "数据请求失败 request_id={} task_id={} error={}",
                 request.request_id,
                 request.task_id,
                 exc,
@@ -110,7 +110,7 @@ class RuntimeControlIngressService:
             return [
                 runtime_codec.build_error_message(
                     code="data_query_failed",
-                    message="data query failed",
+                    message="数据查询失败",
                     reply_to=request.request_id,
                     task_id=request.task_id,
                     query_type=request.query_type,
@@ -166,10 +166,10 @@ class RuntimeControlIngressService:
                 expires_delta=timedelta(hours=settings.RUNTIME_UPLOAD_URL_EXPIRE_HOURS),
             )
         except Exception as exc:
-            logger.exception("failed to issue upload ticket task_id={} error={}", request.task_id, exc)
+            logger.exception("生成上传凭证失败 task_id={} error={}", request.task_id, exc)
             return runtime_codec.build_error_message(
                 code="upload_ticket_failed",
-                message="failed to issue upload ticket",
+                message="生成上传凭证失败",
                 reply_to=request.request_id,
                 task_id=request.task_id,
                 reason=str(exc),
@@ -191,7 +191,7 @@ class RuntimeControlIngressService:
         request_id = str(message.request_id or "")
         task_id = str(message.task_id or "")
         if not request_id or not task_id:
-            raise _InvalidRuntimeRequest("request_id and task_id are required", "missing_required_field")
+            raise _InvalidRuntimeRequest("request_id 和 task_id 为必填", "missing_required_field")
 
         try:
             project_id = self._parse_uuid(str(message.project_id or ""), "project_id")
@@ -217,7 +217,7 @@ class RuntimeControlIngressService:
         artifact_name = str(message.artifact_name or "").strip()
         if not request_id or not task_id or not artifact_name:
             raise _InvalidRuntimeRequest(
-                "request_id/task_id/artifact_name are required",
+                "request_id/task_id/artifact_name 为必填",
                 "missing_required_field",
             )
 
@@ -569,11 +569,11 @@ class RuntimeControlIngressService:
     def _parse_uuid(raw: str | None, field_name: str) -> uuid.UUID:
         value = str(raw or "").strip()
         if not value:
-            raise ValueError(f"{field_name} is required")
+            raise ValueError(f"{field_name} 为必填")
         try:
             return uuid.UUID(value)
         except Exception as exc:
-            raise ValueError(f"invalid {field_name}: {value}") from exc
+            raise ValueError(f"无效的 {field_name}: {value}") from exc
 
     @staticmethod
     def _to_datetime_millis(ts: int) -> datetime:

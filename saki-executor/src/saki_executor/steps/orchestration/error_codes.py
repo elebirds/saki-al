@@ -44,7 +44,7 @@ class TaskPipelineError(RuntimeError):
     ) -> None:
         self.code = code
         self.stage = stage
-        self.message = str(message or "unknown error")
+        self.message = str(message or "未知错误")
         self.cause = cause
         super().__init__(self.to_user_message())
 

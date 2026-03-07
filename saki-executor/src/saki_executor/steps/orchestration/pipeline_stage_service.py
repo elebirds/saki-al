@@ -38,7 +38,7 @@ class PipelineStageService:
                 {
                     "level": "INFO",
                     "message": (
-                        f"trained model resolved source=shared artifact={artifact_name} path={linked}"
+                        f"训练模型已就绪 source=shared artifact={artifact_name} path={linked}"
                     ),
                 },
             )
@@ -52,14 +52,14 @@ class PipelineStageService:
                 {
                     "level": "INFO",
                     "message": (
-                        f"trained model resolved source=remote artifact={artifact_name} model_source={model_source}"
+                        f"训练模型已就绪 source=remote artifact={artifact_name} model_source={model_source}"
                     ),
                 },
             )
             return
 
         message = (
-            f"trained model is required but unavailable: "
+            f"训练模型必需但不可用: "
             f"artifact={artifact_name} task_type={self._request.task_type}"
         )
         if self._manager.strict_train_model_handoff:
@@ -73,7 +73,7 @@ class PipelineStageService:
             "log",
             {
                 "level": "WARN",
-                "message": f"{message}; STRICT_TRAIN_MODEL_HANDOFF=false fallback enabled",
+                "message": f"{message}; STRICT_TRAIN_MODEL_HANDOFF=false，启用回退",
             },
         )
 
@@ -136,13 +136,13 @@ class PipelineStageService:
                     bound_plan=bound_plan,
                 )
 
-            raise RuntimeError(f"task_type routing is not implemented: {self._request.task_type}")
+            raise RuntimeError(f"task_type 路由未实现: {self._request.task_type}")
         except Exception as exc:
             raise wrap_task_error(
                 stage=TaskStage.EXECUTE,
                 default_code=TaskErrorCode.EXECUTION_FAILED,
                 exc=exc,
-                message=f"task execution failed task_id={self._request.task_id}: {exc}",
+                message=f"任务执行失败 task_id={self._request.task_id}: {exc}",
             ) from exc
 
     async def _run_training_pipeline(
@@ -209,7 +209,7 @@ class PipelineStageService:
                 "task_id": runtime_context.task_id,
                 "plugin_params": plugin_params_snapshot,
             }
-            await emitter.emit("log", {"level": "INFO", "message": f"effective training params: {params_snapshot}"})
+            await emitter.emit("log", {"level": "INFO", "message": f"生效训练参数: {params_snapshot}"})
             data_service = TrainingDataService(
                 fetch_all=self._manager.fetch_all_data,
                 cache=self._manager.cache,
@@ -236,7 +236,7 @@ class PipelineStageService:
                 stage=TaskStage.PREPARE_DATA,
                 default_code=TaskErrorCode.PREPARE_DATA_FAILED,
                 exc=exc,
-                message=f"prepare_data failed task_id={self._request.task_id}: {exc}",
+                message=f"准备数据失败 task_id={self._request.task_id}: {exc}",
             ) from exc
 
     async def _prepare_data_for_step(
@@ -254,7 +254,7 @@ class PipelineStageService:
                 {
                     "level": "INFO",
                     "message": (
-                        f"prepare_data skipped by runtime requirements task_type={self._request.task_type}"
+                        f"运行时要求跳过 prepare_data task_type={self._request.task_type}"
                     ),
                 },
             )
@@ -273,7 +273,7 @@ class PipelineStageService:
                         "log",
                         {
                             "level": "INFO",
-                            "message": f"round shared data cache hit fingerprint={fingerprint}",
+                            "message": f"轮次共享数据缓存命中 fingerprint={fingerprint}",
                         },
                     )
                     return set()
@@ -282,7 +282,7 @@ class PipelineStageService:
                     "log",
                     {
                         "level": "WARN",
-                        "message": f"round shared data cache restore failed fingerprint={fingerprint} error={exc}",
+                        "message": f"轮次共享数据缓存恢复失败 fingerprint={fingerprint} error={exc}",
                     },
                 )
 
@@ -303,7 +303,7 @@ class PipelineStageService:
                     "log",
                     {
                         "level": "INFO",
-                        "message": f"round shared data cache stored fingerprint={fingerprint} path={cached_path}",
+                        "message": f"轮次共享数据缓存已写入 fingerprint={fingerprint} path={cached_path}",
                     },
                 )
             except Exception as exc:
@@ -311,7 +311,7 @@ class PipelineStageService:
                     "log",
                     {
                         "level": "WARN",
-                        "message": f"round shared data cache store failed fingerprint={fingerprint} error={exc}",
+                        "message": f"轮次共享数据缓存写入失败 fingerprint={fingerprint} error={exc}",
                     },
                 )
         return protected
@@ -359,7 +359,7 @@ class PipelineStageService:
                 "log",
                 {
                     "level": "WARN",
-                    "message": f"round shared model cache skip: primary artifact not found artifact={artifact_name}",
+                    "message": f"轮次共享模型缓存跳过: 未找到主制品 artifact={artifact_name}",
                 },
             )
             return
@@ -370,7 +370,7 @@ class PipelineStageService:
                 "log",
                 {
                     "level": "WARN",
-                    "message": f"round shared model cache skip: artifact file missing artifact={artifact_name} path={source_path}",
+                    "message": f"轮次共享模型缓存跳过: 制品文件缺失 artifact={artifact_name} path={source_path}",
                 },
             )
             return
@@ -384,7 +384,7 @@ class PipelineStageService:
             "log",
             {
                 "level": "INFO",
-                "message": f"round shared model cache stored artifact={artifact_name} path={cached_path}",
+                "message": f"轮次共享模型缓存已写入 artifact={artifact_name} path={cached_path}",
             },
         )
 
@@ -544,19 +544,19 @@ class PipelineStageService:
     ) -> list[dict[str, Any]]:
         mode = self._request.mode
         if mode == "manual":
-            await emitter.emit("log", {"level": "INFO", "message": "manual mode: skip sampling"})
+            await emitter.emit("log", {"level": "INFO", "message": "手动模式：跳过采样"})
             return []
 
         skip_sampling = bool(self._request.resolved_params.get("skip_sampling", False))
         if skip_sampling:
-            await emitter.emit("log", {"level": "INFO", "message": "skip_sampling=true, skip sampling"})
+            await emitter.emit("log", {"level": "INFO", "message": "skip_sampling=true，跳过采样"})
             return []
 
         sampling_cfg = self._request.resolved_params.get("sampling")
         sampling_cfg = dict(sampling_cfg) if isinstance(sampling_cfg, dict) else {}
         strategy = str(sampling_cfg.get("strategy") or self._request.query_strategy or "").strip()
         if not strategy:
-            await emitter.emit("log", {"level": "INFO", "message": "sampling strategy is empty, skip sampling"})
+            await emitter.emit("log", {"level": "INFO", "message": "采样策略为空，跳过采样"})
             return []
         topk = int(sampling_cfg.get("topk", self._request.resolved_params.get("topk", 200)))
         review_pool_size = int(sampling_cfg.get("review_pool_size", 0) or 0)
@@ -600,7 +600,7 @@ class PipelineStageService:
     ) -> list[dict[str, Any]]:
         if "sampling" in self._request.resolved_params:
             raise RuntimeError(
-                "predict task contains deprecated params.sampling; please recreate the prediction task"
+                "predict 任务包含已废弃的 params.sampling；请重新创建预测任务"
             )
         predict_cfg = self._request.resolved_params.get("predict")
         predict_cfg = dict(predict_cfg) if isinstance(predict_cfg, dict) else {}
@@ -614,7 +614,7 @@ class PipelineStageService:
             "log",
             {
                 "level": "INFO",
-                "message": "prediction inference collector enabled query_type=samples",
+                "message": "预测推理采集器已启用 query_type=samples",
             },
         )
         return await self._manager.collect_prediction_candidates_streaming(
@@ -656,13 +656,13 @@ class PipelineStageService:
                     headers=headers,
                 )
             except Exception as exc:
-                message = f"artifact={artifact.name} required={required} error={exc}"
+                message = f"制品={artifact.name} 必需={required} 错误={exc}"
                 if required:
                     raise wrap_task_error(
                         stage=TaskStage.FINALIZE,
                         default_code=TaskErrorCode.ARTIFACT_UPLOAD_FAILED,
                         exc=exc,
-                        message=f"required artifact upload failed: {message}",
+                        message=f"必需制品上传失败: {message}",
                     ) from exc
                 optional_upload_failures.append(message)
                 continue

@@ -29,7 +29,7 @@ class DispatcherAdminClient:
         if self._channel is None:
             return
         await self._channel.close()
-        logger.info("dispatcher_admin connection closed target={}", self.target)
+        logger.info("dispatcher_admin 连接已关闭 target={}", self.target)
         self._channel = None
         self._stub = None
 
@@ -40,7 +40,7 @@ class DispatcherAdminClient:
 
     async def _get_stub(self) -> pb_grpc.DispatcherAdminStub:
         if not self.enabled:
-            raise RuntimeError("dispatcher admin target is empty")
+            raise RuntimeError("dispatcher admin target 为空")
         if self._stub is None:
             self._channel = grpc.aio.insecure_channel(self.target)
             try:
@@ -50,7 +50,7 @@ class DispatcherAdminClient:
                 self._channel = None
                 raise
             self._stub = pb_grpc.DispatcherAdminStub(self._channel)
-            logger.info("dispatcher_admin connection established target={}", self.target)
+            logger.info("dispatcher_admin 连接已建立 target={}", self.target)
         return self._stub
 
     async def start_loop(self, loop_id: str, *, command_id: str | None = None) -> pb.CommandResponse:

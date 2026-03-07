@@ -298,7 +298,7 @@ async def stream_task_events(
     try:
         parsed_task_id = uuid.UUID(task_id)
     except Exception:
-        await websocket.close(code=1008, reason="invalid task_id")
+        await websocket.close(code=1008, reason="task_id 无效")
         return
 
     authorized = await _authorize_stream_task_access(
@@ -318,13 +318,13 @@ async def stream_task_events(
             cursor=cursor,
         )
     except WebSocketDisconnect:
-        logger.debug("task event stream disconnected task_id={} after_seq={}", parsed_task_id, cursor)
+        logger.debug("任务事件流已断开 task_id={} after_seq={}", parsed_task_id, cursor)
         return
     except Exception:
-        logger.exception("task event stream failed task_id={} after_seq={}", parsed_task_id, cursor)
+        logger.exception("任务事件流异常 task_id={} after_seq={}", parsed_task_id, cursor)
         if websocket.client_state == WebSocketState.CONNECTED:
             with contextlib.suppress(Exception):
-                await websocket.close(code=1011, reason="internal error")
+                await websocket.close(code=1011, reason="内部错误")
         return
 
 
@@ -342,7 +342,7 @@ async def stream_round_events(
     try:
         parsed_round_id = uuid.UUID(round_id)
     except Exception:
-        await websocket.close(code=1008, reason="invalid round_id")
+        await websocket.close(code=1008, reason="round_id 无效")
         return
 
     authorized = await _authorize_stream_round_access(
@@ -366,14 +366,14 @@ async def stream_round_events(
     except BadRequestAppException:
         if websocket.client_state == WebSocketState.CONNECTED:
             with contextlib.suppress(Exception):
-                await websocket.close(code=1008, reason="invalid after_cursor")
+                await websocket.close(code=1008, reason="after_cursor 无效")
         return
     except WebSocketDisconnect:
-        logger.debug("round event stream disconnected round_id={} after_cursor={}", parsed_round_id, cursor or "")
+        logger.debug("轮次事件流已断开 round_id={} after_cursor={}", parsed_round_id, cursor or "")
         return
     except Exception:
-        logger.exception("round event stream failed round_id={} after_cursor={}", parsed_round_id, cursor or "")
+        logger.exception("轮次事件流异常 round_id={} after_cursor={}", parsed_round_id, cursor or "")
         if websocket.client_state == WebSocketState.CONNECTED:
             with contextlib.suppress(Exception):
-                await websocket.close(code=1011, reason="internal error")
+                await websocket.close(code=1011, reason="内部错误")
         return

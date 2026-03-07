@@ -27,7 +27,7 @@ class PluginRegistry:
     def ensure_worker_loadable(self, plugin_id: str) -> None:
         handle = self._plugins.get(plugin_id)
         if handle is None:
-            raise RuntimeError(f"plugin not found in registry: {plugin_id}")
+            raise RuntimeError(f"插件注册表中未找到插件: {plugin_id}")
 
     def worker_loadable(self, plugin_id: str) -> bool:
         return plugin_id in self._plugins

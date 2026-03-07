@@ -25,7 +25,7 @@ class TaskEventEmitter:
 
     async def emit(self, event_type: str, payload: dict[str, Any]) -> None:
         if self._stop_event.is_set():
-            raise asyncio.CancelledError("task stop requested")
+            raise asyncio.CancelledError("任务已请求停止")
         event = self._build_event(event_type, payload)
         await self._push_event(event)
 
@@ -121,8 +121,8 @@ class TaskEventEmitter:
                     for name, value in sorted(normalized_metrics.items(), key=lambda item: item[0])
                 )
             else:
-                preview = "empty"
-            logger.info("metric step={}{} {}", step_value, epoch_text, preview)
+                preview = "空"
+            logger.info("指标事件 step={}{} {}", step_value, epoch_text, preview)
             return self._reporter.metric(
                 step=step_value,
                 epoch=payload.get("epoch"),
@@ -131,11 +131,11 @@ class TaskEventEmitter:
         if event_type == "artifact":
             return self._reporter.log(
                 "WARN",
-                "plugin artifact event is ignored; " + f"artifact_name={str(payload.get('name', ''))}",
+                "插件 artifact 事件已忽略; " + f"artifact_name={str(payload.get('name', ''))}",
             )
         if event_type == "status":
             return self._reporter.status(
                 status=str(payload.get("status", TaskStatus.RUNNING.value)),
                 reason=payload.get("reason"),
             )
-        return self._reporter.log("WARN", f"unknown event type: {event_type}")
+        return self._reporter.log("WARN", f"未知事件类型: {event_type}")

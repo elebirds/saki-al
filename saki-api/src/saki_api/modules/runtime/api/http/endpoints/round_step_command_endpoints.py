@@ -111,7 +111,7 @@ async def stop_round(
         )
 
     if not dispatcher_admin_client.enabled:
-        raise InternalServerErrorAppException("dispatcher_admin is not configured")
+        raise InternalServerErrorAppException("dispatcher_admin 未配置")
     try:
         response = await dispatcher_admin_client.stop_round(str(round_id), reason=reason)
         status = str(response.status or "").strip().lower() or "accepted"
@@ -121,5 +121,5 @@ async def stop_round(
             status="stopping" if status == "accepted" else status,
         )
     except Exception as exc:
-        logger.warning("dispatcher stop_round failed round_id={} error={}", round_id, exc)
-        raise InternalServerErrorAppException("dispatcher stop_round failed") from exc
+        logger.warning("dispatcher stop_round 失败 round_id={} error={}", round_id, exc)
+        raise InternalServerErrorAppException("dispatcher stop_round 失败") from exc

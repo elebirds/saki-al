@@ -79,27 +79,29 @@ class TaskPipelineRunner:
     def _validate_request(self) -> None:
         try:
             if self._request.mode not in self._SUPPORTED_MODES:
-                raise RuntimeError(f"unsupported mode: {self._request.mode}")
+                raise RuntimeError(f"不支持的模式: {self._request.mode}")
             if self._request.dispatch_kind == "orchestrator":
-                raise RuntimeError(f"orchestrator task should not be dispatched to executor: {self._request.task_id}")
+                raise RuntimeError(
+                    f"orchestrator 任务不应派发到 executor: {self._request.task_id}"
+                )
             if self._request.task_type in self._ORCHESTRATOR_ONLY_TASK_TYPES:
                 raise RuntimeError(
-                    f"task_type '{self._request.task_type}' must be handled by dispatcher orchestrator"
+                    f"task_type '{self._request.task_type}' 必须由 dispatcher orchestrator 处理"
                 )
             if self._request.task_type not in self._TRAINING_PIPELINE_TASK_TYPES:
-                raise RuntimeError(f"unsupported task_type for executor pipeline: {self._request.task_type}")
+                raise RuntimeError(f"executor 流水线不支持的 task_type: {self._request.task_type}")
         except Exception as exc:
             raise wrap_task_error(
                 stage=TaskStage.REQUEST_VALIDATION,
                 default_code=TaskErrorCode.REQUEST_INVALID,
                 exc=exc,
-                message=f"request validation failed task_id={self._request.task_id}: {exc}",
+                message=f"请求校验失败 task_id={self._request.task_id}: {exc}",
             ) from exc
 
     async def _resolve_execution_plan(self, emitter: TaskEventEmitter) -> TaskExecutionPlan:
         await emitter.emit_stage_start(
             stage=TaskStage.PLUGIN_RESOLUTION.value,
-            message=f"resolving plugin and runtime plan plugin_id={self._request.plugin_id}",
+            message=f"正在解析插件与运行计划 plugin_id={self._request.plugin_id}",
         )
         try:
             plan = self._plugin_resolution_service.resolve(manager=self._manager, request=self._request)
@@ -115,7 +117,7 @@ class TaskPipelineRunner:
                 stage=TaskStage.PLUGIN_RESOLUTION,
                 default_code=TaskErrorCode.INTERNAL_ERROR,
                 exc=exc,
-                message=f"plugin resolution failed task_id={self._request.task_id}: {exc}",
+                message=f"插件解析失败 task_id={self._request.task_id}: {exc}",
             )
             await emitter.emit_stage_fail(
                 stage=wrapped.stage.value,
@@ -127,7 +129,7 @@ class TaskPipelineRunner:
         await emitter.emit_stage_success(
             stage=TaskStage.PLUGIN_RESOLUTION.value,
             message=(
-                f"runtime plan resolved profile={plan.selected_profile.id} "
+                f"运行计划解析完成 profile={plan.selected_profile.id} "
                 f"task_id={self._request.task_id}"
             ),
         )
@@ -139,10 +141,10 @@ class TaskPipelineRunner:
         plan: TaskExecutionPlan,
         emitter: TaskEventEmitter,
     ) -> TaskExecutionPlan:
-        await emitter.emit_status(TaskStatus.SYNCING_ENV, "syncing plugin runtime environment")
+        await emitter.emit_status(TaskStatus.SYNCING_ENV, "正在同步插件运行环境")
         await emitter.emit_stage_start(
             stage=TaskStage.SYNCING_ENV.value,
-            message=f"ensuring runtime profile environment profile={plan.selected_profile.id}",
+            message=f"正在确保运行时配置环境 profile={plan.selected_profile.id}",
         )
         try:
             synced = self._runtime_binding_service.ensure_profile_environment(
@@ -161,7 +163,7 @@ class TaskPipelineRunner:
                 stage=TaskStage.SYNCING_ENV,
                 default_code=TaskErrorCode.ENV_SYNC_FAILED,
                 exc=exc,
-                message=f"runtime environment sync failed task_id={self._request.task_id}: {exc}",
+                message=f"运行时环境同步失败 task_id={self._request.task_id}: {exc}",
             )
             await emitter.emit_stage_fail(
                 stage=wrapped.stage.value,
@@ -172,7 +174,7 @@ class TaskPipelineRunner:
 
         await emitter.emit_stage_success(
             stage=TaskStage.SYNCING_ENV.value,
-            message=f"runtime profile environment ready profile={plan.selected_profile.id}",
+            message=f"运行时配置环境就绪 profile={plan.selected_profile.id}",
         )
         return synced
 
@@ -195,10 +197,10 @@ class TaskPipelineRunner:
         plugin: Any,
         emitter: TaskEventEmitter,
     ) -> BoundExecutionPlan:
-        await emitter.emit_status(TaskStatus.PROBING_RUNTIME, "probing plugin runtime capability")
+        await emitter.emit_status(TaskStatus.PROBING_RUNTIME, "正在探测插件运行能力")
         await emitter.emit_stage_start(
             stage=TaskStage.PROBING_RUNTIME.value,
-            message=f"probing runtime capability profile={plan.selected_profile.id}",
+            message=f"正在探测运行能力 profile={plan.selected_profile.id}",
         )
         try:
             runtime_capability = await self._runtime_binding_service.probe_runtime_capability(
@@ -214,13 +216,13 @@ class TaskPipelineRunner:
             raise
         await emitter.emit_stage_success(
             stage=TaskStage.PROBING_RUNTIME.value,
-            message="runtime capability probe succeeded",
+            message="运行能力探测成功",
         )
 
-        await emitter.emit_status(TaskStatus.BINDING_DEVICE, "binding execution device")
+        await emitter.emit_status(TaskStatus.BINDING_DEVICE, "正在绑定执行设备")
         await emitter.emit_stage_start(
             stage=TaskStage.BINDING_DEVICE.value,
-            message="resolving device binding",
+            message="正在解析设备绑定",
         )
         try:
             bound_plan = await self._runtime_binding_service.bind_execution_context(
@@ -239,7 +241,7 @@ class TaskPipelineRunner:
         await emitter.emit_stage_success(
             stage=TaskStage.BINDING_DEVICE.value,
             message=(
-                f"execution binding resolved backend={bound_plan.execution_context.device_binding.backend} "
+                f"执行绑定解析完成 backend={bound_plan.execution_context.device_binding.backend} "
                 f"profile={plan.selected_profile.id}"
             ),
         )
@@ -248,7 +250,7 @@ class TaskPipelineRunner:
             {
                 "level": "INFO",
                 "message": (
-                    "execution capability snapshots "
+                    "执行能力快照 "
                     f"host_capability={plan.host_capability.to_dict()} "
                     f"runtime_capability={runtime_capability.to_dict()} "
                     f"selected_profile={plan.selected_profile.to_dict()} "
@@ -287,10 +289,10 @@ class TaskPipelineRunner:
 
     async def _emit_dispatching_status(self, emitter: TaskEventEmitter) -> None:
         self._manager.executor_state = ExecutorState.RUNNING
-        await emitter.emit_status(TaskStatus.DISPATCHING, "task dispatching")
+        await emitter.emit_status(TaskStatus.DISPATCHING, "任务派发中")
 
     async def _emit_running_status(self, emitter: TaskEventEmitter) -> None:
-        await emitter.emit_status(TaskStatus.RUNNING, "task running")
+        await emitter.emit_status(TaskStatus.RUNNING, "任务执行中")
 
     async def _finalize_result(
         self,
@@ -303,7 +305,7 @@ class TaskPipelineRunner:
     ) -> TaskFinalResult:
         self._manager.executor_state = ExecutorState.FINALIZING
         if optional_upload_failures:
-            reason = "optional artifact upload failed: " + "; ".join(optional_upload_failures)
+            reason = "可选制品上传失败: " + "; ".join(optional_upload_failures)
             await self._manager.push_task_event(self._task_id, reporter.status(TaskStatus.FAILED.value, reason))
             await self._send_result(
                 status=TaskStatus.FAILED,
@@ -321,7 +323,7 @@ class TaskPipelineRunner:
                 candidates=candidates,
                 error_message=reason,
             )
-        await self._manager.push_task_event(self._task_id, reporter.status(TaskStatus.SUCCEEDED.value, "task succeeded"))
+        await self._manager.push_task_event(self._task_id, reporter.status(TaskStatus.SUCCEEDED.value, "任务成功"))
         await self._send_result(
             status=TaskStatus.SUCCEEDED,
             metrics=metrics,

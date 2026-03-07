@@ -390,7 +390,7 @@ async def test_prepare_train_keeps_negative_samples_by_ratio(tmp_path):
     assert {"sample-p1", "sample-p2"}.issubset(sample_ids)
     # 2 positive, ratio=1 -> keep 2 negatives
     assert len(sample_ids) == 4
-    ratio_log = next((line for line in emitted_logs if "training negative sampling resolved" in line), "")
+    ratio_log = next((line for line in emitted_logs if "训练负样本采样完成" in line), "")
     assert "positive_samples=2" in ratio_log
     assert "negative_candidates=4" in ratio_log
     assert "negative_kept=2" in ratio_log

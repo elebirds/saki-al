@@ -110,7 +110,7 @@ class RuntimeObservabilityService:
                 "latest_heartbeat_at": self._parse_optional_datetime(summary.latest_heartbeat_at),
             }
         except Exception as exc:
-            logger.warning("dispatcher summary unavailable, fallback to runtime registry error={}", exc)
+            logger.warning("dispatcher 汇总不可用，回退到 runtime registry error={}", exc)
             return fallback
 
     async def _get_executor_pending_snapshot_map(self, executors: list[RuntimeExecutor]) -> dict[str, dict[str, int]]:
@@ -129,7 +129,7 @@ class RuntimeObservabilityService:
                     if str(item.executor_id or "").strip()
                 }
             except Exception as exc:
-                logger.warning("dispatcher executor list unavailable, pending counts fallback to zero error={}", exc)
+                logger.warning("dispatcher executor 列表不可用，待处理计数回退为 0 error={}", exc)
 
         return {
             executor.executor_id: {
@@ -224,7 +224,7 @@ class RuntimeObservabilityService:
     async def get_executor(self, executor_id: str) -> RuntimeExecutorRead:
         executor = await self.runtime_executor_repo.get_by_executor_id(executor_id)
         if not executor:
-            raise NotFoundAppException(f"RuntimeExecutor {executor_id} not found")
+            raise NotFoundAppException(f"未找到 RuntimeExecutor: {executor_id}")
 
         pending: dict[str, int] = {
             "pending_assign_count": 0,
@@ -240,7 +240,7 @@ class RuntimeObservabilityService:
                     }
             except Exception as exc:
                 logger.warning(
-                    "dispatcher executor detail unavailable, pending counts fallback to zero executor_id={} error={}",
+                    "dispatcher executor 详情不可用，待处理计数回退为 0 executor_id={} error={}",
                     executor_id,
                     exc,
                 )

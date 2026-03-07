@@ -108,16 +108,18 @@ export function useImportTask(options: UseImportTaskOptions = {}) {
 
     const run = useCallback(async (
         executor: (signal?: AbortSignal) => Promise<ImportTaskCreateResponse>
-    ) => {
+    ): Promise<string | undefined> => {
         abortControllerRef.current = new AbortController();
         setState({
             ...makeInitialState(),
             status: 'running',
         });
         eventsRef.current = [];
+        let createdTaskId: string | undefined;
 
         try {
             const task = await executor(abortControllerRef.current.signal);
+            createdTaskId = task.taskId;
             setState((prev) => ({
                 ...prev,
                 taskId: task.taskId,
@@ -161,7 +163,7 @@ export function useImportTask(options: UseImportTaskOptions = {}) {
                         error: failureMessage,
                     }));
                     onError?.(failureMessage);
-                    return;
+                    return createdTaskId;
                 }
             } catch {
                 // Ignore status polling failure and trust streamed events.
@@ -176,9 +178,10 @@ export function useImportTask(options: UseImportTaskOptions = {}) {
             });
 
             onComplete?.(eventsRef.current);
+            return createdTaskId;
         } catch (error) {
             if (error instanceof Error && error.name === 'AbortError') {
-                return;
+                return createdTaskId;
             }
             const errorMessage = error instanceof Error ? error.message : 'Import failed';
             setState((prev) => ({
@@ -187,6 +190,7 @@ export function useImportTask(options: UseImportTaskOptions = {}) {
                 error: errorMessage,
             }));
             onError?.(errorMessage);
+            return createdTaskId;
         }
     }, [onComplete, onError, pushEvent]);
 

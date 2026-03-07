@@ -45,15 +45,19 @@ from saki_api.modules.importing.schema import (
     AssociatedDatasetMode,
     AssociatedManifestTarget,
     ConflictStrategy,
+    DatasetImportPrepareRequest,
     ImportDryRunResponse,
-    ImportImageEntry,
-    ImportTaskCreateResponse,
     ImportExecuteRequest,
     ImportFormat,
+    ImportImageEntry,
     ImportIssue,
+    ImportTaskCreateResponse,
     NameCollisionPolicy,
     PathFlattenMode,
+    ProjectAnnotationImportPrepareRequest,
+    ProjectAssociatedImportPrepareRequest,
 )
+from saki_api.modules.importing.service.import_upload_service import ImportUploadService
 from saki_api.modules.importing.service.task_service import TaskService
 from saki_ir import ConversionContext, ConversionReport, load_coco_dataset, load_dota_dataset, load_voc_dataset, load_yolo_dataset
 from saki_ir.convert import split_batch, struct_to_dict
@@ -157,6 +161,7 @@ class ImportService:
         self.label_service = LabelService(session)
         self.asset_service = AssetService(session)
         self.task_service = TaskService(session)
+        self.upload_service = ImportUploadService(session)
         self.annotation_gateway = AnnotationReadGateway(session)
         self._last_scan_total_files = 0
 
@@ -596,6 +601,289 @@ class ImportService:
     # ---------------------------------------------------------------------
     # Public execute APIs (task start)
     # ---------------------------------------------------------------------
+
+    async def start_dataset_images_prepare(
+        self,
+        *,
+        user_id: uuid.UUID,
+        dataset_id: uuid.UUID,
+        request: DatasetImportPrepareRequest,
+    ) -> ImportTaskCreateResponse:
+        task = await self.task_service.create_task(
+            mode="dataset_images_prepare",
+            resource_type=ResourceType.DATASET.value,
+            resource_id=dataset_id,
+            user_id=user_id,
+            payload=request.model_dump(mode="json"),
+        )
+        await self.session.commit()
+
+        def producer_factory(session: AsyncSession) -> AsyncIterator[dict[str, Any]]:
+            worker = ImportService(session)
+            return worker.prepare_dataset_images(
+                user_id=user_id,
+                dataset_id=dataset_id,
+                request=request,
+            )
+
+        TaskService.schedule_streaming_job(task_id=task.id, producer_factory=producer_factory)
+        return self._build_task_create_response(task.id, "queued")
+
+    async def start_project_annotations_prepare(
+        self,
+        *,
+        user_id: uuid.UUID,
+        project_id: uuid.UUID,
+        request: ProjectAnnotationImportPrepareRequest,
+    ) -> ImportTaskCreateResponse:
+        task = await self.task_service.create_task(
+            mode="project_annotations_prepare",
+            resource_type=ResourceType.PROJECT.value,
+            resource_id=project_id,
+            user_id=user_id,
+            payload=request.model_dump(mode="json"),
+        )
+        await self.session.commit()
+
+        def producer_factory(session: AsyncSession) -> AsyncIterator[dict[str, Any]]:
+            worker = ImportService(session)
+            return worker.prepare_project_annotations(
+                user_id=user_id,
+                project_id=project_id,
+                request=request,
+            )
+
+        TaskService.schedule_streaming_job(task_id=task.id, producer_factory=producer_factory)
+        return self._build_task_create_response(task.id, "queued")
+
+    async def start_project_associated_prepare(
+        self,
+        *,
+        user_id: uuid.UUID,
+        project_id: uuid.UUID,
+        request: ProjectAssociatedImportPrepareRequest,
+    ) -> ImportTaskCreateResponse:
+        task = await self.task_service.create_task(
+            mode="project_associated_prepare",
+            resource_type=ResourceType.PROJECT.value,
+            resource_id=project_id,
+            user_id=user_id,
+            payload=request.model_dump(mode="json"),
+        )
+        await self.session.commit()
+
+        def producer_factory(session: AsyncSession) -> AsyncIterator[dict[str, Any]]:
+            worker = ImportService(session)
+            return worker.prepare_project_associated(
+                user_id=user_id,
+                project_id=project_id,
+                request=request,
+            )
+
+        TaskService.schedule_streaming_job(task_id=task.id, producer_factory=producer_factory)
+        return self._build_task_create_response(task.id, "queued")
+
+    async def prepare_dataset_images(
+        self,
+        *,
+        user_id: uuid.UUID,
+        dataset_id: uuid.UUID,
+        request: DatasetImportPrepareRequest,
+    ) -> AsyncIterator[dict[str, Any]]:
+        yield self._event_start(total=3, phase="dataset_images_prepare")
+        try:
+            yield self._event_phase(
+                phase="dataset_images_prepare",
+                message="downloading archive from object storage",
+                current=1,
+                total=3,
+            )
+            upload, temp_dir = await self._load_upload_archive_as_file(
+                user_id=user_id,
+                upload_session_id=request.upload_session_id,
+                expected_mode="dataset_images",
+                expected_resource_type=ResourceType.DATASET,
+                expected_resource_id=dataset_id,
+            )
+
+            try:
+                yield self._event_phase(
+                    phase="dataset_images_prepare",
+                    message="analyzing zip archive",
+                    current=2,
+                    total=3,
+                )
+                result = await self.dry_run_dataset_images(
+                    user_id=user_id,
+                    dataset_id=dataset_id,
+                    zip_file=upload,
+                    path_flatten_mode=request.path_flatten_mode,
+                    name_collision_policy=request.name_collision_policy,
+                )
+            finally:
+                try:
+                    await upload.close()
+                except Exception:  # noqa: BLE001
+                    pass
+                temp_dir.cleanup()
+
+            yield self._event_phase(
+                phase="dataset_images_prepare",
+                message="prepare completed",
+                current=3,
+                total=3,
+            )
+            yield self._event_complete(result.model_dump(mode="json"))
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("dataset image prepare failed dataset_id={} error={}", dataset_id, exc)
+            yield self._event_error(
+                message=str(exc),
+                detail={"code": "DATASET_IMAGES_PREPARE_FAILED"},
+            )
+            yield self._event_complete(
+                {
+                    "failed": True,
+                    "error": str(exc),
+                    "code": "DATASET_IMAGES_PREPARE_FAILED",
+                }
+            )
+
+    async def prepare_project_annotations(
+        self,
+        *,
+        user_id: uuid.UUID,
+        project_id: uuid.UUID,
+        request: ProjectAnnotationImportPrepareRequest,
+    ) -> AsyncIterator[dict[str, Any]]:
+        yield self._event_start(total=3, phase="project_annotations_prepare")
+        try:
+            yield self._event_phase(
+                phase="project_annotations_prepare",
+                message="downloading archive from object storage",
+                current=1,
+                total=3,
+            )
+            upload, temp_dir = await self._load_upload_archive_as_file(
+                user_id=user_id,
+                upload_session_id=request.upload_session_id,
+                expected_mode="project_annotations",
+                expected_resource_type=ResourceType.PROJECT,
+                expected_resource_id=project_id,
+            )
+            try:
+                yield self._event_phase(
+                    phase="project_annotations_prepare",
+                    message="analyzing zip archive",
+                    current=2,
+                    total=3,
+                )
+                result = await self.dry_run_project_annotations(
+                    user_id=user_id,
+                    project_id=project_id,
+                    dataset_id=request.dataset_id,
+                    branch_name=request.branch_name,
+                    fmt=request.format_profile,
+                    zip_file=upload,
+                    path_flatten_mode=request.path_flatten_mode,
+                    name_collision_policy=request.name_collision_policy,
+                )
+            finally:
+                try:
+                    await upload.close()
+                except Exception:  # noqa: BLE001
+                    pass
+                temp_dir.cleanup()
+
+            yield self._event_phase(
+                phase="project_annotations_prepare",
+                message="prepare completed",
+                current=3,
+                total=3,
+            )
+            yield self._event_complete(result.model_dump(mode="json"))
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("project annotation prepare failed project_id={} error={}", project_id, exc)
+            yield self._event_error(
+                message=str(exc),
+                detail={"code": "PROJECT_ANNOTATIONS_PREPARE_FAILED"},
+            )
+            yield self._event_complete(
+                {
+                    "failed": True,
+                    "error": str(exc),
+                    "code": "PROJECT_ANNOTATIONS_PREPARE_FAILED",
+                }
+            )
+
+    async def prepare_project_associated(
+        self,
+        *,
+        user_id: uuid.UUID,
+        project_id: uuid.UUID,
+        request: ProjectAssociatedImportPrepareRequest,
+    ) -> AsyncIterator[dict[str, Any]]:
+        yield self._event_start(total=3, phase="project_associated_prepare")
+        try:
+            yield self._event_phase(
+                phase="project_associated_prepare",
+                message="downloading archive from object storage",
+                current=1,
+                total=3,
+            )
+            upload, temp_dir = await self._load_upload_archive_as_file(
+                user_id=user_id,
+                upload_session_id=request.upload_session_id,
+                expected_mode="project_associated",
+                expected_resource_type=ResourceType.PROJECT,
+                expected_resource_id=project_id,
+            )
+            try:
+                yield self._event_phase(
+                    phase="project_associated_prepare",
+                    message="analyzing zip archive",
+                    current=2,
+                    total=3,
+                )
+                result = await self.dry_run_project_associated(
+                    user_id=user_id,
+                    project_id=project_id,
+                    branch_name=request.branch_name,
+                    fmt=request.format_profile,
+                    path_flatten_mode=request.path_flatten_mode,
+                    name_collision_policy=request.name_collision_policy,
+                    target_mode=request.target_dataset_mode,
+                    target_dataset_id=request.target_dataset_id,
+                    new_dataset_name=request.new_dataset_name,
+                    new_dataset_description=request.new_dataset_description,
+                    zip_file=upload,
+                )
+            finally:
+                try:
+                    await upload.close()
+                except Exception:  # noqa: BLE001
+                    pass
+                temp_dir.cleanup()
+
+            yield self._event_phase(
+                phase="project_associated_prepare",
+                message="prepare completed",
+                current=3,
+                total=3,
+            )
+            yield self._event_complete(result.model_dump(mode="json"))
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("project associated prepare failed project_id={} error={}", project_id, exc)
+            yield self._event_error(
+                message=str(exc),
+                detail={"code": "PROJECT_ASSOCIATED_PREPARE_FAILED"},
+            )
+            yield self._event_complete(
+                {
+                    "failed": True,
+                    "error": str(exc),
+                    "code": "PROJECT_ASSOCIATED_PREPARE_FAILED",
+                }
+            )
 
     async def start_dataset_images_execute(
         self,
@@ -1300,6 +1588,41 @@ class ImportService:
             actor_user_id=user_id,
         )
         return created
+
+    async def _load_upload_archive_as_file(
+        self,
+        *,
+        user_id: uuid.UUID,
+        upload_session_id: uuid.UUID,
+        expected_mode: str,
+        expected_resource_type: ResourceType,
+        expected_resource_id: uuid.UUID,
+    ) -> tuple[UploadFile, tempfile.TemporaryDirectory[str]]:
+        session_row = await self.upload_service.resolve_uploaded_session(
+            user_id=user_id,
+            session_id=upload_session_id,
+            expected_mode=expected_mode,
+            expected_resource_type=expected_resource_type,
+            expected_resource_id=expected_resource_id,
+            consume=False,
+        )
+
+        temp_dir = tempfile.TemporaryDirectory(prefix="saki-import-upload-session-")
+        local_zip = Path(temp_dir.name) / "payload.zip"
+        try:
+            self.upload_service.storage.download_file(session_row.object_key, local_zip)
+        except Exception as exc:  # noqa: BLE001
+            temp_dir.cleanup()
+            raise BadRequestAppException(f"failed to download upload session archive: {exc}") from exc
+
+        file_handle = local_zip.open("rb")
+        headers = Headers({"content-type": str(session_row.content_type or "application/zip")})
+        upload = UploadFile(
+            file=file_handle,
+            filename=session_row.filename,
+            headers=headers,
+        )
+        return upload, temp_dir
 
     # ---------------------------------------------------------------------
     # Manifest / token helpers

@@ -37,6 +37,20 @@ class AssociatedDatasetMode(str, Enum):
     NEW = "new"
 
 
+class ImportUploadStrategy(str, Enum):
+    SINGLE_PUT = "single_put"
+    MULTIPART = "multipart"
+
+
+class ImportUploadSessionStatus(str, Enum):
+    INITIATED = "initiated"
+    UPLOADING = "uploading"
+    UPLOADED = "uploaded"
+    ABORTED = "aborted"
+    EXPIRED = "expired"
+    CONSUMED = "consumed"
+
+
 class ImportProgressEventType(str, Enum):
     START = "start"
     PHASE = "phase"
@@ -122,6 +136,108 @@ class ImportTaskStatusResponse(BaseModel):
     error: str | None = None
     started_at: datetime | None = None
     finished_at: datetime | None = None
+
+
+class ImportTaskResultResponse(BaseModel):
+    task_id: uuid.UUID
+    status: str
+    result: dict[str, Any] = Field(default_factory=dict)
+    error: str | None = None
+
+
+class ImportUploadInitRequest(BaseModel):
+    mode: str
+    resource_type: str
+    resource_id: uuid.UUID
+    filename: str
+    size: int = Field(ge=1)
+    content_type: str = "application/zip"
+
+
+class ImportUploadInitResponse(BaseModel):
+    session_id: uuid.UUID
+    strategy: ImportUploadStrategy
+    object_key: str
+    expires_at: datetime
+    part_size: int
+    upload_id: str | None = None
+    url: str | None = None
+    headers: dict[str, str] = Field(default_factory=dict)
+
+
+class ImportUploadPartSignRequest(BaseModel):
+    part_numbers: list[int] = Field(default_factory=list)
+
+
+class ImportUploadPartSignedItem(BaseModel):
+    part_number: int
+    url: str
+    headers: dict[str, str] = Field(default_factory=dict)
+
+
+class ImportUploadPartSignResponse(BaseModel):
+    session_id: uuid.UUID
+    upload_id: str
+    parts: list[ImportUploadPartSignedItem] = Field(default_factory=list)
+
+
+class ImportUploadCompletedPart(BaseModel):
+    part_number: int
+    etag: str
+
+
+class ImportUploadCompleteRequest(BaseModel):
+    size: int = Field(ge=1)
+    parts: list[ImportUploadCompletedPart] = Field(default_factory=list)
+
+
+class ImportUploadSessionResponse(BaseModel):
+    session_id: uuid.UUID
+    mode: str
+    resource_type: str
+    resource_id: uuid.UUID
+    filename: str
+    size: int
+    uploaded_size: int
+    content_type: str
+    object_key: str
+    strategy: ImportUploadStrategy
+    status: ImportUploadSessionStatus
+    upload_id: str | None = None
+    expires_at: datetime | None = None
+    error: str | None = None
+
+
+class ImportUploadAbortResponse(BaseModel):
+    session_id: uuid.UUID
+    status: ImportUploadSessionStatus
+
+
+class DatasetImportPrepareRequest(BaseModel):
+    upload_session_id: uuid.UUID
+    path_flatten_mode: PathFlattenMode = PathFlattenMode.BASENAME
+    name_collision_policy: NameCollisionPolicy = NameCollisionPolicy.ABORT
+
+
+class ProjectAnnotationImportPrepareRequest(BaseModel):
+    upload_session_id: uuid.UUID
+    format_profile: ImportFormat
+    dataset_id: uuid.UUID
+    branch_name: str = "master"
+    path_flatten_mode: PathFlattenMode = PathFlattenMode.BASENAME
+    name_collision_policy: NameCollisionPolicy = NameCollisionPolicy.ABORT
+
+
+class ProjectAssociatedImportPrepareRequest(BaseModel):
+    upload_session_id: uuid.UUID
+    format_profile: ImportFormat
+    branch_name: str = "master"
+    path_flatten_mode: PathFlattenMode = PathFlattenMode.BASENAME
+    name_collision_policy: NameCollisionPolicy = NameCollisionPolicy.ABORT
+    target_dataset_mode: AssociatedDatasetMode
+    target_dataset_id: uuid.UUID | None = None
+    new_dataset_name: str | None = None
+    new_dataset_description: str | None = None
 
 
 class ImportImageEntry(BaseModel):

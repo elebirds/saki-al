@@ -75,6 +75,15 @@ class TaskService:
             "finished_at": task.finished_at,
         }
 
+    async def get_result_payload(self, *, task_id: uuid.UUID, user_id: uuid.UUID) -> dict[str, Any]:
+        task = await self.get_task_for_user(task_id=task_id, user_id=user_id)
+        return {
+            "task_id": task.id,
+            "status": str(task.status),
+            "result": dict(task.summary or {}),
+            "error": task.error,
+        }
+
     async def list_events_for_user(
         self,
         *,

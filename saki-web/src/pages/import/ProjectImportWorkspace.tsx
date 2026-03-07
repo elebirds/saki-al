@@ -41,7 +41,7 @@ import {
     type ImportProgressEventType,
     type FormatProfileCapability,
 } from '../../types';
-import {useImportTask, useResourcePermission} from '../../hooks';
+import {useImportTask, useObjectUpload, useResourcePermission} from '../../hooks';
 import {localizeImportIssueMessage} from '../../utils/importIssue';
 import {
     formatImportSummaryValue,
@@ -239,11 +239,22 @@ const ProjectImportWorkspace: React.FC<ProjectImportWorkspaceProps> = ({scope}) 
         errors: {current: 1, pageSize: 20},
         labels: {current: 1, pageSize: 20},
     });
+    const [uploadSessionCache, setUploadSessionCache] = useState<{
+        identity: string;
+        mode: 'dataset_images' | 'project_annotations' | 'project_associated';
+        resourceType: 'dataset' | 'project';
+        resourceId: string;
+        sessionId: string;
+    } | null>(null);
     const [nowMs, setNowMs] = useState(() => Date.now());
 
     const importTask = useImportTask({
         onError: (err) => message.error(err),
     });
+    const prepareTask = useImportTask({
+        onError: (err) => message.error(err),
+    });
+    const objectUpload = useObjectUpload();
 
     useEffect(() => {
         if (isProjectScope) {
@@ -324,6 +335,8 @@ const ProjectImportWorkspace: React.FC<ProjectImportWorkspaceProps> = ({scope}) 
         setConfirmCreateLabels(false);
         setImageFiles([]);
         importTask.reset();
+        prepareTask.reset();
+        objectUpload.reset();
         setRightPanelTab('preview');
         setPreviewDetailTab('warnings');
         setPreviewPager({
@@ -331,6 +344,7 @@ const ProjectImportWorkspace: React.FC<ProjectImportWorkspaceProps> = ({scope}) 
             errors: {current: 1, pageSize: 20},
             labels: {current: 1, pageSize: 20},
         });
+        setUploadSessionCache(null);
     }, [
         mode,
         formatProfile,
@@ -345,6 +359,48 @@ const ProjectImportWorkspace: React.FC<ProjectImportWorkspaceProps> = ({scope}) 
         pathFlattenMode,
         nameCollisionPolicy,
     ]);
+
+    const resolveUploadSessionId = async (
+        modeValue: 'dataset_images' | 'project_annotations' | 'project_associated',
+        resourceType: 'dataset' | 'project',
+        resourceId: string,
+    ): Promise<string> => {
+        if (!archive) {
+            throw new Error(t('import.workspace.sourceArchive'));
+        }
+        const identity = buildFileIdentity(archive);
+        if (
+            uploadSessionCache
+            && uploadSessionCache.identity === identity
+            && uploadSessionCache.mode === modeValue
+            && uploadSessionCache.resourceType === resourceType
+            && uploadSessionCache.resourceId === resourceId
+        ) {
+            try {
+                const existing = await api.getImportUploadSession(uploadSessionCache.sessionId);
+                if (existing.status === 'uploaded' || existing.status === 'consumed') {
+                    return uploadSessionCache.sessionId;
+                }
+            } catch {
+                // Upload session might be expired or deleted; fallback to re-upload.
+            }
+        }
+
+        const uploaded = await objectUpload.uploadZip({
+            mode: modeValue,
+            resourceType,
+            resourceId,
+            file: archive,
+        });
+        setUploadSessionCache({
+            identity,
+            mode: modeValue,
+            resourceType,
+            resourceId,
+            sessionId: uploaded.sessionId,
+        });
+        return uploaded.sessionId;
+    };
 
     const summaryEntries = useMemo(
         () => getOrderedImportSummaryEntries(dryRun?.summary).map(([key, value]) => ({
@@ -472,9 +528,10 @@ const ProjectImportWorkspace: React.FC<ProjectImportWorkspaceProps> = ({scope}) 
 
     const currentStep = useMemo(() => {
         if (importTask.state.status === 'running' || importTask.state.events.length > 0) return 2;
+        if (prepareTask.isRunning || dryRunLoading) return 1;
         if (dryRun) return 1;
         return 0;
-    }, [dryRun, importTask.state.events.length, importTask.state.status]);
+    }, [dryRun, dryRunLoading, importTask.state.events.length, importTask.state.status, prepareTask.isRunning]);
 
     const progressPercent = useMemo(() => {
         const {current, total} = importTask.state.progress;
@@ -544,14 +601,32 @@ const ProjectImportWorkspace: React.FC<ProjectImportWorkspaceProps> = ({scope}) 
             }
             setDryRunLoading(true);
             try {
-                const result = await api.dryRunDatasetImageImport(
+                const uploadSessionId = await resolveUploadSessionId(
+                    'dataset_images',
+                    'dataset',
                     targetDatasetId,
-                    archive,
-                    {
-                        pathFlattenMode,
-                        nameCollisionPolicy,
-                    },
                 );
+                const prepareTaskId = await prepareTask.run(() =>
+                    api.prepareDatasetImageImport(
+                        targetDatasetId,
+                        {
+                            uploadSessionId,
+                            pathFlattenMode,
+                            nameCollisionPolicy,
+                        },
+                    ),
+                );
+                if (!prepareTaskId) {
+                    throw new Error(t('import.workspace.dryRunError'));
+                }
+                const taskResult = await api.getImportTaskResult(prepareTaskId);
+                if (taskResult.status === 'failed') {
+                    throw new Error(taskResult.error || t('import.workspace.dryRunError'));
+                }
+                const result = taskResult.result as unknown as ImportDryRunResponse;
+                if (!result?.previewToken) {
+                    throw new Error(t('import.workspace.dryRunError'));
+                }
                 setDryRun(result);
                 setDryRunFailure(null);
                 setConfirmCreateLabels(result.plannedNewLabels.length === 0);
@@ -595,35 +670,89 @@ const ProjectImportWorkspace: React.FC<ProjectImportWorkspaceProps> = ({scope}) 
         try {
             let result: ImportDryRunResponse;
             if (mode === 'images') {
-                result = await api.dryRunDatasetImageImport(
+                const uploadSessionId = await resolveUploadSessionId(
+                    'dataset_images',
+                    'dataset',
                     targetDatasetId,
-                    archive,
-                    {
+                );
+                const prepareTaskId = await prepareTask.run(() =>
+                    api.prepareDatasetImageImport(
+                        targetDatasetId,
+                        {
+                            uploadSessionId,
+                            pathFlattenMode,
+                            nameCollisionPolicy,
+                        },
+                    ),
+                );
+                if (!prepareTaskId) {
+                    throw new Error(t('import.workspace.dryRunError'));
+                }
+                const taskResult = await api.getImportTaskResult(prepareTaskId);
+                if (taskResult.status === 'failed') {
+                    throw new Error(taskResult.error || t('import.workspace.dryRunError'));
+                }
+                result = taskResult.result as unknown as ImportDryRunResponse;
+                if (!result?.previewToken) {
+                    throw new Error(t('import.workspace.dryRunError'));
+                }
+            } else if (mode === 'annotations') {
+                const uploadSessionId = await resolveUploadSessionId(
+                    'project_annotations',
+                    'project',
+                    projectId,
+                );
+                const prepareTaskId = await prepareTask.run(() =>
+                    api.prepareProjectAnnotationImport(projectId, {
+                        uploadSessionId,
+                        formatProfile,
+                        datasetId: targetDatasetId,
+                        branchName,
                         pathFlattenMode,
                         nameCollisionPolicy,
-                    },
+                    }),
                 );
-            } else if (mode === 'annotations') {
-                result = await api.dryRunProjectAnnotationImport(projectId, {
-                    file: archive,
-                    formatProfile,
-                    datasetId: targetDatasetId,
-                    branchName,
-                    pathFlattenMode,
-                    nameCollisionPolicy,
-                });
+                if (!prepareTaskId) {
+                    throw new Error(t('import.workspace.dryRunError'));
+                }
+                const taskResult = await api.getImportTaskResult(prepareTaskId);
+                if (taskResult.status === 'failed') {
+                    throw new Error(taskResult.error || t('import.workspace.dryRunError'));
+                }
+                result = taskResult.result as unknown as ImportDryRunResponse;
+                if (!result?.previewToken) {
+                    throw new Error(t('import.workspace.dryRunError'));
+                }
             } else {
-                result = await api.dryRunProjectAssociatedImport(projectId, {
-                    file: archive,
-                    formatProfile,
-                    branchName,
-                    pathFlattenMode,
-                    nameCollisionPolicy,
-                    targetDatasetMode: associatedTargetMode,
-                    targetDatasetId: associatedTargetMode === 'existing' ? targetDatasetId : undefined,
-                    newDatasetName: associatedTargetMode === 'new' ? newDatasetName : undefined,
-                    newDatasetDescription: associatedTargetMode === 'new' ? newDatasetDescription : undefined,
-                });
+                const uploadSessionId = await resolveUploadSessionId(
+                    'project_associated',
+                    'project',
+                    projectId,
+                );
+                const prepareTaskId = await prepareTask.run(() =>
+                    api.prepareProjectAssociatedImport(projectId, {
+                        uploadSessionId,
+                        formatProfile,
+                        branchName,
+                        pathFlattenMode,
+                        nameCollisionPolicy,
+                        targetDatasetMode: associatedTargetMode,
+                        targetDatasetId: associatedTargetMode === 'existing' ? targetDatasetId : undefined,
+                        newDatasetName: associatedTargetMode === 'new' ? newDatasetName : undefined,
+                        newDatasetDescription: associatedTargetMode === 'new' ? newDatasetDescription : undefined,
+                    }),
+                );
+                if (!prepareTaskId) {
+                    throw new Error(t('import.workspace.dryRunError'));
+                }
+                const taskResult = await api.getImportTaskResult(prepareTaskId);
+                if (taskResult.status === 'failed') {
+                    throw new Error(taskResult.error || t('import.workspace.dryRunError'));
+                }
+                result = taskResult.result as unknown as ImportDryRunResponse;
+                if (!result?.previewToken) {
+                    throw new Error(t('import.workspace.dryRunError'));
+                }
             }
             setDryRun(result);
             setDryRunFailure(null);
@@ -889,6 +1018,9 @@ const ProjectImportWorkspace: React.FC<ProjectImportWorkspaceProps> = ({scope}) 
                                                 setDryRunFailure(null);
                                                 setConfirmCreateLabels(false);
                                                 importTask.reset();
+                                                prepareTask.reset();
+                                                objectUpload.reset();
+                                                setUploadSessionCache(null);
                                             }}
                                         >
                                             <Button icon={<UploadOutlined/>}>{t('import.workspace.selectImages')}</Button>
@@ -904,11 +1036,17 @@ const ProjectImportWorkspace: React.FC<ProjectImportWorkspaceProps> = ({scope}) 
                                                 setDryRunFailure(null);
                                                 setConfirmCreateLabels(false);
                                                 importTask.reset();
+                                                prepareTask.reset();
+                                                objectUpload.reset();
+                                                setUploadSessionCache(null);
                                                 return false;
                                             }}
                                             onRemove={() => {
                                                 setArchive(null);
                                                 setDryRunFailure(null);
+                                                prepareTask.reset();
+                                                objectUpload.reset();
+                                                setUploadSessionCache(null);
                                                 return true;
                                             }}
                                         >
@@ -936,6 +1074,21 @@ const ProjectImportWorkspace: React.FC<ProjectImportWorkspaceProps> = ({scope}) 
                                             {t('common.delete')}
                                         </Button>
                                     </Space>
+                                ) : null}
+                                {(isProjectScope || sourceMode === 'zip') && objectUpload.progress.phase !== 'idle' ? (
+                                    <div className="mt-3 space-y-2">
+                                        <Text type="secondary">
+                                            {objectUpload.progress.phase === 'completed'
+                                                ? t('import.workspace.stateComplete')
+                                                : objectUpload.progress.phase === 'error'
+                                                    ? (objectUpload.progress.error || t('import.workspace.stateError'))
+                                                    : `${t('import.workspace.stateRunning')} · ${Math.round(objectUpload.progress.uploadedBytes / 1024 / 1024)}MB / ${Math.max(1, Math.round(objectUpload.progress.totalBytes / 1024 / 1024))}MB`}
+                                        </Text>
+                                        <Progress
+                                            percent={objectUpload.progress.percent}
+                                            status={objectUpload.progress.phase === 'error' ? 'exception' : objectUpload.progress.phase === 'completed' ? 'success' : 'active'}
+                                        />
+                                    </div>
                                 ) : null}
                             </div>
 
@@ -1084,11 +1237,12 @@ const ProjectImportWorkspace: React.FC<ProjectImportWorkspaceProps> = ({scope}) 
                                     <Button
                                         type="primary"
                                         onClick={handleDryRun}
-                                        loading={dryRunLoading}
+                                        loading={dryRunLoading || prepareTask.isRunning || objectUpload.progress.phase === 'uploading'}
                                         disabled={
                                             !archive
                                             || (isDatasetScope && !hasDatasetModePermission)
                                             || (isProjectScope && mode !== 'images' && !hasAvailableImportProfile)
+                                            || prepareTask.isRunning
                                         }
                                     >
                                         {t('import.workspace.dryRun')}
@@ -1096,7 +1250,7 @@ const ProjectImportWorkspace: React.FC<ProjectImportWorkspaceProps> = ({scope}) 
                                 ) : null}
                                 <Button
                                     onClick={handleExecute}
-                                    disabled={!canExecute || importTask.isRunning || (isDatasetScope && !hasDatasetModePermission)}
+                                    disabled={!canExecute || importTask.isRunning || prepareTask.isRunning || dryRunLoading || (isDatasetScope && !hasDatasetModePermission)}
                                 >
                                     {t('import.workspace.execute')}
                                 </Button>

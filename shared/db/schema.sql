@@ -561,6 +561,34 @@ CREATE TABLE public.import_task (
 
 
 --
+-- Name: import_upload_session; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.import_upload_session (
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    id uuid NOT NULL,
+    user_id uuid NOT NULL,
+    mode character varying(64) NOT NULL,
+    resource_type character varying(32) NOT NULL,
+    resource_id uuid NOT NULL,
+    filename character varying(255) NOT NULL,
+    size integer NOT NULL,
+    content_type character varying(127) NOT NULL,
+    object_key character varying(1024) NOT NULL,
+    bucket character varying(255),
+    strategy character varying(32) NOT NULL,
+    multipart_upload_id character varying(256),
+    status character varying(32) NOT NULL,
+    error character varying(2000),
+    uploaded_size integer NOT NULL,
+    expires_at timestamp with time zone,
+    completed_at timestamp with time zone,
+    meta_info jsonb
+);
+
+
+--
 -- Name: import_task_event; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1247,6 +1275,14 @@ ALTER TABLE ONLY public.import_task
 
 
 --
+-- Name: import_upload_session import_upload_session_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.import_upload_session
+    ADD CONSTRAINT import_upload_session_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: label label_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1919,6 +1955,48 @@ CREATE INDEX ix_import_task_status ON public.import_task USING btree (status);
 --
 
 CREATE INDEX ix_import_task_user_id ON public.import_task USING btree (user_id);
+
+
+--
+-- Name: ix_import_upload_session_expires_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_import_upload_session_expires_at ON public.import_upload_session USING btree (expires_at);
+
+
+--
+-- Name: ix_import_upload_session_mode; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_import_upload_session_mode ON public.import_upload_session USING btree (mode);
+
+
+--
+-- Name: ix_import_upload_session_resource_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_import_upload_session_resource_id ON public.import_upload_session USING btree (resource_id);
+
+
+--
+-- Name: ix_import_upload_session_resource_type; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_import_upload_session_resource_type ON public.import_upload_session USING btree (resource_type);
+
+
+--
+-- Name: ix_import_upload_session_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_import_upload_session_status ON public.import_upload_session USING btree (status);
+
+
+--
+-- Name: ix_import_upload_session_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_import_upload_session_user_id ON public.import_upload_session USING btree (user_id);
 
 
 --
@@ -3371,5 +3449,3 @@ ALTER TABLE ONLY public.user_system_role
 --
 -- PostgreSQL database dump complete
 --
-
-

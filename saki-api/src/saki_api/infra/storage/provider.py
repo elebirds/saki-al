@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import List, Optional, Any
 
 from minio import Minio
+from minio.datatypes import Part
 from minio.error import S3Error
 
 
@@ -126,6 +127,53 @@ class BaseStorageProvider(ABC):
         pass
 
     @abstractmethod
+    def init_multipart_upload(
+            self,
+            object_name: str,
+            content_type: Optional[str] = None,
+    ) -> str:
+        """
+        初始化 multipart 上传并返回 upload_id。
+        """
+        pass
+
+    @abstractmethod
+    def presign_upload_part(
+            self,
+            object_name: str,
+            upload_id: str,
+            part_number: int,
+            expires_delta: timedelta = timedelta(hours=1),
+    ) -> str:
+        """
+        生成 multipart 分片上传 URL。
+        """
+        pass
+
+    @abstractmethod
+    def complete_multipart_upload(
+            self,
+            object_name: str,
+            upload_id: str,
+            parts: List[tuple[int, str]],
+    ) -> None:
+        """
+        完成 multipart 上传。
+        """
+        pass
+
+    @abstractmethod
+    def abort_multipart_upload(
+            self,
+            object_name: str,
+            upload_id: str,
+    ) -> None:
+        """
+        中止 multipart 上传。
+        """
+        pass
+
+    @abstractmethod
     def download_file(
             self,
             object_name: str,
@@ -202,6 +250,13 @@ class BaseStorageProvider(ABC):
             
         Returns:
             对象内容字节数组
+        """
+        pass
+
+    @abstractmethod
+    def head_object(self, object_name: str) -> StorageObject:
+        """
+        获取对象元数据（size/etag/last_modified）。
         """
         pass
 
@@ -376,6 +431,77 @@ class MinioStorageProvider(BaseStorageProvider):
         except S3Error as e:
             raise StorageError(f"Failed to generate presigned PUT URL: {e}") from e
 
+    def init_multipart_upload(
+            self,
+            object_name: str,
+            content_type: Optional[str] = None,
+    ) -> str:
+        try:
+            self._ensure_bucket_exists()
+            headers = {"Content-Type": content_type or "application/octet-stream"}
+            return self.client._create_multipart_upload(
+                bucket_name=self.bucket_name,
+                object_name=object_name,
+                headers=headers,
+            )
+        except S3Error as e:
+            raise StorageError(f"Failed to init multipart upload: {e}") from e
+
+    def presign_upload_part(
+            self,
+            object_name: str,
+            upload_id: str,
+            part_number: int,
+            expires_delta: timedelta = timedelta(hours=1),
+    ) -> str:
+        try:
+            return self.client.get_presigned_url(
+                method="PUT",
+                bucket_name=self.bucket_name,
+                object_name=object_name,
+                expires=expires_delta,
+                extra_query_params={
+                    "partNumber": str(int(part_number)),
+                    "uploadId": upload_id,
+                },
+            )
+        except S3Error as e:
+            raise StorageError(f"Failed to presign multipart upload part: {e}") from e
+
+    def complete_multipart_upload(
+            self,
+            object_name: str,
+            upload_id: str,
+            parts: List[tuple[int, str]],
+    ) -> None:
+        try:
+            normalized_parts = [
+                Part(part_number=int(part_number), etag=str(etag).strip('"'))
+                for part_number, etag in parts
+            ]
+            self.client._complete_multipart_upload(
+                bucket_name=self.bucket_name,
+                object_name=object_name,
+                upload_id=upload_id,
+                parts=normalized_parts,
+            )
+        except S3Error as e:
+            raise StorageError(f"Failed to complete multipart upload: {e}") from e
+
+    def abort_multipart_upload(
+            self,
+            object_name: str,
+            upload_id: str,
+    ) -> None:
+        try:
+            self.client._abort_multipart_upload(
+                bucket_name=self.bucket_name,
+                object_name=object_name,
+                upload_id=upload_id,
+            )
+        except S3Error as e:
+            raise StorageError(f"Failed to abort multipart upload: {e}") from e
+
     def download_file(
             self,
             object_name: str,
@@ -508,6 +634,21 @@ class MinioStorageProvider(BaseStorageProvider):
                 response.release_conn()
         except S3Error as e:
             raise StorageError(f"Failed to get object bytes: {e}") from e
+
+    def head_object(self, object_name: str) -> StorageObject:
+        try:
+            stat = self.client.stat_object(
+                bucket_name=self.bucket_name,
+                object_name=object_name,
+            )
+            return StorageObject(
+                name=object_name,
+                size=int(getattr(stat, "size", 0) or 0),
+                last_modified=stat.last_modified.isoformat() if getattr(stat, "last_modified", None) else None,
+                etag=getattr(stat, "etag", None),
+            )
+        except S3Error as e:
+            raise StorageError(f"Failed to stat object: {e}") from e
 
 
 class StorageError(Exception):

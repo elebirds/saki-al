@@ -10,7 +10,7 @@ from starlette.responses import StreamingResponse
 from saki_api.app.deps import TaskServiceDep
 from saki_api.core.config import settings
 from saki_api.modules.access.api.dependencies import get_current_user_id
-from saki_api.modules.importing.schema import ImportTaskStatusResponse
+from saki_api.modules.importing.schema import ImportTaskResultResponse, ImportTaskStatusResponse
 
 router = APIRouter()
 
@@ -24,6 +24,17 @@ async def get_import_task_status(
 ) -> ImportTaskStatusResponse:
     payload = await service.get_status_payload(task_id=task_id, user_id=current_user_id)
     return ImportTaskStatusResponse.model_validate(payload)
+
+
+@router.get("/tasks/{task_id}/result", response_model=ImportTaskResultResponse)
+async def get_import_task_result(
+    *,
+    task_id: uuid.UUID,
+    service: TaskServiceDep,
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
+) -> ImportTaskResultResponse:
+    payload = await service.get_result_payload(task_id=task_id, user_id=current_user_id)
+    return ImportTaskResultResponse.model_validate(payload)
 
 
 @router.get("/tasks/{task_id}/events", response_class=StreamingResponse)

@@ -88,11 +88,22 @@ import {
     ImportExecuteRequest,
     ImportProgressEvent,
     ImportTaskCreateResponse,
+    ImportTaskResultResponse,
     ImportTaskStatusResponse,
+    ImportUploadAbortResponse,
+    ImportUploadCompleteRequest,
+    ImportUploadInitRequest,
+    ImportUploadInitResponse,
+    ImportUploadPartSignRequest,
+    ImportUploadPartSignResponse,
+    ImportUploadSessionResponse,
     SampleBulkImportRequest,
     UploadProgressEvent,
     AnnotationBulkRequest,
+    DatasetImportPrepareRequest,
+    ProjectAnnotationImportPrepareRequest,
     ProjectAnnotationImportDryRunRequest,
+    ProjectAssociatedImportPrepareRequest,
     ProjectAssociatedImportDryRunRequest,
     ProjectIOCapabilities,
     ProjectExportResolveRequest,
@@ -1614,6 +1625,60 @@ export class RealApiService implements ApiService {
         return response.data;
     }
 
+    async initImportUploadSession(payload: ImportUploadInitRequest): Promise<ImportUploadInitResponse> {
+        const response = await this.client.post<ImportUploadInitResponse>(
+            '/imports/uploads:init',
+            convertKeysToSnake(payload),
+        );
+        return convertKeysToCamel<ImportUploadInitResponse>(response.data);
+    }
+
+    async signImportUploadParts(
+        sessionId: string,
+        payload: ImportUploadPartSignRequest,
+    ): Promise<ImportUploadPartSignResponse> {
+        const response = await this.client.post<ImportUploadPartSignResponse>(
+            `/imports/uploads/${sessionId}/parts:sign`,
+            convertKeysToSnake(payload),
+        );
+        return convertKeysToCamel<ImportUploadPartSignResponse>(response.data);
+    }
+
+    async completeImportUploadSession(
+        sessionId: string,
+        payload: ImportUploadCompleteRequest,
+    ): Promise<ImportUploadSessionResponse> {
+        const response = await this.client.post<ImportUploadSessionResponse>(
+            `/imports/uploads/${sessionId}:complete`,
+            convertKeysToSnake(payload),
+        );
+        return convertKeysToCamel<ImportUploadSessionResponse>(response.data);
+    }
+
+    async abortImportUploadSession(sessionId: string): Promise<ImportUploadAbortResponse> {
+        const response = await this.client.post<ImportUploadAbortResponse>(
+            `/imports/uploads/${sessionId}:abort`,
+            {},
+        );
+        return convertKeysToCamel<ImportUploadAbortResponse>(response.data);
+    }
+
+    async getImportUploadSession(sessionId: string): Promise<ImportUploadSessionResponse> {
+        const response = await this.client.get<ImportUploadSessionResponse>(`/imports/uploads/${sessionId}`);
+        return convertKeysToCamel<ImportUploadSessionResponse>(response.data);
+    }
+
+    async prepareDatasetImageImport(
+        datasetId: string,
+        payload: DatasetImportPrepareRequest,
+    ): Promise<ImportTaskCreateResponse> {
+        const response = await this.client.post<ImportTaskCreateResponse>(
+            `/datasets/${datasetId}/imports/images:prepare`,
+            convertKeysToSnake(payload),
+        );
+        return convertKeysToCamel<ImportTaskCreateResponse>(response.data);
+    }
+
     async executeDatasetImageImport(
         datasetId: string,
         payload: ImportExecuteRequest,
@@ -1655,6 +1720,17 @@ export class RealApiService implements ApiService {
         return convertKeysToCamel<ImportTaskCreateResponse>(response.data);
     }
 
+    async prepareProjectAnnotationImport(
+        projectId: string,
+        payload: ProjectAnnotationImportPrepareRequest,
+    ): Promise<ImportTaskCreateResponse> {
+        const response = await this.client.post<ImportTaskCreateResponse>(
+            `/projects/${projectId}/imports/annotations:prepare`,
+            convertKeysToSnake(payload),
+        );
+        return convertKeysToCamel<ImportTaskCreateResponse>(response.data);
+    }
+
     async dryRunProjectAssociatedImport(
         projectId: string,
         payload: ProjectAssociatedImportDryRunRequest
@@ -1688,9 +1764,25 @@ export class RealApiService implements ApiService {
         return convertKeysToCamel<ImportTaskCreateResponse>(response.data);
     }
 
+    async prepareProjectAssociatedImport(
+        projectId: string,
+        payload: ProjectAssociatedImportPrepareRequest,
+    ): Promise<ImportTaskCreateResponse> {
+        const response = await this.client.post<ImportTaskCreateResponse>(
+            `/projects/${projectId}/imports/associated:prepare`,
+            convertKeysToSnake(payload),
+        );
+        return convertKeysToCamel<ImportTaskCreateResponse>(response.data);
+    }
+
     async getImportTaskStatus(taskId: string): Promise<ImportTaskStatusResponse> {
         const response = await this.client.get<ImportTaskStatusResponse>(`/imports/tasks/${taskId}`);
         return convertKeysToCamel<ImportTaskStatusResponse>(response.data);
+    }
+
+    async getImportTaskResult(taskId: string): Promise<ImportTaskResultResponse> {
+        const response = await this.client.get<ImportTaskResultResponse>(`/imports/tasks/${taskId}/result`);
+        return convertKeysToCamel<ImportTaskResultResponse>(response.data);
     }
 
     async streamImportTaskEvents(

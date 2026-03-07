@@ -22,6 +22,7 @@ from saki_api.modules.system.service.system import SystemService
 from saki_api.modules.system.service.system_settings import SystemSettingsService
 if TYPE_CHECKING:
     from saki_api.modules.importing.service import ImportService
+    from saki_api.modules.importing.service.import_upload_service import ImportUploadService
     from saki_api.modules.importing.service.task_service import TaskService
     from saki_api.modules.project.service.annotation_bulk import AnnotationBulkService
     from saki_api.modules.project.service.sample_bulk import SampleBulkService
@@ -175,6 +176,16 @@ def get_import_service(
 
 
 ImportServiceDep = Annotated["ImportService", Depends(get_import_service)]
+
+
+def get_import_upload_service(
+        session: AsyncSession = Depends(get_session),
+) -> "ImportUploadService":
+    from saki_api.modules.importing.service.import_upload_service import ImportUploadService
+    return ImportUploadService(session=session)
+
+
+ImportUploadServiceDep = Annotated["ImportUploadService", Depends(get_import_upload_service)]
 
 
 def get_task_service(

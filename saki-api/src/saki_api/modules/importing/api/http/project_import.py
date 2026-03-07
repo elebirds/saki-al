@@ -12,6 +12,8 @@ from saki_api.modules.importing.schema import (
     ImportDryRunResponse,
     ImportExecuteRequest,
     ImportFormat,
+    ProjectAnnotationImportPrepareRequest,
+    ProjectAssociatedImportPrepareRequest,
     ImportTaskCreateResponse,
     NameCollisionPolicy,
     PathFlattenMode,
@@ -29,6 +31,7 @@ _PROJECT_IMPORT_PERMISSIONS = [
 @router.post(
     "/{project_id}/imports/annotations:dry-run",
     response_model=ImportDryRunResponse,
+    deprecated=True,
     dependencies=_PROJECT_IMPORT_PERMISSIONS,
 )
 async def dry_run_project_annotation_import(
@@ -75,8 +78,28 @@ async def execute_project_annotation_import(
 
 
 @router.post(
+    "/{project_id}/imports/annotations:prepare",
+    response_model=ImportTaskCreateResponse,
+    dependencies=_PROJECT_IMPORT_PERMISSIONS,
+)
+async def prepare_project_annotation_import(
+    *,
+    project_id: uuid.UUID,
+    payload: ProjectAnnotationImportPrepareRequest,
+    service: ImportServiceDep,
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
+) -> ImportTaskCreateResponse:
+    return await service.start_project_annotations_prepare(
+        user_id=current_user_id,
+        project_id=project_id,
+        request=payload,
+    )
+
+
+@router.post(
     "/{project_id}/imports/associated:dry-run",
     response_model=ImportDryRunResponse,
+    deprecated=True,
     dependencies=_PROJECT_IMPORT_PERMISSIONS,
 )
 async def dry_run_project_associated_import(
@@ -122,6 +145,25 @@ async def execute_project_associated_import(
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ) -> ImportTaskCreateResponse:
     return await service.start_project_associated_execute(
+        user_id=current_user_id,
+        project_id=project_id,
+        request=payload,
+    )
+
+
+@router.post(
+    "/{project_id}/imports/associated:prepare",
+    response_model=ImportTaskCreateResponse,
+    dependencies=_PROJECT_IMPORT_PERMISSIONS,
+)
+async def prepare_project_associated_import(
+    *,
+    project_id: uuid.UUID,
+    payload: ProjectAssociatedImportPrepareRequest,
+    service: ImportServiceDep,
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
+) -> ImportTaskCreateResponse:
+    return await service.start_project_associated_prepare(
         user_id=current_user_id,
         project_id=project_id,
         request=payload,

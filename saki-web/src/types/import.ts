@@ -5,6 +5,8 @@ export type PathFlattenMode = 'basename' | 'preserve_path';
 export type NameCollisionPolicy = 'abort' | 'auto_rename' | 'overwrite';
 
 export type AssociatedDatasetMode = 'existing' | 'new';
+export type ImportUploadStrategy = 'single_put' | 'multipart';
+export type ImportUploadSessionStatus = 'initiated' | 'uploading' | 'uploaded' | 'aborted' | 'expired' | 'consumed';
 
 export type ImportProgressEventType = 'start' | 'phase' | 'item' | 'annotation' | 'warning' | 'error' | 'complete';
 
@@ -63,6 +65,108 @@ export interface ImportTaskStatusResponse {
     error?: string | null;
     startedAt?: string | null;
     finishedAt?: string | null;
+}
+
+export interface ImportTaskResultResponse {
+    taskId: string;
+    status: string;
+    result: Record<string, unknown>;
+    error?: string | null;
+}
+
+export interface ImportUploadInitRequest {
+    mode: 'dataset_images' | 'project_annotations' | 'project_associated';
+    resourceType: 'dataset' | 'project';
+    resourceId: string;
+    filename: string;
+    size: number;
+    contentType: string;
+}
+
+export interface ImportUploadInitResponse {
+    sessionId: string;
+    strategy: ImportUploadStrategy;
+    objectKey: string;
+    expiresAt: string;
+    partSize: number;
+    uploadId?: string | null;
+    url?: string | null;
+    headers?: Record<string, string>;
+}
+
+export interface ImportUploadPartSignRequest {
+    partNumbers: number[];
+}
+
+export interface ImportUploadPartSignedItem {
+    partNumber: number;
+    url: string;
+    headers: Record<string, string>;
+}
+
+export interface ImportUploadPartSignResponse {
+    sessionId: string;
+    uploadId: string;
+    parts: ImportUploadPartSignedItem[];
+}
+
+export interface ImportUploadCompletedPart {
+    partNumber: number;
+    etag: string;
+}
+
+export interface ImportUploadCompleteRequest {
+    size: number;
+    parts?: ImportUploadCompletedPart[];
+}
+
+export interface ImportUploadSessionResponse {
+    sessionId: string;
+    mode: string;
+    resourceType: string;
+    resourceId: string;
+    filename: string;
+    size: number;
+    uploadedSize: number;
+    contentType: string;
+    objectKey: string;
+    strategy: ImportUploadStrategy;
+    status: ImportUploadSessionStatus;
+    uploadId?: string | null;
+    expiresAt?: string | null;
+    error?: string | null;
+}
+
+export interface ImportUploadAbortResponse {
+    sessionId: string;
+    status: ImportUploadSessionStatus;
+}
+
+export interface DatasetImportPrepareRequest {
+    uploadSessionId: string;
+    pathFlattenMode?: PathFlattenMode;
+    nameCollisionPolicy?: NameCollisionPolicy;
+}
+
+export interface ProjectAnnotationImportPrepareRequest {
+    uploadSessionId: string;
+    formatProfile: ImportFormat;
+    datasetId: string;
+    branchName: string;
+    pathFlattenMode?: PathFlattenMode;
+    nameCollisionPolicy?: NameCollisionPolicy;
+}
+
+export interface ProjectAssociatedImportPrepareRequest {
+    uploadSessionId: string;
+    formatProfile: ImportFormat;
+    branchName: string;
+    pathFlattenMode?: PathFlattenMode;
+    nameCollisionPolicy?: NameCollisionPolicy;
+    targetDatasetMode: AssociatedDatasetMode;
+    targetDatasetId?: string;
+    newDatasetName?: string;
+    newDatasetDescription?: string;
 }
 
 export interface ProjectAnnotationImportDryRunRequest {

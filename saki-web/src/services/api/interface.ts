@@ -87,11 +87,22 @@ import {
     ImportExecuteRequest,
     ImportProgressEvent,
     ImportTaskCreateResponse,
+    ImportTaskResultResponse,
     ImportTaskStatusResponse,
+    ImportUploadAbortResponse,
+    ImportUploadCompleteRequest,
+    ImportUploadInitRequest,
+    ImportUploadInitResponse,
+    ImportUploadPartSignRequest,
+    ImportUploadPartSignResponse,
+    ImportUploadSessionResponse,
     SampleBulkImportRequest,
     UploadProgressEvent,
     AnnotationBulkRequest,
+    DatasetImportPrepareRequest,
+    ProjectAnnotationImportPrepareRequest,
     ProjectAnnotationImportDryRunRequest,
+    ProjectAssociatedImportPrepareRequest,
     ProjectAssociatedImportDryRunRequest,
     ProjectExportChunkRequest,
     ProjectExportChunkResponse,
@@ -438,6 +449,23 @@ export interface ApiService {
         payload: ImportExecuteRequest,
     ): Promise<ImportTaskCreateResponse>;
 
+    initImportUploadSession(payload: ImportUploadInitRequest): Promise<ImportUploadInitResponse>;
+    signImportUploadParts(
+        sessionId: string,
+        payload: ImportUploadPartSignRequest,
+    ): Promise<ImportUploadPartSignResponse>;
+    completeImportUploadSession(
+        sessionId: string,
+        payload: ImportUploadCompleteRequest,
+    ): Promise<ImportUploadSessionResponse>;
+    abortImportUploadSession(sessionId: string): Promise<ImportUploadAbortResponse>;
+    getImportUploadSession(sessionId: string): Promise<ImportUploadSessionResponse>;
+
+    prepareDatasetImageImport(
+        datasetId: string,
+        payload: DatasetImportPrepareRequest,
+    ): Promise<ImportTaskCreateResponse>;
+
     dryRunProjectAnnotationImport(
         projectId: string,
         payload: ProjectAnnotationImportDryRunRequest,
@@ -446,6 +474,11 @@ export interface ApiService {
     executeProjectAnnotationImport(
         projectId: string,
         payload: ImportExecuteRequest,
+    ): Promise<ImportTaskCreateResponse>;
+
+    prepareProjectAnnotationImport(
+        projectId: string,
+        payload: ProjectAnnotationImportPrepareRequest,
     ): Promise<ImportTaskCreateResponse>;
 
     dryRunProjectAssociatedImport(
@@ -458,7 +491,13 @@ export interface ApiService {
         payload: ImportExecuteRequest,
     ): Promise<ImportTaskCreateResponse>;
 
+    prepareProjectAssociatedImport(
+        projectId: string,
+        payload: ProjectAssociatedImportPrepareRequest,
+    ): Promise<ImportTaskCreateResponse>;
+
     getImportTaskStatus(taskId: string): Promise<ImportTaskStatusResponse>;
+    getImportTaskResult(taskId: string): Promise<ImportTaskResultResponse>;
 
     streamImportTaskEvents(
         taskId: string,

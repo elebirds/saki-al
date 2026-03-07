@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from fastapi import APIRouter
 
-from saki_api.modules.importing.api.http import bulk, dataset_import, project_import, task
+from saki_api.modules.importing.api.http import bulk, dataset_import, project_import, task, upload
 
 
 @dataclass(slots=True)
@@ -17,6 +17,7 @@ class ImportingAppModule:
         api_router.include_router(bulk.dataset_router, prefix="/datasets", tags=["imports"])
         api_router.include_router(bulk.project_router, prefix="/projects", tags=["imports"])
         api_router.include_router(task.router, prefix="/imports", tags=["imports"])
+        api_router.include_router(upload.router, prefix="/imports", tags=["imports"])
 
     async def startup(self) -> None:  # pragma: no cover
         return None

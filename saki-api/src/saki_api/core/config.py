@@ -79,6 +79,10 @@ class Settings(BaseSettings):
 
     # Importing
     IMPORT_PREVIEW_TTL_MINUTES: int = 30
+    IMPORT_UPLOAD_SESSION_TTL_MINUTES: int = 120
+    IMPORT_UPLOAD_MULTIPART_THRESHOLD_BYTES: int = 64 * 1024 * 1024
+    IMPORT_UPLOAD_PART_SIZE_BYTES: int = 16 * 1024 * 1024
+    IMPORT_UPLOAD_MAX_PARTS_PER_SIGN: int = 100
     IMPORT_MAX_ZIP_BYTES: int = 2 * 1024 * 1024 * 1024  # 2GB
     IMPORT_MAX_ENTRIES: int = 100000
     IMPORT_ALLOWED_IMAGE_EXTS: List[str] = [
@@ -90,7 +94,7 @@ class Settings(BaseSettings):
         ".tif",
         ".tiff",
     ]
-    IMPORT_MAX_CONCURRENT_TASKS: int = 2
+    IMPORT_MAX_CONCURRENT_TASKS: int = 1
     IMPORT_TASK_RETENTION_HOURS: int = 72
     IMPORT_EVENT_HEARTBEAT_SECONDS: int = 10
 

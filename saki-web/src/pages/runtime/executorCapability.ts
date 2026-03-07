@@ -15,6 +15,7 @@ export type ExecutorHostCapabilityView = {
     memoryMb: number | null;
     driverVersion: string;
     cudaVersion: string;
+    mpsAvailable: boolean | null;
     gpus: ExecutorGpuCapability[];
 };
 
@@ -33,12 +34,61 @@ const toNumber = (value: unknown): number | null => {
     return parsed;
 };
 
+const toBoolean = (value: unknown): boolean | null => {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') {
+        if (value === 1) return true;
+        if (value === 0) return false;
+        return null;
+    }
+    if (typeof value === 'string') {
+        const normalized = value.trim().toLowerCase();
+        if (!normalized) return null;
+        if (['true', '1', 'yes', 'on'].includes(normalized)) return true;
+        if (['false', '0', 'no', 'off'].includes(normalized)) return false;
+    }
+    return null;
+};
+
 const formatMemory = (memoryMb: number | null): string => {
     if (memoryMb === null || memoryMb <= 0) return 'unknown';
     if (memoryMb >= 1024) {
         return `${(memoryMb / 1024).toFixed(1)} GB`;
     }
     return `${Math.trunc(memoryMb)} MB`;
+};
+
+const formatAvailability = (available: boolean | null): string => {
+    if (available === true) return 'available';
+    if (available === false) return 'unavailable';
+    return 'unknown';
+};
+
+const resolveMpsAvailability = (hostCapability: Record<string, any>, resources: Record<string, any>): boolean | null => {
+    const direct = toBoolean(hostCapability.metalAvailable ?? hostCapability.metal_available);
+    if (direct !== null) {
+        return direct;
+    }
+    const accelerators = Array.isArray(resources.accelerators) ? resources.accelerators : [];
+    const mps = accelerators.find((row: any) => String(row?.type || '').toLowerCase() === 'mps');
+    if (!mps) {
+        return null;
+    }
+    const declared = toBoolean(mps.available);
+    if (declared !== null) {
+        return declared;
+    }
+    const deviceCount = toNumber(mps.deviceCount ?? mps.device_count);
+    if (deviceCount !== null) {
+        return deviceCount > 0;
+    }
+    const deviceIds = Array.isArray(mps.deviceIds ?? mps.device_ids)
+        ? (mps.deviceIds ?? mps.device_ids).filter((item: unknown) => String(item ?? '').trim() !== '')
+        : [];
+    if (deviceIds.length > 0) {
+        return true;
+    }
+    return null;
 };
 
 const normalizeGpuRows = (hostCapability: Record<string, any>, resources: Record<string, any>): ExecutorGpuCapability[] => {
@@ -107,19 +157,21 @@ export const extractExecutorHostCapability = (executor: RuntimeExecutorRead | nu
         ),
         driverVersion: toText(driverInfo.driverVersion ?? driverInfo.driver_version),
         cudaVersion: toText(driverInfo.cudaVersion ?? driverInfo.cuda_version),
+        mpsAvailable: resolveMpsAvailability(hostCapability, resources),
         gpus,
     };
 };
 
 export const buildExecutorCapabilitySummary = (executor: RuntimeExecutorRead): string => {
     const capability = extractExecutorHostCapability(executor);
+    const mpsText = formatAvailability(capability.mpsAvailable);
     if (capability.gpus.length > 0) {
         const first = capability.gpus[0];
         const tflopsText = first.fp32Tflops !== null ? first.fp32Tflops.toFixed(1) : 'unknown';
-        return `GPU ${first.name} x${capability.gpus.length} · ${formatMemory(first.memoryMb)} · CUDA ${capability.cudaVersion || 'unknown'} · ${tflopsText} TFLOPS`;
+        return `GPU ${first.name} x${capability.gpus.length} · ${formatMemory(first.memoryMb)} · CUDA ${capability.cudaVersion || 'unknown'} · ${tflopsText} TFLOPS · MPS ${mpsText}`;
     }
     const cpuWorkersText = capability.cpuWorkers !== null ? String(Math.trunc(capability.cpuWorkers)) : 'unknown';
-    return `CPU ${(capability.platform || 'unknown')}/${(capability.arch || 'unknown')} · ${cpuWorkersText} workers · ${formatMemory(capability.memoryMb)}`;
+    return `CPU ${(capability.platform || 'unknown')}/${(capability.arch || 'unknown')} · ${cpuWorkersText} workers · ${formatMemory(capability.memoryMb)} · MPS ${mpsText}`;
 };
 
 export const formatGpuDetailLine = (gpu: ExecutorGpuCapability): string => {

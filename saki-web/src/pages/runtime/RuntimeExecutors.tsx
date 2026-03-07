@@ -59,6 +59,12 @@ const formatTickTime = (value: string, range: RuntimeExecutorStatsRange) => {
 
 const formatPercent = (ratio: number) => `${(ratio * 100).toFixed(2)}%`;
 
+const formatAvailability = (available: boolean | null) => {
+    if (available === true) return 'available';
+    if (available === false) return 'unavailable';
+    return 'unknown';
+};
+
 const extractPlugins = (executor: RuntimeExecutorRead | null): RuntimeExecutorPluginCapability[] => {
     if (!executor) return [];
     const raw = executor.pluginIds?.plugins;
@@ -223,6 +229,7 @@ const RuntimeExecutors: React.FC = () => {
             || Boolean(selectedExecutorCapability.arch)
             || selectedExecutorCapability.cpuWorkers !== null
             || selectedExecutorCapability.memoryMb !== null
+            || selectedExecutorCapability.mpsAvailable !== null
         ),
         [selectedExecutorCapability],
     );
@@ -524,6 +531,9 @@ const RuntimeExecutors: React.FC = () => {
                                                     </div>
                                                     <div className="mt-1 text-xs text-github-muted">
                                                         cpu_workers={selectedExecutorCapability.cpuWorkers ?? 'unknown'} · memory_mb={selectedExecutorCapability.memoryMb ?? 'unknown'}
+                                                    </div>
+                                                    <div className="mt-1 text-xs text-github-muted">
+                                                        mps={formatAvailability(selectedExecutorCapability.mpsAvailable)}
                                                     </div>
                                                 </div>
                                             </div>

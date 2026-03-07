@@ -83,7 +83,6 @@ import {
     User,
     UserSystemRole,
     UserSystemRoleAssign,
-    ImportDryRunResponse,
     ImportExecuteRequest,
     ImportProgressEvent,
     ImportTaskCreateResponse,
@@ -101,9 +100,7 @@ import {
     AnnotationBulkRequest,
     DatasetImportPrepareRequest,
     ProjectAnnotationImportPrepareRequest,
-    ProjectAnnotationImportDryRunRequest,
     ProjectAssociatedImportPrepareRequest,
-    ProjectAssociatedImportDryRunRequest,
     ProjectExportChunkRequest,
     ProjectExportChunkResponse,
     ProjectExportResolveRequest,
@@ -435,15 +432,6 @@ export interface ApiService {
     // ============================================================================
     // Import APIs
     // ============================================================================
-    dryRunDatasetImageImport(
-        datasetId: string,
-        file: File,
-        options?: {
-            pathFlattenMode?: 'basename' | 'preserve_path';
-            nameCollisionPolicy?: 'abort' | 'auto_rename' | 'overwrite';
-        },
-    ): Promise<ImportDryRunResponse>;
-
     executeDatasetImageImport(
         datasetId: string,
         payload: ImportExecuteRequest,
@@ -466,11 +454,6 @@ export interface ApiService {
         payload: DatasetImportPrepareRequest,
     ): Promise<ImportTaskCreateResponse>;
 
-    dryRunProjectAnnotationImport(
-        projectId: string,
-        payload: ProjectAnnotationImportDryRunRequest,
-    ): Promise<ImportDryRunResponse>;
-
     executeProjectAnnotationImport(
         projectId: string,
         payload: ImportExecuteRequest,
@@ -480,11 +463,6 @@ export interface ApiService {
         projectId: string,
         payload: ProjectAnnotationImportPrepareRequest,
     ): Promise<ImportTaskCreateResponse>;
-
-    dryRunProjectAssociatedImport(
-        projectId: string,
-        payload: ProjectAssociatedImportDryRunRequest,
-    ): Promise<ImportDryRunResponse>;
 
     executeProjectAssociatedImport(
         projectId: string,

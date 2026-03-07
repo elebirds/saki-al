@@ -97,23 +97,6 @@ class ImportProgressEvent(BaseModel):
     detail: dict[str, Any] | None = None
 
 
-class AnnotationDryRunPayload(BaseModel):
-    format_profile: ImportFormat
-    dataset_id: uuid.UUID
-    branch_name: str = "master"
-
-
-class AssociatedDryRunPayload(BaseModel):
-    format_profile: ImportFormat
-    branch_name: str = "master"
-    path_flatten_mode: PathFlattenMode = PathFlattenMode.BASENAME
-    name_collision_policy: NameCollisionPolicy = NameCollisionPolicy.ABORT
-    target_dataset_mode: AssociatedDatasetMode
-    target_dataset_id: uuid.UUID | None = None
-    new_dataset_name: str | None = None
-    new_dataset_description: str | None = None
-
-
 class AssociatedManifestTarget(BaseModel):
     mode: AssociatedDatasetMode
     dataset_id: uuid.UUID | None = None

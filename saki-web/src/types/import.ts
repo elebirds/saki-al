@@ -169,27 +169,6 @@ export interface ProjectAssociatedImportPrepareRequest {
     newDatasetDescription?: string;
 }
 
-export interface ProjectAnnotationImportDryRunRequest {
-    file: File;
-    formatProfile: ImportFormat;
-    datasetId: string;
-    branchName: string;
-    pathFlattenMode?: PathFlattenMode;
-    nameCollisionPolicy?: NameCollisionPolicy;
-}
-
-export interface ProjectAssociatedImportDryRunRequest {
-    file: File;
-    formatProfile: ImportFormat;
-    branchName: string;
-    pathFlattenMode?: PathFlattenMode;
-    nameCollisionPolicy?: NameCollisionPolicy;
-    targetDatasetMode: AssociatedDatasetMode;
-    targetDatasetId?: string;
-    newDatasetName?: string;
-    newDatasetDescription?: string;
-}
-
 export interface ImportImageEntry {
     zipEntryPath: string;
     resolvedSampleName: string;

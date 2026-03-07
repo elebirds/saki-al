@@ -84,7 +84,6 @@ import {
     User,
     UserSystemRole,
     UserSystemRoleAssign,
-    ImportDryRunResponse,
     ImportExecuteRequest,
     ImportProgressEvent,
     ImportTaskCreateResponse,
@@ -102,9 +101,7 @@ import {
     AnnotationBulkRequest,
     DatasetImportPrepareRequest,
     ProjectAnnotationImportPrepareRequest,
-    ProjectAnnotationImportDryRunRequest,
     ProjectAssociatedImportPrepareRequest,
-    ProjectAssociatedImportDryRunRequest,
     ProjectIOCapabilities,
     ProjectExportResolveRequest,
     ProjectExportResolveResponse,
@@ -1606,25 +1603,6 @@ export class RealApiService implements ApiService {
     // Import APIs
     // ==========================================================================
 
-    async dryRunDatasetImageImport(
-        datasetId: string,
-        file: File,
-        options?: {
-            pathFlattenMode?: 'basename' | 'preserve_path';
-            nameCollisionPolicy?: 'abort' | 'auto_rename' | 'overwrite';
-        },
-    ): Promise<ImportDryRunResponse> {
-        const formData = new FormData();
-        formData.append('file', resolveUploadFile(file));
-        formData.append('path_flatten_mode', options?.pathFlattenMode || 'basename');
-        formData.append('name_collision_policy', options?.nameCollisionPolicy || 'abort');
-        const response = await this.client.post<ImportDryRunResponse>(
-            `/datasets/${datasetId}/imports/images:dry-run`,
-            formData,
-        );
-        return response.data;
-    }
-
     async initImportUploadSession(payload: ImportUploadInitRequest): Promise<ImportUploadInitResponse> {
         const response = await this.client.post<ImportUploadInitResponse>(
             '/imports/uploads:init',
@@ -1690,25 +1668,6 @@ export class RealApiService implements ApiService {
         return convertKeysToCamel<ImportTaskCreateResponse>(response.data);
     }
 
-    async dryRunProjectAnnotationImport(
-        projectId: string,
-        payload: ProjectAnnotationImportDryRunRequest
-    ): Promise<ImportDryRunResponse> {
-        const formData = new FormData();
-        formData.append('file', resolveUploadFile(payload.file));
-        formData.append('format_profile', payload.formatProfile);
-        formData.append('dataset_id', payload.datasetId);
-        formData.append('branch_name', payload.branchName);
-        formData.append('path_flatten_mode', payload.pathFlattenMode || 'basename');
-        formData.append('name_collision_policy', payload.nameCollisionPolicy || 'abort');
-
-        const response = await this.client.post<ImportDryRunResponse>(
-            `/projects/${projectId}/imports/annotations:dry-run`,
-            formData,
-        );
-        return response.data;
-    }
-
     async executeProjectAnnotationImport(
         projectId: string,
         payload: ImportExecuteRequest,
@@ -1729,28 +1688,6 @@ export class RealApiService implements ApiService {
             convertKeysToSnake(payload),
         );
         return convertKeysToCamel<ImportTaskCreateResponse>(response.data);
-    }
-
-    async dryRunProjectAssociatedImport(
-        projectId: string,
-        payload: ProjectAssociatedImportDryRunRequest
-    ): Promise<ImportDryRunResponse> {
-        const formData = new FormData();
-        formData.append('file', resolveUploadFile(payload.file));
-        formData.append('format_profile', payload.formatProfile);
-        formData.append('branch_name', payload.branchName);
-        formData.append('path_flatten_mode', payload.pathFlattenMode || 'basename');
-        formData.append('name_collision_policy', payload.nameCollisionPolicy || 'abort');
-        formData.append('target_dataset_mode', payload.targetDatasetMode);
-        if (payload.targetDatasetId) formData.append('target_dataset_id', payload.targetDatasetId);
-        if (payload.newDatasetName) formData.append('new_dataset_name', payload.newDatasetName);
-        if (payload.newDatasetDescription) formData.append('new_dataset_description', payload.newDatasetDescription);
-
-        const response = await this.client.post<ImportDryRunResponse>(
-            `/projects/${projectId}/imports/associated:dry-run`,
-            formData,
-        );
-        return response.data;
     }
 
     async executeProjectAssociatedImport(

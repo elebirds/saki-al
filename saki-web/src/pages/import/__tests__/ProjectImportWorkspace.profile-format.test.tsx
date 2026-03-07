@@ -1,18 +1,18 @@
 import type {
     ImportFormat,
-    ProjectAnnotationImportDryRunRequest,
-    ProjectAssociatedImportDryRunRequest,
+    ProjectAnnotationImportPrepareRequest,
+    ProjectAssociatedImportPrepareRequest,
 } from '../../../types';
 
 export type Assert<T extends true> = T;
 
-export type HasFormatProfileInAnnotation = 'formatProfile' extends keyof ProjectAnnotationImportDryRunRequest ? true : false;
-export type HasFormatInAnnotation = 'format' extends keyof ProjectAnnotationImportDryRunRequest ? true : false;
+export type HasFormatProfileInAnnotation = 'formatProfile' extends keyof ProjectAnnotationImportPrepareRequest ? true : false;
+export type HasFormatInAnnotation = 'format' extends keyof ProjectAnnotationImportPrepareRequest ? true : false;
 export type AssertFormatProfileInAnnotation = Assert<HasFormatProfileInAnnotation>;
 export type AssertNoLegacyFormatInAnnotation = Assert<HasFormatInAnnotation extends false ? true : false>;
 
-export type HasFormatProfileInAssociated = 'formatProfile' extends keyof ProjectAssociatedImportDryRunRequest ? true : false;
-export type HasFormatInAssociated = 'format' extends keyof ProjectAssociatedImportDryRunRequest ? true : false;
+export type HasFormatProfileInAssociated = 'formatProfile' extends keyof ProjectAssociatedImportPrepareRequest ? true : false;
+export type HasFormatInAssociated = 'format' extends keyof ProjectAssociatedImportPrepareRequest ? true : false;
 export type AssertFormatProfileInAssociated = Assert<HasFormatProfileInAssociated>;
 export type AssertNoLegacyFormatInAssociated = Assert<HasFormatInAssociated extends false ? true : false>;
 

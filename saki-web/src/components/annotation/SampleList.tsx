@@ -1,5 +1,5 @@
 import React from 'react';
-import {List, Typography} from 'antd';
+import {List, Pagination, Typography} from 'antd';
 import {Sample} from '../../types';
 import {useTranslation} from 'react-i18next';
 
@@ -9,12 +9,22 @@ export interface SampleListProps {
     samples: Sample[];
     currentIndex: number;
     onSampleSelect: (index: number) => void;
+    total: number;
+    offset: number;
+    page: number;
+    pageSize: number;
+    onPageChange: (page: number) => void;
 }
 
 export const SampleList: React.FC<SampleListProps> = ({
                                                           samples,
                                                           currentIndex,
                                                           onSampleSelect,
+                                                          total,
+                                                          offset,
+                                                          page,
+                                                          pageSize,
+                                                          onPageChange,
                                                       }) => {
     const {t} = useTranslation();
 
@@ -27,7 +37,7 @@ export const SampleList: React.FC<SampleListProps> = ({
             >
                 <Text strong>{t('annotation.workspace.sampleList')}</Text>
                 <div className="mt-2 text-xs text-github-muted">
-                    {samples.length} {t('annotation.workspace.samples')}
+                    {total} {t('annotation.workspace.samples')}
                 </div>
             </div>
             <div
@@ -52,7 +62,7 @@ export const SampleList: React.FC<SampleListProps> = ({
                                     <div
                                         className="mb-1 text-xs text-github-muted"
                                     >
-                                        #{index + 1}
+                                        #{offset + index + 1}
                                     </div>
                                     <div
                                         className={`truncate text-[13px] ${
@@ -66,6 +76,17 @@ export const SampleList: React.FC<SampleListProps> = ({
                             </div>
                         </List.Item>
                     )}
+                />
+            </div>
+            <div className="border-t border-github-border bg-github-base px-3 py-2">
+                <Pagination
+                    size="small"
+                    simple
+                    current={Math.max(1, page)}
+                    pageSize={Math.max(1, pageSize)}
+                    total={Math.max(0, total)}
+                    showSizeChanger={false}
+                    onChange={onPageChange}
                 />
             </div>
         </div>

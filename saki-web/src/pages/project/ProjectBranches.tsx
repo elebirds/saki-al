@@ -205,7 +205,7 @@ const ProjectBranches: React.FC = () => {
         if (!canManage) return
         setUpdatingIds((prev) => new Set(prev).add(branch.id))
         try {
-            await api.updateBranch(branch.id, {isProtected})
+            await api.updateBranch(projectId!, branch.id, {isProtected})
             message.success(isProtected ? t('project.branches.protected') : t('project.branches.unprotected'))
             await loadBranches()
         } catch (error: any) {
@@ -223,7 +223,7 @@ const ProjectBranches: React.FC = () => {
         if (!canManage) return
         setDeletingId(branch.id)
         try {
-            await api.deleteBranch(branch.id)
+            await api.deleteBranch(projectId!, branch.id)
             message.success(t('project.branches.deleteSuccess'))
             await loadBranches()
         } catch (error: any) {
@@ -434,7 +434,7 @@ const ProjectBranches: React.FC = () => {
                                 optionFilterProp="label"
                                 options={commits.map((commit) => ({
                                     value: commit.id,
-                                    label: `${commit.message || t('project.branches.form.noMessage')} · ${commit.id.slice(0, 7)}`,
+                                    label: `${commit.message || t('project.branches.form.noMessage')} · ${commit.commitHash.slice(0, 8)}`,
                                 }))}
                             />
                         </Form.Item>

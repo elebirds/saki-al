@@ -1,7 +1,16 @@
+from pathlib import Path
 from typing import List
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+_API_ROOT = Path(__file__).resolve().parents[3]
+_WORKSPACE_ROOT = _API_ROOT.parent
+_ENV_FILES = (
+    str(_API_ROOT / ".env"),
+    str(_WORKSPACE_ROOT / ".env"),
+)
 
 
 class Settings(BaseSettings):
@@ -12,7 +21,7 @@ class Settings(BaseSettings):
         PROJECT_NAME: The name of the project.
         API_V1_STR: The base URL path for V1 of the API.
         BACKEND_CORS_ORIGINS: A list of origins that are allowed to make cross-origin requests.
-        DATABASE_URL: The database connection string (e.g., sqlite:///./saki.db or postgresql://user:password@localhost/dbname).
+        DATABASE_URL: The database connection string (PostgreSQL only).
     """
     PROJECT_NAME: str = "Saki Active Learning"
     API_V1_STR: str = "/api/v1"
@@ -25,7 +34,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/saki"
     SQL_ECHO: bool = False
 
-    # Connection pool settings (only used for non-SQLite databases)
+    # Connection pool settings
     POOL_SIZE: int = 20
     MAX_OVERFLOW: int = 10
     POOL_RECYCLE: int = 1800  # 30 minutes
@@ -34,40 +43,19 @@ class Settings(BaseSettings):
     @classmethod
     def assemble_db_connection(cls, v: str) -> str:
         """
-        自动将同步数据库 URL 转换为异步驱动 URL。
-        
-        - sqlite:/// -> sqlite+aiosqlite:///
-        - postgresql:// -> postgresql+psycopg://
+        强制使用 PostgreSQL，并统一转换为 psycopg 异步驱动 URL。
         """
         if isinstance(v, str):
-            if v.startswith("sqlite:///"):
-                return v.replace("sqlite:///", "sqlite+aiosqlite:///", 1)
-            if v.startswith("postgresql://"):
+            raw = v.strip()
+            if raw.startswith("postgres://"):
+                return raw.replace("postgres://", "postgresql+psycopg://", 1)
+            if raw.startswith("postgresql+psycopg://"):
+                return raw
+            if raw.startswith("postgresql://"):
                 # 显式使用 psycopg 驱动 (v3)
-                return v.replace("postgresql://", "postgresql+psycopg://", 1)
+                return raw.replace("postgresql://", "postgresql+psycopg://", 1)
+            raise ValueError("DATABASE_URL 必须使用 PostgreSQL（postgresql:// 或 postgresql+psycopg://）。")
         return v
-
-    @field_validator("RUNTIME_EXECUTOR_ALLOWLIST", mode="before")
-    @classmethod
-    def parse_runtime_allowlist(cls, v: str | list[str] | None) -> list[str]:
-        if v is None:
-            return []
-        if isinstance(v, list):
-            return [item.strip() for item in v if item and item.strip()]
-        if isinstance(v, str):
-            stripped = v.strip()
-            if not stripped:
-                return []
-            if stripped.startswith("[") and stripped.endswith("]"):
-                import json
-                try:
-                    parsed = json.loads(stripped)
-                    if isinstance(parsed, list):
-                        return [str(item).strip() for item in parsed if str(item).strip()]
-                except Exception:
-                    pass
-            return [item.strip() for item in stripped.split(",") if item.strip()]
-        return []
 
     @field_validator("LOG_COLOR_MODE", mode="before")
     @classmethod
@@ -89,19 +77,42 @@ class Settings(BaseSettings):
     REDIS_KEY_PREFIX: str = "saki"
     REDIS_WORKING_TTL_SECONDS: int = 86400  # 24 hours
 
+    # Importing
+    IMPORT_PREVIEW_TTL_MINUTES: int = 30
+    IMPORT_UPLOAD_SESSION_TTL_MINUTES: int = 120
+    IMPORT_UPLOAD_MULTIPART_THRESHOLD_BYTES: int = 64 * 1024 * 1024
+    IMPORT_UPLOAD_PART_SIZE_BYTES: int = 16 * 1024 * 1024
+    IMPORT_UPLOAD_MAX_PARTS_PER_SIGN: int = 100
+    IMPORT_MAX_ZIP_BYTES: int = 2 * 1024 * 1024 * 1024  # 2GB
+    IMPORT_MAX_ENTRIES: int = 100000
+    IMPORT_ALLOWED_IMAGE_EXTS: List[str] = [
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".bmp",
+        ".webp",
+        ".tif",
+        ".tiff",
+    ]
+    IMPORT_MAX_CONCURRENT_TASKS: int = 1
+    IMPORT_TASK_RETENTION_HOURS: int = 72
+    IMPORT_EVENT_HEARTBEAT_SECONDS: int = 10
+
+    # Exporting
+    EXPORT_FRONTEND_MAX_TOTAL_BYTES: int = 1024 * 1024 * 1024  # 1GB
+    EXPORT_ASSET_URL_EXPIRE_HOURS: int = 2
+
     # Runtime control plane
     INTERNAL_TOKEN: str = "dev-secret"
-    RUNTIME_GRPC_BIND: str = "0.0.0.0:50051"
-    RUNTIME_HEARTBEAT_TIMEOUT_SEC: int = 30
-    RUNTIME_DISPATCH_INTERVAL_SEC: int = 3
+    RUNTIME_DOMAIN_GRPC_BIND: str = "0.0.0.0:50053"
     RUNTIME_UPLOAD_URL_EXPIRE_HOURS: int = 2
+    RUNTIME_DOWNLOAD_URL_EXPIRE_HOURS: int = 2
     RUNTIME_MAX_RETRY_COUNT: int = 2
-    RUNTIME_RETRY_BASE_DELAY_SEC: int = 10
-    RUNTIME_ASSIGN_ACK_TIMEOUT_SEC: int = 30
-    RUNTIME_STREAM_REJECT_CLOSE: bool = True
-    RUNTIME_EXECUTOR_ALLOWLIST: List[str] = []
-    RUNTIME_REQUEST_IDEMPOTENCY_TTL_SEC: int = 600
-    RUNTIME_REQUEST_IDEMPOTENCY_MAX_ENTRIES: int = 2048
+    RUNTIME_DOMAIN_GRPC_SERVER_ENABLED: bool = True
+
+    # External dispatcher control-plane bridge
+    DISPATCHER_ADMIN_TARGET: str = "0.0.0.0:50052"
+    DISPATCHER_ADMIN_TIMEOUT_SEC: int = 5
 
     # Logging
     LOG_LEVEL: str = "INFO"
@@ -110,6 +121,7 @@ class Settings(BaseSettings):
     LOG_MAX_BYTES: int = 20 * 1024 * 1024
     LOG_BACKUP_COUNT: int = 5
     LOG_COLOR_MODE: str = "auto"
+    RBAC_DEBUG_LOG: bool = True
 
     # FEDO LUT local cache
     LUT_CACHE_DIR: str = "./data/lut_cache"
@@ -119,7 +131,7 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
-    model_config = SettingsConfigDict(case_sensitive=True, env_file=".env")
+    model_config = SettingsConfigDict(case_sensitive=True, env_file=_ENV_FILES)
 
 
 settings = Settings()

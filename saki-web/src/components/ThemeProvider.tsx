@@ -1,5 +1,5 @@
 import React from 'react'
-import {ConfigProvider, theme as antdTheme} from 'antd'
+import {App as AntdApp, ConfigProvider, theme as antdTheme} from 'antd'
 
 export type ThemeMode = 'light' | 'dark'
 
@@ -64,7 +64,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({children
                     },
                 }}
             >
-                {children}
+                <AntdApp>{children}</AntdApp>
             </ConfigProvider>
         </ThemeContext.Provider>
     )

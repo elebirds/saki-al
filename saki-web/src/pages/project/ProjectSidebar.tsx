@@ -1,10 +1,12 @@
 import React from 'react'
-import {Avatar, Button, Tag} from 'antd'
+import {Avatar, Button, Tag, Tooltip} from 'antd'
 import {DatabaseOutlined, ForkOutlined, NodeIndexOutlined} from '@ant-design/icons'
-import {ResourceMember} from '../../types'
+import {useNavigate} from 'react-router-dom'
+import {Loop, ProjectModel, ResourceMember} from '../../types'
 import {useTranslation} from 'react-i18next'
 
 export interface ProjectSidebarProps {
+    projectId?: string
     description?: string | null
     taskTypeLabel?: string
     statusLabel?: string
@@ -17,6 +19,10 @@ export interface ProjectSidebarProps {
         members?: number
     }
     members?: ResourceMember[]
+    loops?: Loop[]
+    canViewLoops?: boolean
+    models?: ProjectModel[]
+    canViewModels?: boolean
     sampleStatus?: {
         labeled: number
         unlabeled: number
@@ -30,16 +36,38 @@ const statusColors: Record<string, string> = {
     archived: 'default',
 }
 
+const modelStatusColors: Record<string, string> = {
+    candidate: 'processing',
+    production: 'success',
+    archived: 'default',
+}
+
+const loopLifecycleColors: Record<string, string> = {
+    draft: 'default',
+    running: 'processing',
+    paused: 'warning',
+    stopping: 'warning',
+    stopped: 'default',
+    completed: 'success',
+    failed: 'error',
+}
+
 const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
+                                                           projectId,
                                                            description,
                                                            taskTypeLabel,
                                                            statusLabel,
                                                            statusValue,
                                                            stats,
                                                            members,
+                                                           loops,
+                                                           canViewLoops = false,
+                                                           models,
+                                                           canViewModels = true,
                                                            sampleStatus,
                                                        }) => {
     const {t} = useTranslation()
+    const navigate = useNavigate()
     const totalSamples = sampleStatus?.total || 0
     const segments = totalSamples
         ? [
@@ -52,6 +80,8 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
             {label: t('project.sidebar.sampleStatus.skipped'), value: sampleStatus?.skipped || 0, color: '#8b949e'},
         ]
         : []
+    const recentLoops = (loops || []).slice(0, 3)
+    const recentModels = (models || []).slice(0, 3)
 
     return (
         <aside className="w-[296px] shrink-0 hidden lg:block">
@@ -96,13 +126,22 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
                 {members && members.length > 0 ? (
                     <div className="mt-4 flex flex-wrap gap-2">
                         {members.slice(0, 5).map((member) => (
-                            <Avatar
+                            <Tooltip
                                 key={member.id}
-                                size={28}
-                                src={member.userAvatarUrl}
+                                title={
+                                    member.userFullName && member.userEmail
+                                        ? `${member.userFullName}(${member.userEmail})`
+                                        : member.userFullName || member.userEmail || t('common.user')
+                                }
                             >
-                                {(member.userFullName || member.userEmail || 'U').charAt(0).toUpperCase()}
-                            </Avatar>
+                                <Avatar
+                                    size={28}
+                                    src={member.userAvatarUrl || undefined}
+                                    className={member.userAvatarUrl ? undefined : '!bg-gradient-to-br !from-green-400 !to-blue-500'}
+                                >
+                                    {(member.userFullName || member.userEmail || 'U').charAt(0).toUpperCase()}
+                                </Avatar>
+                            </Tooltip>
                         ))}
                         {members.length > 5 ? (
                             <span className="text-xs text-github-muted">+{members.length - 5}</span>
@@ -113,17 +152,89 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
 
             <div className="border-t border-github-border pt-4 mb-4">
                 <h3 className="font-semibold text-github-text mb-2">{t('project.sidebar.loops.title')}</h3>
-                <p className="text-sm text-github-muted mb-1">{t('project.sidebar.loops.empty')}</p>
-                <Button type="link" className="!text-github-link !p-0" disabled>
-                    {t('project.sidebar.loops.comingSoon')}
+                {!canViewLoops ? (
+                    <p className="text-sm text-github-muted mb-1">{t('common.noPermission')}</p>
+                ) : recentLoops.length === 0 ? (
+                    <p className="text-sm text-github-muted mb-1">{t('project.sidebar.loops.empty')}</p>
+                ) : (
+                    <div className="mb-2 space-y-2">
+                        {recentLoops.map((loop) => (
+                            <button
+                                key={loop.id}
+                                type="button"
+                                className="w-full rounded border border-github-border px-2 py-1.5 text-left hover:bg-github-base"
+                                onClick={() => {
+                                    if (!projectId) return
+                                    navigate(`/projects/${projectId}/loops/${loop.id}`)
+                                }}
+                            >
+                                <div className="flex items-center justify-between gap-2">
+                                    <span className="truncate text-sm text-github-text">{loop.name}</span>
+                                    <Tag className="m-0" color={loopLifecycleColors[loop.lifecycle] || 'default'}>
+                                        {loop.lifecycle}
+                                    </Tag>
+                                </div>
+                                <div className="truncate text-xs text-github-muted">
+                                    {`${loop.mode} · ${loop.phase}`}
+                                </div>
+                            </button>
+                        ))}
+                    </div>
+                )}
+                <Button
+                    type="link"
+                    className="!text-github-link !p-0"
+                    onClick={() => {
+                        if (!projectId) return
+                        navigate(`/projects/${projectId}/loops`)
+                    }}
+                    disabled={!canViewLoops}
+                >
+                    {t('project.tabs.loops')}
                 </Button>
             </div>
 
             <div className="border-t border-github-border pt-4 mb-4">
                 <h3 className="font-semibold text-github-text mb-2">{t('project.sidebar.models.title')}</h3>
-                <p className="text-sm text-github-muted mb-1">{t('project.sidebar.models.empty')}</p>
-                <Button type="link" className="!text-github-link !p-0" disabled>
-                    {t('project.sidebar.models.comingSoon')}
+                {!canViewModels ? (
+                    <p className="text-sm text-github-muted mb-1">{t('common.noPermission')}</p>
+                ) : recentModels.length === 0 ? (
+                    <p className="text-sm text-github-muted mb-1">{t('project.sidebar.models.empty')}</p>
+                ) : (
+                    <div className="mb-2 space-y-2">
+                        {recentModels.map((model) => (
+                            <button
+                                key={model.id}
+                                type="button"
+                                className="w-full rounded border border-github-border px-2 py-1.5 text-left hover:bg-github-base"
+                                onClick={() => {
+                                    if (!projectId) return
+                                    navigate(`/projects/${projectId}/models?modelId=${model.id}`)
+                                }}
+                            >
+                                <div className="flex items-center justify-between gap-2">
+                                    <span className="truncate text-sm text-github-text">{model.name}</span>
+                                    <Tag className="m-0" color={modelStatusColors[model.status] || 'default'}>
+                                        {model.status}
+                                    </Tag>
+                                </div>
+                                <div className="truncate text-xs text-github-muted">
+                                    {model.primaryArtifactName || '-'}
+                                </div>
+                            </button>
+                        ))}
+                    </div>
+                )}
+                <Button
+                    type="link"
+                    className="!text-github-link !p-0"
+                    onClick={() => {
+                        if (!projectId) return
+                        navigate(`/projects/${projectId}/models`)
+                    }}
+                    disabled={!canViewModels}
+                >
+                    {t('project.sidebar.models.title')}
                 </Button>
             </div>
 

@@ -10,7 +10,7 @@
 
 export type RoleType = 'system' | 'resource';
 export type ResourceType = 'dataset' | 'project';
-export type Scope = 'all' | 'assigned' | 'self';
+export type Scope = 'all' | 'assigned';
 
 /**
  * Permission object representation
@@ -18,12 +18,11 @@ export type Scope = 'all' | 'assigned' | 'self';
  * Scope hierarchy (from highest to lowest):
  * - all: System-level permissions, only for system roles
  * - assigned: Resource-level permissions, for resource role members
- * - self: Resource-level permissions, for own resources/annotations
  */
 export interface Permission {
     target: string;  // Resource type (e.g., 'user', 'dataset', '*')
     action: string;  // Action (e.g., 'create', 'read', '*')
-    scope: Scope;    // Permission scope: 'all' | 'assigned' | 'self'
+    scope: Scope;    // Permission scope: 'all' | 'assigned'
 }
 
 /**
@@ -46,8 +45,8 @@ export function parsePermission(permissionStr: string): Permission {
     const scope = (parts[2] as Scope) || 'assigned';
 
     // Validate scope
-    if (scope !== 'all' && scope !== 'assigned' && scope !== 'self') {
-        throw new Error(`Invalid scope: ${scope}. Must be 'all', 'assigned', or 'self'`);
+    if (scope !== 'all' && scope !== 'assigned') {
+        throw new Error(`Invalid scope: ${scope}. Must be 'all' or 'assigned'`);
     }
 
     return {target, action, scope};
@@ -160,6 +159,7 @@ export interface ResourceMember {
     roleName?: string;
     roleDisplayName?: string;
     roleColor?: string;
+    roleIsSupremo?: boolean;
 }
 
 export interface ResourceMemberCreate {
@@ -194,6 +194,12 @@ export interface ResourcePermissions {
     isOwner: boolean;
 }
 
+export interface RolePermissionCatalog {
+    allPermissions: string[];
+    systemPermissions: string[];
+    resourcePermissions: string[];
+}
+
 // ============================================================================
 // Permission Store Types
 // ============================================================================
@@ -224,12 +230,15 @@ export type PermissionIndex = Map<string, Map<string, Set<Scope>>>;
 export const Permissions = {
     // System
     SYSTEM_MANAGE: 'system:manage:all',
+    SYSTEM_SETTING_READ: 'system_setting:read:all',
+    SYSTEM_SETTING_UPDATE: 'system_setting:update:all',
 
     // User management
     USER_CREATE: 'user:create:all',
     USER_READ: 'user:read:all',
     USER_UPDATE: 'user:update:all',
     USER_DELETE: 'user:delete:all',
+    USER_LIST_ASSIGNED: 'user:list:assigned',
     USER_MANAGE: 'user:manage:all',
 
     // Role management
@@ -244,26 +253,17 @@ export const Permissions = {
     DATASET_UPDATE: 'dataset:update:assigned',
     DATASET_DELETE: 'dataset:delete:assigned',
     DATASET_ASSIGN: 'dataset:assign:assigned',
-    DATASET_EXPORT: 'dataset:export:assigned',
     DATASET_IMPORT: 'dataset:import:assigned',
 
     // Sample
     SAMPLE_READ: 'sample:read:assigned',
     SAMPLE_CREATE: 'sample:create:assigned',
-    SAMPLE_UPDATE: 'sample:update:assigned',
     SAMPLE_DELETE: 'sample:delete:assigned',
 
     // Annotation
     ANNOTATION_READ: 'annotation:read:assigned',
     ANNOTATION_CREATE: 'annotation:create:assigned',
-    ANNOTATION_UPDATE: 'annotation:update:assigned',
-    ANNOTATION_DELETE: 'annotation:delete:assigned',
-    ANNOTATION_REVIEW: 'annotation:review:assigned',
 
-    // Annotation - self scope
-    ANNOTATION_READ_SELF: 'annotation:read:self',
-    ANNOTATION_UPDATE_SELF: 'annotation:update:self',
-    ANNOTATION_DELETE_SELF: 'annotation:delete:self',
 } as const;
 
 export type PermissionKey = keyof typeof Permissions;

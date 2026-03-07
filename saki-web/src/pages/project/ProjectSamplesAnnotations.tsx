@@ -1,13 +1,26 @@
 import React, {useCallback, useEffect, useState} from 'react';
-import {Button, Card, Empty, Input, Pagination, Select, Spin, Tag, Typography,} from 'antd';
+import {Button, Card, Empty, Input, message, Segmented, Select, Spin, Tag, Tooltip, Typography,} from 'antd';
 import {useNavigate, useParams, useSearchParams} from 'react-router-dom';
-import {FileTextOutlined} from '@ant-design/icons';
+import {
+    CloudUploadOutlined,
+    DatabaseOutlined,
+    DownloadOutlined,
+    FileSearchOutlined,
+    FileTextOutlined,
+    FilterOutlined,
+    PartitionOutlined,
+    PlayCircleOutlined,
+    SaveOutlined,
+    SortAscendingOutlined,
+} from '@ant-design/icons';
 import {useTranslation} from 'react-i18next';
 import {api} from '../../services/api';
-import {Dataset, ProjectBranch, ProjectSample} from '../../types';
-import {useProjectSampleList} from '../../hooks/project/useProjectSampleList';
+import {Dataset, Project, ProjectBranch, ProjectSample, RoundMissingSamplesDatasetStat} from '../../types';
 import {useResourcePermission} from '../../hooks/permission/usePermission';
 import CommitModal from '../../components/project/CommitModal';
+import {PaginatedList} from '../../components/common/PaginatedList';
+import {createEmptyPaginationResponse} from '../../types/pagination';
+import {parseProjectSampleSort} from '../../utils/projectSampleSort';
 
 const {Title, Text} = Typography;
 
@@ -17,6 +30,7 @@ const ProjectSamplesAnnotations: React.FC = () => {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const [datasets, setDatasets] = useState<Dataset[]>([]);
+    const [project, setProject] = useState<Project | null>(null);
     const [branches, setBranches] = useState<ProjectBranch[]>([]);
     const [loadingMeta, setLoadingMeta] = useState(true);
     const [commitModalOpen, setCommitModalOpen] = useState(false);
@@ -24,18 +38,41 @@ const ProjectSamplesAnnotations: React.FC = () => {
 
     const {can: canProject} = useResourcePermission('project', projectId);
     const canCommit = canProject('commit:create:assigned');
+    const canAnnotate = canProject('annotation:create:assigned');
+    const canExport = canProject('project:export:assigned');
+    const projectTypeResolved = Boolean(project);
+    const blockImportByDatasetType = project?.datasetType === 'fedo';
+    const canImport = canAnnotate && canCommit && projectTypeResolved && !blockImportByDatasetType;
+    const importDisabledReason = !canAnnotate || !canCommit
+        ? t('common.noPermission')
+        : (blockImportByDatasetType ? t('import.project.classicOnly') : undefined);
 
     const selectedDatasetId = searchParams.get('datasetId') || '';
     const q = searchParams.get('q') || '';
-    const batchId = searchParams.get('batchId') || '';
     const status = (searchParams.get('status') || 'all') as 'all' | 'labeled' | 'unlabeled' | 'draft';
-    const sortValue = searchParams.get('sort') || 'createdAt:desc';
+    const parsedSort = parseProjectSampleSort(searchParams.get('sort'));
+    const sortValue = parsedSort.sortValue;
     const branchName = searchParams.get('branch') || 'master';
     const page = Number(searchParams.get('page') || 1);
     const pageSize = Number(searchParams.get('pageSize') || 24);
+    const runtimeScope = (searchParams.get('runtimeScope') || '') as '' | 'round_missing_labels';
+    const runtimeLoopId = searchParams.get('runtimeLoopId') || '';
+    const runtimeRoundId = searchParams.get('runtimeRoundId') || '';
+    const runtimeBranchName = searchParams.get('runtimeBranchName') || '';
+    const runtimeScopeActive = runtimeScope === 'round_missing_labels' && !!runtimeLoopId && !!runtimeRoundId;
 
-    const [sortBy, sortOrder] = sortValue.split(':');
+    const sortBy = parsedSort.sortBy;
+    const sortOrder = parsedSort.sortOrder;
     const selectedDataset = datasets.find((dataset) => dataset.id === selectedDatasetId);
+    const selectedBranch = branches.find((branch) => branch.name === branchName);
+    const [samplesRefreshToken, setSamplesRefreshToken] = useState(0);
+    const [sampleMeta, setSampleMeta] = useState({
+        total: 0,
+        limit: pageSize,
+        offset: (page - 1) * pageSize,
+        size: 0,
+    });
+    const [runtimeDatasetStats, setRuntimeDatasetStats] = useState<RoundMissingSamplesDatasetStat[]>([]);
 
     const statusOptions = [
         {label: t('project.samples.filters.all'), value: 'all'},
@@ -53,45 +90,36 @@ const ProjectSamplesAnnotations: React.FC = () => {
         {label: t('project.samples.sort.nameZA'), value: 'name:desc'},
     ];
 
-    const {samples, meta, loading, reload} = useProjectSampleList({
-        projectId,
-        datasetId: selectedDatasetId || undefined,
-        filters: {
-            q: q || undefined,
-            batchId: batchId || undefined,
-            status,
-            branchName,
-            sortBy,
-            sortOrder: sortOrder as 'asc' | 'desc',
-            page,
-            limit: pageSize,
-        },
-        enabled: !!projectId && !!selectedDatasetId,
-    });
-
     useEffect(() => {
         if (!projectId) return;
         setLoadingMeta(true);
         Promise.all([
-            api.getProjectDatasets(projectId),
+            api.getProject(projectId),
+            api.getProjectDatasetDetails(projectId),
             api.getProjectBranches(projectId),
         ])
-            .then(async ([datasetIds, branchList]) => {
-                const datasetResults = await Promise.all(
-                    datasetIds.map((id) => api.getDataset(id))
-                );
-                const resolved = datasetResults.filter(Boolean) as Dataset[];
+            .then(([projectData, resolved, branchList]) => {
+                setProject(projectData);
                 setDatasets(resolved);
                 setBranches(branchList || []);
 
                 const datasetParam = searchParams.get('datasetId');
-                if (resolved.length > 0 && (!datasetParam || !resolved.find((d) => d.id === datasetParam))) {
+                if (!runtimeScopeActive && resolved.length > 0 && (!datasetParam || !resolved.find((d) => d.id === datasetParam))) {
                     const next = new URLSearchParams(searchParams);
                     next.set('datasetId', resolved[0].id);
                     setSearchParams(next, {replace: true});
                 }
 
                 const branchParam = searchParams.get('branch');
+                const expectedRuntimeBranch = runtimeScopeActive
+                    ? runtimeBranchName
+                    : '';
+                if (expectedRuntimeBranch && branchList.find((b) => b.name === expectedRuntimeBranch) && branchParam !== expectedRuntimeBranch) {
+                    const next = new URLSearchParams(searchParams);
+                    next.set('branch', expectedRuntimeBranch);
+                    setSearchParams(next, {replace: true});
+                    return;
+                }
                 if (branchList.length > 0 && (!branchParam || !branchList.find((b) => b.name === branchParam))) {
                     const next = new URLSearchParams(searchParams);
                     next.set('branch', branchList.find(b => b.name === 'master')?.name || branchList[0].name);
@@ -99,7 +127,15 @@ const ProjectSamplesAnnotations: React.FC = () => {
                 }
             })
             .finally(() => setLoadingMeta(false));
-    }, [projectId]);
+    }, [projectId, runtimeScopeActive, runtimeBranchName]);
+
+    useEffect(() => {
+        setSampleMeta((prev) => ({
+            ...prev,
+            limit: pageSize,
+            offset: (page - 1) * pageSize,
+        }));
+    }, [page, pageSize]);
 
     const updateParams = useCallback((updates: Record<string, string | null>) => {
         const next = new URLSearchParams(searchParams);
@@ -114,44 +150,120 @@ const ProjectSamplesAnnotations: React.FC = () => {
     }, [searchParams, setSearchParams]);
 
     const handleStartAnnotate = useCallback(async () => {
-        if (!projectId || !selectedDatasetId) return;
-        const response = await api.getProjectSamples(projectId, selectedDatasetId, {
-            q: q || undefined,
-            batchId: batchId || undefined,
-            status,
-            branchName,
-            sortBy,
-            sortOrder: sortOrder as 'asc' | 'desc',
-            page: 1,
-            limit: 1,
-        });
+        if (!canAnnotate) {
+            message.warning(t('common.noPermission'));
+            return;
+        }
+        if (!projectId) return;
+        const response = runtimeScopeActive
+            ? await api.getRoundMissingSamples(runtimeLoopId, runtimeRoundId, {
+                datasetId: selectedDatasetId || undefined,
+                q: q || undefined,
+                sortBy,
+                sortOrder: sortOrder as 'asc' | 'desc',
+                page: 1,
+                limit: 1,
+            })
+            : (selectedDatasetId
+                ? await api.getProjectSamples(projectId, selectedDatasetId, {
+                    q: q || undefined,
+                    status,
+                    branchName,
+                    sortBy,
+                    sortOrder: sortOrder as 'asc' | 'desc',
+                    page: 1,
+                    limit: 1,
+                })
+                : null);
+        if (!response) return;
         const firstSample = response.items?.[0];
         if (!firstSample) return;
+        const targetDatasetId = runtimeScopeActive
+            ? String(firstSample.datasetId || selectedDatasetId || '')
+            : selectedDatasetId;
+        if (!targetDatasetId) return;
         const nextParams = new URLSearchParams();
         nextParams.set('sampleId', firstSample.id);
         nextParams.set('branch', branchName);
         nextParams.set('q', q);
-        if (batchId) nextParams.set('batchId', batchId);
         nextParams.set('status', status);
         nextParams.set('sort', sortValue);
         nextParams.set('page', '1');
         nextParams.set('pageSize', String(pageSize));
-        navigate(`/projects/${projectId}/workspace/${selectedDatasetId}?${nextParams.toString()}`);
-    }, [projectId, selectedDatasetId, q, batchId, status, branchName, sortBy, sortOrder, sortValue, pageSize, navigate]);
+        if (runtimeScopeActive) {
+            nextParams.set('runtimeScope', runtimeScope);
+            nextParams.set('runtimeLoopId', runtimeLoopId);
+            nextParams.set('runtimeRoundId', runtimeRoundId);
+            if (runtimeBranchName) {
+                nextParams.set('runtimeBranchName', runtimeBranchName);
+            }
+        }
+        navigate(`/projects/${projectId}/workspace/${targetDatasetId}?${nextParams.toString()}`);
+    }, [
+        canAnnotate,
+        projectId,
+        selectedDatasetId,
+        q,
+        status,
+        branchName,
+        sortBy,
+        sortOrder,
+        sortValue,
+        pageSize,
+        navigate,
+        t,
+        runtimeScopeActive,
+        runtimeScope,
+        runtimeLoopId,
+        runtimeRoundId,
+        runtimeBranchName,
+    ]);
 
     const handleSampleClick = useCallback((sample: ProjectSample) => {
-        if (!projectId || !selectedDatasetId) return;
+        if (!canAnnotate) {
+            message.warning(t('common.noPermission'));
+            return;
+        }
+        if (!projectId) return;
+        const targetDatasetId = runtimeScopeActive
+            ? String(sample.datasetId || selectedDatasetId || '')
+            : selectedDatasetId;
+        if (!targetDatasetId) return;
         const nextParams = new URLSearchParams();
         nextParams.set('sampleId', sample.id);
         nextParams.set('branch', branchName);
         nextParams.set('q', q);
-        if (batchId) nextParams.set('batchId', batchId);
         nextParams.set('status', status);
         nextParams.set('sort', sortValue);
         nextParams.set('page', String(page));
         nextParams.set('pageSize', String(pageSize));
-        navigate(`/projects/${projectId}/workspace/${selectedDatasetId}?${nextParams.toString()}`);
-    }, [projectId, selectedDatasetId, branchName, q, batchId, status, sortValue, page, pageSize, navigate]);
+        if (runtimeScopeActive) {
+            nextParams.set('runtimeScope', runtimeScope);
+            nextParams.set('runtimeLoopId', runtimeLoopId);
+            nextParams.set('runtimeRoundId', runtimeRoundId);
+            if (runtimeBranchName) {
+                nextParams.set('runtimeBranchName', runtimeBranchName);
+            }
+        }
+        navigate(`/projects/${projectId}/workspace/${targetDatasetId}?${nextParams.toString()}`);
+    }, [
+        canAnnotate,
+        projectId,
+        selectedDatasetId,
+        branchName,
+        q,
+        status,
+        sortValue,
+        page,
+        pageSize,
+        navigate,
+        t,
+        runtimeScopeActive,
+        runtimeScope,
+        runtimeLoopId,
+        runtimeRoundId,
+        runtimeBranchName,
+    ]);
 
     const handleCommit = useCallback(async (message: string) => {
         if (!projectId) return;
@@ -162,151 +274,321 @@ const ProjectSamplesAnnotations: React.FC = () => {
                 commitMessage: message,
             });
             setCommitModalOpen(false);
-            reload();
+            setSamplesRefreshToken((value) => value + 1);
         } finally {
             setCommitLoading(false);
         }
-    }, [projectId, branchName, reload]);
+    }, [projectId, branchName]);
+
+    const fetchSamples = useCallback(async (nextPage: number, nextPageSize: number) => {
+        if (!projectId) {
+            return createEmptyPaginationResponse<ProjectSample>(nextPageSize, nextPage);
+        }
+        if (!runtimeScopeActive && !selectedDatasetId) {
+            return createEmptyPaginationResponse<ProjectSample>(nextPageSize, nextPage);
+        }
+        if (runtimeScopeActive) {
+            const response = await api.getRoundMissingSamples(runtimeLoopId, runtimeRoundId, {
+                datasetId: selectedDatasetId || undefined,
+                q: q || undefined,
+                sortBy,
+                sortOrder: sortOrder as 'asc' | 'desc',
+                page: nextPage,
+                limit: nextPageSize,
+            });
+            setRuntimeDatasetStats(response.datasetStats || []);
+            return response;
+        }
+        setRuntimeDatasetStats([]);
+        return await api.getProjectSamples(projectId, selectedDatasetId, {
+            q: q || undefined,
+            status,
+            branchName,
+            sortBy,
+            sortOrder: sortOrder as 'asc' | 'desc',
+            page: nextPage,
+            limit: nextPageSize,
+        });
+    }, [
+        projectId,
+        selectedDatasetId,
+        q,
+        status,
+        branchName,
+        sortBy,
+        sortOrder,
+        runtimeScopeActive,
+        runtimeLoopId,
+        runtimeRoundId,
+    ]);
+
+    const totalSamplePages = Math.max(1, Math.ceil(sampleMeta.total / (sampleMeta.limit || 1)));
 
     return (
-        <div className="flex h-full flex-col gap-4">
-            <Card className="!border-github-border !bg-github-panel">
-                <div className="flex flex-wrap items-center gap-3">
-                    <Select
-                        value={selectedDatasetId || undefined}
-                        placeholder={t('project.samples.filters.datasetPlaceholder')}
-                        className="min-w-[200px]"
-                        onChange={(value) => updateParams({datasetId: value, page: '1'})}
-                        loading={loadingMeta}
-                    >
-                        {datasets.map((dataset) => (
-                            <Select.Option key={dataset.id} value={dataset.id}>
-                                {dataset.name}
-                            </Select.Option>
-                        ))}
-                    </Select>
+        <div className="flex h-full min-w-0 flex-col gap-4 overflow-x-hidden">
+            <Card className="relative overflow-hidden !border-github-border !bg-github-panel">
+                <div
+                    className="pointer-events-none absolute inset-0 opacity-80"
+                    style={{
+                        background: 'radial-gradient(1200px 280px at -5% -20%, rgba(56, 139, 253, 0.16), transparent 62%), radial-gradient(700px 240px at 90% 0%, rgba(47, 129, 247, 0.10), transparent 70%)',
+                    }}
+                />
+                <div className="relative flex flex-col gap-3">
+                    <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+                        <div className="flex min-w-0 items-center gap-2">
+                            <span className="flex items-center gap-1 text-xs text-github-muted">
+                                <DatabaseOutlined/>
+                                {t('project.samples.datasetLabel')}
+                            </span>
+                            <Select
+                                value={selectedDatasetId || undefined}
+                                placeholder={t('project.samples.filters.datasetPlaceholder')}
+                                className="w-[210px] shrink-0"
+                                allowClear={runtimeScopeActive}
+                                onChange={(value) => updateParams({datasetId: value || null, page: '1'})}
+                                loading={loadingMeta}
+                            >
+                                {datasets.map((dataset) => (
+                                    <Select.Option key={dataset.id} value={dataset.id}>
+                                        {dataset.name}
+                                    </Select.Option>
+                                ))}
+                            </Select>
 
-                    <Input.Search
-                        allowClear
-                        placeholder={t('project.samples.filters.searchPlaceholder')}
-                        value={q}
-                        onChange={(e) => updateParams({q: e.target.value || null, page: '1'})}
-                        className="min-w-[220px]"
-                    />
+                            <Input.Search
+                                allowClear
+                                placeholder={t('project.samples.filters.searchPlaceholder')}
+                                value={q}
+                                onChange={(e) => updateParams({q: e.target.value || null, page: '1'})}
+                                className="min-w-[220px] flex-1"
+                                prefix={<FileSearchOutlined className="text-github-muted"/>}
+                            />
+                        </div>
 
-                    <Select
-                        value={status}
-                        onChange={(value) => updateParams({status: value, page: '1'})}
-                        options={statusOptions}
-                        className="min-w-[140px]"
-                    />
+                        <div className="flex items-center gap-2 lg:justify-end">
+                            {canExport ? (
+                                <Button
+                                    type="default"
+                                    icon={<DownloadOutlined/>}
+                                    onClick={() => navigate(`/projects/${projectId}/export`)}
+                                >
+                                    {t('export.project.entry')}
+                                </Button>
+                            ) : null}
+                            {importDisabledReason ? (
+                                <Tooltip title={importDisabledReason}>
+                                    <span>
+                                        <Button
+                                            type="default"
+                                            icon={<CloudUploadOutlined/>}
+                                            onClick={() => {
+                                                if (!canImport) return;
+                                                navigate(`/projects/${projectId}/import`);
+                                            }}
+                                            disabled={!canImport}
+                                        >
+                                            {t('import.project.entry')}
+                                        </Button>
+                                    </span>
+                                </Tooltip>
+                            ) : (
+                                <Button
+                                    type="default"
+                                    icon={<CloudUploadOutlined/>}
+                                    onClick={() => {
+                                        if (!canImport) return;
+                                        navigate(`/projects/${projectId}/import`);
+                                    }}
+                                    disabled={!canImport}
+                                >
+                                    {t('import.project.entry')}
+                                </Button>
+                            )}
+                            {canAnnotate ? (
+                                <Button
+                                    type="primary"
+                                    icon={<PlayCircleOutlined/>}
+                                    onClick={handleStartAnnotate}
+                                    disabled={!runtimeScopeActive && !selectedDatasetId}
+                                >
+                                    {t('project.samples.startAnnotating')}
+                                </Button>
+                            ) : (
+                                <Tooltip title={t('common.noPermission')}>
+                                    <Button type="primary" icon={<PlayCircleOutlined/>} disabled>
+                                        {t('project.samples.startAnnotating')}
+                                    </Button>
+                                </Tooltip>
+                            )}
+                            <Button
+                                onClick={() => setCommitModalOpen(true)}
+                                disabled={!canCommit}
+                                icon={<SaveOutlined/>}
+                            >
+                                {t('project.samples.commitDrafts')}
+                            </Button>
+                        </div>
+                    </div>
 
-                    <Select
-                        value={sortValue}
-                        onChange={(value) => updateParams({sort: value, page: '1'})}
-                        options={sortOptions}
-                        className="min-w-[200px]"
-                    />
+                    <div className="flex flex-wrap items-center gap-2">
+                        {runtimeScopeActive ? (
+                            <Tag color="gold">Scope: Round Missing Labels</Tag>
+                        ) : (
+                            <>
+                                <span className="flex items-center gap-1 text-xs text-github-muted">
+                                    <FilterOutlined/>
+                                    {t('project.samples.filterLabel')}
+                                </span>
+                                <Segmented
+                                    options={statusOptions}
+                                    value={status}
+                                    onChange={(value) => updateParams({status: String(value), page: '1'})}
+                                />
+                            </>
+                        )}
 
-                    <Select
-                        value={branchName}
-                        onChange={(value) => updateParams({branch: value, page: '1'})}
-                        className="min-w-[160px]"
-                        placeholder={t('project.samples.filters.branchPlaceholder')}
-                    >
-                        {branches.map((branch) => (
-                            <Select.Option key={branch.id} value={branch.name}>
-                                {branch.name}
-                            </Select.Option>
-                        ))}
-                    </Select>
-
-                    <div className="flex-1"/>
-
-                    <div className="flex items-center gap-2">
-                        <Button type="primary" onClick={handleStartAnnotate} disabled={!selectedDatasetId}>
-                            Start Annotating
-                        </Button>
-                        <Button
-                            onClick={() => setCommitModalOpen(true)}
-                            disabled={!canCommit}
+                        <span className="ml-2 flex items-center gap-1 text-xs text-github-muted">
+                            <PartitionOutlined/>
+                            {t('project.samples.branchLabel')}
+                        </span>
+                        <Select
+                            value={branchName}
+                            onChange={(value) => updateParams({branch: value, page: '1'})}
+                            className="w-[150px]"
+                            placeholder={t('project.samples.filters.branchPlaceholder')}
+                            disabled={runtimeScopeActive && !!runtimeBranchName}
                         >
-                            {t('project.samples.commitDrafts')}
-                        </Button>
+                            {branches.map((branch) => (
+                                <Select.Option key={branch.id} value={branch.name}>
+                                    {branch.name}
+                                </Select.Option>
+                            ))}
+                        </Select>
+
+                        <span className="flex items-center gap-1 text-xs text-github-muted">
+                            <SortAscendingOutlined/>
+                            {t('project.samples.sortLabel')}
+                        </span>
+                        <Select
+                            value={sortValue}
+                            onChange={(value) => updateParams({sort: value, page: '1'})}
+                            options={sortOptions}
+                            className="w-[200px]"
+                        />
+
+                        <div className="ml-auto flex flex-wrap items-center gap-2 text-xs text-github-muted">
+                            {selectedDataset ? <Tag color="blue">{selectedDataset.name}</Tag> : null}
+                            {selectedBranch ? <Tag color="geekblue">{selectedBranch.name}</Tag> : null}
+                            {runtimeScopeActive ? <Tag color="gold">Loop Scope</Tag> : null}
+                            {runtimeScopeActive
+                                ? (runtimeDatasetStats || []).map((item) => (
+                                    <Tag key={item.datasetId} color="purple">
+                                        {item.datasetName || item.datasetId.slice(0, 8)}: {item.count}
+                                    </Tag>
+                                ))
+                                : null}
+                            <span>{t('project.samples.resultHint', {count: sampleMeta.total})}</span>
+                        </div>
                     </div>
                 </div>
             </Card>
 
-            <Card className="!border-github-border !bg-github-panel flex-1">
+            <Card className="!border-github-border !bg-github-panel flex-1 min-w-0">
                 {loadingMeta ? (
                     <div className="flex h-full items-center justify-center">
                         <Spin/>
                     </div>
-                ) : !selectedDataset ? (
+                ) : (!runtimeScopeActive && !selectedDataset) ? (
                     <Empty description={t('project.samples.emptySelectDataset')}/>
-                ) : loading ? (
-                    <div className="flex h-full items-center justify-center">
-                        <Spin/>
-                    </div>
-                ) : samples.length === 0 ? (
-                    <div className="flex h-full flex-col items-center justify-center gap-2 py-12">
-                        <FileTextOutlined className="text-4xl text-gray-300"/>
-                        <Title level={5} className="!m-0">{t('project.samples.emptyTitle')}</Title>
-                        <Text type="secondary">{t('project.samples.emptyHint')}</Text>
-                    </div>
                 ) : (
-                    <div>
-                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                            {samples.map((sample) => (
-                                <Card
-                                    key={sample.id}
-                                    hoverable
-                                    onClick={() => handleSampleClick(sample)}
-                                    cover={
-                                        sample.primaryAssetUrl ? (
-                                            <img
-                                                alt={sample.name}
-                                                src={sample.primaryAssetUrl}
-                                                className="h-[150px] w-full object-cover"
-                                                onError={(e: React.SyntheticEvent<HTMLImageElement>) => {
-                                                    e.currentTarget.style.display = 'none';
-                                                }}
+                    <PaginatedList<ProjectSample>
+                        fetchData={fetchSamples}
+                        enabled={!!projectId && (runtimeScopeActive || !!selectedDatasetId)}
+                        controlledPage={page}
+                        controlledPageSize={pageSize}
+                        adaptivePageSize={{
+                            enabled: true,
+                            mode: 'grid',
+                            itemMinWidth: 260,
+                            itemHeight: 270,
+                            rowGap: 16,
+                            colGap: 16,
+                        }}
+                        onPageChange={(nextPage, nextSize) => {
+                            updateParams({
+                                page: String(nextPage),
+                                pageSize: String(nextSize),
+                            });
+                        }}
+                        refreshKey={`${projectId || ''}:${selectedDatasetId}:${q}:${status}:${branchName}:${sortValue}:${samplesRefreshToken}:${runtimeScope}:${runtimeLoopId}:${runtimeRoundId}`}
+                        onMetaChange={(nextMeta) => setSampleMeta(nextMeta)}
+                        renderItems={(items) =>
+                            items.length === 0 ? (
+                                <div className="flex h-full flex-col items-center justify-center gap-2 py-12">
+                                    <FileTextOutlined className="text-4xl text-gray-300"/>
+                                    <Title level={5} className="!m-0">{t('project.samples.emptyTitle')}</Title>
+                                    <Text type="secondary">{t('project.samples.emptyHint')}</Text>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                                    {items.map((sample) => (
+                                        <Card
+                                            key={sample.id}
+                                            hoverable={canAnnotate}
+                                            onClick={() => handleSampleClick(sample)}
+                                            className={canAnnotate ? 'cursor-pointer' : 'cursor-not-allowed opacity-80'}
+                                            cover={
+                                                sample.primaryAssetUrl ? (
+                                                    <img
+                                                        alt={sample.name}
+                                                        src={sample.primaryAssetUrl}
+                                                        className="h-[150px] w-full object-cover"
+                                                        onError={(e: React.SyntheticEvent<HTMLImageElement>) => {
+                                                            e.currentTarget.style.display = 'none';
+                                                        }}
+                                                    />
+                                                ) : null
+                                            }
+                                        >
+                                            <Card.Meta
+                                                title={
+                                                    <Tooltip title={sample.name} placement="topLeft">
+                                                        <span className="block truncate" title={sample.name}>{sample.name}</span>
+                                                    </Tooltip>
+                                                }
+                                                description={sample.remark || t('project.samples.noRemark')}
                                             />
-                                        ) : null
-                                    }
-                                >
-                                    <Card.Meta
-                                        title={<span className="block truncate">{sample.name}</span>}
-                                        description={sample.remark || 'No remark'}
-                                    />
-                                    <div className="mt-3 flex flex-wrap gap-2">
-                                        {sample.hasDraft ? <Tag color="orange">{t('project.samples.filters.draft')}</Tag> : null}
-                                        {sample.isLabeled
-                                            ? <Tag color="green">{t('project.samples.filters.labeled')}</Tag>
-                                            : <Tag>{t('project.samples.filters.unlabeled')}</Tag>}
-                                        <Tag>{sample.annotationCount} anns</Tag>
-                                    </div>
-                                </Card>
-                            ))}
-                        </div>
-                        <div className="mt-4 flex items-center justify-between">
-                            <Text type="secondary">
-                                Page {Math.floor(meta.offset / (meta.limit || 1)) + 1} / {Math.max(1, Math.ceil(meta.total / (meta.limit || 1)))} · {meta.total} items
-                            </Text>
-                            <Pagination
-                                current={page}
-                                total={meta.total}
-                                pageSize={pageSize}
-                                showSizeChanger
-                                onChange={(nextPage, nextSize) => {
-                                    updateParams({
-                                        page: String(nextPage),
-                                        pageSize: String(nextSize),
-                                    });
-                                }}
-                            />
-                        </div>
-                    </div>
+                                            <div className="mt-3 flex flex-wrap gap-2">
+                                                {sample.hasDraft ? <Tag color="orange">{t('project.samples.filters.draft')}</Tag> : null}
+                                                {sample.isLabeled
+                                                    ? <Tag color="green">{t('project.samples.filters.labeled')}</Tag>
+                                                    : <Tag>{t('project.samples.filters.unlabeled')}</Tag>}
+                                                <Tag>{t('project.samples.annotationCountShort', {count: sample.annotationCount})}</Tag>
+                                            </div>
+                                        </Card>
+                                    ))}
+                                </div>
+                            )
+                        }
+                        renderPaginationWrapper={(node) => (
+                            <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+                                <Text type="secondary">
+                                    {t('project.samples.pageStatus', {
+                                        page: Math.floor(sampleMeta.offset / (sampleMeta.limit || 1)) + 1,
+                                        totalPages: totalSamplePages,
+                                        total: sampleMeta.total,
+                                    })}
+                                </Text>
+                                {node}
+                            </div>
+                        )}
+                        paginationProps={{
+                            showTotal: (tot, range) =>
+                                range
+                                    ? t('common.pagination.range', {start: range[0], end: range[1], total: tot})
+                                    : t('common.pagination.total', {total: tot}),
+                        }}
+                    />
                 )}
             </Card>
 

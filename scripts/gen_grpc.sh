@@ -3,7 +3,12 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROTO_DIR="$ROOT_DIR/proto"
-PROTO_FILE="$PROTO_DIR/runtime_control.proto"
+RUNTIME_PROTO="$PROTO_DIR/runtime_control.proto"
+ADMIN_PROTO="$PROTO_DIR/dispatcher_admin.proto"
+DOMAIN_PROTO="$PROTO_DIR/runtime_domain.proto"
+ALL_PROTO_FILES=("$RUNTIME_PROTO" "$ADMIN_PROTO" "$DOMAIN_PROTO")
+GRPC_TOOLS_VERSION="1.78.0"
+GRPC_VERSION="1.78.0"
 
 if ! command -v uv >/dev/null 2>&1; then
   echo "uv is required" >&2
@@ -12,30 +17,68 @@ fi
 
 API_OUT="$ROOT_DIR/saki-api/src/saki_api/grpc_gen"
 EXEC_OUT="$ROOT_DIR/saki-executor/src/saki_executor/grpc_gen"
+DISP_OUT_ROOT="$ROOT_DIR/saki-dispatcher/internal/gen"
+DISP_RUNTIME_OUT="$DISP_OUT_ROOT/runtimecontrolv1"
+DISP_ADMIN_OUT="$DISP_OUT_ROOT/dispatcheradminv1"
+DISP_DOMAIN_OUT="$DISP_OUT_ROOT/runtimedomainv1"
 
-mkdir -p "$API_OUT" "$EXEC_OUT"
+mkdir -p "$API_OUT" "$EXEC_OUT" "$DISP_RUNTIME_OUT" "$DISP_ADMIN_OUT" "$DISP_DOMAIN_OUT"
 
-uv run --with grpcio-tools==1.78.* python -m grpc_tools.protoc \
+uv run --with "grpcio-tools==${GRPC_TOOLS_VERSION}" --with "grpcio==${GRPC_VERSION}" python -m grpc_tools.protoc \
   -I "$PROTO_DIR" \
   --python_out="$API_OUT" \
   --grpc_python_out="$API_OUT" \
-  "$PROTO_FILE"
+  "${ALL_PROTO_FILES[@]}"
 
-uv run --with grpcio-tools==1.78.* python -m grpc_tools.protoc \
+uv run --with "grpcio-tools==${GRPC_TOOLS_VERSION}" --with "grpcio==${GRPC_VERSION}" python -m grpc_tools.protoc \
   -I "$PROTO_DIR" \
   --python_out="$EXEC_OUT" \
   --grpc_python_out="$EXEC_OUT" \
-  "$PROTO_FILE"
+  "$RUNTIME_PROTO"
+
+export PATH="$HOME/go/bin:$PATH"
+if command -v protoc-gen-go >/dev/null 2>&1 && command -v protoc-gen-go-grpc >/dev/null 2>&1; then
+  rm -f "$DISP_RUNTIME_OUT"/*.go "$DISP_ADMIN_OUT"/*.go "$DISP_DOMAIN_OUT"/*.go
+
+  uv run --with "grpcio-tools==${GRPC_TOOLS_VERSION}" --with "grpcio==${GRPC_VERSION}" python -m grpc_tools.protoc \
+    -I "$PROTO_DIR" \
+    --go_out="$DISP_RUNTIME_OUT" \
+    --go_opt=paths=source_relative \
+    --go-grpc_out="$DISP_RUNTIME_OUT" \
+    --go-grpc_opt=paths=source_relative \
+    "$RUNTIME_PROTO"
+
+  uv run --with "grpcio-tools==${GRPC_TOOLS_VERSION}" --with "grpcio==${GRPC_VERSION}" python -m grpc_tools.protoc \
+    -I "$PROTO_DIR" \
+    --go_out="$DISP_ADMIN_OUT" \
+    --go_opt=paths=source_relative \
+    --go-grpc_out="$DISP_ADMIN_OUT" \
+    --go-grpc_opt=paths=source_relative \
+    "$ADMIN_PROTO"
+
+  uv run --with "grpcio-tools==${GRPC_TOOLS_VERSION}" --with "grpcio==${GRPC_VERSION}" python -m grpc_tools.protoc \
+    -I "$PROTO_DIR" \
+    --go_out="$DISP_DOMAIN_OUT" \
+    --go_opt=paths=source_relative \
+    --go-grpc_out="$DISP_DOMAIN_OUT" \
+    --go-grpc_opt=paths=source_relative \
+    "$DOMAIN_PROTO"
+  echo "generated Go stubs for saki-dispatcher"
+else
+  echo "skip Go stubs generation: protoc-gen-go or protoc-gen-go-grpc not found"
+fi
 
 for out in "$API_OUT" "$EXEC_OUT"; do
-  pb2_grpc_file="$out/runtime_control_pb2_grpc.py"
   python3 -c "
 from pathlib import Path
 
-path = Path('$pb2_grpc_file')
-text = path.read_text(encoding='utf-8')
-text = text.replace('import runtime_control_pb2 as runtime__control__pb2', 'from . import runtime_control_pb2 as runtime__control__pb2')
-path.write_text(text, encoding='utf-8')
+out_dir = Path('$out')
+for path in out_dir.glob('*_pb2_grpc.py'):
+    text = path.read_text(encoding='utf-8')
+    text = text.replace('import runtime_control_pb2 as runtime__control__pb2', 'from . import runtime_control_pb2 as runtime__control__pb2')
+    text = text.replace('import dispatcher_admin_pb2 as dispatcher__admin__pb2', 'from . import dispatcher_admin_pb2 as dispatcher__admin__pb2')
+    text = text.replace('import runtime_domain_pb2 as runtime__domain__pb2', 'from . import runtime_domain_pb2 as runtime__domain__pb2')
+    path.write_text(text, encoding='utf-8')
 "
 done
 

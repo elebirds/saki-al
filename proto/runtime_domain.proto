@@ -1,0 +1,193 @@
+syntax = "proto3";
+
+package saki.runtime.domain.v1;
+option go_package = "github.com/elebirds/saki/saki-dispatcher/internal/gen/runtimedomainv1;runtimedomainv1";
+
+import "google/protobuf/struct.proto";
+
+message GetBranchHeadRequest {
+  string branch_id = 1;
+}
+
+message GetBranchHeadResponse {
+  bool found = 1;
+  string branch_id = 2;
+  string project_id = 3;
+  string branch_name = 4;
+  string head_commit_id = 5;
+}
+
+message CountNewLabelsSinceCommitRequest {
+  string project_id = 1;
+  string branch_id = 2;
+  string since_commit_id = 3;
+}
+
+message CountNewLabelsSinceCommitResponse {
+  int64 new_label_count = 1;
+  string latest_commit_id = 2;
+}
+
+message ResolveRoundRevealRequest {
+  string loop_id = 1;
+  string round_id = 2;
+  string branch_id = 3;
+  bool force = 4;
+  int32 min_required = 5;
+}
+
+message ResolveRoundRevealResponse {
+  int32 revealed_count = 1;
+  int32 selected_count = 2;
+  int32 missing_count = 3;
+  string latest_commit_id = 4;
+  string revealable_sample_ids_hash = 5;
+  int32 effective_min_required = 6;
+  int32 pool_hidden_before = 7;
+  int32 pool_hidden_after = 8;
+  int32 train_visible_after = 9;
+  int32 total_train_universe = 10;
+}
+
+message ActivateSamplesRequest {
+  string command_id = 1;
+  string project_id = 2;
+  string branch_id = 3;
+  string oracle_commit_id = 4;
+  string source_commit_id = 5;
+  string loop_id = 6;
+  int32 round_index = 7;
+  string query_strategy = 8;
+  int32 topk = 9;
+}
+
+message ActivateSamplesResponse {
+  bool created = 1;
+  string commit_id = 2;
+}
+
+message AdvanceBranchHeadRequest {
+  string command_id = 1;
+  string branch_id = 2;
+  string to_commit_id = 3;
+  string reason = 4;
+}
+
+message AdvanceBranchHeadResponse {
+  bool advanced = 1;
+  string branch_id = 2;
+  string head_commit_id = 3;
+}
+
+enum RuntimeQueryType {
+  RUNTIME_QUERY_TYPE_UNSPECIFIED = 0;
+  LABELS = 1;
+  SAMPLES = 2;
+  ANNOTATIONS = 3;
+  UNLABELED_SAMPLES = 4;
+}
+
+message DataRequest {
+  string request_id = 1;
+  string task_id = 2;
+  RuntimeQueryType query_type = 3;
+  string project_id = 4;
+  string commit_id = 5;
+  string cursor = 6;
+  int32 limit = 7;
+  int32 preferred_chunk_bytes = 8;
+  uint64 max_uncompressed_bytes = 9;
+}
+
+message LabelItem {
+  string id = 1;
+  string name = 2;
+  string color = 3;
+}
+
+message SampleItem {
+  string id = 1;
+  string asset_hash = 2;
+  string download_url = 3;
+  int32 width = 4;
+  int32 height = 5;
+  google.protobuf.Struct meta = 6;
+}
+
+message AnnotationItem {
+  string id = 1;
+  string sample_id = 2;
+  string category_id = 3;
+  repeated double bbox_xywh = 4;
+  google.protobuf.Struct obb = 5;
+  string source = 6;
+  double confidence = 7;
+}
+
+message DataItem {
+  oneof item {
+    LabelItem label_item = 1;
+    SampleItem sample_item = 2;
+    AnnotationItem annotation_item = 3;
+  }
+}
+
+message DataResponse {
+  string request_id = 1;
+  string reply_to = 2;
+  string task_id = 3;
+  RuntimeQueryType query_type = 4;
+  string payload_id = 5;
+  uint32 chunk_index = 6;
+  uint32 chunk_count = 7;
+  bytes header_proto = 8;
+  bytes payload_chunk = 9;
+  uint64 payload_total_size = 10;
+  uint32 payload_checksum_crc32c = 11;
+  uint32 chunk_checksum_crc32c = 12;
+  string next_cursor = 13;
+  bool is_last_chunk = 14;
+}
+
+message UploadTicketRequest {
+  string request_id = 1;
+  string task_id = 2;
+  string artifact_name = 3;
+  string content_type = 4;
+}
+
+message UploadTicketResponse {
+  string request_id = 1;
+  string reply_to = 2;
+  string task_id = 3;
+  string upload_url = 4;
+  string storage_uri = 5;
+  map<string, string> headers = 6;
+}
+
+message DownloadTicketRequest {
+  string request_id = 1;
+  string task_id = 2;
+  string artifact_name = 3;
+}
+
+message DownloadTicketResponse {
+  string request_id = 1;
+  string reply_to = 2;
+  string task_id = 3;
+  string artifact_name = 4;
+  string download_url = 5;
+  string storage_uri = 6;
+  map<string, string> headers = 7;
+}
+
+service RuntimeDomain {
+  rpc GetBranchHead(GetBranchHeadRequest) returns (GetBranchHeadResponse);
+  rpc CountNewLabelsSinceCommit(CountNewLabelsSinceCommitRequest) returns (CountNewLabelsSinceCommitResponse);
+  rpc ResolveRoundReveal(ResolveRoundRevealRequest) returns (ResolveRoundRevealResponse);
+  rpc ActivateSamples(ActivateSamplesRequest) returns (ActivateSamplesResponse);
+  rpc AdvanceBranchHead(AdvanceBranchHeadRequest) returns (AdvanceBranchHeadResponse);
+  rpc QueryData(DataRequest) returns (stream DataResponse);
+  rpc CreateUploadTicket(UploadTicketRequest) returns (UploadTicketResponse);
+  rpc CreateDownloadTicket(DownloadTicketRequest) returns (DownloadTicketResponse);
+}

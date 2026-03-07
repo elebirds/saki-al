@@ -4,9 +4,10 @@
     "datasets": "Datasets",
     "projects": "Projects",
     "about": "About",
-    "footer": "Saki Active Learning ©2025 Created by elebird."
+    "footer": "Saki Active Learning ©2025-{{year}} Created by <author>elebird</author>."
   },
   "common": {
+    "back": "Back",
     "networkError": "Cannot connect to the server. Please check your network connection or try again later.",
     "checkingConnection": "Checking connection...",
     "retry": "Retry",
@@ -37,6 +38,7 @@
     "downloadError": "Failed to download file",
     "create": "Create",
     "saveChanges": "Save Changes",
+    "selected": "Selected",
     "placeholder": "-",
     "sample": "Sample",
     "networkErrorTitle": "Network Error",
@@ -87,12 +89,15 @@
       "registerButton": "Register",
       "registerSuccess": "Registration successful! Please log in.",
       "registerFailed": "Registration failed",
+      "disabledTitle": "Registration Disabled",
+      "disabledSubtitle": "Self-registration is disabled by administrator. Please contact admin or sign in with an existing account.",
       "loginLink": "Log in",
       "alreadyHaveAccount": "Already have an account?"
     },
     "changePassword": {
       "title": "Change Password",
       "subtitle": "You need to change your password to continue",
+      "subtitleOptional": "For account security, it is recommended to update your password regularly",
       "oldPassword": "Current Password",
       "newPassword": "New Password",
       "confirmPassword": "Confirm New Password",
@@ -177,6 +182,15 @@
       "basicInfo": "Basic Information",
       "systemRoles": "System Roles",
       "permissions": "Permissions",
+      "uploadAvatar": "Upload Avatar",
+      "avatarUploadSuccess": "Avatar updated successfully",
+      "avatarUploadError": "Failed to update avatar",
+      "avatarFileTypeError": "Please select a PNG/JPEG/WebP image",
+      "avatarFileSizeError": "Avatar image cannot exceed 10MB",
+      "avatarCropTitle": "Crop Avatar",
+      "avatarCropHint": "Drag image position and adjust zoom to crop the avatar.",
+      "avatarCropConfirm": "Save Avatar",
+      "avatarCropReset": "Reset",
       "noRoles": "No roles assigned",
       "noPermissions": "No permissions",
       "isSuperAdmin": "Super Administrator",
@@ -187,9 +201,7 @@
       "userNotFound": "User information not found",
       "permissionScope": {
         "all": "All",
-        "assigned": "Assigned",
-        "self": "Self",
-        "owned": "Owned"
+        "assigned": "Assigned"
       },
       "permissionResources": {
         "user": "User Management",
@@ -214,22 +226,30 @@
       "nameRequired": "Please enter dataset name",
       "description": "Description",
       "descriptionPlaceholder": "Enter dataset description (optional)",
-      "open": "Open",
       "noDescription": "No description",
       "empty": "No datasets",
       "emptyHint": "Click the button above to create your first dataset",
       "type": "Type",
       "typeHelp": "Dataset type determines annotation workflow and model training.",
+      "visibility": "Visibility",
+      "visibilityHelp": "When public, all users can view samples and link this dataset to projects they can update.",
       "noMore": "No more content."
     },
+    "visibility": {
+      "public": "Public",
+      "private": "Private"
+    },
     "detail": {
-      "uploadData": "Upload Data",
+      "openImportWorkspace": "Import Workspace",
+      "uploadData": "Streaming Upload",
+      "importWorkspaceClassicOnly": "Import workspace currently supports classic datasets only",
       "settings": "Settings",
       "dataPool": "Data Pool",
       "noSamples": "No data",
       "backToList": "Back to List",
       "loadSamplesError": "Failed to load samples",
       "sortByName": "By Name",
+      "searchByNamePlaceholder": "Search by sample name",
       "sortByCreatedAt": "By Created At",
       "sortByUpdatedAt": "By Updated At",
       "sortAsc": "Ascending",
@@ -237,6 +257,20 @@
       "deleteSampleConfirm": "Are you sure to delete this sample?",
       "deleteSampleSuccess": "Sample deleted successfully",
       "deleteSampleError": "Failed to delete sample",
+      "deleteSampleSuccessForced": "Sample and related references deleted",
+      "deleteSampleForceForbidden": "This sample has committed references and you cannot force delete it",
+      "forceDeleteConfirmTitle": "This sample is referenced by committed data",
+      "forceDeleteConfirmDescription": "Force delete will remove committed and transient references across linked projects. This action cannot be undone.",
+      "forceDeleteAction": "Force Delete",
+      "forceDeleteRefSummaryTitle": "Reference summary:",
+      "forceDeleteRefCommittedAnnotation": "Committed annotations: {{count}}",
+      "forceDeleteRefCommittedMap": "Commit annotation mappings: {{count}}",
+      "forceDeleteRefCommittedState": "Commit sample states: {{count}}",
+      "forceDeleteRefProjects": "Linked projects: {{count}}",
+      "forceDeleteRefTransientDraft": "Draft annotations: {{count}}",
+      "forceDeleteRefTransientCandidate": "Step candidates: {{count}}",
+      "forceDeleteRefTransientMetric": "Round sample metrics: {{count}}",
+      "forceDeleteRefWorking": "Working snapshots: {{count}}",
       "loadError": "Failed to load dataset",
       "notFound": "Dataset not found.",
       "pageStatus": "Page {{page}} / {{pages}} · {{total}} items"
@@ -255,6 +289,10 @@
       "datasetName": "Dataset Name",
       "nameRequired": "Please enter dataset name",
       "description": "Description",
+      "visibility": "Visibility",
+      "visibilityHelp": "When public, all users get default viewer access and can link this dataset to projects they can update.",
+      "allowDuplicateSampleNames": "Allow Duplicate Sample Names",
+      "allowDuplicateSampleNamesHelp": "When disabled, uploads with existing sample names are rejected for that sample.",
       "saveBasicInfo": "Save Basic Info",
       "deleteDataset": "Delete Dataset",
       "dangerZone": "Danger Zone",
@@ -287,6 +325,15 @@
       "annotations": "Annotations",
       "noAnnotations": "No annotations",
       "submitNext": "Save Draft & Next",
+      "submitNextEmpty": "Mark Empty & Next",
+      "confirmSelected": "Confirm Selected",
+      "confirmAll": "Confirm All",
+      "clearUnconfirmed": "Clear Unconfirmed",
+      "noPendingModelSelected": "Please select a pending model box first",
+      "noPendingModelAnnotations": "No pending model boxes in current sample",
+      "confirmSelectedDone": "Selected model box confirmed",
+      "confirmAllDone": "{{count}} model boxes confirmed",
+      "clearUnconfirmedDone": "{{count}} unconfirmed model boxes cleared",
       "loading": "Loading...",
       "label": "Label:",
       "noLabelSelected": "Please select a label first",
@@ -310,23 +357,68 @@
       "back": "Back",
       "backToDataset": "Back to samples",
       "noEditPermission": "You do not have edit permission",
-      "cannotEditOthersAnnotation": "You can only edit your own annotations",
-      "cannotDeleteOthersAnnotation": "You can only delete your own annotations",
       "readOnly": "Read-only",
-      "annotationSource": {
-        "mine": "My annotation",
-        "others": "Others' annotation",
-        "auto": "Auto-generated"
+      "confidenceShort": "Conf {{confidence}}",
+      "batch": {
+        "entry": "Batch Actions",
+        "drawerTitle": "Draft & Model Batch Actions",
+        "currentSampleTitle": "Current Sample",
+        "currentSampleDesc": "Use this for precise confirmation of the selected model annotation on canvas.",
+        "filteredScopeTitle": "Bulk Actions (Current Filters)",
+        "filteredScopeDesc": "Scope includes all paginated samples matched by current filters and only affects your own drafts.",
+        "previewAndRun": "Preview & Run",
+        "confirmTitle": "Confirm Execution: {{operation}}",
+        "confirmContent": "This will affect {{samples}} samples, with estimated {{drafts}} drafts and {{annotations}} annotations changed.",
+        "confirmOk": "Run",
+        "preview": {
+          "samples": "Samples {{count}}",
+          "drafts": "Drafts {{count}}",
+          "annotations": "Annotations {{count}}"
+        },
+        "ops": {
+          "confirmModel": {
+            "title": "Confirm Model Annotations",
+            "desc": "Bulk-convert pending model annotations to confirmed_model so they can be committed for training."
+          },
+          "clearUnconfirmed": {
+            "title": "Clear Unconfirmed Model Annotations",
+            "desc": "Remove model annotations that are still unconfirmed within current filter scope."
+          },
+          "clearDrafts": {
+            "title": "Clear Drafts",
+            "desc": "Delete drafts and related working snapshots within current filter scope."
+          }
+        },
+        "messages": {
+          "noAffected": "No actionable items under current filters",
+          "confirmModelDone": "{{count}} model annotations confirmed",
+          "clearUnconfirmedDone": "{{count}} unconfirmed model annotations cleared",
+          "clearDraftsDone": "{{count}} drafts cleared"
+        }
       },
-      "commitDrafts": "Commit Drafts",
-      "sort": {
-        "createdNewest": "Created (Newest)",
-        "createdOldest": "Created (Oldest)",
-        "updatedNewest": "Updated (Newest)",
-        "updatedOldest": "Updated (Oldest)",
-        "nameAZ": "Name (A-Z)",
-        "nameZA": "Name (Z-A)"
-      }
+      "annotationSource": {
+        "manual": "Manual",
+        "auto": "Auto-generated",
+        "model": "Model",
+        "confirmedModel": "Confirmed Model",
+        "system": "System",
+        "imported": "Imported",
+        "fedoMapping": "FEDO Mapping"
+      },
+      "annotationShape": {
+        "rect": "Rect",
+        "obb": "OBB"
+      },
+      "annotationView": {
+        "timeEnergy": "Time-Energy",
+        "lOmegad": "L-ωd"
+      },
+      "annotationMeta": {
+        "unavailable": "Geometry unavailable",
+        "mappedCount": "{{count}} mapped"
+      },
+      "annotationOrderHint": "Order: by spatial position (top to bottom, left to right)",
+      "commitDrafts": "Commit Drafts"
     },
     "toolbar": {
       "undoShortcut": "Undo (Ctrl+Z)",
@@ -339,15 +431,45 @@
       "newProject": "New Project",
       "createSuccess": "Project created successfully",
       "createError": "Failed to create project",
+      "forkProject": "Fork Project",
+      "forkTitle": "Fork Project",
+      "forkSource": "Source Project",
+      "forkName": "New Project Name",
+      "forkNameRequired": "Please enter a project name",
+      "forkNamePlaceholder": "Enter the forked project name",
+      "forkDescription": "New Project Description",
+      "forkDescriptionPlaceholder": "Optional, defaults to source project description",
+      "forkSuccess": "Project forked successfully",
+      "forkError": "Failed to fork project",
       "stats": {
         "datasets": "Datasets",
         "labels": "Labels",
         "branches": "Branches",
-        "commits": "Commits"
+        "annotations": "Annotations"
       }
     },
     "form": {
-      "dataPool": "Data Pool"
+      "dataPool": "Data Pool",
+      "taskTypeHelp": "Task type controls annotation and training workflow. It cannot be changed after project creation.",
+      "datasetType": "Dataset Type",
+      "datasetTypeHelp": "Project dataset type controls which datasets can be linked. It cannot be changed after creation.",
+      "datasetTypeRequired": "Please select a dataset type",
+      "datasetTypeMismatch": "Only datasets matching the project's dataset type can be linked",
+      "annotationTypes": "Enabled Annotation Types",
+      "annotationTypesHelp": "Enabled annotation types determine which tools can be used in the annotation workspace. This setting cannot be changed after project creation.",
+      "annotationTypesRequired": "Select at least one annotation type",
+      "annotationTypesRequiredByDataset": "Selected dataset requires annotation type: {{type}}",
+      "annotationTypesDisallowed": "Annotation type {{type}} is disallowed by current task/dataset policy",
+      "annotationTypesPolicyConflict": "Current task/dataset policy has no valid annotation type combination",
+      "singleDatasetTypeOnly": "Only one dataset type can be selected for a project",
+      "datasetTypeOptions": {
+        "classic": "Classic",
+        "fedo": "FEDO"
+      },
+      "annotationTypeOptions": {
+        "rect": "Rectangle (Rect)",
+        "obb": "Oriented Bounding Box (OBB)"
+      }
     },
     "settings": {
       "taskType": {
@@ -358,6 +480,7 @@
       "updateError": "Failed to update project",
       "sections": {
         "basic": "Basic Info",
+        "datasets": "Datasets",
         "labels": "Labels",
         "members": "Members"
       },
@@ -386,6 +509,9 @@
         "title": "Project Labels",
         "subtitle": "Manage labels used in this project.",
         "add": "Add Label",
+        "moveUp": "Move up",
+        "moveDown": "Move down",
+        "reorderError": "Failed to reorder labels",
         "empty": "No labels yet",
         "noPermission": "No permission to view labels",
         "editTitle": "Edit Label",
@@ -437,6 +563,33 @@
           "rolePlaceholder": "Select role"
         }
       },
+      "datasets": {
+        "title": "Linked Datasets",
+        "subtitle": "Manage dataset associations for this project.",
+        "add": "Link Datasets",
+        "addTitle": "Link Datasets",
+        "empty": "No linked datasets",
+        "noPermission": "You do not have permission to manage dataset associations.",
+        "loadLinkedError": "Failed to load linked datasets",
+        "loadAllError": "Failed to load datasets",
+        "linkSuccess": "Datasets linked successfully",
+        "linkError": "Failed to link datasets",
+        "unlinkSuccess": "Dataset unlinked successfully",
+        "unlinkError": "Failed to unlink dataset",
+        "unlinkTitle": "Unlink dataset {{name}}?",
+        "unlinkCascadeWarning": "This will cascade delete annotations, drafts, and runtime sample artifacts of this dataset in the current project.",
+        "unlink": "Unlink",
+        "columns": {
+          "dataset": "Dataset",
+          "type": "Type",
+          "actions": "Actions"
+        },
+        "form": {
+          "datasets": "Datasets",
+          "datasetsRequired": "Please select at least one dataset",
+          "datasetsPlaceholder": "Select datasets"
+        }
+      },
       "basic": {
         "title": "Project Info",
         "titleWithName": "Project Info · {{name}}",
@@ -446,9 +599,19 @@
         "projectNamePlaceholder": "Project name",
         "taskType": "Task Type",
         "taskTypeHint": "Task type determines annotation workflow and model training, and cannot be changed after creation.",
+        "datasetType": "Dataset Type",
+        "datasetTypeHint": "Projects can only link datasets of the same type, and this cannot be changed after creation.",
         "description": "Description",
         "descriptionPlaceholder": "Describe the project",
-        "status": "Status"
+        "archiveSectionTitle": "Archive Settings",
+        "archiveSectionHint": "Archived projects stay visible in read-only form and can be unarchived at any time.",
+        "archiveAction": "Archive Project",
+        "unarchiveAction": "Unarchive Project",
+        "archiveConfirm": "Archive this project?",
+        "unarchiveConfirm": "Unarchive this project?",
+        "archiveSuccess": "Project archived",
+        "unarchiveSuccess": "Project unarchived",
+        "archiveError": "Failed to update project archive state"
       }
     },
     "common": {
@@ -591,7 +754,16 @@
         "nameAZ": "Name (A-Z)",
         "nameZA": "Name (Z-A)"
       },
+      "datasetLabel": "Target Dataset",
+      "filterLabel": "Sample Status",
+      "sortLabel": "Sort Order",
+      "branchLabel": "Commit Branch",
+      "startAnnotating": "Start Annotating",
       "commitDrafts": "Commit Drafts",
+      "noRemark": "No remark",
+      "annotationCountShort": "{{count}} annotations",
+      "resultHint": "Filtered result: {{count}} samples",
+      "pageStatus": "Page {{page}} / {{totalPages}} · {{total}} items",
       "emptySelectDataset": "Select a dataset to view samples.",
       "emptyTitle": "No samples",
       "emptyHint": "Try adjusting your filters or upload new samples.",
@@ -601,15 +773,6 @@
         "messageLabel": "Commit message",
         "messagePlaceholder": "Describe this annotation milestone..."
       }
-    },
-    "datasetSamples": {
-      "backToDatasets": "Back to datasets",
-      "datasetFallback": "Dataset",
-      "samples": "Samples",
-      "emptyTitle": "No samples yet",
-      "emptyHint": "Upload samples in dataset settings",
-      "upload": "Upload data",
-      "pagination": "Page {{page}} / {{totalPages}} · {{totalItems}} items"
     },
     "sidebar": {
       "about": "About",
@@ -628,8 +791,7 @@
       },
       "models": {
         "title": "Models",
-        "empty": "No artifacts published",
-        "comingSoon": "Coming soon"
+        "empty": "No artifacts published"
       },
       "sampleStatus": {
         "title": "Sample Status",
@@ -639,11 +801,350 @@
         "empty": "Not available yet"
       }
     },
-    "loops": {
-      "comingSoon": "AL Loops is coming soon."
+    "loopOverview": {
+      "title": "Loop Overview",
+      "subtitle": "Unified semantic overview for Loop/Round/Step.",
+      "viewExecutors": "View Executor Status",
+      "refresh": "Refresh",
+      "createLoop": "Create Loop",
+      "noPermission": "No permission to access Loop page",
+      "noPluginCatalog": "No available plugin catalog",
+      "noPluginCatalogDesc": "Please start at least one executor and complete registration first.",
+      "branchNoAvailable": "No branch is available for new loops (all branches are already bound).",
+      "empty": "No loops in this project yet",
+      "enterDetail": "View Details",
+      "branch": "Branch",
+      "mode": "Mode",
+      "plugin": "Plugin",
+      "strategy": "Strategy",
+      "summary": {
+        "rounds": "Rounds",
+        "roundsSucceeded": "Rounds Succeeded",
+        "steps": "Steps",
+        "stepsSucceeded": "Steps Succeeded",
+        "trainFinal": "Train Final",
+        "evalFinal": "Eval(Test)"
+      },
+      "messages": {
+        "loadOverviewFailed": "Failed to load loop overview"
+      }
+    },
+    "loopCreate": {
+      "title": "Create Loop",
+      "subtitle": "Configure a full AL/SIM/MANUAL loop creation request.",
+      "backToOverview": "Back to Overview",
+      "reload": "Reload",
+      "cancel": "Cancel",
+      "submit": "Create Loop",
+      "noPermission": "No permission to access loop creation page",
+      "noPluginCatalog": "No available plugin catalog",
+      "noPluginCatalogDesc": "Please start at least one executor and complete registration first.",
+      "section": {
+        "basic": "Basic Info",
+        "mode": "Mode Params"
+      },
+      "messages": {
+        "loadFailed": "Failed to load loop creation data",
+        "pluginMissing": "Selected plugin is missing, please reload and retry",
+        "noStrategyForPlugin": "This plugin has no supported sampling strategy for current mode",
+        "createSuccess": "Loop created successfully",
+        "createFailed": "Failed to create loop"
+      },
+      "form": {
+        "name": "Name",
+        "nameRequired": "Please enter a name",
+        "namePlaceholder": "e.g. fedo-yolo-loop-1",
+        "branchId": "Bound Branch",
+        "branchIdRequired": "Please select a branch",
+        "branchNoAvailable": "No branch is available for new loops (all branches are already bound).",
+        "modelArch": "Plugin",
+        "modelArchRequired": "Please select a plugin",
+        "globalSeed": "Global Seed",
+        "globalSeedRequired": "Please enter global seed",
+        "globalSeedPlaceholder": "Stable seed for reproducible loop execution",
+        "deterministicLevel": "Deterministic Level",
+        "deterministicLevelRequired": "Please select deterministic level",
+        "deterministicLevelOptions": {
+          "off": "Off (seed only)",
+          "deterministic": "Deterministic",
+          "strongDeterministic": "Strong Deterministic"
+        },
+        "deterministicLevelPerfHint": "Higher determinism can significantly reduce performance (notably training speed and throughput).",
+        "samplingStrategy": "Sampling Strategy",
+        "samplingStrategyRequired": "Please select a sampling strategy",
+        "queryBatchSize": "TopK Per Round",
+        "queryBatchSizeRequired": "Please enter TopK per round",
+        "preferredExecutor": "Preferred Executor",
+        "preferredExecutorPlaceholder": "Empty means auto scheduling",
+        "preferredExecutorHint": "Strict binding: when set, DISPATCHABLE steps stay READY if this executor is unavailable.",
+        "trainingLabelScope": "Training Label Scope",
+        "trainingLabelScopePlaceholder": "Leave empty to include all labels",
+        "trainingLabelScopeHint": "Only selected labels are used to build TRAIN/EVAL data.",
+        "negativeSampleRatio": "Negative Ratio 1:x",
+        "negativeSampleRatioPlaceholder": "0 means none, empty means unlimited",
+        "negativeSampleRatioHint": "Keep x negative samples for each positive sample in TRAIN only.",
+        "patience": "Patience",
+        "patienceHint": "Early-stop patience (epochs). Only shown when plugin supports it.",
+        "mode": "Run Mode",
+        "modeRequired": "Please select a run mode",
+        "modeOptions": {
+          "activeLearning": "Active Learning (HITL)",
+          "simulation": "Simulation",
+          "manual": "Manual"
+        },
+        "payloadModeHint": {
+          "active_learning": "AL: each round requires human confirm and manual next-round trigger.",
+          "simulation": "SIM: auto reveal and auto next-round on oracle-labeled universe.",
+          "manual": "MANUAL: run TRAIN->EVAL only, next round is manual."
+        },
+        "oracleCommitUnknownMessage": "Untitled commit",
+        "oracleCommitInputMode": "Oracle Input Mode",
+        "oracleCommitInputModeRequired": "Please choose oracle input mode",
+        "oracleCommitSelect": "Select from commits",
+        "oracleCommitManual": "Manual commit ID",
+        "oracleCommitId": "Oracle Commit",
+        "oracleCommitIdManual": "Oracle Commit ID",
+        "oracleCommitIdRequired": "Oracle commit is required for simulation",
+        "oracleCommitIdInvalid": "Oracle commit ID must be a valid UUID",
+        "oracleCommitIdPlaceholder": "Enter full commit UUID",
+        "oracleCommitIdSelectPlaceholder": "Select oracle commit",
+        "snapshotInitTrainSeedRatio": "Snapshot Init Train Seed Ratio",
+        "snapshotInitValRatio": "Snapshot Init Val Ratio",
+        "snapshotInitTestRatio": "Snapshot Init Test Ratio",
+        "snapshotInitValPolicy": "Snapshot Init Val Policy",
+        "maxRounds": "Max Rounds (Fuse)",
+        "maxRoundsRequired": "Please enter max rounds",
+        "modelRequestParams": "Model Request Parameters",
+        "pluginSchemaHint": "Final payload merges plugin defaults with your edits.",
+        "noDynamicSchema": "Current plugin does not define a dynamic schema"
+      }
+    },
+    "loopConfig": {
+      "noPermission": "No permission to access Loop config page",
+      "notFoundOrNoPermission": "Loop not found or no permission",
+      "pageTitle": "{{name}} Config",
+      "backToDetail": "Back to Details",
+      "saveConfig": "Save Config",
+      "basicConfig": "Basic Config",
+      "messages": {
+        "loadFailed": "Failed to load loop config",
+        "pluginMissing": "Selected plugin is missing, please reload and retry",
+        "noStrategyForPlugin": "This plugin has no supported sampling strategy for current mode",
+        "saveSuccess": "Loop config saved",
+        "saveFailed": "Failed to save loop config"
+      },
+      "form": {
+        "name": "Name",
+        "nameRequired": "Please enter a name",
+        "mode": "Run Mode",
+        "modeRequired": "Please select run mode",
+        "modeOptions": {
+          "activeLearning": "Active Learning (HITL)",
+          "simulation": "Simulation",
+          "manual": "Manual"
+        },
+        "modelArch": "Plugin",
+        "modelArchRequired": "Please select a plugin",
+        "globalSeed": "Global Seed",
+        "globalSeedRequired": "Please enter global seed",
+        "globalSeedImmutable": "Global seed is immutable once loop lifecycle is not draft",
+        "deterministicLevel": "Deterministic Level",
+        "deterministicLevelRequired": "Please select deterministic level",
+        "deterministicLevelImmutable": "Deterministic level is immutable once loop lifecycle is not draft",
+        "deterministicLevelOptions": {
+          "off": "Off (seed only)",
+          "deterministic": "Deterministic",
+          "strongDeterministic": "Strong Deterministic"
+        },
+        "deterministicLevelPerfHint": "Higher determinism can significantly reduce performance (notably training speed and throughput).",
+        "samplingStrategy": "Sampling Strategy",
+        "samplingStrategyRequired": "Please select sampling strategy",
+        "queryBatchSize": "TopK Per Round",
+        "preferredExecutor": "Preferred Executor",
+        "preferredExecutorPlaceholder": "Empty means auto scheduling",
+        "preferredExecutorHint": "Strict binding: when set, DISPATCHABLE steps stay READY if this executor is unavailable.",
+        "trainingLabelScope": "Training Label Scope",
+        "trainingLabelScopePlaceholder": "Leave empty to include all labels",
+        "trainingLabelScopeHint": "Only selected labels are used to build TRAIN/EVAL data.",
+        "trainingLabelScopeImmutable": "Training label scope is immutable once loop lifecycle is not draft",
+        "negativeSampleRatio": "Negative Ratio 1:x",
+        "negativeSampleRatioPlaceholder": "0 means none, empty means unlimited",
+        "negativeSampleRatioHint": "Keep x negative samples for each positive sample in TRAIN only.",
+        "negativeSampleRatioImmutable": "Negative sample ratio is immutable once loop lifecycle is not draft",
+        "patience": "Patience",
+        "patienceHint": "Early-stop patience (epochs). Only shown when plugin supports it.",
+        "simulationConfigTitle": "Simulation Config",
+        "oracleCommitUnknownMessage": "Untitled commit",
+        "oracleCommitInputMode": "Oracle Input Mode",
+        "oracleCommitInputModeRequired": "Please choose oracle input mode",
+        "oracleCommitSelect": "Select from commits",
+        "oracleCommitManual": "Manual commit ID",
+        "oracleCommitId": "Oracle Commit",
+        "oracleCommitIdManual": "Oracle Commit ID",
+        "oracleCommitIdRequired": "Oracle commit is required for simulation",
+        "oracleCommitIdInvalid": "Oracle commit ID must be a valid UUID",
+        "oracleCommitIdPlaceholder": "Enter full commit UUID",
+        "oracleCommitIdSelectPlaceholder": "Select oracle commit",
+        "snapshotInitTrainSeedRatio": "Snapshot Init Train Seed Ratio",
+        "snapshotInitValRatio": "Snapshot Init Val Ratio",
+        "snapshotInitTestRatio": "Snapshot Init Test Ratio",
+        "snapshotInitValPolicy": "Snapshot Init Val Policy",
+        "maxRounds": "Max Rounds (Fuse)",
+        "maxRoundsRequired": "Please enter max rounds",
+        "modelRequestParams": "Model Request Parameters",
+        "noDynamicSchema": "Current plugin does not define a dynamic schema"
+      }
+    },
+    "predictionTasks": {
+      "refresh": "Refresh",
+      "newTask": "New Task",
+      "messages": {
+        "loadFailed": "Failed to load prediction tasks",
+        "createSuccess": "Prediction task created",
+        "createFailed": "Failed to create prediction task",
+        "applySuccess": "Applied to Draft: {{count}} items",
+        "applyFailed": "Failed to apply prediction task result"
+      },
+      "table": {
+        "taskId": "Task ID",
+        "status": "Status",
+        "totalItems": "Items",
+        "error": "Error",
+        "actions": "Actions"
+      },
+      "actions": {
+        "gotoLoop": "Go to Loop",
+        "apply": "Apply",
+        "detail": "Detail"
+      },
+      "detail": {
+        "title": "Prediction Task Detail",
+        "summaryTitle": "Task Summary",
+        "artifactsTitle": "Task Artifacts",
+        "artifactsEmpty": "No artifacts for current task",
+        "itemsTitle": "Prediction Items",
+        "consoleTitle": "Task Console Logs",
+        "consoleEmpty": "No task logs yet",
+        "empty": "Prediction not found or no access",
+        "messages": {
+          "loadFailed": "Failed to load prediction detail"
+        }
+      },
+      "modal": {
+        "title": "Create Prediction Task",
+        "okText": "Create"
+      },
+      "form": {
+        "plugin": "Plugin",
+        "pluginExtra": "Select plugin first, then Model/Artifact options will be filtered accordingly.",
+        "model": "Model",
+        "artifactName": "Artifact Name",
+        "targetBranch": "Target Branch",
+        "baseCommit": "Base Commit",
+        "baseCommitPlaceholder": "Select a commit",
+        "predictConf": "Prediction Threshold (predict_conf)",
+        "predictConfTooltip": "Lower values keep more low-confidence boxes and often improve candidate recall.",
+        "scopeStatus": "Sample Scope"
+      },
+      "scope": {
+        "all": "All Samples",
+        "unlabeled": "Unlabeled Only",
+        "labeled": "Labeled Only",
+        "draft": "Draft Only"
+      }
+    },
+    "models": {
+      "title": "Model Center",
+      "empty": "No models",
+      "searchPlaceholder": "Filter by name/plugin/version",
+      "allStatus": "All Status",
+      "refresh": "Refresh",
+      "publishModel": "Publish Model",
+      "messages": {
+        "loadListFailed": "Failed to load model list",
+        "loadDetailFailed": "Failed to load model details",
+        "publishSuccess": "Model published: {{name}}",
+        "publishFailed": "Failed to publish model",
+        "promoteSuccess": "Promoted to production",
+        "promoteFailed": "Failed to promote model",
+        "getDownloadUrlFailed": "Failed to get download URL"
+      },
+      "table": {
+        "name": "Name",
+        "version": "Version",
+        "plugin": "Plugin",
+        "status": "Status",
+        "sourceRound": "Source Round",
+        "primaryArtifact": "Primary Artifact",
+        "createdAt": "Created At",
+        "actions": "Actions"
+      },
+      "actions": {
+        "detail": "Details",
+        "downloadPrimary": "Download Primary Artifact",
+        "promoteProduction": "Promote to Production"
+      },
+      "publishModal": {
+        "title": "Publish Model",
+        "okText": "Publish",
+        "sourceRoundRequired": "Please select source round",
+        "sourceRoundExtra": "Prefer completed rounds; manual round ID input is also supported.",
+        "sourceRoundPlaceholder": "Select completed round",
+        "modelName": "Model Name",
+        "modelNamePlaceholder": "Auto-generated when empty",
+        "primaryArtifactName": "Primary Artifact Name",
+        "primaryArtifactNamePlaceholder": "Default is best.pt",
+        "versionTag": "Version Tag",
+        "versionTagExtra": "Auto-generated by round when empty (e.g. r3-a1).",
+        "versionTagPlaceholder": "e.g. r3-a1",
+        "status": "Publish Status"
+      },
+      "detailDrawer": {
+        "titleWithName": "Model Details · {{name}}",
+        "titleWithId": "Model Details · {{id}}",
+        "empty": "No detail data",
+        "labels": {
+          "status": "Status",
+          "plugin": "Plugin",
+          "sourceRound": "Source Round",
+          "sourceTask": "Source Task",
+          "primaryArtifact": "Primary Artifact",
+          "createdAt": "Created At"
+        },
+        "metrics": "Metrics",
+        "artifacts": "Artifacts",
+        "table": {
+          "name": "Name",
+          "type": "Type"
+        }
+      }
     },
     "insights": {
-      "comingSoon": "Insights will be available soon."
+      "emptyLoops": "No Loop data yet. Create and run loops first.",
+      "loopDimension": "Loop Dimension",
+      "roundMetricsTrend": "Round Metrics Trend",
+      "emptyRoundMetrics": "No round metrics",
+      "modelStatus": "Model Status",
+      "latestMap50": "Latest mAP50: {{value}}",
+      "latestMetric": "Latest {{source}}: {{value}}",
+      "metricSource": {
+        "eval": "Eval(Test)",
+        "train": "Train"
+      },
+      "roundDetails": "Round Details",
+      "stats": {
+        "roundsTotal": "Total Rounds",
+        "roundsSucceeded": "Succeeded Rounds",
+        "stepsTotal": "Total Steps",
+        "stepsSucceeded": "Succeeded Steps",
+        "totalModels": "Total Models",
+        "candidateModels": "Candidate Models",
+        "productionModels": "Production Models"
+      },
+      "table": {
+        "status": "Status",
+        "strategy": "Strategy"
+      }
     },
     "tabs": {
       "overview": "Overview",
@@ -651,8 +1152,250 @@
       "branches": "Branches",
       "commits": "Commits",
       "loops": "AL Loops",
+      "predictionTasks": "Prediction Tasks",
+      "models": "Models",
       "insights": "Insights",
       "settings": "Settings"
+    }
+  },
+  "import": {
+    "dataset": {
+      "title": "Dataset Import Workspace"
+    },
+    "project": {
+      "entry": "Import",
+      "classicOnly": "Project import currently supports classic projects only",
+      "title": "Project Import Workspace",
+      "subtitle": "Import external packages into project branches with a dry-run-first flow so every result is traceable and explainable.",
+      "introTitle": "Import Principle",
+      "introBody": "This workspace follows “logical separation, operational decoupling”: image import and annotation import run independently; associated import is orchestration only.",
+      "steps": {
+        "configure": "1. Configure Source and Target",
+        "dryRun": "2. Dry Run and Confirm",
+        "execute": "3. Execute and Trace"
+      },
+      "mode": {
+        "imagesOnly": "Images Only",
+        "annotationsOnly": "Annotations Only",
+        "associated": "Associated Import",
+        "imagesOnlyDesc": "Import images into target dataset only, without writing annotations.",
+        "annotationsOnlyDesc": "Import annotations only into the selected dataset and branch.",
+        "associatedDesc": "Use one archive to import images first, then annotations."
+      },
+      "target": {
+        "existing": "Existing Dataset",
+        "new": "Create Dataset"
+      },
+      "glossary": {
+        "title": "Glossary",
+        "format": "Annotation Format",
+        "formatCoco": "COCO: JSON-based schema describing image-annotation relations, common for detection datasets.",
+        "formatVoc": "VOC: One XML annotation file per image, clear structure and widely used in legacy datasets.",
+        "formatYolo": "YOLO: One TXT coordinate file per image, lightweight for detector training pipelines.",
+        "formatDota": "DOTA: per-image labelTxt quadrilateral annotations (poly8 + difficult) for oriented detection datasets.",
+        "formatYoloObb": "YOLO OBB: supports rotated boxes (RBox/Poly8) for orientation-aware detection datasets.",
+        "branch": "Branch",
+        "branchDesc": "Import writes a commit to the selected branch. master is usually default, but choose your feature branch as needed.",
+        "dataset": "Target Dataset",
+        "datasetDesc": "Sample matching is limited to the selected dataset. Unmatched samples are skipped with reasons recorded.",
+        "strategy": "Conflict Strategy",
+        "replaceDesc": "replace: treat imported sample as a full new snapshot and replace currently visible annotations.",
+        "mergeDesc": "merge: merge by lineage and let imported items overwrite existing ones with the same lineage."
+      }
+    },
+    "workspace": {
+      "configureSection": "Import Configuration",
+      "sourceTypeLabel": "Import Source",
+      "sourceTypeZip": "ZIP Archive",
+      "sourceTypeFiles": "Direct Image Select",
+      "selectZip": "Select ZIP",
+      "selectImages": "Select Images",
+      "zipHint": "ZIP only. Keep original directory structure when possible for stable sample matching.",
+      "directUploadNoDryRun": "Direct image mode skips dry run and starts bulk upload tasks immediately.",
+      "selectedImagesCount": "Selected images: {{count}}",
+      "duplicatePolicyAllow": "This dataset allows duplicate sample names; imports will keep same-name files.",
+      "duplicatePolicyDedupe": "This dataset disallows duplicate sample names; same-name files will reuse existing samples.",
+      "selectedArchive": "Selected file: {{name}}",
+      "modeLabel": "Import Mode",
+      "sourceArchive": "Source Archive",
+      "formatLabel": "Annotation Format",
+      "yoloSubFormatLabel": "YOLO Sub-format",
+      "branchLabel": "Commit Branch",
+      "datasetLabel": "Target Dataset",
+      "datasetModeLabel": "Dataset Mode",
+      "newDatasetName": "New Dataset Name",
+      "newDatasetDescription": "New Dataset Description",
+      "strategyLabel": "Conflict Strategy",
+      "pathFlattenModeLabel": "Path Flatten Mode",
+      "pathFlattenModeBasename": "Keep filename only (default)",
+      "pathFlattenModePreservePath": "Preserve relative path",
+      "nameCollisionPolicyLabel": "Name Collision Policy",
+      "nameCollisionPolicyAbort": "Abort on collision (default)",
+      "nameCollisionPolicyAutoRename": "Auto rename on collision",
+      "nameCollisionPolicyOverwrite": "Overwrite with latest entry",
+      "currentConfig": "Current Configuration",
+      "helpButton": "Glossary",
+      "runHint": "Recommended order: run dry run first, confirm planned new labels, then execute.",
+      "dryRun": "Dry Run",
+      "execute": "Execute",
+      "preview": "Dry Run Result",
+      "previewEmpty": "Run dry run first to view preview details.",
+      "execution": "Execution Panel",
+      "startedAt": "Started at: {{time}}",
+      "elapsed": "Elapsed: {{duration}}",
+      "stateIdle": "Idle",
+      "stateRunning": "Running",
+      "stateComplete": "Completed",
+      "stateError": "Failed",
+      "noEvents": "No events yet",
+      "previewNoItems": "No items in this category.",
+      "eventsLatest": "Latest events (newest first, no limit)",
+      "previewIssues": "Warnings: {{warnings}}, Errors: {{errors}}",
+      "warnings": "Warning Details",
+      "errors": "Error Details",
+      "expiresAt": "Preview token expires at: {{time}}",
+      "plannedNewLabels": "Planned New Labels",
+      "confirmCreateLabels": "I confirm creating labels listed above",
+      "dryRunSuccess": "Dry run completed",
+      "dryRunError": "Dry run failed",
+      "dryRunErrorPanelHint": "Dry-run request failed. Check package structure or request parameters below.",
+      "statusCodeLabel": "HTTP Status",
+      "errorCodeLabel": "Error Code",
+      "timestampLabel": "Timestamp",
+      "rawResponseLabel": "Raw Response",
+      "metaLoadError": "Failed to load import metadata",
+      "selectDatasetFirst": "Please select a target dataset first",
+      "newDatasetNameRequired": "Please provide a name for the new dataset",
+      "noAvailableImportProfile": "No import format is currently available for this project's annotation capabilities.",
+      "executeBlockedByUnsupportedType": "Dry run found annotation types not enabled in this project. Update project policy or package before executing.",
+      "noIssuesToExport": "No warnings/errors to export",
+      "exportJson": "Export JSON",
+      "exportCsv": "Export CSV",
+      "strategyReplace": "Strategy: Replace",
+      "strategyMerge": "Strategy: Merge",
+      "originalMessage": "Original message: {{message}}",
+      "summaryKey": {
+        "mode": "Import Mode",
+        "project_id": "Project ID",
+        "dataset_id": "Dataset ID",
+        "allow_duplicate_sample_names": "Allow Duplicate Sample Names",
+        "branch_name": "Branch",
+        "format_profile": "Format",
+        "format": "Format",
+        "path_flatten_mode": "Path Flatten Mode",
+        "name_collision_policy": "Name Collision Policy",
+        "target_dataset_mode": "Target Dataset Mode",
+        "total_entries": "Total Image Entries",
+        "new_samples": "New Samples",
+        "reused_samples": "Reused Samples",
+        "skipped_non_image": "Skipped Non-image Entries",
+        "image_candidates": "Image Candidates",
+        "total_annotations": "Total Annotations",
+        "matched_annotations": "Matched Annotations",
+        "skipped_annotations": "Skipped Annotations",
+        "matched_samples": "Matched Samples",
+        "matched_sample_keys": "Matched Sample Keys",
+        "unsupported_annotations": "Unsupported Annotations",
+        "unsupported_types": "Unsupported Annotation Types"
+      },
+      "summaryValue": {
+        "mode": {
+          "dataset_images": "Dataset Image Import",
+          "project_annotations": "Project Annotation Import",
+          "project_associated": "Project Associated Import"
+        },
+        "targetDatasetMode": {
+          "existing": "Existing Dataset",
+          "new": "New Dataset"
+        },
+        "pathFlattenMode": {
+          "basename": "Keep filename only",
+          "preserve_path": "Preserve relative path"
+        },
+        "nameCollisionPolicy": {
+          "abort": "Abort",
+          "auto_rename": "Auto rename",
+          "overwrite": "Overwrite"
+        },
+        "format": {
+          "coco": "COCO",
+          "voc": "VOC",
+          "yolo": "YOLO",
+          "dota": "DOTA",
+          "yolo_obb": "YOLO OBB"
+        }
+      },
+      "issueCode": {
+        "UNKNOWN": "Unknown dry-run issue",
+        "SAMPLE_NOT_FOUND": "Sample not found in target dataset: {{path}}",
+        "SAMPLE_MATCH_BY_BASENAME": "Matched by basename fallback; keep full folder structure when possible: {{path}}",
+        "CONVERT_WARNING": "Conversion warning: {{message}}",
+        "CONVERT_ERROR": "Conversion error: {{message}}",
+        "ANNOTATION_TYPE_NOT_ENABLED": "Annotation type {{annotationType}} is not enabled ({{count}} items). Enabled types: {{enabledTypes}}",
+        "ZIP_SYMLINK_SKIPPED": "Symlink entry skipped in ZIP: {{path}}",
+        "IMAGE_NAME_COLLISION": "Sample name collision after flattening: {{path}}",
+        "IMAGE_NAME_AUTO_RENAMED": "Sample name auto-renamed due to collision: {{path}}",
+        "IMAGE_NAME_OVERWRITTEN": "Later ZIP entry overwrote same sample name: {{path}}",
+        "ZIP_ENTRY_MISSING": "ZIP entry missing: {{path}}",
+        "ZIP_ENTRY_INVALID": "Invalid ZIP entry: {{path}}",
+        "LABEL_NOT_FOUND": "Label not found in project: {{label}}"
+      }
+    }
+  },
+  "export": {
+    "project": {
+      "entry": "Export",
+      "title": "Project Export Workspace",
+      "subtitle": "Stream datasets by selected format directly to local files to avoid backend full-package load.",
+      "metaLoadError": "Failed to load export metadata",
+      "noAvailableExportProfile": "No export format is available for this project's annotation capabilities.",
+      "configTitle": "Export Configuration",
+      "statusTitle": "Export Status",
+      "start": "Start Export",
+      "browserBlocked": "This page is not in a secure context (HTTPS or localhost required), so file-system streaming write is unavailable.",
+      "browserFallbackNotice": "Native file-system writing is unavailable in this environment; falling back to in-memory ZIP download (large exports may use more memory).",
+      "selectDatasetFirst": "Select at least one dataset",
+      "commitRequired": "Commit ID is required",
+      "resolveBlocked": "Export is blocked",
+      "startFailed": "Export failed",
+      "done": "Export completed",
+      "canceled": "Export canceled",
+      "datasetLabel": "Datasets",
+      "snapshotTypeLabel": "Snapshot Source",
+      "snapshotBranchHead": "Branch Head",
+      "snapshotCommit": "Specific Commit",
+      "branchLabel": "Branch",
+      "commitIdLabel": "Commit ID",
+      "commitIdPlaceholder": "Enter commit UUID",
+      "sampleScopeLabel": "Sample Scope",
+      "sampleScopeAll": "All",
+      "sampleScopeLabeled": "Labeled only",
+      "sampleScopeUnlabeled": "Unlabeled only",
+      "formatLabel": "Export Format",
+      "bundleLayoutLabel": "Bundle Layout",
+      "layoutMerged": "Single ZIP (dataset folders)",
+      "layoutPerDataset": "One ZIP per dataset",
+      "includeAssetsLabel": "Include assets",
+      "failFastLabel": "Fail fast",
+      "phaseLabel": "Phase",
+      "samplesProgressLabel": "Samples",
+      "assetsProgressLabel": "Assets",
+      "currentDatasetLabel": "Current dataset",
+      "resolveCommitLabel": "Resolved Commit",
+      "formatCompatibilityLabel": "Format Compatibility",
+      "estimatedSizeLabel": "Estimated Asset Size",
+      "blockedLabel": "Blocked",
+      "blockReasonLabel": "Block Reason",
+      "reportTitle": "Export Report (Failures)",
+      "selectedDatasetsTitle": "Selected Datasets",
+      "phase": {
+        "idle": "Idle",
+        "resolving": "Resolving",
+        "streaming": "Streaming",
+        "done": "Done",
+        "error": "Error",
+        "canceled": "Canceled"
+      }
     }
   },
   "upload": {
@@ -700,7 +1443,7 @@
       "systemRole": "System Preset Role",
       "allTypes": "All Types",
       "invalidPermissionsForSystemRole": "System roles can only use global permissions (ending with :all)",
-      "invalidPermissionsForResourceRole": "Resource roles can only use assigned permissions (ending with :assigned) or self permissions (ending with :self)",
+      "invalidPermissionsForResourceRole": "Resource roles can only use assigned permissions (ending with :assigned)",
       "selectRoleTypeFirst": "Please select role type first",
       "noSystemPermissions": "No permissions available for system roles",
       "noResourcePermissions": "No permissions available for resource roles",
@@ -719,100 +1462,225 @@
         "roleAssign": "Assign Role",
         "roleRevoke": "Revoke Role",
         "roleAssignAdmin": "Assign Admin Permission",
+        "systemSettingsManagement": "System Settings",
+        "systemSettingsRead": "Read System Settings",
+        "systemSettingsUpdate": "Update System Settings",
         "datasetManagementAll": "Dataset Management (All)",
         "datasetCreateAll": "Create Dataset (All)",
         "datasetReadAll": "Read Dataset (All)",
         "datasetUpdateAll": "Update Dataset (All)",
         "datasetDeleteAll": "Delete Dataset (All)",
         "datasetAssignAll": "Assign Dataset (All)",
+        "datasetLinkProjectAll": "Link Project (All)",
         "datasetExportAll": "Export Dataset (All)",
         "datasetImportAll": "Import Dataset (All)",
         "datasetManagementAssigned": "Dataset Management (Assigned)",
         "datasetReadAssigned": "Read Dataset (Assigned)",
         "datasetUpdateAssigned": "Update Dataset (Assigned)",
         "datasetAssignAssigned": "Assign Dataset (Assigned)",
+        "datasetLinkProjectAssigned": "Link Project (Assigned)",
         "datasetExportAssigned": "Export Dataset (Assigned)",
         "datasetImportAssigned": "Import Dataset (Assigned)",
         "sampleManagementAll": "Sample Management (All)",
         "sampleReadAll": "Read Sample (All)",
         "sampleCreateAll": "Create Sample (All)",
-        "sampleUpdateAll": "Update Sample (All)",
         "sampleDeleteAll": "Delete Sample (All)",
         "sampleManagementAssigned": "Sample Management (Assigned)",
         "sampleReadAssigned": "Read Sample (Assigned)",
         "sampleCreateAssigned": "Create Sample (Assigned)",
-        "sampleUpdateAssigned": "Update Sample (Assigned)",
         "sampleDeleteAssigned": "Delete Sample (Assigned)",
         "labelManagementAll": "Label Management (All)",
         "labelReadAll": "Read Label (All)",
-        "labelCreateAll": "Create Label (All)",
-        "labelUpdateAll": "Update Label (All)",
-        "labelDeleteAll": "Delete Label (All)",
+        "labelManageAll": "Manage Label (All)",
         "labelManagementAssigned": "Label Management (Assigned)",
         "labelReadAssigned": "Read Label (Assigned)",
-        "labelCreateAssigned": "Create Label (Assigned)",
-        "labelUpdateAssigned": "Update Label (Assigned)",
-        "labelDeleteAssigned": "Delete Label (Assigned)",
+        "labelManageAssigned": "Manage Label (Assigned)",
         "annotationManagementAll": "Annotation Management (All)",
         "annotationReadAll": "Read Annotation (All)",
         "annotationModifyAll": "Modify Annotation (All)",
         "annotationManagementAssigned": "Annotation Management (Assigned)",
         "annotationReadAssigned": "Read Annotation (Assigned)",
         "annotationModifyAssigned": "Modify Annotation (Assigned)",
-        "annotationManagementSelf": "Annotation Management (Self)",
-        "annotationReadSelf": "Read Annotation (Self)",
-        "annotationModifySelf": "Modify Annotation (Self)"
+        "projectManagementAll": "Project Management (All)",
+        "projectCreateAll": "Create Project (All)",
+        "projectReadAll": "Read Project (All)",
+        "projectUpdateAll": "Update Project (All)",
+        "projectArchiveAll": "Archive Project (All)",
+        "projectDeleteAll": "Delete Project (All)",
+        "projectAssignAll": "Assign Project Members (All)",
+        "projectExportAll": "Export Project (All)",
+        "projectManagementAssigned": "Project Management (Assigned)",
+        "projectReadAssigned": "Read Project (Assigned)",
+        "projectUpdateAssigned": "Update Project (Assigned)",
+        "projectArchiveAssigned": "Archive Project (Assigned)",
+        "projectDeleteAssigned": "Delete Project (Assigned)",
+        "projectAssignAssigned": "Assign Project Members (Assigned)",
+        "projectExportAssigned": "Export Project (Assigned)",
+        "commitManagementAll": "Commit Management (All)",
+        "commitCreateAll": "Create Commit (All)",
+        "commitReadAll": "Read Commit (All)",
+        "commitManagementAssigned": "Commit Management (Assigned)",
+        "commitCreateAssigned": "Create Commit (Assigned)",
+        "commitReadAssigned": "Read Commit (Assigned)",
+        "branchManagementAll": "Branch Management (All)",
+        "branchManageAll": "Manage Branch (All)",
+        "branchReadAll": "Read Branch (All)",
+        "branchSwitchAll": "Switch Branch (All)",
+        "branchManagementAssigned": "Branch Management (Assigned)",
+        "branchManageAssigned": "Manage Branch (Assigned)",
+        "branchReadAssigned": "Read Branch (Assigned)",
+        "branchSwitchAssigned": "Switch Branch (Assigned)",
+        "runtimeManagementAll": "Runtime Management (All)",
+        "loopReadAll": "Read Loop (All)",
+        "loopManageAll": "Manage Loop (All)",
+        "jobReadAll": "Read Round (All)",
+        "jobManageAll": "Manage Round (All)",
+        "modelReadAll": "Read Model (All)",
+        "modelManageAll": "Manage Model (All)",
+        "runtimeManagementAssigned": "Runtime Management (Assigned)",
+        "loopReadAssigned": "Read Loop (Assigned)",
+        "loopManageAssigned": "Manage Loop (Assigned)",
+        "jobReadAssigned": "Read Round (Assigned)",
+        "jobManageAssigned": "Manage Round (Assigned)",
+        "modelReadAssigned": "Read Model (Assigned)",
+        "modelManageAssigned": "Manage Model (Assigned)"
       }
+    }
+  },
+  "systemSettings": {
+    "nav": "System Settings",
+    "title": "System Settings",
+    "subtitle": "Manage global feature switches, default parameters, and maintenance policies.",
+    "readOnlyHint": "This account has read-only access and cannot save changes.",
+    "noChanges": "No changes detected",
+    "loadFailed": "Failed to load system settings",
+    "saveSuccess": "System settings saved",
+    "saveFailed": "Failed to save system settings",
+    "integerArrayPlaceholder": "Input integers, then press Enter or comma",
+    "groups": {
+      "general": "General",
+      "auth": "Authentication",
+      "dataset": "Dataset",
+      "simulation": "Simulation",
+      "maintenance": "Maintenance"
     }
   },
   "about": {
     "hero": {
-      "subtitle": "Visual Active Learning Platform",
-      "description1": "Saki is a closed-loop intelligent annotation platform integrating dataset management, sample annotation (with version control), model training, and visual active learning.",
-      "description2": "With a human-in-the-loop workflow, high-value samples are prioritized for annotation and training to reduce cost and improve iteration efficiency.",
+      "title": "Saki AL",
+      "subtitle": "A visual active learning platform designed for real annotation teams",
+      "description": "Saki focuses on practical collaboration: low learning cost, clear feedback, and sustainable iteration. Teams can prepare data, annotate, train, and review outcomes in one consistent workspace.",
       "tags": {
         "humanLoop": "Human-in-the-loop",
         "gitLike": "Git-like Versioning",
         "activeLoop": "Active Learning Loop"
+      },
+      "metrics": {
+        "clarity": {
+          "label": "Experience Goal",
+          "value": "Clear and Understandable",
+          "hint": "Critical actions are predictable with immediate feedback"
+        },
+        "trust": {
+          "label": "Design Principle",
+          "value": "Traceable Decisions",
+          "hint": "Version and process history remain visible for team confidence"
+        },
+        "efficiency": {
+          "label": "Efficiency Direction",
+          "value": "Less Repetitive Work",
+          "hint": "Common actions are foregrounded to reduce context switching"
+        },
+        "continuity": {
+          "label": "Long-term Value",
+          "value": "Continuous Improvement",
+          "hint": "From one-off tooling to an evolving workflow platform"
+        }
       }
     },
     "sections": {
-      "dataAssets": {
-        "title": "Data & Assets",
-        "body": "Dataset management and content addressing ensure data traceability, reuse, and deduplication.",
-        "tags": {
-          "assetSha": "Asset SHA256",
-          "datasetSample": "Dataset/Sample",
-          "minio": "MinIO"
+      "architecture": {
+        "title": "System Architecture and Responsibilities",
+        "modules": {
+          "api": {
+            "name": "saki-api",
+            "role": "Northbound HTTP APIs and domain source of truth (project, branch, commit, task, event).",
+            "status": "Project, annotation, and runtime APIs are iterating steadily"
+          },
+          "dispatcher": {
+            "name": "saki-dispatcher",
+            "role": "Owns Loop/Round/Step orchestration and dispatches from the unified task queue.",
+            "status": "Single-entry task dispatch and state transitions are in place"
+          },
+          "executor": {
+            "name": "saki-executor",
+            "role": "Executes train/predict workloads and reports events, metrics, candidates, and artifacts.",
+            "status": "Execution and reporting pipeline is stable in daily use"
+          },
+          "web": {
+            "name": "saki-web",
+            "role": "Unified views for data, annotation, Prediction Task, and Runtime operations.",
+            "status": "Dataset, annotation, and runtime pages continue to be refined"
+          }
         }
       },
-      "annotationVersioning": {
-        "title": "Annotation Versioning",
-        "body": "Annotation records are immutable. Commit snapshots and branch pointers make version history traceable like Git.",
-        "tags": {
-          "annotation": "Annotation",
-          "commitMap": "Commit/CAMap",
-          "branch": "Branch"
+      "mainDesign": {
+        "title": "Core Design Blocks",
+        "intro": "This About page focuses on three core design dimensions: data governance, version control, and training loop.",
+        "items": {
+          "dataAssets": {
+            "title": "Data and Assets",
+            "body": "Dataset management and content addressing ensure data traceability, reuse, and deduplication.",
+            "tags": {
+              "assetSha": "Asset SHA256",
+              "datasetSample": "Dataset/Sample",
+              "minio": "MinIO"
+            }
+          },
+          "annotationVersioning": {
+            "title": "Annotation Versioning",
+            "body": "Annotation records are immutable. Commit snapshots and branch pointers make version history traceable like Git.",
+            "tags": {
+              "annotation": "Annotation",
+              "commitMap": "Commit/CAMap",
+              "branch": "Branch"
+            }
+          },
+          "training": {
+            "title": "Training and Active Learning",
+            "body": "Runtime executes train/predict workloads and continuously surfaces high-value samples in a closed loop.",
+            "tags": {
+              "alLoop": "Loop",
+              "jobMetric": "Round/Metric",
+              "model": "Model"
+            }
+          }
         }
       },
-      "training": {
-        "title": "Training & Active Learning",
-        "body": "Runtime runs training/inference as stateless executors, continuously closing the loop to surface high-value samples.",
-        "tags": {
-          "alLoop": "ALLoop",
-          "jobMetric": "Job/Metric",
-          "model": "Model"
-        }
-      },
-      "coreWorkflow": {
-        "title": "Core Workflow",
+      "workflow": {
+        "title": "User Experience Flow",
+        "intro": "From data to model, the product is built around visible progress, controllable decisions, and reusable outcomes.",
         "steps": {
-          "dataImport": "Data import",
-          "sampleAnnotation": "Sample annotation",
-          "versionSnapshot": "Version snapshot",
-          "modelTraining": "Model training",
-          "activeSampling": "Active learning sampling",
-          "iteration": "Iteration & optimization"
+          "prepare": {
+            "title": "1. Data Preparation",
+            "desc": "Import samples and establish a manageable data context."
+          },
+          "annotate": {
+            "title": "2. Annotation Collaboration",
+            "desc": "Annotate, review, and consolidate versions in one workspace."
+          },
+          "train": {
+            "title": "3. Training and Sampling",
+            "desc": "Run training from the current version and get high-value sample suggestions."
+          },
+          "review": {
+            "title": "4. Outcome Review",
+            "desc": "Inspect logs, metrics, and artifacts to evaluate this iteration."
+          },
+          "iterate": {
+            "title": "5. Iterative Optimization",
+            "desc": "Confirm useful changes and move to the next loop."
+          }
         }
       },
       "techStack": {
@@ -823,20 +1691,89 @@
         },
         "backend": {
           "label": "Backend",
-          "stack": "FastAPI · SQLModel · PostgreSQL · MinIO"
+          "stack": "FastAPI · SQLModel · PostgreSQL · MinIO · Redis"
         },
         "runtime": {
           "label": "Runtime",
-          "stack": "FastAPI · WebSocket · Subprocess · HTTPX"
+          "stack": "Go Dispatcher · Python Executor · gRPC Bidirectional Streams · Plugin SDK"
         }
       },
       "devStatus": {
-        "title": "Development Status",
+        "title": "Development Status Board",
+        "items": {
+          "dataAnnotation": "Data and annotation core workflow",
+          "runtimeExperience": "Runtime UX and visualization",
+          "opsObservability": "Operations and observability improvements"
+        },
         "status": {
           "completed": "Completed",
           "inProgress": "In progress",
           "planned": "Planned"
-        }
+        },
+        "note": "This board is updated continuously with each release."
+      },
+      "status": {
+        "done": "Shipped",
+        "active": "In progress",
+        "planned": "Planned"
+      }
+    }
+  },
+  "runtime": {
+    "executors": {
+      "title": "Executor Runtime Stats",
+      "lastUpdated": "Last updated",
+      "realtimeSnapshotHint": " (using realtime snapshot)",
+      "messages": {
+        "loadDetailFailed": "Failed to load executor details",
+        "loadStatusFailed": "Failed to load executor status"
+      },
+      "range": {
+        "30m": "Last 30 min",
+        "1h": "Last 1 hour",
+        "6h": "Last 6 hours",
+        "24h": "Last 24 hours",
+        "7d": "Last 7 days"
+      },
+      "summary": {
+        "total": "Total Executors",
+        "online": "Online",
+        "busy": "Busy",
+        "available": "Available"
+      },
+      "availabilityTitle": "Availability",
+      "currentAvailability": "Current availability {{value}}",
+      "trendPercentTitle": "Status Percentage Trend (100%)",
+      "trendCountTitle": "Status Count Trend",
+      "emptyTrend": "No trend data",
+      "listTitle": "Executor List",
+      "listTotal": "Total {{count}}",
+      "emptyList": "No executors registered",
+      "table": {
+        "status": "Status",
+        "online": "Online",
+        "currentStep": "Current Step",
+        "pending": "Pending Assign/Stop",
+        "lastHeartbeat": "Last Heartbeat"
+      },
+      "detailTitle": "Executor Details",
+      "selectExecutor": "Please select an executor to view details",
+      "detail": {
+        "version": "Version",
+        "status": "Status",
+        "pending": "Pending Assign / Stop",
+        "cpuHostInfo": "Host base info"
+      },
+      "hardware": "Capability",
+      "noHardware": "No hardware capability reported",
+      "pluginCapability": "Plugin Capability ({{count}})",
+      "noPluginCapability": "No plugin capability reported",
+      "noStrategy": "No strategy declared",
+      "noAccelerator": "No accelerator backend declared",
+      "status": {
+        "busy": "Busy",
+        "idle": "Idle",
+        "offline": "Offline"
       }
     }
   },

@@ -1,0 +1,46 @@
+"""Step model for runtime execution units."""
+
+import uuid
+from datetime import datetime
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
+
+import sqlalchemy as sa
+from sqlalchemy import Column, UniqueConstraint
+from sqlmodel import Field, Relationship, SQLModel
+
+from saki_api.modules.shared.modeling.base import OPT_JSON, TimestampMixin, UUIDMixin
+from saki_api.modules.shared.modeling.enums import StepDispatchKind, StepStatus, StepType
+
+if TYPE_CHECKING:
+    from saki_api.modules.runtime.domain.round import Round
+
+
+class Step(UUIDMixin, TimestampMixin, SQLModel, table=True):
+    __tablename__ = "step"
+    __table_args__ = (UniqueConstraint("round_id", "step_index", name="uq_step_order"),)
+
+    round_id: uuid.UUID = Field(foreign_key="round.id", index=True)
+    step_type: StepType = Field(index=True)
+    dispatch_kind: StepDispatchKind = Field(default=StepDispatchKind.DISPATCHABLE, index=True)
+    state: StepStatus = Field(default=StepStatus.PENDING, index=True)
+
+    round_index: int = Field(default=1, index=True)
+    step_index: int = Field(default=1, index=True)
+
+    depends_on_step_ids: List[str] = Field(default_factory=list, sa_column=Column(OPT_JSON))
+    resolved_params: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
+    metrics: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
+    artifacts: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
+
+    input_commit_id: Optional[uuid.UUID] = Field(default=None, foreign_key="commit.id", index=True)
+    task_id: uuid.UUID = Field(foreign_key="task.id", index=True, unique=True)
+
+    assigned_executor_id: Optional[str] = Field(default=None, index=True)
+    state_version: int = Field(default=0, ge=0)
+    attempt: int = Field(default=1, ge=1)
+    max_attempts: int = Field(default=2, ge=1)
+    started_at: Optional[datetime] = Field(default=None, sa_type=sa.DateTime(timezone=True))
+    ended_at: Optional[datetime] = Field(default=None, sa_type=sa.DateTime(timezone=True))
+    last_error: Optional[str] = Field(default=None, max_length=4000)
+
+    round: "Round" = Relationship(back_populates="steps")

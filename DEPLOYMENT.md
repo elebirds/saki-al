@@ -162,18 +162,29 @@ nano .env
   BACKEND_CORS_ORIGINS=["https://yourdomain.com"]
   ```
 - `VITE_API_BASE_URL`: 如果使用 nginx 代理，设置为 `/api/v1`
+- `ENABLE_MINIO`:  
+  - `true`：启用内置 MinIO（需要使用 `--profile minio` 启动）  
+  - `false`：不启用内置 MinIO，直接连接外部 OSS/S3 兼容对象存储
+- `MINIO_ENDPOINT`: 当 `ENABLE_MINIO=false` 时，改成外部对象存储 endpoint（不带 `http://` / `https://`）
 
 ### 3. 构建和启动服务
 
 ```bash
-# 构建并启动所有服务
+# 方案 A：启用内置 MinIO（默认推荐本地部署）
+docker compose --profile minio up -d --build
+
+# 方案 B：不启用内置 MinIO（使用外部 OSS/S3）
 docker compose up -d --build
 
 # 查看服务状态
-docker compose ps
+docker compose --profile minio ps   # 方案 A
+# 或
+docker compose ps                    # 方案 B
 
 # 查看日志
-docker compose logs -f
+docker compose --profile minio logs -f   # 方案 A
+# 或
+docker compose logs -f                   # 方案 B
 ```
 
 ### 4. 访问应用
@@ -292,7 +303,7 @@ docker compose logs -f saki-web
 
 | 变量名 | 说明 | 默认值 | 必需 |
 |--------|------|--------|------|
-| `DATABASE_URL` | 数据库连接字符串 | `sqlite:///./saki.db` | 否 |
+| `DATABASE_URL` | 数据库连接字符串（仅 PostgreSQL） | `postgresql://postgres:postgres@postgres:5432/saki` | **是** |
 | `SECRET_KEY` | JWT 密钥 | `YOUR_SUPER_SECRET_KEY...` | **是** |
 | `BACKEND_CORS_ORIGINS` | CORS 允许的源 | `["http://localhost:3000"]` | **是** |
 | `UPLOAD_DIR` | 上传文件目录 | `./data/uploads` | 否 |
@@ -308,9 +319,9 @@ docker compose logs -f saki-web
 
 ## 生产环境优化
 
-### 1. 使用 PostgreSQL 数据库
+### 1. PostgreSQL 数据库配置（必选）
 
-SQLite 适合开发环境，生产环境建议使用 PostgreSQL：
+当前版本仅支持 PostgreSQL，建议在部署前明确数据库账号与连接串：
 
 ```yaml
 # 在 docker-compose.yml 中添加 PostgreSQL 服务
@@ -330,7 +341,7 @@ volumes:
   postgres_data:
 ```
 
-然后修改 `.env`:
+然后在 `.env` 中设置：
 
 ```bash
 DATABASE_URL=postgresql://saki_user:${POSTGRES_PASSWORD}@postgres:5432/saki_db
@@ -374,13 +385,9 @@ sudo certbot --nginx -d yourdomain.com -d www.yourdomain.com
 
 ### 3. 数据备份
 
-#### 备份数据库
+#### 备份数据库（PostgreSQL）
 
 ```bash
-# SQLite
-docker compose exec saki-api cp /app/saki.db /app/data/backup_$(date +%Y%m%d).db
-
-# PostgreSQL
 docker compose exec postgres pg_dump -U saki_user saki_db > backup_$(date +%Y%m%d).sql
 ```
 
@@ -641,4 +648,3 @@ docker compose down -v
 ---
 
 **祝部署顺利！** 🚀
-

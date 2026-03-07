@@ -11,12 +11,20 @@ import {
     AnnotationDraftItem,
     AnnotationSyncActionItem,
     AnnotationType,
+    DEFAULT_DETECTION_ANNOTATION_TYPES,
+    DetectionAnnotationType,
     DualViewAnnotation,
     MappedRegion,
 } from '../../types';
 import {UseAnnotationStateReturn} from './useAnnotationState';
 import {annotationToDual, isGeneratedAnnotation,} from '../../utils/fedoAnnotations';
-import {VIEW_L_OMEGAD, VIEW_TIME_ENERGY} from '../../components/annotation/DualCanvasArea';
+import {VIEW_TIME_ENERGY} from '../../components/annotation/DualCanvasArea';
+import {
+    attrsFromAnnotationLike,
+    canvasDataToGeometry,
+    geometryToCanvasData,
+    resolveAnnotationView,
+} from '../../utils/annotationGeometry';
 import {generateUUID} from '../../utils/uuid';
 
 export interface UseFedoAnnotationsOptions {
@@ -32,6 +40,8 @@ export interface UseFedoAnnotationsOptions {
     t?: (key: string) => string;
     /** 权限：是否有编辑权限 */
     hasAnyEditPermission?: boolean;
+    /** 项目启用的标注类型 */
+    enabledAnnotationTypes?: DetectionAnnotationType[];
     /** 权限：是否可编辑指定标注 */
     canEditAnnotation?: (annotation: Annotation) => boolean;
     /** 可选：同步回调，返回最新完整标注列表 */
@@ -58,7 +68,7 @@ export interface UseFedoAnnotationsReturn {
     handleAnnotationSelect: (id: string | null) => void;
     /** 创建标注 */
     handleAnnotationCreate: (event: {
-        type: 'rect' | 'obb';
+        type: DetectionAnnotationType;
         bbox: { x: number; y: number; width: number; height: number; rotation?: number };
         view: string;
     }) => Promise<void>;
@@ -86,6 +96,7 @@ export function useFedoAnnotations(
         annotationState,
         t,
         hasAnyEditPermission: hasAnyEditPermissionProp = true,
+        enabledAnnotationTypes = DEFAULT_DETECTION_ANNOTATION_TYPES,
         canEditAnnotation: canEditAnnotationProp,
         onSyncActions,
     } = options;
@@ -131,11 +142,13 @@ export function useFedoAnnotations(
                 labelName: dual.labelName,
                 labelColor: dual.labelColor,
                 type: dual.primary.type as AnnotationType,
-                source: 'manual',
-                data: dual.primary.bbox,
+                source: dual.source || 'manual',
+                confidence: dual.confidence,
                 annotatorId: dual.annotatorId,
-                extra: {
+                geometry: canvasDataToGeometry(dual.primary.type as AnnotationType, dual.primary.bbox as Record<string, any>),
+                attrs: {
                     view: annotationViews.get(dual.id) || VIEW_TIME_ENERGY,
+                    mapped_count: dual.secondary?.regions?.length ?? 0,
                 },
             });
         });
@@ -192,8 +205,8 @@ export function useFedoAnnotations(
             viewRole: annotation.viewRole || 'main',
             type: annotation.type,
             source: annotation.source || 'manual',
-            data: annotation.data,
-            extra: annotation.extra || {},
+            geometry: annotation.geometry,
+            attrs: attrsFromAnnotationLike(annotation),
             confidence: annotation.confidence ?? 1,
             annotatorId: annotation.annotatorId ?? currentUserId ?? null,
         };
@@ -223,11 +236,15 @@ export function useFedoAnnotations(
 
         const dualAnns: DualViewAnnotation[] = mainAnnotations.map((ann) => {
             const groupId = getGroupId(ann);
+            const mainView = resolveAnnotationView(ann) || VIEW_TIME_ENERGY;
             const relatedGenerated = groupId ? generatedByGroup.get(groupId) || [] : [];
             const regions: MappedRegion[] = relatedGenerated
-                .filter(gen => gen.extra?.view === VIEW_L_OMEGAD)
+                .filter((gen) => {
+                    const genView = resolveAnnotationView(gen);
+                    return !!genView && genView !== mainView;
+                })
                 .map((gen, index) => {
-                    const data = gen.data || {};
+                    const data = geometryToCanvasData(gen.type, gen.geometry);
                     const bbox = {
                         x: data.x || 0,
                         y: data.y || 0,
@@ -255,7 +272,7 @@ export function useFedoAnnotations(
 
         const views = new Map<string, string>();
         mainAnnotations.forEach((ann) => {
-            const view = ann.extra?.view || VIEW_TIME_ENERGY;
+            const view = resolveAnnotationView(ann) || VIEW_TIME_ENERGY;
             views.set(ann.id, view);
         });
         setAnnotationViews(views);
@@ -279,10 +296,14 @@ export function useFedoAnnotations(
 
     // 创建标注
     const handleAnnotationCreate = useCallback(async (event: {
-        type: 'rect' | 'obb';
+        type: DetectionAnnotationType;
         bbox: { x: number; y: number; width: number; height: number; rotation?: number };
         view: string;
     }) => {
+        if (!enabledAnnotationTypes.includes(event.type)) {
+            if (t) message.warning(t('annotation.workspace.noEditPermission'));
+            return;
+        }
         if (!hasAnyEditPermission) {
             if (t) message.warning(t('annotation.workspace.noEditPermission'));
             return;
@@ -308,6 +329,8 @@ export function useFedoAnnotations(
             labelName: annotationState.selectedLabel.name || 'unknown',
             labelColor: annotationState.selectedLabel.color || '#ff0000',
             annotatorId: currentUserId,
+            source: 'manual',
+            confidence: 1,
             primary: {
                 type: event.type,
                 bbox: event.bbox,
@@ -335,14 +358,9 @@ export function useFedoAnnotations(
             viewRole: 'main',
             type: event.type,
             source: 'manual',
-            data: {
-                x: event.bbox.x,
-                y: event.bbox.y,
-                width: event.bbox.width,
-                height: event.bbox.height,
-                rotation: event.bbox.rotation,
-            },
-            extra: {view},
+            confidence: 1,
+            geometry: canvasDataToGeometry(event.type, event.bbox as Record<string, any>),
+            attrs: {view},
             annotatorId: currentUserId,
         };
 
@@ -351,40 +369,43 @@ export function useFedoAnnotations(
             groupId: newId,
             data: buildDraftItem(baseAnnotation),
         }]);
-    }, [hasAnyEditPermission, annotationState, currentSampleId, currentUserId, t, buildDraftItem, triggerSync]);
+    }, [enabledAnnotationTypes.join(','), hasAnyEditPermission, annotationState, currentSampleId, currentUserId, t, buildDraftItem, triggerSync]);
 
     // 更新标注
     const handleUpdateAnnotation = useCallback(async (updatedAnn: Annotation) => {
         if (!currentSampleId) return;
 
         if (!canEditAnnotation(updatedAnn)) {
-            if (t) message.warning(t('annotation.workspace.cannotEditOthersAnnotation'));
+            if (t) message.warning(t('annotation.workspace.noEditPermission'));
             return;
         }
 
         const dual = annotationState.annotations.find(d => d.id === updatedAnn.id);
         if (dual) {
+            const updatedData = geometryToCanvasData(updatedAnn.type, updatedAnn.geometry);
             const updatedDual: DualViewAnnotation = {
                 ...dual,
+                source: updatedAnn.source || dual.source || 'manual',
+                confidence: updatedAnn.confidence ?? dual.confidence,
                 primary: {
-                    type: updatedAnn.type as 'rect' | 'obb',
+                    type: updatedAnn.type as DetectionAnnotationType,
                     bbox: {
-                        x: updatedAnn.data.x,
-                        y: updatedAnn.data.y,
-                        width: updatedAnn.data.width,
-                        height: updatedAnn.data.height,
-                        rotation: updatedAnn.data.rotation,
+                        x: updatedData.x,
+                        y: updatedData.y,
+                        width: updatedData.width,
+                        height: updatedData.height,
+                        rotation: updatedData.rotation,
                     },
                 },
             };
             annotationState.handleAnnotationUpdate(updatedDual);
         }
-        const view = updatedAnn.extra?.view || annotationViews.get(updatedAnn.id) || VIEW_TIME_ENERGY;
+        const view = resolveAnnotationView(updatedAnn) || annotationViews.get(updatedAnn.id) || VIEW_TIME_ENERGY;
         const updatedWithView: Annotation = {
             ...updatedAnn,
             groupId: updatedAnn.groupId || updatedAnn.id,
             lineageId: updatedAnn.lineageId || updatedAnn.id,
-            extra: {...updatedAnn.extra, view},
+            attrs: {...attrsFromAnnotationLike(updatedAnn), view},
         };
         await triggerSync([{
             type: 'update',
@@ -399,7 +420,7 @@ export function useFedoAnnotations(
 
         const annotation = canvasAnnotations.find(a => a.id === id);
         if (annotation && !canEditAnnotation(annotation)) {
-            if (t) message.warning(t('annotation.workspace.cannotDeleteOthersAnnotation'));
+            if (t) message.warning(t('annotation.workspace.noEditPermission'));
             return;
         }
 

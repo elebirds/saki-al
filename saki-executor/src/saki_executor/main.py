@@ -9,7 +9,8 @@ from saki_executor.cache.asset_cache import AssetCache
 from saki_executor.commands.server import CommandServer
 from saki_executor.core.config import settings
 from saki_executor.core.logging import setup_logging
-from saki_executor.jobs.manager import JobManager
+from saki_executor.runtime.capability.host_capability_cache import HostCapabilityCache
+from saki_executor.steps.manager import TaskManager
 from saki_executor.plugins.registry import PluginRegistry
 
 
@@ -24,15 +25,24 @@ async def run() -> None:
     )
 
     registry = PluginRegistry()
-    registry.load_builtin()
+    registry.discover_plugins(settings.PLUGINS_DIR)
+
+    host_capability_cache = HostCapabilityCache(
+        cpu_workers=settings.CPU_WORKERS,
+        memory_mb=settings.MEMORY_MB,
+    )
+    host_snapshot = host_capability_cache.refresh()
 
     cache = AssetCache(root_dir=settings.CACHE_DIR, max_bytes=settings.CACHE_MAX_BYTES)
-    manager = JobManager(
+    manager = TaskManager(
         runs_dir=settings.RUNS_DIR,
         cache=cache,
         plugin_registry=registry,
+        round_shared_cache_enabled=settings.ROUND_SHARED_CACHE_ENABLED,
+        strict_train_model_handoff=settings.STRICT_TRAIN_MODEL_HANDOFF,
+        host_capability_cache=host_capability_cache,
     )
-    client = AgentClient(plugin_registry=registry, job_manager=manager)
+    client = AgentClient(plugin_registry=registry, task_manager=manager)
     manager.set_transport(client.send_message, client.request_message)
 
     shutdown_event = asyncio.Event()
@@ -43,18 +53,25 @@ async def run() -> None:
             loop.add_signal_handler(sig, shutdown_event.set)
 
     command_server = CommandServer(
-        job_manager=manager,
+        task_manager=manager,
         plugin_registry=registry,
         client=client,
         shutdown_event=shutdown_event,
     )
 
+    host_backends = ["cpu"]
+    if host_snapshot.gpus:
+        host_backends.insert(0, "cuda")
+    if host_snapshot.metal_available:
+        host_backends.insert(1 if "cuda" in host_backends else 0, "mps")
+
     logger.info(
-        "saki-executor 启动完成 executor_id={} version={} grpc_target={} plugins={}",
+        "saki-executor 启动完成 executor_id={} version={} grpc_target={} plugins={} host_backends={}",
         settings.EXECUTOR_ID,
         settings.EXECUTOR_VERSION,
         settings.API_GRPC_TARGET,
         [plugin.plugin_id for plugin in registry.all()],
+        host_backends,
     )
 
     client_task = asyncio.create_task(client.run(shutdown_event=shutdown_event), name="grpc-client")
@@ -72,7 +89,7 @@ async def run() -> None:
     command_task.add_done_callback(_on_task_done)
 
     await shutdown_event.wait()
-    logger.info("收到关闭信号，准备停止 executor。")
+    logger.info("收到关闭信号，准备停止执行器。")
 
     for task in (client_task, command_task):
         if not task.done():
@@ -81,7 +98,7 @@ async def run() -> None:
         with suppress(asyncio.CancelledError):
             await task
 
-    logger.info("executor 已退出。")
+    logger.info("执行器已退出。")
 
 
 def main() -> None:

@@ -62,7 +62,7 @@ const SampleAssetModal: React.FC<SampleAssetModalProps> = ({open, sample, onClos
 
     const handleDownloadAsset = async (assetId: string, displayName: string) => {
         try {
-            const data = await api.getAssetDownloadUrl(assetId);
+            const data = await api.getAssetDownloadUrl(assetId, 1, sample?.datasetId);
             const downloadUrl = data.downloadUrl as string | undefined;
             const filename = (data.filename as string | undefined) ?? `${sample?.name}_${displayName}`;
 

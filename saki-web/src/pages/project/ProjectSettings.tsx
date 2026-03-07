@@ -19,6 +19,8 @@ import {
 } from 'antd'
 import type {ColumnsType} from 'antd/es/table'
 import {
+    ArrowDownOutlined,
+    ArrowUpOutlined,
     DeleteOutlined,
     EditOutlined,
     LockOutlined,
@@ -31,7 +33,19 @@ import {useAuthStore} from '../../store/authStore'
 import {useParams, useSearchParams} from 'react-router-dom'
 import {api} from '../../services/api'
 import {useResourcePermission} from '../../hooks'
-import type {Project, ProjectLabel, ProjectLabelCreate, ProjectLabelUpdate, ResourceMember, Role} from '../../types'
+import {
+    ANNOTATION_TYPE_OBB,
+    ANNOTATION_TYPE_RECT,
+} from '../../types'
+import type {
+    Dataset,
+    Project,
+    ProjectLabel,
+    ProjectLabelCreate,
+    ProjectLabelUpdate,
+    ResourceMember,
+    RoleInfo
+} from '../../types'
 
 const {Title, Text} = Typography
 
@@ -50,6 +64,7 @@ const ProjectSettings: React.FC = () => {
 
     const sectionItems = [
         {key: 'basic', label: t('project.settings.sections.basic')},
+        {key: 'datasets', label: t('project.settings.sections.datasets')},
         {key: 'labels', label: t('project.settings.sections.labels')},
         {key: 'members', label: t('project.settings.sections.members')},
     ]
@@ -59,14 +74,20 @@ const ProjectSettings: React.FC = () => {
         {value: 'detection', label: t('project.settings.taskType.detection')},
         {value: 'segmentation', label: t('project.settings.taskType.segmentation')},
     ]
-
-    const statusOptions = [
-        {value: 'active', label: t('project.settings.status.active')},
-        {value: 'archived', label: t('project.settings.status.archived')},
+    const datasetTypeOptions = [
+        {value: 'classic', label: t('project.form.datasetTypeOptions.classic')},
+        {value: 'fedo', label: t('project.form.datasetTypeOptions.fedo')},
     ]
+
+    const resolveAnnotationTypeLabel = (type: string) => {
+        if (type === ANNOTATION_TYPE_RECT) return t('project.form.annotationTypeOptions.rect')
+        if (type === ANNOTATION_TYPE_OBB) return t('project.form.annotationTypeOptions.obb')
+        return type
+    }
 
     const {can} = useResourcePermission('project', projectId)
     const canUpdateProject = can('project:update')
+    const canArchiveProject = can('project:archive')
     const canManageLabels = can('label:manage')
     const canReadLabels = can('label:read') || canManageLabels
     const canManageMembers = can('project:assign')
@@ -74,10 +95,12 @@ const ProjectSettings: React.FC = () => {
     const [project, setProject] = useState<Project | null>(null)
     const [projectLoading, setProjectLoading] = useState(true)
     const [projectSaving, setProjectSaving] = useState(false)
+    const [projectArchiving, setProjectArchiving] = useState(false)
     const [projectForm] = Form.useForm()
 
     const [labels, setLabels] = useState<ProjectLabel[]>([])
     const [labelsLoading, setLabelsLoading] = useState(false)
+    const [labelReorderingId, setLabelReorderingId] = useState<string | null>(null)
     const [labelModalOpen, setLabelModalOpen] = useState(false)
     const [labelSaving, setLabelSaving] = useState(false)
     const [editingLabel, setEditingLabel] = useState<ProjectLabel | null>(null)
@@ -85,8 +108,9 @@ const ProjectSettings: React.FC = () => {
 
     const [members, setMembers] = useState<ResourceMember[]>([])
     const [membersLoading, setMembersLoading] = useState(false)
-    const [roles, setRoles] = useState<Role[]>([])
+    const [roles, setRoles] = useState<RoleInfo[]>([])
     const [users, setUsers] = useState<Array<{ id: string; email: string; fullName?: string }>>([])
+    const [userQuery, setUserQuery] = useState('')
     const [memberModalOpen, setMemberModalOpen] = useState(false)
     const [memberSaving, setMemberSaving] = useState(false)
     const [memberForm] = Form.useForm()
@@ -95,6 +119,15 @@ const ProjectSettings: React.FC = () => {
     const [editingMember, setEditingMember] = useState<ResourceMember | null>(null)
     const [memberEditForm] = Form.useForm()
     const currentUser = useAuthStore((state) => state.user)
+
+    const [linkedDatasetIds, setLinkedDatasetIds] = useState<string[]>([])
+    const [linkedDatasets, setLinkedDatasets] = useState<Dataset[]>([])
+    const [datasetCandidates, setDatasetCandidates] = useState<Dataset[]>([])
+    const [datasetQuery, setDatasetQuery] = useState('')
+    const [datasetsLoading, setDatasetsLoading] = useState(false)
+    const [datasetModalOpen, setDatasetModalOpen] = useState(false)
+    const [datasetSaving, setDatasetSaving] = useState(false)
+    const [datasetForm] = Form.useForm()
 
     useEffect(() => {
         const validKeys = new Set(sectionItems.map((item) => item.key))
@@ -112,7 +145,7 @@ const ProjectSettings: React.FC = () => {
             projectForm.setFieldsValue({
                 name: data.name,
                 description: data.description,
-                status: data.status,
+                datasetType: data.datasetType,
             })
         } catch (error: any) {
             message.error(error.message || t('project.settings.loadProjectError'))
@@ -148,20 +181,48 @@ const ProjectSettings: React.FC = () => {
     }, [projectId, t])
 
     const loadRoles = useCallback(async () => {
+        if (!projectId) return
         try {
-            const response = await api.getRoles('resource', 1, 100)
-            setRoles(response.items)
+            const data = await api.getAvailableProjectRoles(projectId)
+            setRoles(data)
         } catch (error: any) {
             message.error(error.message || t('project.settings.loadRolesError'))
         }
-    }, [t])
+    }, [projectId, t])
 
-    const loadUsers = useCallback(async () => {
+    const loadUsers = useCallback(async (query?: string) => {
+        if (!projectId) return
         try {
-            const response = await api.getUserList(1, 200)
+            const response = await api.getUserList(1, 50, query, 'project', projectId)
             setUsers(response.items)
         } catch (error: any) {
             message.error(error.message || t('project.settings.loadUsersError'))
+        }
+    }, [projectId, t])
+
+    const loadLinkedDatasets = useCallback(async () => {
+        if (!projectId) return
+        setDatasetsLoading(true)
+        try {
+            const [ids, details] = await Promise.all([
+                api.getProjectDatasets(projectId),
+                api.getProjectDatasetDetails(projectId),
+            ])
+            setLinkedDatasetIds(ids)
+            setLinkedDatasets(details)
+        } catch (error: any) {
+            message.error(error.message || t('project.settings.datasets.loadLinkedError'))
+        } finally {
+            setDatasetsLoading(false)
+        }
+    }, [projectId, t])
+
+    const loadDatasetCandidates = useCallback(async (query?: string) => {
+        try {
+            const response = await api.getDatasets(1, 50, query)
+            setDatasetCandidates(response.items || [])
+        } catch (error: any) {
+            message.error(error.message || t('project.settings.datasets.loadAllError'))
         }
     }, [t])
 
@@ -180,12 +241,42 @@ const ProjectSettings: React.FC = () => {
             if (canManageMembers) {
                 loadMembers()
                 loadRoles()
-                loadUsers()
             } else {
                 setMembers([])
             }
         }
-    }, [section, canManageMembers, loadMembers, loadRoles, loadUsers])
+    }, [section, canManageMembers, loadMembers, loadRoles])
+
+    useEffect(() => {
+        if (section === 'members' && canManageMembers) {
+            loadUsers(userQuery)
+        }
+    }, [section, canManageMembers, loadUsers, userQuery])
+
+    useEffect(() => {
+        if (section === 'datasets') {
+            loadLinkedDatasets()
+        }
+    }, [section, loadLinkedDatasets])
+
+    useEffect(() => {
+        if (section === 'datasets') {
+            loadDatasetCandidates(datasetQuery)
+        }
+    }, [section, loadDatasetCandidates, datasetQuery])
+
+    useEffect(() => {
+        if (!datasetModalOpen) return
+        if (!project?.datasetType) return
+        const ids = (datasetForm.getFieldValue('datasetIds') || []) as string[]
+        if (!ids.length) return
+        const datasetById = new Map(datasetCandidates.map((dataset) => [dataset.id, dataset]))
+        const filteredIds = ids.filter((id) => datasetById.get(id)?.type === project.datasetType)
+        if (filteredIds.length !== ids.length) {
+            datasetForm.setFieldsValue({datasetIds: filteredIds})
+            message.warning(t('project.form.datasetTypeMismatch'))
+        }
+    }, [datasetModalOpen, datasetCandidates, datasetForm, project?.datasetType, t])
 
     const handleSaveProject = async (values: any) => {
         if (!projectId) return
@@ -194,7 +285,6 @@ const ProjectSettings: React.FC = () => {
             const payload: Partial<Project> = {
                 name: values.name,
                 description: values.description,
-                status: values.status,
             }
             const updated = await api.updateProject(projectId, payload)
             setProject(updated)
@@ -203,6 +293,31 @@ const ProjectSettings: React.FC = () => {
             message.error(error.message || t('project.settings.updateError'))
         } finally {
             setProjectSaving(false)
+        }
+    }
+
+    const handleToggleArchive = async () => {
+        if (!projectId || !project) return
+        setProjectArchiving(true)
+        try {
+            const updated = project.status === 'archived'
+                ? await api.unarchiveProject(projectId)
+                : await api.archiveProject(projectId)
+            setProject(updated)
+            projectForm.setFieldsValue({
+                name: updated.name,
+                description: updated.description,
+                datasetType: updated.datasetType,
+            })
+            message.success(
+                updated.status === 'archived'
+                    ? t('project.settings.basic.archiveSuccess')
+                    : t('project.settings.basic.unarchiveSuccess')
+            )
+        } catch (error: any) {
+            message.error(error.message || t('project.settings.basic.archiveError'))
+        } finally {
+            setProjectArchiving(false)
         }
     }
 
@@ -236,7 +351,7 @@ const ProjectSettings: React.FC = () => {
                 shortcut: values.shortcut,
             }
             if (editingLabel) {
-                await api.updateProjectLabel(editingLabel.id, payload)
+                await api.updateProjectLabel(projectId, editingLabel.id, payload)
                 message.success(t('project.settings.labelUpdated'))
             } else {
                 await api.createProjectLabel(projectId, payload as ProjectLabelCreate)
@@ -254,12 +369,40 @@ const ProjectSettings: React.FC = () => {
     }
 
     const handleDeleteLabel = async (labelId: string) => {
+        if (!projectId) return
         try {
-            await api.deleteProjectLabel(labelId)
+            await api.deleteProjectLabel(projectId, labelId)
             message.success(t('project.settings.labelDeleted'))
             loadLabels()
         } catch (error: any) {
             message.error(error.message || t('project.settings.labelDeleteError'))
+        }
+    }
+
+    const handleMoveLabel = async (labelId: string, direction: 'up' | 'down') => {
+        if (!projectId || !canManageLabels) return
+        const index = labels.findIndex((item) => item.id === labelId)
+        if (index < 0) return
+        const targetIndex = direction === 'up' ? index - 1 : index + 1
+        if (targetIndex < 0 || targetIndex >= labels.length) return
+
+        const next = [...labels]
+        const [moved] = next.splice(index, 1)
+        next.splice(targetIndex, 0, moved)
+
+        setLabelReorderingId(labelId)
+        setLabels(next)
+        try {
+            const reordered = await api.reorderProjectLabels(
+                projectId,
+                next.map((item) => item.id),
+            )
+            setLabels(reordered || [])
+        } catch (error: any) {
+            message.error(error.message || t('project.settings.labels.reorderError'))
+            loadLabels()
+        } finally {
+            setLabelReorderingId(null)
         }
     }
 
@@ -305,8 +448,7 @@ const ProjectSettings: React.FC = () => {
         }
     }
 
-    const isOwnerMember = (member: ResourceMember) =>
-        member.roleName === 'dataset_owner' || member.roleDisplayName === '数据集所有者'
+    const isSupremoMember = (member: ResourceMember) => Boolean(member.roleIsSupremo)
 
     const isSelfMember = (member: ResourceMember) => member.userId === currentUser?.id
 
@@ -321,6 +463,46 @@ const ProjectSettings: React.FC = () => {
             message.error(error.message || t('project.settings.memberRemoveError'))
         } finally {
             setMemberActionId(null)
+        }
+    }
+
+    const handleLinkDatasets = async () => {
+        if (!projectId) return
+        try {
+            const values = await datasetForm.validateFields()
+            const datasetIds: string[] = values.datasetIds || []
+            setDatasetSaving(true)
+            await api.linkProjectDatasets(projectId, datasetIds)
+            message.success(t('project.settings.datasets.linkSuccess'))
+            setDatasetModalOpen(false)
+            datasetForm.resetFields()
+            setDatasetQuery('')
+            await Promise.all([
+                loadLinkedDatasets(),
+                loadDatasetCandidates(''),
+            ])
+        } catch (error: any) {
+            if (error?.errorFields) return
+            message.error(error.message || t('project.settings.datasets.linkError'))
+        } finally {
+            setDatasetSaving(false)
+        }
+    }
+
+    const handleUnlinkDataset = async (datasetId: string) => {
+        if (!projectId) return
+        setDatasetSaving(true)
+        try {
+            await api.unlinkProjectDatasets(projectId, [datasetId])
+            message.success(t('project.settings.datasets.unlinkSuccess'))
+            await Promise.all([
+                loadLinkedDatasets(),
+                loadDatasetCandidates(datasetQuery),
+            ])
+        } catch (error: any) {
+            message.error(error.message || t('project.settings.datasets.unlinkError'))
+        } finally {
+            setDatasetSaving(false)
         }
     }
 
@@ -351,8 +533,30 @@ const ProjectSettings: React.FC = () => {
         {
             title: t('project.settings.labels.columns.actions'),
             key: 'actions',
-            render: (_, record) => (
-                <div className="flex items-center gap-2">
+            render: (_, record) => {
+                const index = labels.findIndex((item) => item.id === record.id)
+                const disableMoveUp = !canManageLabels || index <= 0 || labelReorderingId !== null
+                const disableMoveDown = !canManageLabels || index < 0 || index >= labels.length - 1 || labelReorderingId !== null
+                return (
+                    <div className="flex items-center gap-2">
+                        <Tooltip title={t('project.settings.labels.moveUp')}>
+                            <Button
+                                size="small"
+                                icon={<ArrowUpOutlined/>}
+                                onClick={() => handleMoveLabel(record.id, 'up')}
+                                disabled={disableMoveUp}
+                                loading={labelReorderingId === record.id}
+                            />
+                        </Tooltip>
+                        <Tooltip title={t('project.settings.labels.moveDown')}>
+                            <Button
+                                size="small"
+                                icon={<ArrowDownOutlined/>}
+                                onClick={() => handleMoveLabel(record.id, 'down')}
+                                disabled={disableMoveDown}
+                                loading={labelReorderingId === record.id}
+                            />
+                        </Tooltip>
                     <Button size="small" onClick={() => openEditLabel(record)} disabled={!canManageLabels}>
                         {t('common.edit')}
                     </Button>
@@ -368,7 +572,8 @@ const ProjectSettings: React.FC = () => {
                         </Button>
                     </Popconfirm>
                 </div>
-            ),
+                )
+            },
         },
     ]
 
@@ -410,7 +615,7 @@ const ProjectSettings: React.FC = () => {
                         <Tag color={record.roleColor || 'default'} className="!m-0">
                             {roleLabel}
                         </Tag>
-                        {isOwnerMember(record) ? (
+                        {isSupremoMember(record) ? (
                             <Tooltip title={t('project.settings.members.ownerCannotRemove')}>
                                 <LockOutlined className="text-github-muted"/>
                             </Tooltip>
@@ -424,8 +629,8 @@ const ProjectSettings: React.FC = () => {
             key: 'actions',
             render: (_, record) => {
                 const displayName = record.userFullName || record.userEmail || t('common.user')
-                const disableRemove = !canManageMembers || isSelfMember(record) || isOwnerMember(record)
-                const disableEdit = !canManageMembers || isOwnerMember(record)
+                const disableRemove = !canManageMembers || isSelfMember(record) || isSupremoMember(record)
+                const disableEdit = !canManageMembers || isSupremoMember(record)
                 return (
                     <div className="flex items-center gap-2">
                         <Button
@@ -439,7 +644,7 @@ const ProjectSettings: React.FC = () => {
                             title={
                                 isSelfMember(record)
                                     ? t('project.settings.members.removeSelf', {name: displayName})
-                                    : isOwnerMember(record)
+                                    : isSupremoMember(record)
                                         ? t('project.settings.members.removeOwner', {name: displayName})
                                         : t('project.settings.members.removeConfirm', {name: displayName})
                             }
@@ -466,6 +671,16 @@ const ProjectSettings: React.FC = () => {
         const existingIds = new Set(members.map((member) => member.userId))
         return users.filter((user) => !existingIds.has(user.id))
     }, [members, users])
+    const projectDatasetTypeLabel = datasetTypeOptions.find((item) => item.value === project?.datasetType)?.label
+
+    const addableDatasets = useMemo(
+        () => datasetCandidates.filter((dataset) => {
+            if (linkedDatasetIds.includes(dataset.id)) return false
+            if (!project?.datasetType) return true
+            return dataset.type === project.datasetType
+        }),
+        [datasetCandidates, linkedDatasetIds, project?.datasetType]
+    )
 
     const renderBasicInfo = () => (
         <Card className="!border-github-border !bg-github-panel">
@@ -509,12 +724,44 @@ const ProjectSettings: React.FC = () => {
                                 disabled
                             />
                         </Form.Item>
+                        <Form.Item
+                            label={
+                                <div className="flex items-center gap-2">
+                                    <span>{t('project.settings.basic.datasetType')}</span>
+                                    <Tooltip title={t('project.settings.basic.datasetTypeHint')}>
+                                        <Button type="text" size="small" icon={<QuestionCircleOutlined/>}/>
+                                    </Tooltip>
+                                </div>
+                            }
+                        >
+                            <Input value={projectDatasetTypeLabel || project?.datasetType || '-'} disabled/>
+                        </Form.Item>
+                        <Form.Item
+                            className="md:col-span-2"
+                            label={
+                                <div className="flex items-center gap-2">
+                                    <span>{t('project.form.annotationTypes')}</span>
+                                    <Tooltip title={t('project.form.annotationTypesHelp')}>
+                                        <Button type="text" size="small" icon={<QuestionCircleOutlined/>}/>
+                                    </Tooltip>
+                                </div>
+                            }
+                        >
+                            <div className="flex min-h-[40px] flex-wrap items-center gap-2 rounded-md border border-github-border bg-github-base px-3 py-2">
+                                {(project?.enabledAnnotationTypes || []).length > 0 ? (
+                                    (project?.enabledAnnotationTypes || []).map((item) => (
+                                        <Tag key={item} className="!m-0">
+                                            {resolveAnnotationTypeLabel(item)}
+                                        </Tag>
+                                    ))
+                                ) : (
+                                    <Text type="secondary">{t('common.placeholder')}</Text>
+                                )}
+                            </div>
+                        </Form.Item>
                     </div>
                     <Form.Item name="description" label={t('project.settings.basic.description')}>
                         <Input.TextArea rows={4} placeholder={t('project.settings.basic.descriptionPlaceholder')}/>
-                    </Form.Item>
-                    <Form.Item name="status" label={t('project.settings.basic.status')}>
-                        <Select options={statusOptions}/>
                     </Form.Item>
                     <div className="flex justify-end">
                         <Button type="primary" htmlType="submit" loading={projectSaving} disabled={!canUpdateProject}>
@@ -522,6 +769,35 @@ const ProjectSettings: React.FC = () => {
                         </Button>
                     </div>
                 </Form>
+                <div className="mt-6 border-t border-github-border pt-4">
+                    <div className="mb-2 text-sm font-medium text-github-text">
+                        {t('project.settings.basic.archiveSectionTitle')}
+                    </div>
+                    <div className="text-xs text-github-muted mb-3">
+                        {t('project.settings.basic.archiveSectionHint')}
+                    </div>
+                    <Popconfirm
+                        title={project?.status === 'archived'
+                            ? t('project.settings.basic.unarchiveConfirm')
+                            : t('project.settings.basic.archiveConfirm')}
+                        okText={project?.status === 'archived'
+                            ? t('project.settings.basic.unarchiveAction')
+                            : t('project.settings.basic.archiveAction')}
+                        cancelText={t('common.cancel')}
+                        onConfirm={handleToggleArchive}
+                        disabled={!canArchiveProject}
+                    >
+                        <Button
+                            danger={project?.status !== 'archived'}
+                            disabled={!canArchiveProject}
+                            loading={projectArchiving}
+                        >
+                            {project?.status === 'archived'
+                                ? t('project.settings.basic.unarchiveAction')
+                                : t('project.settings.basic.archiveAction')}
+                        </Button>
+                    </Popconfirm>
+                </div>
             </Spin>
         </Card>
     )
@@ -591,7 +867,10 @@ const ProjectSettings: React.FC = () => {
                 <Button
                     type="primary"
                     icon={<PlusOutlined/>}
-                    onClick={() => setMemberModalOpen(true)}
+                    onClick={() => {
+                        setUserQuery('')
+                        setMemberModalOpen(true)
+                    }}
                     disabled={!canManageMembers}
                 >
                     {t('project.settings.members.add')}
@@ -616,7 +895,10 @@ const ProjectSettings: React.FC = () => {
             <Modal
                 title={t('project.settings.members.addTitle')}
                 open={memberModalOpen}
-                onCancel={() => setMemberModalOpen(false)}
+                onCancel={() => {
+                    setMemberModalOpen(false)
+                    setUserQuery('')
+                }}
                 onOk={handleAddMember}
                 confirmLoading={memberSaving}
                 okButtonProps={{disabled: !canManageMembers}}
@@ -629,8 +911,9 @@ const ProjectSettings: React.FC = () => {
                     >
                         <Select
                             showSearch
+                            filterOption={false}
+                            onSearch={(value) => setUserQuery(value)}
                             placeholder={t('project.settings.members.form.userPlaceholder')}
-                            optionFilterProp="label"
                             options={availableUsers.map((user) => ({
                                 value: user.id,
                                 label: `${user.fullName || user.email} (${user.email})`,
@@ -644,10 +927,12 @@ const ProjectSettings: React.FC = () => {
                     >
                         <Select
                             placeholder={t('project.settings.members.form.rolePlaceholder')}
-                            options={roles.map((role) => ({
-                                value: role.id,
-                                label: role.displayName || role.name,
-                            }))}
+                            options={roles
+                                .filter((role) => !role.isSupremo)
+                                .map((role) => ({
+                                    value: role.id,
+                                    label: role.displayName || role.name,
+                                }))}
                         />
                     </Form.Item>
                 </Form>
@@ -672,9 +957,141 @@ const ProjectSettings: React.FC = () => {
                     >
                         <Select
                             placeholder={t('project.settings.members.form.rolePlaceholder')}
-                            options={roles.map((role) => ({
-                                value: role.id,
-                                label: role.displayName || role.name,
+                            options={roles
+                                .filter((role) => !role.isSupremo)
+                                .map((role) => ({
+                                    value: role.id,
+                                    label: role.displayName || role.name,
+                                }))}
+                        />
+                    </Form.Item>
+                </Form>
+            </Modal>
+        </Card>
+    )
+
+    const renderDatasets = () => (
+        <Card className="!border-github-border !bg-github-panel">
+            <div className="mb-4 flex items-center justify-between">
+                <div>
+                    <Title level={4} className="!mb-0">{t('project.settings.datasets.title')}</Title>
+                    <Text type="secondary">{t('project.settings.datasets.subtitle')}</Text>
+                </div>
+                <Button
+                    type="primary"
+                    icon={<PlusOutlined/>}
+                    onClick={() => {
+                        setDatasetQuery('')
+                        setDatasetModalOpen(true)
+                    }}
+                    disabled={!canUpdateProject}
+                >
+                    {t('project.settings.datasets.add')}
+                </Button>
+            </div>
+
+            {!canUpdateProject ? (
+                <div className="rounded-md border border-dashed border-github-border p-4 text-sm text-github-muted">
+                    {t('project.settings.datasets.noPermission')}
+                </div>
+            ) : (
+                <Spin spinning={datasetsLoading}>
+                    <Table
+                        rowKey="id"
+                        dataSource={linkedDatasets}
+                        pagination={false}
+                        locale={{emptyText: t('project.settings.datasets.empty')}}
+                        columns={[
+                            {
+                                title: t('project.settings.datasets.columns.dataset'),
+                                dataIndex: 'name',
+                                key: 'name',
+                                render: (value: string, record: Dataset) => (
+                                    <div className="min-w-0">
+                                        <div className="truncate text-github-text">{value}</div>
+                                        {record.description ? (
+                                            <div className="truncate text-xs text-github-muted">{record.description}</div>
+                                        ) : null}
+                                    </div>
+                                ),
+                            },
+                            {
+                                title: t('project.settings.datasets.columns.type'),
+                                dataIndex: 'type',
+                                key: 'type',
+                                width: 140,
+                                render: (value: string) => (
+                                    <Tag className="!m-0">{value}</Tag>
+                                ),
+                            },
+                            {
+                                title: t('project.settings.datasets.columns.actions'),
+                                key: 'actions',
+                                width: 140,
+                                render: (_, record: Dataset) => (
+                                    <Popconfirm
+                                        title={t('project.settings.datasets.unlinkTitle', {name: record.name})}
+                                        description={t('project.settings.datasets.unlinkCascadeWarning')}
+                                        okText={t('project.settings.datasets.unlink')}
+                                        cancelText={t('common.cancel')}
+                                        onConfirm={() => handleUnlinkDataset(record.id)}
+                                    >
+                                        <Button
+                                            type="text"
+                                            danger
+                                            icon={<DeleteOutlined/>}
+                                            loading={datasetSaving}
+                                        />
+                                    </Popconfirm>
+                                ),
+                            },
+                        ]}
+                    />
+                </Spin>
+            )}
+
+            <Modal
+                title={t('project.settings.datasets.addTitle')}
+                open={datasetModalOpen}
+                onCancel={() => {
+                    setDatasetModalOpen(false)
+                    setDatasetQuery('')
+                }}
+                onOk={handleLinkDatasets}
+                confirmLoading={datasetSaving}
+                okButtonProps={{disabled: !canUpdateProject}}
+            >
+                <Form form={datasetForm} layout="vertical">
+                    <Form.Item
+                        name="datasetIds"
+                        label={t('project.settings.datasets.form.datasets')}
+                        rules={[
+                            {required: true, message: t('project.settings.datasets.form.datasetsRequired')},
+                            {
+                                validator: (_, value: string[] | undefined) => {
+                                    const ids = value || []
+                                    if (!project?.datasetType || ids.length === 0) return Promise.resolve()
+                                    const datasetById = new Map(datasetCandidates.map((dataset) => [dataset.id, dataset]))
+                                    const hasMismatch = ids.some((id) => {
+                                        const datasetType = datasetById.get(id)?.type
+                                        return datasetType && datasetType !== project.datasetType
+                                    })
+                                    return hasMismatch
+                                        ? Promise.reject(new Error(t('project.form.datasetTypeMismatch')))
+                                        : Promise.resolve()
+                                },
+                            },
+                        ]}
+                    >
+                        <Select
+                            mode="multiple"
+                            showSearch
+                            filterOption={false}
+                            onSearch={(value) => setDatasetQuery(value)}
+                            placeholder={t('project.settings.datasets.form.datasetsPlaceholder')}
+                            options={addableDatasets.map((dataset) => ({
+                                value: dataset.id,
+                                label: `${dataset.name} (${dataset.type})`,
                             }))}
                         />
                     </Form.Item>
@@ -698,6 +1115,7 @@ const ProjectSettings: React.FC = () => {
                 </div>
                 <div className="flex-1 min-w-0 overflow-y-auto pr-2">
                     {section === 'basic' && renderBasicInfo()}
+                    {section === 'datasets' && renderDatasets()}
                     {section === 'labels' && renderLabels()}
                     {section === 'members' && renderMembers()}
                 </div>

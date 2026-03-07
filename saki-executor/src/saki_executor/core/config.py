@@ -1,10 +1,17 @@
-from pydantic import field_validator
+import socket
+
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def _default_executor_id() -> str:
+    hostname = str(socket.gethostname() or "").strip()
+    return hostname or "executor-1"
+
+
 class Settings(BaseSettings):
-    EXECUTOR_ID: str = "executor-1"
-    EXECUTOR_VERSION: str = "0.1.0"
+    EXECUTOR_ID: str = Field(default_factory=_default_executor_id)
+    EXECUTOR_VERSION: str = "2.0.0"
 
     API_GRPC_TARGET: str = "localhost:50051"
     INTERNAL_TOKEN: str = "dev-secret"
@@ -16,6 +23,7 @@ class Settings(BaseSettings):
 
     DEFAULT_GPU_IDS: str = "0"
     CPU_WORKERS: int = 4
+    # <=0 表示启动时自动探测物理内存
     MEMORY_MB: int = 0
 
     LOG_LEVEL: str = "INFO"
@@ -27,6 +35,25 @@ class Settings(BaseSettings):
 
     ENABLE_COMMAND_STDIN: bool = True
     DISCONNECT_FORCE_WAIT_SEC: int = 20
+    PLUGINS_DIR: str = "../saki-plugins"
+    PLUGIN_VENV_AUTO_SYNC: bool = True
+    PLUGIN_MM_EXT_AUTO_REPAIR: bool = True
+    PLUGIN_MM_EXT_AUTO_REPAIR_TIMEOUT_SEC: int = 1200
+    PLUGIN_WORKER_STARTUP_TIMEOUT_SEC: int = 10
+    PLUGIN_WORKER_TERM_TIMEOUT_SEC: int = 5
+    PLUGIN_WORKER_REQ_POLL_INTERVAL_MS: int = 200
+    PLUGIN_WORKER_IPC_DIR: str = "/tmp/saki"
+
+    ROUND_SHARED_CACHE_ENABLED: bool = True
+    STRICT_TRAIN_MODEL_HANDOFF: bool = True
+
+    @field_validator("EXECUTOR_ID", mode="before")
+    @classmethod
+    def parse_executor_id(cls, v: str | None) -> str:
+        value = str(v or "").strip()
+        if value:
+            return value
+        return _default_executor_id()
 
     @field_validator("LOG_COLOR_MODE", mode="before")
     @classmethod

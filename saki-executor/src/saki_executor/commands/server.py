@@ -13,7 +13,7 @@ from saki_executor.core.logging import set_log_level, get_log_level
 
 if TYPE_CHECKING:
     from saki_executor.agent.client import AgentClient
-    from saki_executor.jobs.manager import JobManager
+    from saki_executor.steps.manager import TaskManager
     from saki_executor.plugins.registry import PluginRegistry
 
 
@@ -21,12 +21,12 @@ class CommandServer:
     def __init__(
             self,
             *,
-            job_manager: "JobManager",
+            task_manager: "TaskManager",
             plugin_registry: "PluginRegistry",
             client: "AgentClient",
             shutdown_event: asyncio.Event,
     ) -> None:
-        self.job_manager = job_manager
+        self.task_manager = task_manager
         self.plugin_registry = plugin_registry
         self.client = client
         self.shutdown_event = shutdown_event
@@ -89,6 +89,10 @@ class CommandServer:
             self._print_plugins()
             return
 
+        if command in {"refresh-hw", "refresh_hw", "refresh-hardware"}:
+            await self._refresh_hardware()
+            return
+
         if command in {"connect", "cn"}:
             await self.client.connect()
             return
@@ -99,7 +103,7 @@ class CommandServer:
             return
 
         if command == "stop":
-            await self._stop_job(args)
+            await self._stop_task(args)
             return
 
         if command in {"loglevel", "ll"}:
@@ -107,7 +111,7 @@ class CommandServer:
             return
 
         if command in {"quit", "exit"}:
-            logger.info("收到退出命令，准备关闭 executor。")
+            logger.info("收到退出命令，准备关闭执行器。")
             self.shutdown_event.set()
             return
 
@@ -119,43 +123,61 @@ class CommandServer:
             "  help                 查看帮助\n"
             "  status               查看当前执行器状态\n"
             "  plugins              查看已加载插件\n"
+            "  refresh-hw           手动刷新宿主硬件探测缓存\n"
             "  connect              启用并发起连接\n"
             "  disconnect [--force] 断开并暂停连接（任务运行中默认拒绝，--force 会先 stop）\n"
-            "  stop [job_id]        停止当前任务或指定 job_id\n"
+            "  stop [task_id]       停止当前任务或指定 task_id\n"
             "  loglevel <LEVEL>     调整日志级别（DEBUG/INFO/WARNING/ERROR）\n"
             "  loglevel             查看当前日志级别\n"
             "  quit | exit          退出执行器进程"
         )
 
     def _print_status(self) -> None:
-        job_status = self.job_manager.status_snapshot()
+        runtime_status = self.task_manager.status_snapshot()
         transport_status = self.client.transport_snapshot()
         logger.info(
             "执行器状态:\n"
             "  executor_state={}\n"
             "  busy={}\n"
-            "  current_job_id={}\n"
-            "  last_job_id={}\n"
-            "  last_job_status={}\n"
+            "  current_task_id={}\n"
+            "  last_task_id={}\n"
+            "  last_task_status={}\n"
             "  running={}\n"
             "  connected={}\n"
             "  connect_enabled={}\n"
             "  pending_requests={}\n"
             "  outbound_queue={}\n"
             "  last_heartbeat_ts={}\n"
+            "  host_capability_last_probe_ts={}\n"
             "  log_level={}",
-            job_status["executor_state"],
-            job_status["busy"],
-            job_status["current_job_id"],
-            job_status["last_job_id"],
-            job_status["last_job_status"],
+            runtime_status["executor_state"],
+            runtime_status["busy"],
+            runtime_status["current_task_id"],
+            runtime_status["last_task_id"],
+            runtime_status["last_task_status"],
             transport_status["running"],
             transport_status["connected"],
             transport_status["connect_enabled"],
             transport_status["pending_requests"],
             transport_status["outbox_size"],
             transport_status["last_heartbeat_ts"],
+            runtime_status["host_capability_last_probe_ts"],
             get_log_level(),
+        )
+
+    async def _refresh_hardware(self) -> None:
+        snapshot = await asyncio.to_thread(self.task_manager.refresh_host_capability)
+        backends = ["cpu"]
+        if snapshot.gpus:
+            backends.insert(0, "cuda")
+        if snapshot.metal_available:
+            backends.insert(1 if "cuda" in backends else 0, "mps")
+        logger.info(
+            "宿主硬件探测缓存已刷新 backends={} cpu_workers={} memory_mb={} gpu_count={}",
+            backends,
+            snapshot.cpu_workers,
+            snapshot.memory_mb,
+            len(snapshot.gpus),
         )
 
     def _print_plugins(self) -> None:
@@ -164,21 +186,21 @@ class CommandServer:
             logger.info("当前未加载任何插件。")
             return
         plugin_lines = [
-            f"  - {plugin.plugin_id} v{plugin.version} | job_types={plugin.supported_job_types} | strategies={plugin.supported_strategies}"
+            f"  - {plugin.plugin_id} v{plugin.version} | task_types={plugin.supported_task_types} | strategies={plugin.supported_strategies}"
             for plugin in plugins
         ]
         logger.info("已加载插件:\n{}", "\n".join(plugin_lines))
 
-    async def _stop_job(self, args: list[str]) -> None:
-        job_id = args[0] if args else self.job_manager.current_job_id
-        if not job_id:
-            logger.warning("当前没有可停止的任务，请提供 job_id。")
+    async def _stop_task(self, args: list[str]) -> None:
+        task_id = args[0] if args else self.task_manager.current_task_id
+        if not task_id:
+            logger.warning("当前没有可停止的任务，请提供 task_id。")
             return
-        stopped = await self.job_manager.stop_job(str(job_id))
+        stopped = await self.task_manager.stop_task(str(task_id))
         if stopped:
-            logger.info("已发送停止请求，job_id={}", job_id)
+            logger.info("已发送停止请求，task_id={}", task_id)
         else:
-            logger.warning("停止失败，job_id={} 未在运行或不可停止。", job_id)
+            logger.warning("停止失败，task_id={} 未在运行或不可停止。", task_id)
 
     def _set_log_level(self, args: list[str]) -> None:
         if not args:

@@ -1,0 +1,1 @@
+"""Annotation-related API schemas."""

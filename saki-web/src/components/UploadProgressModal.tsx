@@ -14,11 +14,11 @@ interface UploadProgressModalProps {
 }
 
 const UploadProgressModal: React.FC<UploadProgressModalProps> = ({
-                                                                     open,
-                                                                     progress,
-                                                                     onClose,
-                                                                     onCancel,
-                                                                 }) => {
+    open,
+    progress,
+    onClose,
+    onCancel,
+}) => {
     const {t} = useTranslation();
     const {status, currentFile, totalFiles, percentage, currentFilename, results, error} = progress;
 
@@ -53,6 +53,7 @@ const UploadProgressModal: React.FC<UploadProgressModalProps> = ({
             title={getTitle()}
             open={open}
             onCancel={onClose}
+            width={820}
             footer={[
                 isUploading && (
                     <Button key="cancel" danger onClick={onCancel}>
@@ -69,7 +70,6 @@ const UploadProgressModal: React.FC<UploadProgressModalProps> = ({
             maskClosable={!isUploading}
         >
             <div className="flex w-full flex-col gap-6">
-                {/* Overall progress */}
                 <div>
                     <div className="mb-2 flex justify-between">
                         <Text>
@@ -91,14 +91,12 @@ const UploadProgressModal: React.FC<UploadProgressModalProps> = ({
                     />
                 </div>
 
-                {/* Error message */}
                 {hasError && error && (
                     <div className="rounded border border-[#ffccc7] bg-[#fff2f0] px-3 py-2">
                         <Text type="danger">{error}</Text>
                     </div>
                 )}
 
-                {/* File results list */}
                 {results.length > 0 && (
                     <div className="max-h-[300px] overflow-y-auto">
                         <List
@@ -109,7 +107,7 @@ const UploadProgressModal: React.FC<UploadProgressModalProps> = ({
                                     <div className="flex items-center gap-2">
                                         {getStatusIcon(item)}
                                         <FileOutlined/>
-                                        <Text ellipsis className="max-w-[280px] flex-1">
+                                        <Text ellipsis className="max-w-[560px] flex-1">
                                             {item.filename}
                                         </Text>
                                         {item.status === 'success' && (
@@ -119,10 +117,8 @@ const UploadProgressModal: React.FC<UploadProgressModalProps> = ({
                                             <Tag color="error">{t('upload.error')}</Tag>
                                         )}
                                     </div>
-                                    {/* Show error message below filename */}
                                     {item.status === 'error' && item.error && (
-                                        <div
-                                            className="ml-10 mt-1 rounded border border-[#ffccc7] bg-[#fff2f0] px-2 py-1 text-xs">
+                                        <div className="ml-10 mt-1 rounded border border-[#ffccc7] bg-[#fff2f0] px-2 py-1 text-xs">
                                             <Text type="danger" className="text-xs">
                                                 {item.error}
                                             </Text>
@@ -134,7 +130,6 @@ const UploadProgressModal: React.FC<UploadProgressModalProps> = ({
                     </div>
                 )}
 
-                {/* Summary when complete */}
                 {isComplete && (
                     <div className="pt-2 text-center">
                         <div className="flex flex-wrap items-center justify-center gap-6">

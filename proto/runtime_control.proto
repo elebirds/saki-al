@@ -1,6 +1,7 @@
 syntax = "proto3";
 
 package saki.runtime.v1;
+option go_package = "github.com/elebirds/saki/saki-dispatcher/internal/gen/runtimecontrolv1;runtimecontrolv1";
 
 import "google/protobuf/struct.proto";
 
@@ -8,16 +9,19 @@ service RuntimeControl {
   rpc Stream(stream RuntimeMessage) returns (stream RuntimeMessage);
 }
 
-enum RuntimeJobStatus {
-  RUNTIME_JOB_STATUS_UNSPECIFIED = 0;
-  CREATED = 1;
-  QUEUED = 2;
+enum RuntimeTaskStatus {
+  RUNTIME_TASK_STATUS_UNSPECIFIED = 0;
+  PENDING = 1;
+  DISPATCHING = 2;
   RUNNING = 3;
-  STOPPING = 4;
-  STOPPED = 5;
-  SUCCEEDED = 6;
-  FAILED = 7;
-  PARTIAL_FAILED = 8;
+  RETRYING = 4;
+  SUCCEEDED = 5;
+  FAILED = 6;
+  CANCELLED = 7;
+  SKIPPED = 8;
+  SYNCING_ENV = 9;
+  PROBING_RUNTIME = 10;
+  BINDING_DEVICE = 11;
 }
 
 enum AckStatus {
@@ -29,8 +33,8 @@ enum AckStatus {
 enum AckType {
   ACK_TYPE_UNSPECIFIED = 0;
   ACK_TYPE_REGISTER = 1;
-  ACK_TYPE_ASSIGN_JOB = 2;
-  ACK_TYPE_STOP_JOB = 3;
+  ACK_TYPE_ASSIGN_TASK = 2;
+  ACK_TYPE_STOP_TASK = 3;
   ACK_TYPE_REQUEST = 4;
 }
 
@@ -40,19 +44,31 @@ enum AckReason {
   ACK_REASON_ACCEPTED = 2;
   ACK_REASON_EXECUTOR_BUSY = 3;
   ACK_REASON_STOPPING = 4;
-  ACK_REASON_JOB_NOT_RUNNING = 5;
+  ACK_REASON_TASK_NOT_RUNNING = 5;
   ACK_REASON_REJECTED = 6;
 }
 
-enum RuntimeJobType {
-  RUNTIME_JOB_TYPE_UNSPECIFIED = 0;
-  TRAIN_DETECTION = 1;
+enum RuntimeTaskType {
+  RUNTIME_TASK_TYPE_UNSPECIFIED = 0;
+  TRAIN = 1;
+  EVAL = 2;
+  SCORE = 3;
+  SELECT = 4;
+  PREDICT = 5;
+  CUSTOM = 99;
 }
 
-enum RuntimeJobMode {
-  RUNTIME_JOB_MODE_UNSPECIFIED = 0;
+enum RuntimeTaskDispatchKind {
+  RUNTIME_TASK_DISPATCH_KIND_UNSPECIFIED = 0;
+  DISPATCHABLE = 1;
+  ORCHESTRATOR = 2;
+}
+
+enum RuntimeLoopMode {
+  RUNTIME_LOOP_MODE_UNSPECIFIED = 0;
   ACTIVE_LEARNING = 1;
   SIMULATION = 2;
+  MANUAL = 3;
 }
 
 enum RuntimeQueryType {
@@ -80,11 +96,11 @@ message AcceleratorCapability {
 message PluginCapability {
   string plugin_id = 1;
   string version = 2;
-  repeated string supported_job_types = 3;
+  repeated string supported_task_types = 3;
   repeated string supported_strategies = 4;
   string display_name = 5;
   google.protobuf.Struct request_config_schema = 6;
-  google.protobuf.Struct default_request_config = 7;
+  reserved 7;
   repeated AcceleratorType supported_accelerators = 8;
   bool supports_auto_fallback = 9;
 }
@@ -95,6 +111,7 @@ message ResourceSummary {
   int32 cpu_workers = 3;
   int32 memory_mb = 4;
   repeated AcceleratorCapability accelerators = 5;
+  google.protobuf.Struct host_capability = 6;
 }
 
 message Register {
@@ -109,43 +126,51 @@ message Heartbeat {
   string request_id = 1;
   string executor_id = 2;
   bool busy = 3;
-  string current_job_id = 4;
+  string current_task_id = 4;
   ResourceSummary resources = 5;
 }
 
-message JobPayload {
-  string job_id = 1;
-  string project_id = 2;
+message TaskPayload {
+  string task_id = 1;
+  string round_id = 2;
   string loop_id = 3;
-  string source_commit_id = 4;
-  RuntimeJobType job_type = 5;
-  string plugin_id = 6;
-  RuntimeJobMode mode = 7;
-  string query_strategy = 8;
-  google.protobuf.Struct params = 9;
-  ResourceSummary resources = 10;
-  int32 round_index = 11;
+  string project_id = 4;
+  string input_commit_id = 5;
+  RuntimeTaskType task_type = 6;
+  string plugin_id = 7;
+  RuntimeLoopMode mode = 8;
+  string query_strategy = 9;
+  google.protobuf.Struct resolved_params = 10;
+  ResourceSummary resources = 11;
+  int32 round_index = 12;
+  int32 attempt = 13;
+  repeated string depends_on_task_ids = 14;
+  RuntimeTaskDispatchKind dispatch_kind = 15;
 }
 
-message AssignJob {
+message AssignTask {
   string request_id = 1;
-  JobPayload job = 2;
+  TaskPayload task = 2;
 }
 
-message StopJob {
+message StopTask {
   string request_id = 1;
-  string job_id = 2;
+  string task_id = 2;
   string reason = 3;
 }
 
 message StatusEvent {
-  RuntimeJobStatus status = 1;
+  RuntimeTaskStatus status = 1;
   string reason = 2;
 }
 
 message LogEvent {
   string level = 1;
   string message = 2;
+  string raw_message = 3;
+  string message_key = 4;
+  google.protobuf.Struct message_args = 5;
+  google.protobuf.Struct meta = 6;
 }
 
 message ProgressEvent {
@@ -172,9 +197,9 @@ message ArtifactEvent {
   ArtifactItem artifact = 1;
 }
 
-message JobEvent {
+message TaskEvent {
   string request_id = 1;
-  string job_id = 2;
+  string task_id = 2;
   int64 seq = 3;
   int64 ts = 4;
   oneof event_payload {
@@ -192,10 +217,10 @@ message QueryCandidate {
   google.protobuf.Struct reason = 3;
 }
 
-message JobResult {
+message TaskResult {
   string request_id = 1;
-  string job_id = 2;
-  RuntimeJobStatus status = 3;
+  string task_id = 2;
+  RuntimeTaskStatus status = 3;
   map<string, double> metrics = 4;
   repeated ArtifactItem artifacts = 5;
   repeated QueryCandidate candidates = 6;
@@ -204,12 +229,14 @@ message JobResult {
 
 message DataRequest {
   string request_id = 1;
-  string job_id = 2;
+  string task_id = 2;
   RuntimeQueryType query_type = 3;
   string project_id = 4;
   string commit_id = 5;
   string cursor = 6;
   int32 limit = 7;
+  int32 preferred_chunk_bytes = 8;
+  uint64 max_uncompressed_bytes = 9;
 }
 
 message LabelItem {
@@ -248,15 +275,23 @@ message DataItem {
 message DataResponse {
   string request_id = 1;
   string reply_to = 2;
-  string job_id = 3;
+  string task_id = 3;
   RuntimeQueryType query_type = 4;
-  repeated DataItem items = 5;
-  string next_cursor = 6;
+  string payload_id = 5;
+  uint32 chunk_index = 6;
+  uint32 chunk_count = 7;
+  bytes header_proto = 8;
+  bytes payload_chunk = 9;
+  uint64 payload_total_size = 10;
+  uint32 payload_checksum_crc32c = 11;
+  uint32 chunk_checksum_crc32c = 12;
+  string next_cursor = 13;
+  bool is_last_chunk = 14;
 }
 
 message UploadTicketRequest {
   string request_id = 1;
-  string job_id = 2;
+  string task_id = 2;
   string artifact_name = 3;
   string content_type = 4;
 }
@@ -264,7 +299,7 @@ message UploadTicketRequest {
 message UploadTicketResponse {
   string request_id = 1;
   string reply_to = 2;
-  string job_id = 3;
+  string task_id = 3;
   string upload_url = 4;
   string storage_uri = 5;
   map<string, string> headers = 6;
@@ -285,7 +320,7 @@ message Error {
   string message = 3;
   string reply_to = 4;
   string ack_for = 5;
-  string job_id = 6;
+  string task_id = 6;
   RuntimeQueryType query_type = 7;
   string reason = 8;
 }
@@ -294,10 +329,10 @@ message RuntimeMessage {
   oneof payload {
     Register register = 1;
     Heartbeat heartbeat = 2;
-    AssignJob assign_job = 3;
-    StopJob stop_job = 4;
-    JobEvent job_event = 5;
-    JobResult job_result = 6;
+    AssignTask assign_task = 3;
+    StopTask stop_task = 4;
+    TaskEvent task_event = 5;
+    TaskResult task_result = 6;
     DataRequest data_request = 7;
     DataResponse data_response = 8;
     UploadTicketRequest upload_ticket_request = 9;

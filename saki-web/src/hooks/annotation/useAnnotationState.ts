@@ -9,6 +9,12 @@
  */
 
 import {useCallback, useEffect, useRef, useState} from 'react';
+import {
+    ANNOTATION_TOOL_SELECT,
+    AnnotationToolType,
+    DEFAULT_DETECTION_ANNOTATION_TYPES,
+    DetectionAnnotationType,
+} from '../../types';
 
 // 基础类型约束：只需要有 id 属性
 export interface AnnotationLike {
@@ -17,6 +23,7 @@ export interface AnnotationLike {
 
 export interface UseAnnotationStateOptions<T extends AnnotationLike = AnnotationLike> {
     initialAnnotations?: T[];
+    enabledTools?: DetectionAnnotationType[];
 }
 
 export interface UseAnnotationStateReturn<T extends AnnotationLike = AnnotationLike> {
@@ -25,13 +32,13 @@ export interface UseAnnotationStateReturn<T extends AnnotationLike = AnnotationL
     history: T[][];
     historyIndex: number;
     selectedId: string | null;
-    currentTool: 'select' | 'rect' | 'obb';
+    currentTool: AnnotationToolType;
     selectedLabel: any | null;
 
     // Setters
     setAnnotations: (annotations: T[]) => void;
     setSelectedId: (id: string | null) => void;
-    setCurrentTool: (tool: 'select' | 'rect' | 'obb') => void;
+    setCurrentTool: (tool: AnnotationToolType) => void;
     setSelectedLabel: (label: any | null) => void;
 
     // History operations
@@ -51,14 +58,34 @@ export interface UseAnnotationStateReturn<T extends AnnotationLike = AnnotationL
 export function useAnnotationState<T extends AnnotationLike = AnnotationLike>(
     options: UseAnnotationStateOptions<T> = {}
 ): UseAnnotationStateReturn<T> {
-    const {initialAnnotations = []} = options;
+    const {initialAnnotations = [], enabledTools = DEFAULT_DETECTION_ANNOTATION_TYPES} = options;
 
     const [annotations, setAnnotations] = useState<T[]>(initialAnnotations);
     const [history, setHistory] = useState<T[][]>([initialAnnotations]);
     const [historyIndex, setHistoryIndex] = useState(0);
     const [selectedId, setSelectedId] = useState<string | null>(null);
-    const [currentTool, setCurrentTool] = useState<'select' | 'rect' | 'obb'>('select');
+    const [currentTool, setCurrentTool] = useState<AnnotationToolType>(ANNOTATION_TOOL_SELECT);
     const [selectedLabel, setSelectedLabel] = useState<any | null>(null);
+
+    const enabledToolSet = new Set(enabledTools);
+    const isToolEnabled = useCallback(
+        (tool: AnnotationToolType) => tool === ANNOTATION_TOOL_SELECT || enabledToolSet.has(tool),
+        [enabledTools.join(',')]
+    );
+
+    useEffect(() => {
+        if (!isToolEnabled(currentTool)) {
+            setCurrentTool(ANNOTATION_TOOL_SELECT);
+        }
+    }, [currentTool, isToolEnabled]);
+
+    const setCurrentToolSafe = useCallback((tool: AnnotationToolType) => {
+        if (!isToolEnabled(tool)) {
+            setCurrentTool(ANNOTATION_TOOL_SELECT);
+            return;
+        }
+        setCurrentTool(tool);
+    }, [isToolEnabled]);
 
     // 使用 ref 来跟踪最新的 historyIndex，避免闭包问题
     const historyIndexRef = useRef(0);
@@ -135,7 +162,7 @@ export function useAnnotationState<T extends AnnotationLike = AnnotationLike>(
         // Setters
         setAnnotations,
         setSelectedId,
-        setCurrentTool,
+        setCurrentTool: setCurrentToolSafe,
         setSelectedLabel,
 
         // History operations
@@ -152,4 +179,3 @@ export function useAnnotationState<T extends AnnotationLike = AnnotationLike>(
         handleAnnotationDelete,
     };
 }
-

@@ -1,0 +1,203 @@
+"""
+Annotation Service - Business logic for Annotation operations.
+"""
+
+import uuid
+from typing import List
+
+from sqlmodel.ext.asyncio.session import AsyncSession
+
+from saki_api.core.exceptions import NotFoundAppException, BadRequestAppException
+from saki_api.infra.db.transaction import transactional
+from saki_api.modules.annotation.api.annotation import AnnotationCreate
+from saki_api.modules.annotation.domain.annotation import Annotation
+from saki_api.modules.annotation.domain.ir_geometry_codec import normalize_annotation_payload
+from saki_api.modules.project.domain.annotation_policy import assert_annotation_type_enabled
+from saki_api.modules.annotation.repo.annotation import AnnotationRepository
+from saki_api.modules.project.contracts import ProjectReadGateway
+from saki_api.modules.shared.application.crud_service import CrudServiceBase
+
+
+class AnnotationService(CrudServiceBase[Annotation, AnnotationRepository, AnnotationCreate, dict]):
+    """
+    Service for managing Annotations.
+
+    Annotations are immutable - modifications create new records with parent_id.
+    """
+
+    def __init__(self, session: AsyncSession):
+        super().__init__(Annotation, AnnotationRepository, session)
+        self.session = session
+        self.project_gateway = ProjectReadGateway(session)
+
+    @transactional
+    async def create_annotation(self, schema: AnnotationCreate) -> Annotation:
+        """
+        Create a new annotation.
+
+        Args:
+            schema: AnnotationCreate schema
+
+        Returns:
+            Created annotation
+
+        Raises:
+            NotFoundAppException: If project, sample, or label not found
+        """
+        # Verify project exists
+        project = await self.project_gateway.get_project(schema.project_id)
+        if not project:
+            raise NotFoundAppException(f"Project {schema.project_id} not found")
+
+        # Verify sample exists
+        sample = await self.project_gateway.get_sample(schema.sample_id)
+        if not sample:
+            raise NotFoundAppException(f"Sample {schema.sample_id} not found")
+
+        # Verify label exists
+        label = await self.project_gateway.get_label(schema.label_id)
+        if not label:
+            raise NotFoundAppException(f"Label {schema.label_id} not found")
+
+        # Verify label belongs to the same project
+        if label.project_id != schema.project_id:
+            raise BadRequestAppException("Label must belong to the same project")
+
+        # Verify sample is in a dataset linked to the project
+        dataset_ids = await self.project_gateway.get_linked_dataset_ids(schema.project_id)
+        if sample.dataset_id not in dataset_ids:
+            raise BadRequestAppException(
+                f"Sample {schema.sample_id} is not in any dataset linked to this project"
+            )
+
+        # If parent_id is provided, verify it exists
+        if schema.parent_id:
+            parent = await self.get_by_id(schema.parent_id)
+            if not parent:
+                raise NotFoundAppException(f"Parent annotation {schema.parent_id} not found")
+
+        ann_type, geometry, attrs = normalize_annotation_payload(
+            annotation_type=schema.type,
+            geometry_payload=schema.geometry,
+            attrs_payload=schema.attrs,
+            confidence=float(schema.confidence),
+            source=schema.source,
+        )
+        assert_annotation_type_enabled(
+            project_enabled_types=project.enabled_annotation_types or [],
+            ann_type=ann_type,
+        )
+        schema.type = ann_type
+        schema.geometry = geometry
+        schema.attrs = attrs
+
+        return await self.create(schema.model_dump())
+
+    async def get_annotations_at_commit(
+            self,
+            commit_id: uuid.UUID,
+            sample_id: uuid.UUID | None = None,
+    ) -> List[Annotation]:
+        """
+        Get annotations for a specific commit.
+
+        Args:
+            commit_id: Commit ID
+            sample_id: Optional sample ID to filter
+
+        Returns:
+            List of annotations visible at this commit
+        """
+        if sample_id:
+            return await self.repository.get_by_commit_and_sample(commit_id, sample_id)
+        return await self.repository.get_by_commit(commit_id)
+
+    async def get_sample_annotations(self, sample_id: uuid.UUID) -> List[Annotation]:
+        """
+        Get all annotations for a sample (all versions).
+
+        Args:
+            sample_id: Sample ID
+
+        Returns:
+            List of all annotations for this sample
+        """
+        return await self.repository.get_by_sample(sample_id)
+
+    async def get_project_annotations(self, project_id: uuid.UUID) -> List[Annotation]:
+        """
+        Get all annotations for a project.
+
+        Args:
+            project_id: Project ID
+
+        Returns:
+            List of annotations for this project
+        """
+        project = await self.project_gateway.get_project(project_id)
+        if not project:
+            raise NotFoundAppException(f"Project {project_id} not found")
+        return await self.repository.get_by_project(project_id)
+
+    async def get_annotation_history(self, annotation_id: uuid.UUID, depth: int = 100) -> List:
+        """
+        Get annotation modification history by following parent_id chain.
+
+        Args:
+            annotation_id: Starting annotation ID
+            depth: Maximum depth to traverse
+
+        Returns:
+            List of annotation history items
+        """
+        from saki_api.modules.annotation.api.annotation import AnnotationHistoryItem
+
+        annotations = await self.repository.get_history(annotation_id, depth)
+        return [
+            AnnotationHistoryItem(
+                id=a.id,
+                parent_id=a.parent_id,
+                type=a.type,
+                source=a.source,
+                confidence=a.confidence,
+                created_at=a.created_at,
+                geometry=a.geometry or {},
+            )
+            for a in annotations
+        ]
+
+    async def get_by_lineage_id(self, lineage_id: uuid.UUID) -> List[Annotation]:
+        """
+        Get all annotations with a specific lineage_id (for version chain lookup).
+
+        Args:
+            lineage_id: Lineage ID
+
+        Returns:
+            List of annotations with this lineage_id
+        """
+        return await self.repository.get_by_lineage_id(lineage_id)
+
+    async def count_by_project(self, project_id: uuid.UUID) -> int:
+        """
+        Count annotations for a project.
+
+        Args:
+            project_id: Project ID
+
+        Returns:
+            Number of annotations
+        """
+        return await self.repository.count_by_project(project_id)
+
+    async def count_by_sample(self, sample_id: uuid.UUID) -> int:
+        """
+        Count annotations for a sample.
+
+        Args:
+            sample_id: Sample ID
+
+        Returns:
+            Number of annotations
+        """
+        return await self.repository.count_by_sample(sample_id)

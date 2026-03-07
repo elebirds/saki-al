@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useRef, useState} from 'react';
+import React, {useCallback, useEffect, useState} from 'react';
 import {
     Button,
     Checkbox,
@@ -23,11 +23,11 @@ import {useTranslation} from 'react-i18next';
 import {useAuthStore} from '../../store/authStore';
 import {usePermission} from '../../hooks';
 import {PaginatedList} from '../../components/common/PaginatedList';
+import {createEmptyPaginationResponse} from '../../types/pagination';
 
 const UserManagement: React.FC = () => {
     const {t} = useTranslation();
     const currentUser = useAuthStore((state) => state.user);
-    const [users, setUsers] = useState<User[]>([]);
     const [roles, setRoles] = useState<Role[]>([]);
     const [rolesLoading, setRolesLoading] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -35,8 +35,6 @@ const UserManagement: React.FC = () => {
     const [editingUser, setEditingUser] = useState<User | null>(null);
     const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
     const [userRoles, setUserRoles] = useState<UserSystemRole[]>([]);
-    const [tableHeight, setTableHeight] = useState<number>(500);
-    const tableContainerRef = useRef<HTMLDivElement>(null);
     const [form] = Form.useForm();
     const [roleForm] = Form.useForm();
     const [refreshKey, setRefreshKey] = useState(0);
@@ -53,7 +51,7 @@ const UserManagement: React.FC = () => {
 
     const fetchUsers = useCallback(async (page: number, pageSize: number) => {
         if (!canReadUsers) {
-            return {items: [], total: 0, limit: pageSize, offset: 0, size: 0} as any;
+            return createEmptyPaginationResponse<User>(pageSize, page);
         }
         try {
             return await api.getUsers(page, pageSize);
@@ -90,26 +88,6 @@ const UserManagement: React.FC = () => {
             fetchRoles();
         }
     }, [permissionLoading, canReadUserRoles, fetchRoles]);
-
-    // 计算表格高度
-    useEffect(() => {
-        const updateTableHeight = () => {
-            if (tableContainerRef.current) {
-                const containerHeight = tableContainerRef.current.clientHeight;
-                // 减去：表格头部(约55px) + 分页器(约64px)
-                const calculatedHeight = containerHeight - 119;
-                setTableHeight(Math.max(300, calculatedHeight)); // 最小高度300px
-            }
-        };
-
-        // 使用 setTimeout 确保 DOM 已渲染
-        const timeoutId = setTimeout(updateTableHeight, 0);
-        window.addEventListener('resize', updateTableHeight);
-        return () => {
-            clearTimeout(timeoutId);
-            window.removeEventListener('resize', updateTableHeight);
-        };
-    }, [users]); // 当数据变化时重新计算
 
     const handleAdd = () => {
         setEditingUser(null);
@@ -323,7 +301,7 @@ const UserManagement: React.FC = () => {
     }
 
     return (
-        <div className="flex h-full flex-col overflow-hidden p-6">
+        <div className="flex min-h-full flex-col p-6">
             <div className="mb-4 flex flex-shrink-0 items-center justify-between">
                 <span className="m-0 font-semibold">{t('user.management.title')}</span>
                 {canCreateUser ? (
@@ -338,21 +316,27 @@ const UserManagement: React.FC = () => {
                     </Tooltip>
                 )}
             </div>
-            <div ref={tableContainerRef} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <div>
                 <PaginatedList<User>
                     fetchData={fetchUsers}
-                    onItemsChange={setUsers}
                     refreshKey={refreshKey}
                     resetPageOnRefresh
                     initialPageSize={20}
                     pageSizeOptions={['10', '20', '50', '100']}
+                    adaptivePageSize={{
+                        enabled: true,
+                        mode: 'table',
+                        itemHeight: 54,
+                        rowGap: 0,
+                        reservedHeight: 56,
+                    }}
                     renderItems={(items, loading) => (
                         <Table
                             columns={columns}
                             dataSource={items}
                             rowKey="id"
                             loading={loading}
-                            scroll={{y: tableHeight, x: 'max-content'}}
+                            scroll={{x: 'max-content'}}
                             pagination={false}
                         />
                     )}

@@ -1,6 +1,6 @@
 import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {useNavigate, useParams} from 'react-router-dom';
-import {Button, Card, List, message, Popconfirm, Select, Tabs, Tag, Tooltip, Typography} from 'antd';
+import {Button, Card, Input, List, message, Modal, Popconfirm, Select, Tabs, Tag, Tooltip, Typography} from 'antd';
 import {useTranslation} from 'react-i18next';
 import {Dataset, Sample} from '../../types';
 import {api} from '../../services/api';
@@ -22,6 +22,65 @@ import {PaginatedList} from '../../components/common/PaginatedList';
 const {Title} = Typography;
 const {Option} = Select;
 
+interface SampleDeleteConflictPayload {
+    reason?: string;
+    confirmationRequired?: boolean;
+    canForce?: boolean;
+    committedRefs?: {
+        annotation?: number;
+        commitAnnotationMap?: number;
+        commitSampleState?: number;
+        projectIds?: string[];
+    };
+    transientRefs?: {
+        annotationDraft?: number;
+        stepCandidateItem?: number;
+        roundSampleMetric?: number;
+        workingSnapshots?: number;
+    };
+}
+
+function snakeToCamel(key: string): string {
+    return key.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase());
+}
+
+function convertKeysToCamel<T>(obj: unknown): T {
+    if (Array.isArray(obj)) {
+        return obj.map((item) => convertKeysToCamel(item)) as T;
+    }
+    if (obj !== null && typeof obj === 'object') {
+        return Object.keys(obj as Record<string, unknown>).reduce((result, key) => {
+            const camelKey = snakeToCamel(key);
+            (result as Record<string, unknown>)[camelKey] = convertKeysToCamel(
+                (obj as Record<string, unknown>)[key]
+            );
+            return result;
+        }, {} as T);
+    }
+    return obj as T;
+}
+
+function extractSampleDeleteConflict(error: unknown): SampleDeleteConflictPayload | null {
+    const apiError = error as {
+        statusCode?: number;
+        originalError?: {
+            response?: {
+                data?: unknown;
+            };
+        };
+    };
+    if (apiError.statusCode !== 409) return null;
+    const raw = apiError.originalError?.response?.data;
+    if (!raw || typeof raw !== 'object') return null;
+    const normalized = convertKeysToCamel<Record<string, unknown>>(raw);
+    const payloadRecord =
+        normalized.data && typeof normalized.data === 'object'
+            ? (normalized.data as Record<string, unknown>)
+            : normalized;
+    if (payloadRecord.reason !== 'sample_in_use') return null;
+    return payloadRecord as SampleDeleteConflictPayload;
+}
+
 const DatasetDetail: React.FC = () => {
     const {t} = useTranslation();
     const {id} = useParams<{ id: string }>();
@@ -34,17 +93,21 @@ const DatasetDetail: React.FC = () => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [sortBy, setSortBy] = useState<string>('createdAt');
     const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+    const [searchQuery, setSearchQuery] = useState('');
+    const [searchInput, setSearchInput] = useState('');
     const [selectedSample, setSelectedSample] = useState<Sample | null>(null);
     const [assetModalOpen, setAssetModalOpen] = useState(false);
 
     // Use refs to store latest sort params
     const sortByRef = useRef(sortBy);
     const sortOrderRef = useRef(sortOrder);
+    const searchQueryRef = useRef(searchQuery);
 
     useEffect(() => {
         sortByRef.current = sortBy;
         sortOrderRef.current = sortOrder;
-    }, [sortBy, sortOrder]);
+        searchQueryRef.current = searchQuery;
+    }, [sortBy, sortOrder, searchQuery]);
 
     // Permission hook
     const {can, role, isOwner} = useResourcePermission('dataset', id);
@@ -52,19 +115,13 @@ const DatasetDetail: React.FC = () => {
     // System capabilities
     const {getDatasetTypeLabel, getDatasetTypeColor} = useSystemCapabilities();
 
-    // Initialize upload hook
+    // Legacy streaming upload hook
     const {progress, upload, cancel, reset, isUploading} = useUpload(id || '', {
-        onFileComplete: (result) => {
-            if (result.status === 'success') {
-                console.log(`File uploaded: ${result.filename}`);
-            }
-        },
         onComplete: (result) => {
             message.success(t('upload.completeMessage', {
                 success: result.uploaded,
-                total: result.uploaded + result.errors
+                total: result.uploaded + result.errors,
             }));
-            // Refresh samples after upload
             if (id) {
                 setSampleRefreshKey((v) => v + 1);
                 loadDataset(id);
@@ -96,6 +153,7 @@ const DatasetDetail: React.FC = () => {
                 pageSize,
                 sortByRef.current,
                 sortOrderRef.current,
+                searchQueryRef.current || undefined,
             );
         } catch (error) {
             console.error('Failed to load samples:', error);
@@ -107,6 +165,8 @@ const DatasetDetail: React.FC = () => {
     // Load dataset and samples
     useEffect(() => {
         if (id) {
+            setSearchQuery('');
+            setSearchInput('');
             loadDataset(id);
             setSampleRefreshKey((v) => v + 1);
         }
@@ -122,20 +182,32 @@ const DatasetDetail: React.FC = () => {
         if (id) {
             setSampleRefreshKey((v) => v + 1);
         }
-    }, [sortBy, sortOrder, id]);
+    }, [sortBy, sortOrder, searchQuery, id]);
 
-    const handleUploadClick = () => {
+    const handleSearch = useCallback((value: string) => {
+        setSearchQuery(value.trim());
+    }, []);
+
+    const handleOpenImportWorkspace = () => {
+        if (!dataset) return;
+        if (dataset.type === 'fedo') {
+            message.warning(t('dataset.detail.importWorkspaceClassicOnly'));
+            return;
+        }
+        navigate(`/datasets/${dataset.id}/import`);
+    };
+
+    const handleStreamUploadClick = () => {
         fileInputRef.current?.click();
     };
 
-    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleStreamFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (!dataset || !e.target.files || e.target.files.length === 0) return;
 
         reset();
         setUploadModalOpen(true);
         await upload(Array.from(e.target.files));
 
-        // Reset file input
         if (fileInputRef.current) {
             fileInputRef.current.value = '';
         }
@@ -158,15 +230,92 @@ const DatasetDetail: React.FC = () => {
             await api.deleteSample(dataset.id, sample.id);
             message.success(t('dataset.detail.deleteSampleSuccess'));
             setSampleRefreshKey((v) => v + 1);
-            loadDataset(dataset.id);
+            await loadDataset(dataset.id);
         } catch (error) {
-            message.error(t('dataset.detail.deleteSampleError'));
+            const conflict = extractSampleDeleteConflict(error);
+            if (conflict?.reason === 'sample_in_use') {
+                if (!conflict.canForce) {
+                    message.error(t('dataset.detail.deleteSampleForceForbidden'));
+                    return;
+                }
+                const committedRefs = conflict.committedRefs ?? {};
+                const transientRefs = conflict.transientRefs ?? {};
+                Modal.confirm({
+                    title: t('dataset.detail.forceDeleteConfirmTitle'),
+                    okText: t('dataset.detail.forceDeleteAction'),
+                    cancelText: t('common.cancel'),
+                    okButtonProps: {danger: true},
+                    content: (
+                        <div>
+                            <p>{t('dataset.detail.forceDeleteConfirmDescription')}</p>
+                            <div className="mt-2 space-y-1 text-sm">
+                                <div>{t('dataset.detail.forceDeleteRefSummaryTitle')}</div>
+                                <div>
+                                    {t('dataset.detail.forceDeleteRefCommittedAnnotation', {
+                                        count: committedRefs.annotation ?? 0,
+                                    })}
+                                </div>
+                                <div>
+                                    {t('dataset.detail.forceDeleteRefCommittedMap', {
+                                        count: committedRefs.commitAnnotationMap ?? 0,
+                                    })}
+                                </div>
+                                <div>
+                                    {t('dataset.detail.forceDeleteRefCommittedState', {
+                                        count: committedRefs.commitSampleState ?? 0,
+                                    })}
+                                </div>
+                                <div>
+                                    {t('dataset.detail.forceDeleteRefProjects', {
+                                        count: committedRefs.projectIds?.length ?? 0,
+                                    })}
+                                </div>
+                                <div>
+                                    {t('dataset.detail.forceDeleteRefTransientDraft', {
+                                        count: transientRefs.annotationDraft ?? 0,
+                                    })}
+                                </div>
+                                <div>
+                                    {t('dataset.detail.forceDeleteRefTransientCandidate', {
+                                        count: transientRefs.stepCandidateItem ?? 0,
+                                    })}
+                                </div>
+                                <div>
+                                    {t('dataset.detail.forceDeleteRefTransientMetric', {
+                                        count: transientRefs.roundSampleMetric ?? 0,
+                                    })}
+                                </div>
+                                <div>
+                                    {t('dataset.detail.forceDeleteRefWorking', {
+                                        count: transientRefs.workingSnapshots ?? 0,
+                                    })}
+                                </div>
+                            </div>
+                        </div>
+                    ),
+                    onOk: async () => {
+                        if (!dataset) return;
+                        try {
+                            await api.deleteSample(dataset.id, sample.id, true);
+                            message.success(t('dataset.detail.deleteSampleSuccessForced'));
+                            setSampleRefreshKey((v) => v + 1);
+                            await loadDataset(dataset.id);
+                        } catch (forceError) {
+                            const forceErrorMessage = forceError instanceof Error ? forceError.message : '';
+                            message.error(forceErrorMessage || t('dataset.detail.deleteSampleError'));
+                            throw forceError;
+                        }
+                    },
+                });
+                return;
+            }
+            const errorMessage = error instanceof Error ? error.message : '';
+            message.error(errorMessage || t('dataset.detail.deleteSampleError'));
         }
     };
 
     if (!dataset) return <div>{t('common.loading')}</div>;
 
-    // Determine file accept type based on dataset type
     const getAcceptType = () => {
         switch (dataset.type) {
             case 'fedo':
@@ -230,9 +379,11 @@ const DatasetDetail: React.FC = () => {
             >
                 <Card.Meta
                     title={
-                        <span className="block truncate">
-              {item.name}
-            </span>
+                        <Tooltip title={item.name} placement="topLeft">
+                            <span className="block truncate" title={item.name}>
+                                {item.name}
+                            </span>
+                        </Tooltip>
                     }
                     description={item.remark && <span className="text-xs text-gray-500">{item.remark}</span>}
                 />
@@ -245,6 +396,12 @@ const DatasetDetail: React.FC = () => {
     const totalSamplePages = Math.max(1, Math.ceil(sampleMeta.total / (sampleMeta.limit || 1)));
     // Check permissions for various actions
     const canUpload = can('sample:create');
+    const canImportWorkspace = can('dataset:import') || canUpload;
+    const importWorkspaceDisabledByType = dataset.type === 'fedo';
+    const canOpenImportWorkspace = canImportWorkspace && !importWorkspaceDisabledByType;
+    const importWorkspaceDisabledReason = importWorkspaceDisabledByType
+        ? t('dataset.detail.importWorkspaceClassicOnly')
+        : t('common.noPermission');
     const canEdit = can('dataset:update');
 
     const items = [
@@ -252,10 +409,25 @@ const DatasetDetail: React.FC = () => {
             key: 'data',
             label: t('dataset.detail.dataPool'),
             children: (
-                <div className="flex h-full flex-col">
-                    <div className="mb-4 flex flex-shrink-0 items-center justify-between">
+                <div className="flex min-h-0 flex-col">
+                    <div className="mb-4 flex flex-shrink-0 items-center justify-between gap-3">
                         <Title level={5} className="!m-0">{t('dataset.detail.dataPool')} ({totalSamples})</Title>
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex flex-nowrap items-center gap-2">
+                            <Input.Search
+                                allowClear
+                                value={searchInput}
+                                placeholder={t('dataset.detail.searchByNamePlaceholder')}
+                                onSearch={handleSearch}
+                                onChange={(e) => {
+                                    const nextValue = e.target.value;
+                                    setSearchInput(nextValue);
+                                    if (!nextValue) {
+                                        handleSearch('');
+                                    }
+                                }}
+                                className="w-[220px]"
+                                size="small"
+                            />
                             <Select
                                 value={sortBy}
                                 onChange={setSortBy}
@@ -275,12 +447,20 @@ const DatasetDetail: React.FC = () => {
                             </Button>
                         </div>
                     </div>
-                    <div className="flex-1 overflow-y-auto pr-2.5">
+                    <div className="flex-1 min-h-0 pr-2.5">
                         <PaginatedList<Sample>
                             fetchData={fetchSamples}
                             initialPageSize={8}
                             pageSizeOptions={['8', '12', '20', '32', '50']}
-                            refreshKey={`${id}-${sortBy}-${sortOrder}-${sampleRefreshKey}`}
+                            adaptivePageSize={{
+                                enabled: true,
+                                mode: 'grid',
+                                itemMinWidth: 260,
+                                itemHeight: 250,
+                                rowGap: 16,
+                                colGap: 16,
+                            }}
+                            refreshKey={`${id}-${sortBy}-${sortOrder}-${searchQuery}-${sampleRefreshKey}`}
                             resetPageOnRefresh
                             onMetaChange={(meta) => setSampleMeta(meta)}
                             renderItems={(items) => (
@@ -290,18 +470,32 @@ const DatasetDetail: React.FC = () => {
                                             <FileTextOutlined className="mb-4 text-[48px] text-gray-300"/>
                                             <Title level={5}
                                                    className="!text-gray-500">{t('dataset.detail.noSamples')}</Title>
-                                            {canUpload ? (
-                                                <Button type="primary" icon={<UploadOutlined/>}
-                                                        onClick={handleUploadClick}>
-                                                    {t('dataset.detail.uploadData')}
-                                                </Button>
-                                            ) : (
-                                                <Tooltip title={t('common.noPermission')}>
-                                                    <Button type="primary" icon={<UploadOutlined/>} disabled>
+                                            <div className="mt-3 flex items-center justify-center gap-2">
+                                                {canUpload ? (
+                                                    <Button type="primary" icon={<UploadOutlined/>}
+                                                            onClick={handleStreamUploadClick}>
                                                         {t('dataset.detail.uploadData')}
                                                     </Button>
-                                                </Tooltip>
-                                            )}
+                                                ) : (
+                                                    <Tooltip title={t('common.noPermission')}>
+                                                        <Button type="primary" icon={<UploadOutlined/>} disabled>
+                                                            {t('dataset.detail.uploadData')}
+                                                        </Button>
+                                                    </Tooltip>
+                                                )}
+                                                {canOpenImportWorkspace ? (
+                                                    <Button icon={<UploadOutlined/>}
+                                                            onClick={handleOpenImportWorkspace}>
+                                                        {t('dataset.detail.openImportWorkspace')}
+                                                    </Button>
+                                                ) : (
+                                                    <Tooltip title={importWorkspaceDisabledReason}>
+                                                        <Button icon={<UploadOutlined/>} disabled>
+                                                            {t('dataset.detail.openImportWorkspace')}
+                                                        </Button>
+                                                    </Tooltip>
+                                                )}
+                                            </div>
                                         </div>
                                     </Card>
                                 ) : (
@@ -349,7 +543,7 @@ const DatasetDetail: React.FC = () => {
             key: 'settings',
             label: t('dataset.detail.settings'),
             children: (
-                <div className="h-full overflow-y-auto pr-2.5">
+                <div className="pr-2.5">
                     <DatasetSettings
                         dataset={dataset}
                         onUpdate={(updatedDataset: Dataset) => setDataset(updatedDataset)}
@@ -361,7 +555,7 @@ const DatasetDetail: React.FC = () => {
 
     return (
         <div className="flex h-full bg-transparent">
-            <aside className="w-[300px] shrink-0 overflow-y-auto border-r border-github-border p-5">
+            <aside className="w-1/5 shrink-0 border-r border-github-border p-5">
                 <Button
                     type="text"
                     icon={<ArrowLeftOutlined/>}
@@ -376,6 +570,9 @@ const DatasetDetail: React.FC = () => {
                     <Tag color={getDatasetTypeColor(dataset.type)}>
                         {getDatasetTypeLabel(dataset.type)}
                     </Tag>
+                    <Tag color={dataset.isPublic ? 'blue' : 'default'}>
+                        {dataset.isPublic ? t('dataset.visibility.public') : t('dataset.visibility.private')}
+                    </Tag>
                     {isOwner && <Tag color="gold">{t('common.owner')}</Tag>}
                     {role && !isOwner && <Tag>{role.displayName}</Tag>}
                 </div>
@@ -385,7 +582,7 @@ const DatasetDetail: React.FC = () => {
 
                 <div className="flex w-full flex-col gap-6">
                     {canUpload ? (
-                        <Button block icon={<UploadOutlined/>} onClick={handleUploadClick}>
+                        <Button block icon={<UploadOutlined/>} onClick={handleStreamUploadClick}>
                             {t('dataset.detail.uploadData')}
                         </Button>
                     ) : (
@@ -396,13 +593,25 @@ const DatasetDetail: React.FC = () => {
                         </Tooltip>
                     )}
 
+                    {canOpenImportWorkspace ? (
+                        <Button block icon={<UploadOutlined/>} onClick={handleOpenImportWorkspace}>
+                            {t('dataset.detail.openImportWorkspace')}
+                        </Button>
+                    ) : (
+                        <Tooltip title={importWorkspaceDisabledReason}>
+                            <Button block icon={<UploadOutlined/>} disabled>
+                                {t('dataset.detail.openImportWorkspace')}
+                            </Button>
+                        </Tooltip>
+                    )}
+
                     <input
                         type="file"
                         ref={fileInputRef}
                         className="hidden"
                         multiple
                         accept={getAcceptType()}
-                        onChange={handleFileChange}
+                        onChange={handleStreamFileChange}
                     />
 
                     {canEdit && (
@@ -412,10 +621,9 @@ const DatasetDetail: React.FC = () => {
                     )}
                 </div>
             </aside>
-            <main className="h-full flex-1 overflow-hidden bg-transparent p-6">
+            <main className="h-full w-4/5 min-w-0 bg-transparent p-6">
                 <Tabs activeKey={activeTab} onChange={setActiveTab} items={items} className="full-height-tabs"/>
 
-                {/* Upload Progress Modal */}
                 <UploadProgressModal
                     open={uploadModalOpen}
                     progress={progress}

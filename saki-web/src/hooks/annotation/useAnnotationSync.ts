@@ -1,6 +1,7 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
 import {api} from '../../services/api';
 import {AnnotationDraftPayload, AnnotationSyncActionItem, AnnotationSyncResponse,} from '../../types';
+import {hydrateDraftPayload} from '../../utils/annotationGeometry';
 
 function convertKeysToCamel<T>(obj: unknown): T {
     if (Array.isArray(obj)) {
@@ -73,7 +74,7 @@ export function useAnnotationSync(
         baseCommitRef.current = response.baseCommitId || null;
         setSeqId(seqRef.current);
         setBaseCommitId(baseCommitRef.current);
-        return response.payload || null;
+        return hydrateDraftPayload(response.payload) || null;
     }, []);
 
     const syncActions = useCallback(async (

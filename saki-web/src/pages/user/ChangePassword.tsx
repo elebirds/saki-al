@@ -8,11 +8,20 @@ import {useAuthStore} from '../../store/authStore';
 
 const {Title} = Typography;
 
-const ChangePassword: React.FC = () => {
+interface ChangePasswordProps {
+    forceMode?: boolean;
+}
+
+const ChangePassword: React.FC<ChangePasswordProps> = ({forceMode = false}) => {
     const {t} = useTranslation();
     const navigate = useNavigate();
     const setUser = useAuthStore((state) => state.setUser);
     const [loading, setLoading] = useState(false);
+    const subtitle = forceMode ? t('auth.changePassword.subtitle') : t('auth.changePassword.subtitleOptional');
+    const containerClassName = forceMode
+        ? 'flex h-screen items-center justify-center bg-github-bg'
+        : 'mx-auto w-full max-w-[520px] py-8';
+    const cardClassName = forceMode ? 'w-[400px]' : 'w-full';
 
     const onFinish = async (values: any) => {
         setLoading(true);
@@ -22,8 +31,8 @@ const ChangePassword: React.FC = () => {
             const user = await api.getCurrentUser();
             setUser(user);
             message.success(t('auth.changePassword.success'));
-            // 更改密码成功后，跳转到首页
-            navigate('/');
+            // 强制改密场景跳首页，常规改密返回个人中心
+            navigate(forceMode ? '/' : '/profile');
         } catch (error: any) {
             message.error(error.message || t('auth.changePassword.failed'));
         } finally {
@@ -32,11 +41,11 @@ const ChangePassword: React.FC = () => {
     };
 
     return (
-        <div className="flex h-screen items-center justify-center bg-[#f0f2f5]">
-            <Card className="w-[400px]">
+        <div className={containerClassName}>
+            <Card className={cardClassName}>
                 <div className="mb-6 text-center">
                     <Title level={2}>{t('auth.changePassword.title')}</Title>
-                    <Typography.Text type="secondary">{t('auth.changePassword.subtitle')}</Typography.Text>
+                    <Typography.Text type="secondary">{subtitle}</Typography.Text>
                 </div>
 
                 <Form

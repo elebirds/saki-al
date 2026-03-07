@@ -1,5 +1,5 @@
 import Konva from 'konva';
-import {Annotation} from '../../../types';
+import {Annotation, DetectionAnnotationType} from '../../../types';
 
 /** 绘制过程中的临时矩形数据 */
 export interface DrawingRect {
@@ -79,7 +79,7 @@ export interface ToolOptions {
 
 /** 标注创建事件数据 */
 export interface AnnotationCreateEvent {
-    type: 'rect' | 'obb';
+    type: DetectionAnnotationType;
     bbox: {
         x: number;
         y: number;

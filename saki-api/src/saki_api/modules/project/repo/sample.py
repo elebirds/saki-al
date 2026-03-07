@@ -1,0 +1,74 @@
+"""
+Sample Repository - Data access layer for Sample operations.
+"""
+
+import uuid
+from typing import List, Any
+
+from sqlalchemy.sql.elements import ColumnElement
+from sqlmodel import select
+from sqlmodel.ext.asyncio.session import AsyncSession
+
+from saki_api.infra.db.pagination import PaginationResponse
+from saki_api.infra.db.query import Pagination
+from saki_api.infra.db.repository import BaseRepository
+from saki_api.modules.project.domain.project import ProjectDataset
+from saki_api.modules.storage.domain.sample import Sample
+
+
+class SampleRepository(BaseRepository[Sample]):
+    """Repository for Sample data access."""
+
+    def __init__(self, session: AsyncSession):
+        super().__init__(Sample, session)
+
+    async def get_by_dataset(
+            self,
+            dataset_id: uuid.UUID,
+            order_by: List[Any] | None = None,
+    ) -> List[Sample]:
+        """Get all samples in a dataset without pagination."""
+        return await self.list(
+            filters=[Sample.dataset_id == dataset_id],
+            order_by=order_by,
+        )
+
+    async def name_exists_in_dataset(
+            self,
+            dataset_id: uuid.UUID,
+            sample_name: str,
+    ) -> bool:
+        """Check whether a sample name already exists in a dataset."""
+        return await self.exists(
+            filters=[
+                Sample.dataset_id == dataset_id,
+                Sample.name == sample_name,
+            ]
+        )
+
+    async def get_by_dataset_paginated(
+            self,
+            dataset_id: uuid.UUID,
+            pagination: Pagination = Pagination(),
+            order_by: List[Any] | None = None,
+            extra_filters: List[ColumnElement[bool]] | None = None,
+    ) -> PaginationResponse[Sample]:
+        """Get samples in a dataset with pagination."""
+        filters: List[ColumnElement[bool]] = [Sample.dataset_id == dataset_id]
+        if extra_filters:
+            filters.extend(extra_filters)
+        return await self.list_paginated(
+            pagination=pagination,
+            filters=filters,
+            order_by=order_by,
+        )
+
+    async def list_ids_by_project(self, project_id: uuid.UUID) -> List[uuid.UUID]:
+        stmt = (
+            select(Sample.id)
+            .join(ProjectDataset, ProjectDataset.dataset_id == Sample.dataset_id)
+            .where(ProjectDataset.project_id == project_id)
+            .order_by(Sample.id.asc())
+        )
+        rows = await self.session.exec(stmt)
+        return list(rows.all())

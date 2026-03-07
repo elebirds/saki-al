@@ -30,7 +30,7 @@ const NetworkError: React.FC = () => {
         checkServerStatus();
 
         // 每3秒检查一次
-        const interval = setInterval(checkServerStatus, 3000);
+        const interval = setInterval(checkServerStatus, 10000);
 
         return () => {
             clearInterval(interval);
@@ -44,7 +44,7 @@ const NetworkError: React.FC = () => {
     };
 
     return (
-        <div className="flex h-screen items-center justify-center bg-[#f0f2f5]">
+        <div className="flex h-screen items-center justify-center bg-github-panel">
             <Result
                 status="500"
                 title={t('common.networkErrorTitle')}

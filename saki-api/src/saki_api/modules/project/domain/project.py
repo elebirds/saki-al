@@ -1,0 +1,74 @@
+import uuid
+from typing import List, Dict, Any, TYPE_CHECKING
+
+from sqlalchemy import Column
+from sqlmodel import Field, SQLModel, Relationship
+
+from saki_api.modules.shared.modeling.base import TimestampMixin, UUIDMixin, OPT_JSON
+from saki_api.modules.shared.modeling.enums import TaskType, ProjectStatus, AnnotationType, DatasetType
+
+if TYPE_CHECKING:
+    from saki_api.modules.storage.domain.dataset import Dataset
+    from saki_api.modules.runtime.domain.round import Round
+    from saki_api.modules.runtime.domain.loop import Loop
+    from saki_api.modules.project.domain.branch import Branch
+    from saki_api.modules.project.domain.commit import Commit
+    from saki_api.modules.project.domain.label import Label
+
+
+class ProjectDataset(SQLModel, table=True):
+    """
+    Base model for the link between Project and Dataset.
+    """
+    __tablename__ = "project_dataset"
+    project_id: uuid.UUID = Field(foreign_key="project.id", primary_key=True, description="ID of the project.")
+    dataset_id: uuid.UUID = Field(foreign_key="dataset.id", primary_key=True, description="ID of the dataset.")
+
+    project: "Project" = Relationship(back_populates="dataset_links")
+    dataset: "Dataset" = Relationship(back_populates="project_links")
+
+
+class ProjectBase(SQLModel):
+    """
+    Project 是主动学习和版本控制的核心容器（Repository）。
+    """
+    # 基础字段
+    name: str = Field(index=True, description="Name of the project.")
+    description: str | None = Field(default=None, description="Description of the project.")
+    # Task type - determines ML model type (classification, detection, etc.)
+    task_type: TaskType = Field(default=TaskType.DETECTION, description="Type of ML task for active learning.")
+    dataset_type: DatasetType = Field(
+        default=DatasetType.CLASSIC,
+        description="Dataset type constraint for this project (immutable after creation).",
+    )
+    enabled_annotation_types: List[AnnotationType] = Field(
+        default_factory=lambda: [AnnotationType.RECT, AnnotationType.OBB],
+        sa_column=Column(OPT_JSON),
+        description="Enabled annotation types for the project (immutable after creation).",
+    )
+    status: ProjectStatus = Field(default=ProjectStatus.ACTIVE, description="Current status of the project.")
+
+    # 配置字段
+    config: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON),
+                                   description="Configuration of the project.")
+
+
+class Project(ProjectBase, TimestampMixin, UUIDMixin, table=True):
+    """
+    Database model for Project.
+    Used for active learning training, can link to multiple Datasets.
+    Integrates with Git-like version control for annotation management.
+    """
+    __tablename__ = "project"
+
+    # 1. 数据关联 (L1)
+    dataset_links: List["ProjectDataset"] = Relationship(back_populates="project")
+
+    # 2. 版本控制 (L2)
+    branches: List["Branch"] = Relationship(back_populates="project", cascade_delete=True)
+    commits: List["Commit"] = Relationship(back_populates="project", cascade_delete=True)
+    labels: List["Label"] = Relationship(back_populates="project", cascade_delete=True)
+
+    # 3. 训练任务 (L3)
+    rounds: List["Round"] = Relationship(back_populates="project")
+    loops: List["Loop"] = Relationship(back_populates="project", cascade_delete=True)

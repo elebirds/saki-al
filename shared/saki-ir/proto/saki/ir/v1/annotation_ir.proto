@@ -1,0 +1,121 @@
+syntax = "proto3";
+
+package saki.ir.v1;
+
+option go_package = "github.com/saki-ai/saki/shared/saki-ir/go/gen/annotationirv1;annotationirv1";
+
+import "google/protobuf/struct.proto";
+
+message RectGeometry {
+  float x = 1;
+  float y = 2;
+  float width = 3;
+  float height = 4;
+}
+
+message ObbGeometry {
+  float cx = 1;
+  float cy = 2;
+  float width = 3;
+  float height = 4;
+  float angle_deg_ccw = 5;
+}
+
+message Geometry {
+  oneof shape {
+    RectGeometry rect = 1;
+    ObbGeometry obb = 2;
+  }
+}
+
+enum AnnotationSource {
+  ANNOTATION_SOURCE_UNSPECIFIED = 0;
+  ANNOTATION_SOURCE_MANUAL = 1;
+  ANNOTATION_SOURCE_MODEL = 2;
+  ANNOTATION_SOURCE_SYSTEM = 3;
+  ANNOTATION_SOURCE_IMPORTED = 4;
+  ANNOTATION_SOURCE_CONFIRMED_MODEL = 5;
+}
+
+message LabelRecord {
+  string id = 1;
+  string name = 2;
+  string color = 3;
+}
+
+message SampleRecord {
+  string id = 1;
+  string asset_hash = 2;
+  string download_url = 3;
+  int32 width = 4;
+  int32 height = 5;
+  google.protobuf.Struct meta = 6;
+}
+
+message AnnotationRecord {
+  string id = 1;
+  string sample_id = 2;
+  string label_id = 3;
+  Geometry geometry = 4;
+  AnnotationSource source = 5;
+  float confidence = 6;
+  google.protobuf.Struct attrs = 7;
+}
+
+message DataItemIR {
+  oneof item {
+    LabelRecord label = 1;
+    SampleRecord sample = 2;
+    AnnotationRecord annotation = 3;
+  }
+}
+
+message DataBatchIR {
+  repeated DataItemIR items = 1;
+}
+
+enum PayloadSchema {
+  PAYLOAD_SCHEMA_UNSPECIFIED = 0;
+  PAYLOAD_SCHEMA_DATA_BATCH_IR = 1;
+}
+
+enum PayloadCodec {
+  PAYLOAD_CODEC_UNSPECIFIED = 0;
+  PAYLOAD_CODEC_PROTOBUF = 1;
+  PAYLOAD_CODEC_MSGPACK = 2;
+}
+
+enum PayloadCompression {
+  PAYLOAD_COMPRESSION_UNSPECIFIED = 0;
+  PAYLOAD_COMPRESSION_NONE = 1;
+  PAYLOAD_COMPRESSION_ZSTD = 2;
+}
+
+enum PayloadChecksumAlgo {
+  PAYLOAD_CHECKSUM_ALGO_UNSPECIFIED = 0;
+  PAYLOAD_CHECKSUM_ALGO_CRC32C = 1;
+}
+
+message PayloadStats {
+  uint32 item_count = 1;
+  uint32 annotation_count = 2;
+  uint32 sample_count = 3;
+  uint32 label_count = 4;
+  uint64 payload_size = 5;
+  uint64 uncompressed_size = 6;
+}
+
+message PayloadHeader {
+  PayloadSchema schema = 1;
+  uint32 schema_version = 2;
+  PayloadCodec codec = 3;
+  PayloadCompression compression = 4;
+  PayloadChecksumAlgo checksum_algo = 5;
+  uint32 checksum = 6; // CRC32C over compressed `payload` bytes (encoded payload bytes)
+  PayloadStats stats = 7;
+}
+
+message EncodedPayload {
+  PayloadHeader header = 1;
+  bytes payload = 2;
+}

@@ -4,8 +4,17 @@
  * FEDO 标注相关的工具函数
  */
 
-import {Annotation, AnnotationType, BoundingBox, DualViewAnnotation, MappedRegion} from '../types';
+import {
+    Annotation,
+    ANNOTATION_TYPE_OBB,
+    AnnotationType,
+    BoundingBox,
+    DetectionAnnotationType,
+    DualViewAnnotation,
+    MappedRegion,
+} from '../types';
 import {VIEW_L_OMEGAD, VIEW_TIME_ENERGY} from '../components/annotation/DualCanvasArea';
+import {canvasDataToGeometry, geometryToCanvasData, resolveAnnotationView} from './annotationGeometry';
 
 /** Convert DualViewAnnotation to Annotation[] for AnnotationCanvas (one per view) */
 export function dualToAnnotations(dual: DualViewAnnotation): Annotation[] {
@@ -21,12 +30,13 @@ export function dualToAnnotations(dual: DualViewAnnotation): Annotation[] {
         labelName: dual.labelName,
         labelColor: dual.labelColor,
         type: dual.primary.type as AnnotationType,
-        source: 'manual',
-        data: dual.primary.bbox,
-        annotatorId: dual.annotatorId,
-        extra: {
-            view: VIEW_TIME_ENERGY, // 默认主标注在 Time-Energy 视图
+        source: dual.source || 'manual',
+        geometry: canvasDataToGeometry(dual.primary.type as AnnotationType, dual.primary.bbox as Record<string, any>),
+        confidence: dual.confidence,
+        attrs: {
+            view: VIEW_TIME_ENERGY,
         },
+        annotatorId: dual.annotatorId,
     });
 
     return annotations;
@@ -34,15 +44,16 @@ export function dualToAnnotations(dual: DualViewAnnotation): Annotation[] {
 
 /** Convert Annotation to DualViewAnnotation */
 export function annotationToDual(ann: Annotation, regions: MappedRegion[] = []): DualViewAnnotation {
+    const data = geometryToCanvasData(ann.type, ann.geometry);
     const bbox: BoundingBox = {
-        x: ann.data.x || 0,
-        y: ann.data.y || 0,
-        width: ann.data.width || 0,
-        height: ann.data.height || 0,
-        rotation: ann.data.rotation,
+        x: data.x || 0,
+        y: data.y || 0,
+        width: data.width || 0,
+        height: data.height || 0,
+        rotation: data.rotation,
     };
 
-    const extraRegions = ann.extra?.secondary?.regions || regions;
+    const extraRegions = (ann.attrs?.secondary?.regions || regions) as MappedRegion[];
 
     return {
         id: ann.id,
@@ -54,8 +65,10 @@ export function annotationToDual(ann: Annotation, regions: MappedRegion[] = []):
         labelName: ann.labelName || '',
         labelColor: ann.labelColor || '#ff0000',
         annotatorId: ann.annotatorId,
+        source: ann.source || 'manual',
+        confidence: ann.confidence,
         primary: {
-            type: ann.type as 'rect' | 'obb',
+            type: ann.type as DetectionAnnotationType,
             bbox,
         },
         secondary: {
@@ -74,14 +87,15 @@ export function generatedToAnnotations(
     annotatorId?: string | null
 ): Annotation[] {
     return generated.map((gen) => {
-        const data = gen.data || {};
-        const view = gen.extra?.view || gen.view || VIEW_L_OMEGAD;
-        const type = (gen.type || 'obb') as AnnotationType;
+        const inferredType = (gen.type || ANNOTATION_TYPE_OBB) as AnnotationType;
+        const data = geometryToCanvasData(inferredType, gen.geometry);
+        const view = resolveAnnotationView(gen) || VIEW_L_OMEGAD;
+        const type = (gen.type || ANNOTATION_TYPE_OBB) as AnnotationType;
         const resolvedLabelId = gen.labelId || gen.label_id || labelId;
         const resolvedLabelName = gen.labelName || gen.label_name || labelName;
         const resolvedLabelColor = gen.labelColor || gen.label_color || labelColor;
         const source = (gen.source || 'system') as any;
-        const extra = gen.extra || {};
+        const attrs = gen.attrs || {};
         const resolvedGroupId = gen.groupId || gen.group_id || groupId;
         const resolvedLineageId = gen.lineageId || gen.lineage_id || gen.id;
 
@@ -103,12 +117,13 @@ export function generatedToAnnotations(
             labelColor: resolvedLabelColor,
             type: type,
             source: source,
-            data: bboxData,
+            geometry: gen.geometry || canvasDataToGeometry(type, bboxData as Record<string, any>),
+            confidence: Number.isFinite(Number(gen.confidence)) ? Number(gen.confidence) : undefined,
             annotatorId: gen.annotatorId || gen.annotator_id || annotatorId,
-            extra: {
-                ...extra,
+            attrs: {
+                ...attrs,
                 view: view,
-                mapping_method: extra.mapping_method || extra.mappingMethod || 'placeholder',
+                mapping_method: attrs.mapping_method || attrs.mappingMethod || 'placeholder',
             },
         };
     });
@@ -118,11 +133,12 @@ export function generatedToAnnotations(
 export function generatedToRegions(generated: Array<Record<string, any>>): MappedRegion[] {
     return generated
         .filter((gen) => {
-            const view = gen.extra?.view || gen.view;
+            const view = resolveAnnotationView(gen);
             return view === VIEW_L_OMEGAD;
         })
         .map((gen, index) => {
-            const data = gen.data || {};
+            const type = (gen.type || ANNOTATION_TYPE_OBB) as AnnotationType;
+            const data = geometryToCanvasData(type, gen.geometry);
             const bbox = {
                 x: data.x || 0,
                 y: data.y || 0,
@@ -155,7 +171,6 @@ export function isGeneratedAnnotation(ann: Annotation): boolean {
     return (
         source === 'auto' ||
         source === 'system' ||
-        source === 'model' ||
         source === 'fedo_mapping'
     );
 }

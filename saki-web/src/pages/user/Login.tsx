@@ -1,4 +1,4 @@
-import React, {useState} from 'react';
+import React, {useEffect, useState} from 'react';
 import {Button, Card, Form, Input, message, Typography} from 'antd';
 import {LockOutlined, UserOutlined} from '@ant-design/icons';
 import {Link, useNavigate} from 'react-router-dom';
@@ -13,6 +13,27 @@ const Login: React.FC = () => {
     const navigate = useNavigate();
     const setUser = useAuthStore((state) => state.setUser);
     const [loading, setLoading] = useState(false);
+    const [allowSelfRegister, setAllowSelfRegister] = useState(false);
+
+    useEffect(() => {
+        let active = true;
+        const loadSystemStatus = async () => {
+            try {
+                const status = await api.getSystemStatus();
+                if (active) {
+                    setAllowSelfRegister(Boolean(status.allowSelfRegister));
+                }
+            } catch {
+                if (active) {
+                    setAllowSelfRegister(false);
+                }
+            }
+        };
+        loadSystemStatus();
+        return () => {
+            active = false;
+        };
+    }, []);
 
     const onFinish = async (values: any) => {
         setLoading(true);
@@ -42,7 +63,7 @@ const Login: React.FC = () => {
     };
 
     return (
-        <div className="flex h-screen items-center justify-center bg-[#f0f2f5]">
+        <div className="flex h-screen items-center justify-center bg-github-bg">
             <Card className="w-[400px]">
                 <div className="mb-6 text-center">
                     <Title level={2}>{t('app.title')}</Title>
@@ -75,9 +96,11 @@ const Login: React.FC = () => {
                         </Button>
                     </Form.Item>
 
-                    <div className="text-center">
-                        {t('auth.login.or')} <Link to="/register">{t('auth.login.registerLink')}</Link>
-                    </div>
+                    {allowSelfRegister ? (
+                        <div className="text-center">
+                            {t('auth.login.or')} <Link to="/register">{t('auth.login.registerLink')}</Link>
+                        </div>
+                    ) : null}
                 </Form>
             </Card>
         </div>

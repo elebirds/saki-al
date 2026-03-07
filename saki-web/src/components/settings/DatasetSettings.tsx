@@ -1,5 +1,5 @@
 import React, {useState} from 'react';
-import {Button, Card, Divider, Form, Input, message, Popconfirm, Tabs} from 'antd';
+import {Button, Card, Divider, Form, Input, message, Popconfirm, Switch, Tabs} from 'antd';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router-dom';
 import {Dataset} from '../../types';
@@ -28,6 +28,8 @@ const DatasetSettings: React.FC<DatasetSettingsProps> = ({dataset, onUpdate}) =>
         form.setFieldsValue({
             name: dataset.name,
             description: dataset.description,
+            allowDuplicateSampleNames: dataset.allowDuplicateSampleNames ?? true,
+            isPublic: dataset.isPublic ?? false,
         });
     }, [dataset, form]);
 
@@ -37,6 +39,8 @@ const DatasetSettings: React.FC<DatasetSettingsProps> = ({dataset, onUpdate}) =>
             const updated = await api.updateDataset(dataset.id, {
                 name: values.name,
                 description: values.description,
+                allowDuplicateSampleNames: values.allowDuplicateSampleNames,
+                isPublic: values.isPublic,
             });
             onUpdate(updated);
             message.success(t('dataset.settings.successMessage'));
@@ -89,6 +93,27 @@ const DatasetSettings: React.FC<DatasetSettingsProps> = ({dataset, onUpdate}) =>
                             />
                         </Form.Item>
 
+                        <Form.Item
+                            label={t('dataset.settings.visibility')}
+                            name="isPublic"
+                            valuePropName="checked"
+                            extra={t('dataset.settings.visibilityHelp')}
+                        >
+                            <Switch
+                                checkedChildren={t('dataset.visibility.public')}
+                                unCheckedChildren={t('dataset.visibility.private')}
+                            />
+                        </Form.Item>
+
+                        <Form.Item
+                            label={t('dataset.settings.allowDuplicateSampleNames')}
+                            name="allowDuplicateSampleNames"
+                            valuePropName="checked"
+                            extra={t('dataset.settings.allowDuplicateSampleNamesHelp')}
+                        >
+                            <Switch/>
+                        </Form.Item>
+
                         <Form.Item>
                             <div className="flex items-center gap-2">
                                 <Button type="primary" icon={<SaveOutlined/>} htmlType="submit" loading={loading}>
@@ -122,7 +147,7 @@ const DatasetSettings: React.FC<DatasetSettingsProps> = ({dataset, onUpdate}) =>
             key: 'members',
             label: t('dataset.members.title'),
             children: (
-                <DatasetMembers datasetId={dataset.id} ownerId={dataset.ownerId}/>
+                <DatasetMembers datasetId={dataset.id}/>
             ),
         }] : []),
     ];

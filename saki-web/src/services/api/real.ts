@@ -1,12 +1,14 @@
 import axios, {AxiosInstance, InternalAxiosRequestConfig} from 'axios';
 import {
+    AnnotationDraftBatchRequest,
+    AnnotationDraftBatchResult,
     AnnotationDraftCommitRequest,
     AnnotationDraftPayload,
     AnnotationDraftRead,
     AnnotationRead,
     AnnotationSyncRequest,
     AnnotationSyncResponse,
-    ALLoop,
+    Loop,
     AvailableTypesResponse,
     CommitDiff,
     CommitHistoryItem,
@@ -20,33 +22,49 @@ import {
     Project,
     ProjectBranch,
     ProjectCreate,
+    ProjectForkCreate,
     ProjectLabel,
     ProjectLabelCreate,
     ProjectLabelUpdate,
     ProjectSample,
-    RuntimeArtifactsResponse,
-    JobArtifactDownload,
-    RuntimeJob,
-    RuntimeJobCommandResponse,
-    RuntimeJobCreateRequest,
-    RuntimeJobEvent,
-    RuntimeMetricPoint,
-    RuntimeTopKCandidate,
+    RoundSelectionApplyRequest,
+    RoundSelectionApplyResponse,
+    RoundSelectionRead,
+    RuntimeRound,
+    RuntimeRoundCommandResponse,
+    RuntimeRoundArtifactsResponse,
+    RuntimeStep,
+    RuntimeTaskCandidate,
+    RuntimeTaskEvent,
+    RuntimeRoundEvent,
+    RoundEventQuery,
+    RoundEventQueryResponse,
+    TaskEventQuery,
+    TaskEventQueryResponse,
+    RuntimeTaskMetricPoint,
+    TaskArtifactDownload,
+    TaskArtifactsResponse,
     LoopCreateRequest,
-    LoopRecoverRequest,
+    LoopActionRequest,
+    LoopActionResponse,
+    LoopSnapshotRead,
+    LoopGateResponse,
+    RoundMissingSamplesQuery,
+    RoundMissingSamplesResponse,
+    PredictionApplyRequest,
+    PredictionApplyResponse,
+    PredictionCreateRequest,
+    PredictionDetailRead,
+    PredictionRead,
+    PredictionTaskRead,
+    RoundPredictionCleanupResponse,
     LoopUpdateRequest,
-    LoopRound,
     LoopSummary,
-    SimulationExperimentCreateRequest,
-    SimulationExperimentCreateResponse,
-    SimulationExperimentCurves,
     RuntimePluginCatalogResponse,
     RuntimeExecutorListResponse,
     RuntimeExecutorRead,
     RuntimeExecutorStatsRange,
     RuntimeExecutorStatsResponse,
-    AnnotationBatch,
-    AnnotationBatchItem,
     ProjectModel,
     ModelArtifactDownload,
     ResourceMember,
@@ -55,19 +73,46 @@ import {
     ResourcePermissions,
     Role,
     RoleCreate,
+    RolePermissionCatalog,
     RoleInfo,
     RoleType,
     RoleUpdate,
     Sample,
+    SystemSettingsBundle,
+    SystemStatus,
     SystemPermissions,
     User,
     UserSystemRole,
     UserSystemRoleAssign,
+    ImportExecuteRequest,
+    ImportProgressEvent,
+    ImportTaskCreateResponse,
+    ImportTaskResultResponse,
+    ImportTaskStatusResponse,
+    ImportUploadAbortResponse,
+    ImportUploadCompleteRequest,
+    ImportUploadInitRequest,
+    ImportUploadInitResponse,
+    ImportUploadPartSignRequest,
+    ImportUploadPartSignResponse,
+    ImportUploadSessionResponse,
+    SampleBulkImportRequest,
     UploadProgressEvent,
+    AnnotationBulkRequest,
+    DatasetImportPrepareRequest,
+    ProjectAnnotationImportPrepareRequest,
+    ProjectAssociatedImportPrepareRequest,
+    ProjectIOCapabilities,
+    ProjectExportResolveRequest,
+    ProjectExportResolveResponse,
+    ProjectExportChunkRequest,
+    ProjectExportChunkResponse,
 } from '../../types';
 import {ApiService} from './interface';
 import {useAuthStore} from '../../store/authStore';
+import {hydrateAnnotationRead, hydrateDraftPayload} from '../../utils/annotationGeometry';
 import {enforceHttps, hashPassword} from '../../utils/security';
+import {normalizeRuntimeRoundEvent, normalizeRuntimeTaskEvent} from '../../pages/project/loops/runtimeEventFormatter';
 
 // ============================================================================
 // Case Conversion Utilities
@@ -75,11 +120,17 @@ import {enforceHttps, hashPassword} from '../../utils/security';
 
 /** Convert snake_case string to camelCase */
 function snakeToCamel(str: string): string {
+    if (str.includes('.')) {
+        return str;
+    }
     return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
 }
 
 /** Convert camelCase string to snake_case */
 function camelToSnake(str: string): string {
+    if (str.includes('.')) {
+        return str;
+    }
     return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
 }
 
@@ -238,6 +289,179 @@ async function withOptionalPasswordHashing<T>(
     return fn(processedData);
 }
 
+function normalizeLoop(loop: Loop): Loop {
+    return {
+        ...loop,
+        lifecycle: (loop as any).lifecycle,
+        gate: (loop as any).gate ?? undefined,
+        lastRoundId: (loop as any).lastRoundId ?? null,
+        config: (loop as any).config ?? {plugin: {}},
+    };
+}
+
+function normalizeLoopSummary(summary: LoopSummary): LoopSummary {
+    const metricsLatestSourceRaw = String((summary as any).metricsLatestSource || '').trim().toLowerCase();
+    const metricsLatestSource: 'eval' | 'train' | 'other' | 'none' = (
+        metricsLatestSourceRaw === 'eval'
+        || metricsLatestSourceRaw === 'train'
+        || metricsLatestSourceRaw === 'other'
+        || metricsLatestSourceRaw === 'none'
+    )
+        ? metricsLatestSourceRaw as 'eval' | 'train' | 'other' | 'none'
+        : 'none';
+    return {
+        ...summary,
+        lifecycle: (summary as any).lifecycle,
+        roundsTotal: (summary as any).roundsTotal ?? 0,
+        attemptsTotal: (summary as any).attemptsTotal ?? 0,
+        roundsSucceeded: (summary as any).roundsSucceeded ?? 0,
+        stepsTotal: (summary as any).stepsTotal ?? 0,
+        stepsSucceeded: (summary as any).stepsSucceeded ?? 0,
+        metricsLatest: (summary as any).metricsLatest ?? {},
+        metricsLatestTrain: (summary as any).metricsLatestTrain ?? {},
+        metricsLatestEval: (summary as any).metricsLatestEval ?? {},
+        metricsLatestSource,
+    };
+}
+
+function normalizeRound(round: RuntimeRound): RuntimeRound {
+    const finalMetricsSourceRaw = String((round as any).finalMetricsSource || '').trim().toLowerCase();
+    const finalMetricsSource: 'eval' | 'train' | 'other' | 'none' = (
+        finalMetricsSourceRaw === 'eval'
+        || finalMetricsSourceRaw === 'train'
+        || finalMetricsSourceRaw === 'other'
+        || finalMetricsSourceRaw === 'none'
+    )
+        ? finalMetricsSourceRaw as 'eval' | 'train' | 'other' | 'none'
+        : 'none';
+    return {
+        ...round,
+        state: (round as any).state ?? 'pending',
+        attemptIndex: Number((round as any).attemptIndex ?? 1),
+        awaitingConfirm: Boolean((round as any).awaitingConfirm ?? false),
+        stepCounts: (round as any).stepCounts ?? {},
+        inputCommitId: (round as any).inputCommitId ?? null,
+        retryOfRoundId: (round as any).retryOfRoundId ?? null,
+        retryReason: (round as any).retryReason ?? null,
+        confirmedAt: (round as any).confirmedAt ?? null,
+        confirmedRevealedCount: Number((round as any).confirmedRevealedCount ?? 0),
+        confirmedSelectedCount: Number((round as any).confirmedSelectedCount ?? 0),
+        confirmedEffectiveMinRequired: Number((round as any).confirmedEffectiveMinRequired ?? 0),
+        lastError: (round as any).lastError ?? (round as any).terminalReason ?? null,
+        finalMetrics: (round as any).finalMetrics ?? {},
+        trainFinalMetrics: (round as any).trainFinalMetrics ?? {},
+        evalFinalMetrics: (round as any).evalFinalMetrics ?? {},
+        finalMetricsSource,
+        resolvedParams: (round as any).resolvedParams ?? {},
+    };
+}
+
+function normalizeTaskEvent(event: any): RuntimeTaskEvent {
+    return normalizeRuntimeTaskEvent(event);
+}
+
+function normalizeTaskEventQueryResponse(response: any): TaskEventQueryResponse {
+    const itemsRaw = Array.isArray(response?.items) ? response.items : [];
+    const facetsRaw = response?.facets && typeof response.facets === 'object' ? response.facets : null;
+    return {
+        items: itemsRaw.map((item: any) => normalizeTaskEvent(item)),
+        nextAfterSeq: response?.nextAfterSeq ?? response?.next_after_seq ?? null,
+        facets: facetsRaw
+            ? {
+                eventTypes: facetsRaw.eventTypes ?? facetsRaw.event_types ?? {},
+                levels: facetsRaw.levels ?? {},
+                tags: facetsRaw.tags ?? {},
+            }
+            : null,
+    };
+}
+
+function normalizeRoundEvent(event: any): RuntimeRoundEvent | null {
+    return normalizeRuntimeRoundEvent(event);
+}
+
+function normalizeRoundEventQueryResponse(response: any): RoundEventQueryResponse {
+    const itemsRaw = Array.isArray(response?.items) ? response.items : [];
+    return {
+        items: itemsRaw
+            .map((item: any) => normalizeRoundEvent(item))
+            .filter((item: RuntimeRoundEvent | null): item is RuntimeRoundEvent => Boolean(item)),
+        nextAfterCursor: response?.nextAfterCursor ?? response?.next_after_cursor ?? null,
+        hasMore: Boolean(response?.hasMore ?? response?.has_more ?? false),
+    };
+}
+
+function normalizeRoundCommandResponse(response: RuntimeRoundCommandResponse): RuntimeRoundCommandResponse {
+    return {
+        ...response,
+        roundId: (response as any).roundId,
+    };
+}
+
+function normalizeRuntimePluginCatalog(response: RuntimePluginCatalogResponse): RuntimePluginCatalogResponse {
+    return {
+        ...response,
+        items: (response.items || []).map((item: any) => ({
+            ...item,
+            supportedTaskTypes: item.supportedTaskTypes ?? [],
+        })),
+    };
+}
+
+function normalizeRuntimeExecutor(executor: RuntimeExecutorRead): RuntimeExecutorRead {
+    const pluginIds = (executor.pluginIds || {}) as Record<string, any>;
+    const plugins = Array.isArray(pluginIds.plugins)
+        ? pluginIds.plugins.map((plugin: any) => ({
+            ...plugin,
+            supportedTaskTypes: plugin.supportedTaskTypes ?? [],
+        }))
+        : pluginIds.plugins;
+    return {
+        ...executor,
+        currentTaskId: (executor as any).currentTaskId ?? (executor as any).current_task_id ?? null,
+        pluginIds: {
+            ...pluginIds,
+            plugins,
+        },
+    };
+}
+
+function normalizeRuntimeExecutorList(response: RuntimeExecutorListResponse): RuntimeExecutorListResponse {
+    return {
+        ...response,
+        items: (response.items || []).map((item) => normalizeRuntimeExecutor(item)),
+    };
+}
+
+function normalizeProjectModel(model: ProjectModel): ProjectModel {
+    return {
+        ...model,
+        sourceCommitId: (model as any).sourceCommitId ?? null,
+        sourceRoundId: (model as any).sourceRoundId ?? (model as any).roundId ?? null,
+        sourceTaskId: (model as any).sourceTaskId ?? null,
+        primaryArtifactName: String((model as any).primaryArtifactName || 'best.pt'),
+        publishManifest: (model as any).publishManifest && typeof (model as any).publishManifest === 'object'
+            ? (model as any).publishManifest
+            : {},
+    };
+}
+
+function resolveUploadFile(fileLike: unknown): File {
+    if (fileLike instanceof File) {
+        return fileLike;
+    }
+    if (fileLike && typeof fileLike === 'object') {
+        const candidate = fileLike as Record<string, unknown>;
+        if (candidate.originFileObj instanceof File) {
+            return candidate.originFileObj;
+        }
+        if (candidate.file instanceof File) {
+            return candidate.file;
+        }
+    }
+    throw new Error('Invalid upload file, please re-select the ZIP file.');
+}
+
 // ============================================================================
 // API Service Implementation
 // ============================================================================
@@ -252,9 +476,6 @@ export class RealApiService implements ApiService {
 
         this.client = axios.create({
             baseURL: this.apiBaseUrl,
-            headers: {
-                'Content-Type': 'application/json',
-            },
         });
 
         // ========================================================================
@@ -294,6 +515,16 @@ export class RealApiService implements ApiService {
         // 2. Convert request body from camelCase to snake_case
         this.client.interceptors.request.use(
             (config: InternalAxiosRequestConfig) => {
+                if (config.data instanceof FormData) {
+                    // Let browser set multipart boundary automatically.
+                    if (config.headers && typeof (config.headers as any).set === 'function') {
+                        (config.headers as any).set('Content-Type', undefined);
+                    } else if (config.headers) {
+                        delete (config.headers as any)['Content-Type'];
+                        delete (config.headers as any)['content-type'];
+                    }
+                    return config;
+                }
                 // Only convert JSON data, skip FormData and URLSearchParams
                 if (config.data &&
                     !(config.data instanceof FormData) &&
@@ -469,8 +700,8 @@ export class RealApiService implements ApiService {
     // System APIs
     // ==========================================================================
 
-    async getSystemStatus(): Promise<{ initialized: boolean }> {
-        const response = await this.client.get<{ initialized: boolean }>('/system/status');
+    async getSystemStatus(): Promise<SystemStatus> {
+        const response = await this.client.get<SystemStatus>('/system/status');
         return response.data;
     }
 
@@ -483,6 +714,16 @@ export class RealApiService implements ApiService {
 
     async getAvailableTypes(): Promise<AvailableTypesResponse> {
         const response = await this.client.get<AvailableTypesResponse>('/system/types');
+        return response.data;
+    }
+
+    async getSystemSettingsBundle(): Promise<SystemSettingsBundle> {
+        const response = await this.client.get<SystemSettingsBundle>('/system/settings/bundle');
+        return response.data;
+    }
+
+    async updateSystemSettings(values: Record<string, unknown>): Promise<SystemSettingsBundle> {
+        const response = await this.client.patch<SystemSettingsBundle>('/system/settings', {values});
         return response.data;
     }
 
@@ -502,6 +743,11 @@ export class RealApiService implements ApiService {
                 resource_id: resourceId,
             },
         });
+        return response.data;
+    }
+
+    async getPermissionCatalog(): Promise<RolePermissionCatalog> {
+        const response = await this.client.get<RolePermissionCatalog>('/roles/permission-catalog');
         return response.data;
     }
 
@@ -552,8 +798,8 @@ export class RealApiService implements ApiService {
     // Dataset APIs
     // ==========================================================================
 
-    async getDatasets(page: number = 1, limit: number = 20): Promise<PaginationResponse<Dataset>> {
-        const response = await this.client.get<PaginationResponse<Dataset>>('/datasets', {params: {page, limit}});
+    async getDatasets(page: number = 1, limit: number = 20, q?: string): Promise<PaginationResponse<Dataset>> {
+        const response = await this.client.get<PaginationResponse<Dataset>>('/datasets', {params: {page, limit, q}});
         return response.data;
     }
 
@@ -573,38 +819,6 @@ export class RealApiService implements ApiService {
 
     async deleteDataset(id: string): Promise<void> {
         await this.client.delete(`/datasets/${id}`);
-    }
-
-    async getDatasetStats(id: string): Promise<{
-        datasetId: string;
-        totalSamples: number;
-        labeledSamples: number;
-        unlabeledSamples: number;
-        skippedSamples: number;
-        completionRate: number;
-        linkedProjects: number;
-        memberCount: number;
-    }> {
-        // TODO: Implement when backend endpoint is available
-        // For now, return mock data
-        return {
-            datasetId: id,
-            totalSamples: 0,
-            labeledSamples: 0,
-            unlabeledSamples: 0,
-            skippedSamples: 0,
-            completionRate: 0,
-            linkedProjects: 0,
-            memberCount: 1,
-        };
-    }
-
-    async exportDataset(id: string, format?: string, includeUnlabeled?: boolean): Promise<any> {
-        // TODO: Implement when backend endpoint is available
-        const response = await this.client.get(`/datasets/${id}/export`, {
-            params: {format, include_unlabeled: includeUnlabeled}
-        });
-        return response.data;
     }
 
     // ==========================================================================
@@ -652,6 +866,11 @@ export class RealApiService implements ApiService {
         return response.data;
     }
 
+    async forkProject(projectId: string, payload: ProjectForkCreate): Promise<Project> {
+        const response = await this.client.post<Project>(`/projects/${projectId}/fork`, payload);
+        return response.data;
+    }
+
     async getProject(id: string): Promise<Project> {
         const response = await this.client.get<Project>(`/projects/${id}`);
         return response.data;
@@ -662,8 +881,37 @@ export class RealApiService implements ApiService {
         return response.data;
     }
 
+    async archiveProject(projectId: string): Promise<Project> {
+        const response = await this.client.post<Project>(`/projects/${projectId}:archive`);
+        return response.data;
+    }
+
+    async unarchiveProject(projectId: string): Promise<Project> {
+        const response = await this.client.post<Project>(`/projects/${projectId}:unarchive`);
+        return response.data;
+    }
+
     async getProjectDatasets(projectId: string): Promise<string[]> {
         const response = await this.client.get<string[]>(`/projects/${projectId}/datasets`);
+        return response.data;
+    }
+
+    async getProjectDatasetDetails(projectId: string): Promise<Dataset[]> {
+        const response = await this.client.get<Dataset[]>(`/projects/${projectId}/datasets/detail`);
+        return response.data;
+    }
+
+    async linkProjectDatasets(projectId: string, datasetIds: string[]): Promise<string[]> {
+        const response = await this.client.post<string[]>(`/projects/${projectId}/datasets`, {
+            datasetIds,
+        });
+        return response.data;
+    }
+
+    async unlinkProjectDatasets(projectId: string, datasetIds: string[]): Promise<number> {
+        const response = await this.client.delete<number>(`/projects/${projectId}/datasets`, {
+            data: {datasetIds},
+        });
         return response.data;
     }
 
@@ -672,143 +920,285 @@ export class RealApiService implements ApiService {
         return response.data;
     }
 
-    async getProjectLoops(projectId: string): Promise<ALLoop[]> {
-        const response = await this.client.get<ALLoop[]>(`/projects/${projectId}/loops`);
+    async getProjectIOCapabilities(projectId: string): Promise<ProjectIOCapabilities> {
+        const response = await this.client.get<ProjectIOCapabilities>(`/projects/${projectId}/io-capabilities`);
         return response.data;
     }
 
-    async createProjectLoop(projectId: string, payload: LoopCreateRequest): Promise<ALLoop> {
-        const response = await this.client.post<ALLoop>(`/projects/${projectId}/loops`, payload);
+    async resolveProjectExport(
+        projectId: string,
+        payload: ProjectExportResolveRequest,
+        signal?: AbortSignal,
+    ): Promise<ProjectExportResolveResponse> {
+        const response = await this.client.post<ProjectExportResolveResponse>(
+            `/projects/${projectId}/exports/resolve`,
+            convertKeysToSnake(payload),
+            {signal},
+        );
+        return convertKeysToCamel<ProjectExportResolveResponse>(response.data);
+    }
+
+    async getProjectExportChunk(
+        projectId: string,
+        payload: ProjectExportChunkRequest,
+        signal?: AbortSignal,
+    ): Promise<ProjectExportChunkResponse> {
+        const response = await this.client.post<ProjectExportChunkResponse>(
+            `/projects/${projectId}/exports/chunk`,
+            convertKeysToSnake(payload),
+            {signal},
+        );
+        return convertKeysToCamel<ProjectExportChunkResponse>(response.data);
+    }
+
+    async getProjectLoops(projectId: string): Promise<Loop[]> {
+        const response = await this.client.get<Loop[]>(`/projects/${projectId}/loops`);
+        return response.data.map((item) => normalizeLoop(item));
+    }
+
+    async createProjectLoop(projectId: string, payload: LoopCreateRequest): Promise<Loop> {
+        const response = await this.client.post<Loop>(`/projects/${projectId}/loops`, payload);
+        return normalizeLoop(response.data);
+    }
+
+    async getLoopById(loopId: string): Promise<Loop> {
+        const response = await this.client.get<Loop>(`/loops/${loopId}`);
+        return normalizeLoop(response.data);
+    }
+
+    async updateLoop(loopId: string, payload: LoopUpdateRequest): Promise<Loop> {
+        const response = await this.client.patch<Loop>(`/loops/${loopId}`, payload);
+        return normalizeLoop(response.data);
+    }
+
+    async actLoop(loopId: string, payload: LoopActionRequest): Promise<LoopActionResponse> {
+        const response = await this.client.post<LoopActionResponse>(`/loops/${loopId}:act`, payload ?? {});
+        return {
+            ...response.data,
+            lifecycle: (response.data as any).lifecycle,
+            actions: (response.data as any).actions ?? [],
+            primaryAction: (response.data as any).primaryAction ?? null,
+            executedAction: (response.data as any).executedAction ?? null,
+            commandId: (response.data as any).commandId ?? null,
+            decisionToken: (response.data as any).decisionToken ?? '',
+            blockingReasons: (response.data as any).blockingReasons ?? [],
+        };
+    }
+
+    async getLoopSnapshot(loopId: string): Promise<LoopSnapshotRead> {
+        const response = await this.client.get<LoopSnapshotRead>(`/loops/${loopId}/snapshot`);
         return response.data;
     }
 
-    async getLoopById(loopId: string): Promise<ALLoop> {
-        const response = await this.client.get<ALLoop>(`/loops/${loopId}`);
+    async getLoopGate(loopId: string): Promise<LoopGateResponse> {
+        const response = await this.client.get<LoopGateResponse>(`/loops/${loopId}/gate`);
+        return {
+            ...response.data,
+            actions: (response.data as any).actions ?? [],
+            primaryAction: (response.data as any).primaryAction ?? null,
+            decisionToken: (response.data as any).decisionToken ?? '',
+            blockingReasons: (response.data as any).blockingReasons ?? [],
+        };
+    }
+
+    async createPrediction(projectId: string, payload: PredictionCreateRequest): Promise<PredictionRead> {
+        const response = await this.client.post<PredictionRead>(
+            `/projects/${projectId}/predictions`,
+            payload ?? {},
+        );
         return response.data;
     }
 
-    async updateLoop(loopId: string, payload: LoopUpdateRequest): Promise<ALLoop> {
-        const response = await this.client.patch<ALLoop>(`/loops/${loopId}`, payload);
+    async listPredictions(projectId: string, limit: number = 100): Promise<PredictionRead[]> {
+        const response = await this.client.get<PredictionRead[]>(`/projects/${projectId}/predictions`, {
+            params: {limit},
+        });
         return response.data;
     }
 
-    async startLoop(loopId: string): Promise<ALLoop> {
-        const response = await this.client.post<ALLoop>(`/loops/${loopId}:start`);
+    async listPredictionTasks(projectId: string, limit: number = 100): Promise<PredictionTaskRead[]> {
+        const response = await this.client.get<PredictionTaskRead[]>(`/projects/${projectId}/prediction-tasks`, {
+            params: {limit},
+        });
         return response.data;
     }
 
-    async recoverLoop(loopId: string, payload: LoopRecoverRequest): Promise<ALLoop> {
-        const response = await this.client.post<ALLoop>(`/loops/${loopId}:recover`, payload);
+    async getPredictionTask(taskId: string): Promise<PredictionTaskRead> {
+        const response = await this.client.get<PredictionTaskRead>(`/prediction-tasks/${taskId}`);
         return response.data;
     }
 
-    async pauseLoop(loopId: string): Promise<ALLoop> {
-        const response = await this.client.post<ALLoop>(`/loops/${loopId}:pause`);
+    async getPredictionDetail(predictionId: string, itemLimit: number = 1000): Promise<PredictionDetailRead> {
+        const response = await this.client.get<PredictionDetailRead>(`/predictions/${predictionId}`, {
+            params: {item_limit: itemLimit},
+        });
         return response.data;
     }
 
-    async resumeLoop(loopId: string): Promise<ALLoop> {
-        const response = await this.client.post<ALLoop>(`/loops/${loopId}:resume`);
+    async applyPrediction(
+        predictionId: string,
+        payload: PredictionApplyRequest,
+    ): Promise<PredictionApplyResponse> {
+        const response = await this.client.post<PredictionApplyResponse>(
+            `/predictions/${predictionId}:apply`,
+            payload ?? {},
+        );
         return response.data;
     }
 
-    async stopLoop(loopId: string): Promise<ALLoop> {
-        const response = await this.client.post<ALLoop>(`/loops/${loopId}:stop`);
-        return response.data;
-    }
-
-    async getLoopRounds(loopId: string, limit: number = 200): Promise<LoopRound[]> {
-        const response = await this.client.get<LoopRound[]>(`/loops/${loopId}/rounds`, {params: {limit}});
+    async cleanupRoundPredictions(loopId: string, roundIndex: number): Promise<RoundPredictionCleanupResponse> {
+        const response = await this.client.post<RoundPredictionCleanupResponse>(
+            `/loops/${loopId}/rounds/${roundIndex}:cleanup-predictions`,
+        );
         return response.data;
     }
 
     async getLoopSummary(loopId: string): Promise<LoopSummary> {
         const response = await this.client.get<LoopSummary>(`/loops/${loopId}/summary`);
-        return response.data;
-    }
-
-    async createSimulationExperiment(
-        projectId: string,
-        payload: SimulationExperimentCreateRequest
-    ): Promise<SimulationExperimentCreateResponse> {
-        const response = await this.client.post<SimulationExperimentCreateResponse>(
-            `/projects/${projectId}/simulation-experiments`,
-            payload,
-        );
-        return response.data;
-    }
-
-    async getSimulationExperimentCurves(groupId: string): Promise<SimulationExperimentCurves> {
-        const response = await this.client.get<SimulationExperimentCurves>(
-            `/simulation-experiments/${groupId}/curves`,
-        );
-        return response.data;
+        return normalizeLoopSummary(response.data);
     }
 
     async getRuntimePlugins(): Promise<RuntimePluginCatalogResponse> {
         const response = await this.client.get<RuntimePluginCatalogResponse>('/runtime/plugins');
+        return normalizeRuntimePluginCatalog(response.data);
+    }
+
+    async getLoopRounds(loopId: string, limit: number = 50): Promise<RuntimeRound[]> {
+        const response = await this.client.get<RuntimeRound[]>(`/loops/${loopId}/rounds`, {params: {limit}});
+        return response.data.map((item) => normalizeRound(item));
+    }
+
+    async stopRound(roundId: string, reason: string = 'user requested stop'): Promise<RuntimeRoundCommandResponse> {
+        const response = await this.client.post<RuntimeRoundCommandResponse>(`/rounds/${roundId}:stop`, null, {params: {reason}});
+        return normalizeRoundCommandResponse(response.data);
+    }
+
+    async getRound(roundId: string): Promise<RuntimeRound> {
+        const response = await this.client.get<RuntimeRound>(`/rounds/${roundId}`);
+        return normalizeRound(response.data);
+    }
+
+    async getRoundSelection(roundId: string): Promise<RoundSelectionRead> {
+        const response = await this.client.get<RoundSelectionRead>(`/rounds/${roundId}/selection`);
         return response.data;
     }
 
-    async getLoopJobs(loopId: string, limit: number = 50): Promise<RuntimeJob[]> {
-        const response = await this.client.get<RuntimeJob[]>(`/loops/${loopId}/jobs`, {params: {limit}});
-        return response.data;
-    }
-
-    async createLoopJob(
-        loopId: string,
-        payload: RuntimeJobCreateRequest,
-        autoDispatch: boolean = true
-    ): Promise<RuntimeJob> {
-        const response = await this.client.post<RuntimeJob>(
-            `/loops/${loopId}/jobs`,
-            payload,
-            {
-                params: {
-                    auto_dispatch: autoDispatch,
-                },
-            }
+    async applyRoundSelection(
+        roundId: string,
+        payload: RoundSelectionApplyRequest
+    ): Promise<RoundSelectionApplyResponse> {
+        const response = await this.client.post<RoundSelectionApplyResponse>(
+            `/rounds/${roundId}/selection:apply`,
+            payload ?? {},
         );
         return response.data;
     }
 
-    async stopJob(jobId: string, reason: string = 'user requested stop'): Promise<RuntimeJobCommandResponse> {
-        const response = await this.client.post<RuntimeJobCommandResponse>(`/jobs/${jobId}:stop`, null, {params: {reason}});
+    async resetRoundSelection(roundId: string): Promise<RoundSelectionApplyResponse> {
+        const response = await this.client.post<RoundSelectionApplyResponse>(`/rounds/${roundId}/selection:reset`);
         return response.data;
     }
 
-    async getJob(jobId: string): Promise<RuntimeJob> {
-        const response = await this.client.get<RuntimeJob>(`/jobs/${jobId}`);
+    async getRoundMissingSamples(
+        loopId: string,
+        roundId: string,
+        params: RoundMissingSamplesQuery = {},
+    ): Promise<RoundMissingSamplesResponse> {
+        const response = await this.client.get<RoundMissingSamplesResponse>(
+            `/loops/${loopId}/rounds/${roundId}/missing-samples`,
+            {
+                params: {
+                    dataset_id: params.datasetId,
+                    q: params.q,
+                    sort_by: params.sortBy,
+                    sort_order: params.sortOrder,
+                    page: params.page,
+                    limit: params.limit,
+                },
+            },
+        );
         return response.data;
     }
 
-    async getJobEvents(jobId: string, afterSeq: number = 0): Promise<RuntimeJobEvent[]> {
-        const response = await this.client.get<RuntimeJobEvent[]>(`/jobs/${jobId}/events`, {params: {after_seq: afterSeq}});
+    async getRoundSteps(roundId: string, limit: number = 2000): Promise<RuntimeStep[]> {
+        const response = await this.client.get<RuntimeStep[]>(`/rounds/${roundId}/steps`, {params: {limit}});
         return response.data;
     }
 
-    async getJobMetricSeries(jobId: string, limit: number = 5000): Promise<RuntimeMetricPoint[]> {
-        const response = await this.client.get<RuntimeMetricPoint[]>(`/jobs/${jobId}/metrics/series`, {params: {limit}});
+    async getRoundArtifacts(roundId: string, limit: number = 2000): Promise<RuntimeRoundArtifactsResponse> {
+        const response = await this.client.get<RuntimeRoundArtifactsResponse>(`/rounds/${roundId}/artifacts`, {
+            params: {limit},
+        });
         return response.data;
     }
 
-    async getJobSamplingTopK(jobId: string, limit: number = 200): Promise<RuntimeTopKCandidate[]> {
-        const response = await this.client.get<RuntimeTopKCandidate[]>(`/jobs/${jobId}/sampling/topk`, {params: {limit}});
+    async getRoundEvents(roundId: string, query: RoundEventQuery = {}): Promise<RoundEventQueryResponse> {
+        const params: Record<string, any> = {
+            limit: Number(query.limit ?? 5000),
+        };
+        if (query.afterCursor) {
+            params.after_cursor = String(query.afterCursor);
+        }
+        if (query.stages && query.stages.length > 0) {
+            params.stages = query.stages.join(',');
+        }
+        const response = await this.client.get(`/rounds/${roundId}/events`, {params});
+        return normalizeRoundEventQueryResponse(response.data);
+    }
+
+    async getTaskEvents(taskId: string, query: TaskEventQuery = {}): Promise<TaskEventQueryResponse> {
+        const params: Record<string, any> = {
+            after_seq: Number(query.afterSeq ?? 0),
+            limit: Number(query.limit ?? 5000),
+            include_facets: Boolean(query.includeFacets ?? false),
+        };
+        if (query.eventTypes && query.eventTypes.length > 0) {
+            params.event_types = query.eventTypes.join(',');
+        }
+        if (query.levels && query.levels.length > 0) {
+            params.levels = query.levels.join(',');
+        }
+        if (query.tags && query.tags.length > 0) {
+            params.tags = query.tags.join(',');
+        }
+        if (query.q) {
+            params.q = String(query.q);
+        }
+        if (query.fromTs) {
+            params.from_ts = String(query.fromTs);
+        }
+        if (query.toTs) {
+            params.to_ts = String(query.toTs);
+        }
+        const response = await this.client.get(
+            `/tasks/${taskId}/events`,
+            {params},
+        );
+        return normalizeTaskEventQueryResponse(response.data);
+    }
+
+    async getTaskMetricSeries(taskId: string, limit: number = 5000): Promise<RuntimeTaskMetricPoint[]> {
+        const response = await this.client.get<RuntimeTaskMetricPoint[]>(`/tasks/${taskId}/metrics/series`, {params: {limit}});
         return response.data;
     }
 
-    async getJobArtifacts(jobId: string): Promise<RuntimeArtifactsResponse> {
-        const response = await this.client.get<RuntimeArtifactsResponse>(`/jobs/${jobId}/artifacts`);
+    async getTaskCandidates(taskId: string, limit: number = 200): Promise<RuntimeTaskCandidate[]> {
+        const response = await this.client.get<RuntimeTaskCandidate[]>(`/tasks/${taskId}/candidates`, {params: {limit}});
         return response.data;
     }
 
-    async getJobArtifactDownloadUrl(
-        jobId: string,
+    async getTaskArtifacts(taskId: string): Promise<TaskArtifactsResponse> {
+        const response = await this.client.get<TaskArtifactsResponse>(`/tasks/${taskId}/artifacts`);
+        return response.data;
+    }
+
+    async getTaskArtifactDownloadUrl(
+        taskId: string,
         artifactName: string,
         expiresInHours: number = 2
-    ): Promise<JobArtifactDownload> {
-        const response = await this.client.get<JobArtifactDownload>(
-            `/jobs/${jobId}/artifacts/${artifactName}:download-url`,
+    ): Promise<TaskArtifactDownload> {
+        const response = await this.client.get<TaskArtifactDownload>(
+            `/tasks/${taskId}/artifacts/${artifactName}:download-url`,
             {params: {expires_in_hours: expiresInHours}}
         );
         return response.data;
@@ -816,7 +1206,7 @@ export class RealApiService implements ApiService {
 
     async getRuntimeExecutors(): Promise<RuntimeExecutorListResponse> {
         const response = await this.client.get<RuntimeExecutorListResponse>('/runtime/executors');
-        return response.data;
+        return normalizeRuntimeExecutorList(response.data);
     }
 
     async getRuntimeExecutorStats(range: RuntimeExecutorStatsRange): Promise<RuntimeExecutorStatsResponse> {
@@ -828,51 +1218,59 @@ export class RealApiService implements ApiService {
 
     async getRuntimeExecutor(executorId: string): Promise<RuntimeExecutorRead> {
         const response = await this.client.get<RuntimeExecutorRead>(`/runtime/executors/${executorId}`);
-        return response.data;
+        return normalizeRuntimeExecutor(response.data);
     }
 
-    async createAnnotationBatchFromJob(jobId: string, limit: number = 200): Promise<AnnotationBatch> {
-        const response = await this.client.post<AnnotationBatch>(
-            `/jobs/${jobId}/sampling/batches`,
-            {limit},
-        );
-        return response.data;
-    }
-
-    async getAnnotationBatch(batchId: string): Promise<AnnotationBatch> {
-        const response = await this.client.get<AnnotationBatch>(`/annotation-batches/${batchId}`);
-        return response.data;
-    }
-
-    async getAnnotationBatchItems(batchId: string, limit: number = 5000): Promise<AnnotationBatchItem[]> {
-        const response = await this.client.get<AnnotationBatchItem[]>(`/annotation-batches/${batchId}/items`, {params: {limit}});
-        return response.data;
-    }
-
-    async registerModelFromJob(
+    async publishModelFromRound(
         projectId: string,
         payload: {
-            jobId: string;
+            roundId: string;
             name?: string;
+            primaryArtifactName?: string;
             versionTag?: string;
             status?: string;
         }
     ): Promise<ProjectModel> {
         const response = await this.client.post<ProjectModel>(
-            `/projects/${projectId}/models:register-from-job`,
+            `/projects/${projectId}/models:publish-from-round`,
             payload,
         );
-        return response.data;
+        return normalizeProjectModel(response.data);
     }
 
-    async getProjectModels(projectId: string, limit: number = 100): Promise<ProjectModel[]> {
-        const response = await this.client.get<ProjectModel[]>(`/projects/${projectId}/models`, {params: {limit}});
-        return response.data;
+    async getProjectModels(
+        projectId: string,
+        limitOrQuery: number | {
+            limit?: number;
+            offset?: number;
+            status?: string;
+            pluginId?: string;
+            roundId?: string;
+            q?: string;
+        } = 100,
+    ): Promise<ProjectModel[]> {
+        const params = typeof limitOrQuery === 'number'
+            ? {limit: limitOrQuery}
+            : {
+                limit: limitOrQuery.limit ?? 100,
+                offset: limitOrQuery.offset ?? 0,
+                status: limitOrQuery.status,
+                plugin_id: limitOrQuery.pluginId,
+                round_id: limitOrQuery.roundId,
+                q: limitOrQuery.q,
+            };
+        const response = await this.client.get<ProjectModel[]>(`/projects/${projectId}/models`, {params});
+        return response.data.map((item) => normalizeProjectModel(item));
+    }
+
+    async getModel(modelId: string): Promise<ProjectModel> {
+        const response = await this.client.get<ProjectModel>(`/models/${modelId}`);
+        return normalizeProjectModel(response.data);
     }
 
     async promoteModel(modelId: string, status: string = 'production'): Promise<ProjectModel> {
         const response = await this.client.post<ProjectModel>(`/models/${modelId}:promote`, {status});
-        return response.data;
+        return normalizeProjectModel(response.data);
     }
 
     async getModelArtifactDownloadUrl(
@@ -889,19 +1287,23 @@ export class RealApiService implements ApiService {
 
     async getAssetDownloadUrl(
         assetId: string,
-        expiresInHours: number = 1
+        expiresInHours: number = 1,
+        datasetId?: string,
     ): Promise<{
         assetId: string;
         downloadUrl: string;
         expiresIn: number;
         filename?: string;
     }> {
+        const endpoint = datasetId
+            ? `/assets/datasets/${datasetId}/assets/${assetId}/download-url`
+            : `/assets/${assetId}/download-url`;
         const response = await this.client.get<{
             assetId: string;
             downloadUrl: string;
             expiresIn: number;
             filename?: string;
-        }>(`/assets/${assetId}/download-url`, {params: {expires_in_hours: expiresInHours}});
+        }>(endpoint, {params: {expires_in_hours: expiresInHours}});
         return response.data;
     }
 
@@ -928,6 +1330,7 @@ export class RealApiService implements ApiService {
     }
 
     async updateBranch(
+        projectId: string,
         branchId: string,
         payload: {
             name?: string;
@@ -936,7 +1339,7 @@ export class RealApiService implements ApiService {
         }
     ): Promise<ProjectBranch> {
         const response = await this.client.put<ProjectBranch>(
-            `/branches/${branchId}`,
+            `/branches/projects/${projectId}/branches/${branchId}`,
             null,
             {
                 params: {
@@ -949,8 +1352,8 @@ export class RealApiService implements ApiService {
         return response.data;
     }
 
-    async deleteBranch(branchId: string): Promise<void> {
-        await this.client.delete(`/branches/${branchId}`);
+    async deleteBranch(projectId: string, branchId: string): Promise<void> {
+        await this.client.delete(`/branches/projects/${projectId}/branches/${branchId}`);
     }
 
     async getProjectCommits(projectId: string): Promise<CommitHistoryItem[]> {
@@ -985,6 +1388,11 @@ export class RealApiService implements ApiService {
         return response.data;
     }
 
+    async getAvailableProjectRoles(projectId: string): Promise<RoleInfo[]> {
+        const response = await this.client.get<RoleInfo[]>(`/projects/${projectId}/available-roles`);
+        return response.data;
+    }
+
     async addProjectMember(projectId: string, member: ResourceMemberCreate): Promise<void> {
         await this.client.post(`/projects/${projectId}/members`, member);
     }
@@ -1013,13 +1421,21 @@ export class RealApiService implements ApiService {
         return response.data;
     }
 
-    async updateProjectLabel(labelId: string, payload: ProjectLabelUpdate): Promise<ProjectLabel> {
-        const response = await this.client.put<ProjectLabel>(`/labels/${labelId}`, payload);
+    async updateProjectLabel(projectId: string, labelId: string, payload: ProjectLabelUpdate): Promise<ProjectLabel> {
+        const response = await this.client.put<ProjectLabel>(`/labels/projects/${projectId}/labels/${labelId}`, payload);
         return response.data;
     }
 
-    async deleteProjectLabel(labelId: string): Promise<void> {
-        await this.client.delete(`/labels/${labelId}`);
+    async deleteProjectLabel(projectId: string, labelId: string): Promise<void> {
+        await this.client.delete(`/labels/projects/${projectId}/labels/${labelId}`);
+    }
+
+    async reorderProjectLabels(projectId: string, labelIds: string[]): Promise<ProjectLabel[]> {
+        const response = await this.client.post<ProjectLabel[]>(
+            `/labels/projects/${projectId}/labels/reorder`,
+            labelIds,
+        );
+        return response.data;
     }
 
     async getProjectSamples(
@@ -1027,7 +1443,6 @@ export class RealApiService implements ApiService {
         datasetId: string,
         params: {
             q?: string;
-            batchId?: string;
             status?: 'all' | 'labeled' | 'unlabeled' | 'draft';
             branchName?: string;
             sortBy?: string;
@@ -1041,7 +1456,6 @@ export class RealApiService implements ApiService {
             {
                 params: {
                     q: params.q,
-                    batch_id: params.batchId,
                     status: params.status,
                     branch_name: params.branchName,
                     sort_by: params.sortBy,
@@ -1054,16 +1468,16 @@ export class RealApiService implements ApiService {
         return response.data;
     }
 
-    async getAnnotationsAtCommit(commitId: string, sampleId?: string): Promise<AnnotationRead[]> {
+    async getAnnotationsAtCommit(projectId: string, commitId: string, sampleId?: string): Promise<AnnotationRead[]> {
         const response = await this.client.get<AnnotationRead[]>(
-            `/annotations/commits/${commitId}/annotations`,
+            `/annotations/projects/${projectId}/commits/${commitId}/annotations`,
             {
                 params: {
                     sample_id: sampleId,
                 },
             }
         );
-        return response.data;
+        return (response.data || []).map((item) => hydrateAnnotationRead(item));
     }
 
     async getWorkingAnnotations(
@@ -1079,7 +1493,7 @@ export class RealApiService implements ApiService {
                 },
             }
         );
-        return response.data;
+        return hydrateDraftPayload(response.data);
     }
 
     async upsertWorkingAnnotations(
@@ -1096,7 +1510,8 @@ export class RealApiService implements ApiService {
     async syncWorkingToDraft(
         projectId: string,
         sampleId: string,
-        branchName?: string
+        branchName?: string,
+        reviewEmpty?: boolean
     ): Promise<AnnotationDraftRead | null> {
         const response = await this.client.post<AnnotationDraftRead | null>(
             `/annotations/projects/${projectId}/samples/${sampleId}/drafts/sync`,
@@ -1104,6 +1519,7 @@ export class RealApiService implements ApiService {
             {
                 params: {
                     branch_name: branchName,
+                    review_empty: reviewEmpty,
                 },
             }
         );
@@ -1124,7 +1540,37 @@ export class RealApiService implements ApiService {
                 },
             }
         );
-        return response.data;
+        return (response.data || []).map((item) => ({
+            ...item,
+            payload: hydrateDraftPayload(item.payload) || {annotations: [], meta: {}},
+        }));
+    }
+
+    async deleteAnnotationDrafts(
+        projectId: string,
+        branchName?: string,
+        sampleId?: string
+    ): Promise<void> {
+        await this.client.delete(
+            `/annotations/projects/${projectId}/drafts`,
+            {
+                params: {
+                    branch_name: branchName,
+                    sample_id: sampleId,
+                },
+            }
+        );
+    }
+
+    async batchOperateAnnotationDrafts(
+        projectId: string,
+        payload: AnnotationDraftBatchRequest
+    ): Promise<AnnotationDraftBatchResult> {
+        const response = await this.client.post<AnnotationDraftBatchResult>(
+            `/annotations/projects/${projectId}/drafts:batch`,
+            convertKeysToSnake(payload),
+        );
+        return convertKeysToCamel<AnnotationDraftBatchResult>(response.data);
     }
 
     async commitAnnotationDrafts(
@@ -1147,7 +1593,227 @@ export class RealApiService implements ApiService {
             `/annotations/projects/${projectId}/samples/${sampleId}/sync`,
             payload
         );
-        return response.data;
+        return {
+            ...response.data,
+            payload: hydrateDraftPayload(response.data?.payload) || {annotations: [], meta: {}},
+        };
+    }
+
+    // ==========================================================================
+    // Import APIs
+    // ==========================================================================
+
+    async initImportUploadSession(payload: ImportUploadInitRequest): Promise<ImportUploadInitResponse> {
+        const response = await this.client.post<ImportUploadInitResponse>(
+            '/imports/uploads:init',
+            convertKeysToSnake(payload),
+        );
+        return convertKeysToCamel<ImportUploadInitResponse>(response.data);
+    }
+
+    async signImportUploadParts(
+        sessionId: string,
+        payload: ImportUploadPartSignRequest,
+    ): Promise<ImportUploadPartSignResponse> {
+        const response = await this.client.post<ImportUploadPartSignResponse>(
+            `/imports/uploads/${sessionId}/parts:sign`,
+            convertKeysToSnake(payload),
+        );
+        return convertKeysToCamel<ImportUploadPartSignResponse>(response.data);
+    }
+
+    async completeImportUploadSession(
+        sessionId: string,
+        payload: ImportUploadCompleteRequest,
+    ): Promise<ImportUploadSessionResponse> {
+        const response = await this.client.post<ImportUploadSessionResponse>(
+            `/imports/uploads/${sessionId}:complete`,
+            convertKeysToSnake(payload),
+        );
+        return convertKeysToCamel<ImportUploadSessionResponse>(response.data);
+    }
+
+    async abortImportUploadSession(sessionId: string): Promise<ImportUploadAbortResponse> {
+        const response = await this.client.post<ImportUploadAbortResponse>(
+            `/imports/uploads/${sessionId}:abort`,
+            {},
+        );
+        return convertKeysToCamel<ImportUploadAbortResponse>(response.data);
+    }
+
+    async getImportUploadSession(sessionId: string): Promise<ImportUploadSessionResponse> {
+        const response = await this.client.get<ImportUploadSessionResponse>(`/imports/uploads/${sessionId}`);
+        return convertKeysToCamel<ImportUploadSessionResponse>(response.data);
+    }
+
+    async prepareDatasetImageImport(
+        datasetId: string,
+        payload: DatasetImportPrepareRequest,
+    ): Promise<ImportTaskCreateResponse> {
+        const response = await this.client.post<ImportTaskCreateResponse>(
+            `/datasets/${datasetId}/imports/images:prepare`,
+            convertKeysToSnake(payload),
+        );
+        return convertKeysToCamel<ImportTaskCreateResponse>(response.data);
+    }
+
+    async executeDatasetImageImport(
+        datasetId: string,
+        payload: ImportExecuteRequest,
+    ): Promise<ImportTaskCreateResponse> {
+        const response = await this.client.post<ImportTaskCreateResponse>(
+            `/datasets/${datasetId}/imports/images:execute`,
+            convertKeysToSnake(payload),
+        );
+        return convertKeysToCamel<ImportTaskCreateResponse>(response.data);
+    }
+
+    async executeProjectAnnotationImport(
+        projectId: string,
+        payload: ImportExecuteRequest,
+    ): Promise<ImportTaskCreateResponse> {
+        const response = await this.client.post<ImportTaskCreateResponse>(
+            `/projects/${projectId}/imports/annotations:execute`,
+            convertKeysToSnake(payload),
+        );
+        return convertKeysToCamel<ImportTaskCreateResponse>(response.data);
+    }
+
+    async prepareProjectAnnotationImport(
+        projectId: string,
+        payload: ProjectAnnotationImportPrepareRequest,
+    ): Promise<ImportTaskCreateResponse> {
+        const response = await this.client.post<ImportTaskCreateResponse>(
+            `/projects/${projectId}/imports/annotations:prepare`,
+            convertKeysToSnake(payload),
+        );
+        return convertKeysToCamel<ImportTaskCreateResponse>(response.data);
+    }
+
+    async executeProjectAssociatedImport(
+        projectId: string,
+        payload: ImportExecuteRequest,
+    ): Promise<ImportTaskCreateResponse> {
+        const response = await this.client.post<ImportTaskCreateResponse>(
+            `/projects/${projectId}/imports/associated:execute`,
+            convertKeysToSnake(payload),
+        );
+        return convertKeysToCamel<ImportTaskCreateResponse>(response.data);
+    }
+
+    async prepareProjectAssociatedImport(
+        projectId: string,
+        payload: ProjectAssociatedImportPrepareRequest,
+    ): Promise<ImportTaskCreateResponse> {
+        const response = await this.client.post<ImportTaskCreateResponse>(
+            `/projects/${projectId}/imports/associated:prepare`,
+            convertKeysToSnake(payload),
+        );
+        return convertKeysToCamel<ImportTaskCreateResponse>(response.data);
+    }
+
+    async getImportTaskStatus(taskId: string): Promise<ImportTaskStatusResponse> {
+        const response = await this.client.get<ImportTaskStatusResponse>(`/imports/tasks/${taskId}`);
+        return convertKeysToCamel<ImportTaskStatusResponse>(response.data);
+    }
+
+    async getImportTaskResult(taskId: string): Promise<ImportTaskResultResponse> {
+        const response = await this.client.get<ImportTaskResultResponse>(`/imports/tasks/${taskId}/result`);
+        return convertKeysToCamel<ImportTaskResultResponse>(response.data);
+    }
+
+    async streamImportTaskEvents(
+        taskId: string,
+        afterSeq: number,
+        onProgress: (event: ImportProgressEvent) => void,
+        signal?: AbortSignal
+    ): Promise<void> {
+        const token = useAuthStore.getState().token;
+        const headers: Record<string, string> = {};
+        if (token) headers.Authorization = `Bearer ${token}`;
+
+        const response = await fetch(
+            `${this.apiBaseUrl}/imports/tasks/${taskId}/events?after_seq=${Math.max(0, afterSeq)}`,
+            {
+                method: 'GET',
+                headers: Object.keys(headers).length > 0 ? headers : undefined,
+                signal,
+            },
+        );
+        if (!response.ok) {
+            const errorText = await response.text().catch(() => '');
+            throw new Error(errorText || `HTTP error! status: ${response.status}`);
+        }
+
+        const reader = response.body?.getReader();
+        if (!reader) {
+            throw new Error('Response body is not readable');
+        }
+
+        const decoder = new TextDecoder();
+        let buffer = '';
+        try {
+            while (true) {
+                const {done, value} = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, {stream: true});
+                const lines = buffer.split('\n');
+                for (let i = 0; i < lines.length - 1; i++) {
+                    const line = lines[i].trim();
+                    if (!line || line.startsWith(':')) continue;
+                    if (!line.startsWith('data: ')) continue;
+                    const raw = line.slice(6).trim();
+                    if (!raw) continue;
+                    try {
+                        const parsed = convertKeysToCamel<ImportProgressEvent>(JSON.parse(raw));
+                        onProgress(parsed);
+                    } catch (error) {
+                        console.error('Failed to parse SSE event:', raw, error);
+                    }
+                }
+                buffer = lines[lines.length - 1];
+            }
+        } finally {
+            reader.releaseLock();
+        }
+    }
+
+    async bulkUploadSamples(
+        datasetId: string,
+        files: File[],
+    ): Promise<ImportTaskCreateResponse> {
+        const formData = new FormData();
+        files.forEach((file) => {
+            formData.append('files', resolveUploadFile(file));
+        });
+        const response = await this.client.post<ImportTaskCreateResponse>(
+            `/datasets/${datasetId}/samples:bulk-upload`,
+            formData,
+        );
+        return convertKeysToCamel<ImportTaskCreateResponse>(response.data);
+    }
+
+    async bulkImportSamples(
+        datasetId: string,
+        payload: SampleBulkImportRequest,
+    ): Promise<ImportTaskCreateResponse> {
+        const response = await this.client.post<ImportTaskCreateResponse>(
+            `/datasets/${datasetId}/samples:bulk-import`,
+            convertKeysToSnake(payload),
+        );
+        return convertKeysToCamel<ImportTaskCreateResponse>(response.data);
+    }
+
+    async bulkSaveAnnotations(
+        projectId: string,
+        payload: AnnotationBulkRequest,
+    ): Promise<ImportTaskCreateResponse> {
+        const response = await this.client.post<ImportTaskCreateResponse>(
+            `/projects/${projectId}/annotations:bulk`,
+            convertKeysToSnake(payload),
+        );
+        return convertKeysToCamel<ImportTaskCreateResponse>(response.data);
     }
 
     // ==========================================================================
@@ -1159,7 +1825,8 @@ export class RealApiService implements ApiService {
         page?: number,
         limit?: number,
         sortBy?: string,
-        sortOrder?: 'asc' | 'desc'
+        sortOrder?: 'asc' | 'desc',
+        q?: string
     ): Promise<PaginationResponse<Sample>> {
         const response = await this.client.get<PaginationResponse<Sample>>(
             `/samples/${datasetId}/samples`,
@@ -1169,14 +1836,19 @@ export class RealApiService implements ApiService {
                     limit: limit,
                     sort_by: sortBy,
                     sort_order: sortOrder,
+                    q,
                 }
             }
         );
         return response.data;
     }
 
-    async deleteSample(datasetId: string, sampleId: string): Promise<void> {
-        await this.client.delete(`/samples/${datasetId}/samples/${sampleId}`);
+    async deleteSample(datasetId: string, sampleId: string, force?: boolean): Promise<void> {
+        await this.client.delete(`/samples/${datasetId}/samples/${sampleId}`, {
+            params: {
+                force,
+            },
+        });
     }
 
     async uploadSamplesWithProgress(
@@ -1186,28 +1858,29 @@ export class RealApiService implements ApiService {
         signal?: AbortSignal
     ): Promise<void> {
         const formData = new FormData();
-        files.forEach(file => {
-            formData.append('files', file);
+        files.forEach((file) => {
+            formData.append('files', resolveUploadFile(file));
         });
 
         const token = useAuthStore.getState().token;
+        const headers: Record<string, string> = {};
+        if (token) headers.Authorization = `Bearer ${token}`;
+
         const response = await fetch(
             `${this.apiBaseUrl}/samples/${datasetId}/stream`,
             {
                 method: 'POST',
                 body: formData,
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                },
+                headers: Object.keys(headers).length > 0 ? headers : undefined,
                 signal,
             }
         );
 
         if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+            const errorText = await response.text().catch(() => '');
+            throw new Error(errorText || `HTTP error! status: ${response.status}`);
         }
 
-        // Parse Server-Sent Events (SSE)
         const reader = response.body?.getReader();
         if (!reader) {
             throw new Error('Response body is not readable');
@@ -1224,20 +1897,20 @@ export class RealApiService implements ApiService {
                 buffer += decoder.decode(value, {stream: true});
                 const lines = buffer.split('\n');
 
-                // Process complete lines
                 for (let i = 0; i < lines.length - 1; i++) {
-                    const line = lines[i];
-                    if (line.startsWith('data: ')) {
-                        try {
-                            const data = JSON.parse(line.slice(6));
-                            onProgress(data);
-                        } catch (e) {
-                            console.error('Failed to parse SSE event:', line, e);
-                        }
+                    const line = lines[i].trim();
+                    if (!line || line.startsWith(':')) continue;
+                    if (!line.startsWith('data: ')) continue;
+                    const raw = line.slice(6).trim();
+                    if (!raw) continue;
+                    try {
+                        const parsed = convertKeysToCamel<UploadProgressEvent>(JSON.parse(raw));
+                        onProgress(parsed);
+                    } catch (error) {
+                        console.error('Failed to parse SSE event:', raw, error);
                     }
                 }
 
-                // Keep incomplete line in buffer
                 buffer = lines[lines.length - 1];
             }
         } finally {
@@ -1246,26 +1919,37 @@ export class RealApiService implements ApiService {
     }
 
     async getUsers(page: number = 1, limit: number = 100): Promise<PaginationResponse<User>> {
-        const response = await this.client.get<PaginationResponse<User>>('/users/', {params: {page, limit}});
+        const response = await this.client.get<PaginationResponse<User>>('/users', {params: {page, limit}});
         return response.data;
     }
 
-    async getUserList(page: number = 1, limit: number = 100): Promise<PaginationResponse<{
+    async getUserList(
+        page: number = 1,
+        limit: number = 100,
+        q?: string,
+        resourceType?: 'dataset' | 'project',
+        resourceId?: string,
+    ): Promise<PaginationResponse<{
         id: string;
         email: string;
         fullName?: string
     }>> {
+        const params: Record<string, unknown> = {page, limit, q};
+        if (resourceType && resourceId) {
+            params.resource_type = resourceType;
+            params.resource_id = resourceId;
+        }
         const response = await this.client.get<PaginationResponse<{
             id: string;
             email: string;
             fullName?: string
-        }>>('/users/list', {params: {page, limit}});
+        }>>('/users/list', {params});
         return response.data;
     }
 
     async createUser(user: Partial<User> & { password: string }): Promise<User> {
         return withOptionalPasswordHashing(async (userData) => {
-            const response = await this.client.post<User>('/users/', userData);
+            const response = await this.client.post<User>('/users', userData);
             return response.data;
         }, user);
     }

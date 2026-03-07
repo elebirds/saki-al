@@ -1,0 +1,201 @@
+plugin_id: "yolo_det_v1"
+version: "3.0.0"
+display_name: "YOLO Detection"
+sdk_version: ">=4.0.0"
+
+supported_task_types:
+  - train
+  - score
+  - predict
+  - eval
+  - custom
+
+supported_strategies:
+  - aug_iou_disagreement
+  - uncertainty_1_minus_max_conf
+  - random_baseline
+
+supported_accelerators:
+  - cuda
+  - mps
+  - cpu
+
+supports_auto_fallback: true
+
+runtime_profiles:
+  - id: "cuda"
+    priority: 10
+    when: "host.backends.includes('cuda')"
+    dependency_groups:
+      - "profile-cuda"
+    allowed_backends:
+      - "cuda"
+
+  - id: "mps"
+    priority: 20
+    when: "host.backends.includes('mps')"
+    dependency_groups:
+      - "profile-mps"
+    allowed_backends:
+      - "mps"
+
+  - id: "cpu"
+    priority: 100
+    when: "host.backends.includes('cpu')"
+    dependency_groups:
+      - "profile-cpu"
+    allowed_backends:
+      - "cpu"
+
+# -------------------------------------------------------------------
+# 简化版配置 Schema
+# -------------------------------------------------------------------
+# 条件表达式语法：
+#   visible: "form.field_name === 'value'"      # 字段依赖
+#   visible: "ctx.annotation_types.includes('rect')"  # 上下文依赖
+#   props: { min: 1, max: 5000, step: 1 }        # UI 属性映射
+# -------------------------------------------------------------------
+config_schema:
+  title: "YOLO Detection Request Config"
+  description: "YOLO 检测模型配置，支持 detect 和 OBB 两种任务模式"
+
+  fields:
+    # YOLO Task Mode - 使用上下文条件
+    - key: yolo_task
+      label: YOLO Task Mode
+      type: select
+      required: true
+      default: "detect"
+      options:
+        - label: "Standard Detection (detect)"
+          value: "detect"
+          visible: "ctx.annotation_types.includes('rect')"
+        - label: "Oriented Bounding Box (OBB)"
+          value: "obb"
+
+    # 训练参数组
+    - key: epochs
+      label: 训练轮数
+      type: integer
+      default: 30
+      props:
+        min: 1
+        max: 5000
+        step: 1
+
+    - key: batch
+      label: 批量大小
+      type: integer
+      default: 16
+      props:
+        min: 1
+        max: 2048
+
+    - key: imgsz
+      label: 图像尺寸
+      type: integer
+      default: 640
+      props:
+        min: 64
+        max: 4096
+        step: 32
+
+    - key: patience
+      label: 早停耐心值
+      type: integer
+      default: 20
+      props:
+        min: 1
+        max: 1000
+
+    # 预测参数组
+    - key: predict_conf
+      label: 预测置信度
+      type: number
+      default: 0.1
+      props:
+        min: 0.0
+        max: 1.0
+        step: 0.05
+
+    - key: val_split_ratio
+      label: 验证集比例
+      type: number
+      default: 0.2
+      props:
+        min: 0.05
+        max: 0.5
+        step: 0.05
+
+    # 模型配置
+    - key: model_source
+      label: 模型来源
+      type: select
+      required: true
+      default: "preset"
+      options:
+        - label: 预设模型
+          value: "preset"
+        - label: 本地自定义
+          value: "custom_local"
+        - label: URL 自定义
+          value: "custom_url"
+
+    # 模型预设 - 依赖 yolo_task，使用 visible 表达式
+    - key: model_preset
+      label: 预设模型
+      type: select
+      options:
+        # detect 专用
+        - label: "YOLOv8n"
+          value: "yolov8n.pt"
+          visible: "form.yolo_task === 'detect'"
+        - label: "YOLOv8s"
+          value: "yolov8s.pt"
+          visible: "form.yolo_task === 'detect'"
+        - label: "YOLOv8m"
+          value: "yolov8m.pt"
+          visible: "form.yolo_task === 'detect'"
+        - label: "YOLOv8l"
+          value: "yolov8l.pt"
+          visible: "form.yolo_task === 'detect'"
+        - label: "YOLOv8x"
+          value: "yolov8x.pt"
+          visible: "form.yolo_task === 'detect'"
+        # obb 专用
+        - label: "YOLOv8n-OBB"
+          value: "yolov8n-obb.pt"
+          visible: "form.yolo_task === 'obb'"
+        - label: "YOLOv8s-OBB"
+          value: "yolov8s-obb.pt"
+          visible: "form.yolo_task === 'obb'"
+        - label: "YOLOv8m-OBB"
+          value: "yolov8m-obb.pt"
+          visible: "form.yolo_task === 'obb'"
+        - label: "YOLOv8l-OBB"
+          value: "yolov8l-obb.pt"
+          visible: "form.yolo_task === 'obb'"
+        - label: "YOLOv8x-OBB"
+          value: "yolov8x-obb.pt"
+          visible: "form.yolo_task === 'obb'"
+      # 默认值需要根据 yolo_task 动态选择
+      # 这里设置为 null，由前端或运行时根据上下文选择
+      default: null
+
+    # 自定义模型路径 - 仅在非预设模式时可见
+    - key: model_custom_ref
+      label: 自定义模型路径
+      type: string
+      default: ""
+      props:
+        placeholder: "/path/to/model.pt 或 https://..."
+      visible: "form.model_source !== 'preset'"
+
+    - key: device
+      label: 设备
+      type: string
+      default: "auto"
+      props:
+        placeholder: "auto, cpu, 0, 1, mps"
+
+entrypoint: "saki_plugin_yolo_det.worker:main"

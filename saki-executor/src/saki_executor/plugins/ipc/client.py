@@ -1,0 +1,482 @@
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import os
+from pathlib import Path
+import sys
+from typing import Any, Awaitable, Callable
+import uuid
+
+from loguru import logger
+
+from saki_executor.core.config import settings
+from saki_executor.plugins.ipc.log_coalescer import LogCoalescer
+from saki_executor.plugins.ipc.log_normalizer import normalize_log_payload, normalize_stdio_log_line
+from saki_plugin_sdk import ExecutionBindingContext, TaskRuntimeContext
+from saki_plugin_sdk.ipc import protocol
+
+try:
+    import zmq
+    import zmq.asyncio
+except Exception as exc:  # pragma: no cover
+    raise RuntimeError("子进程插件工作进程需要 pyzmq") from exc
+
+EventHandler = Callable[[str, dict[str, Any]], Awaitable[None]]
+
+_STREAM_READ_CHUNK_BYTES = 16 * 1024
+_STREAM_TAIL_BUFFER_LIMIT_BYTES = 256 * 1024
+
+
+class WorkerCommandError(RuntimeError):
+    def __init__(self, *, error_code: str, error_message: str) -> None:
+        super().__init__(error_message or error_code or "工作进程命令执行失败")
+        self.error_code = error_code
+        self.error_message = error_message or error_code or "工作进程命令执行失败"
+
+
+class PluginWorkerClient:
+    def __init__(
+        self,
+        *,
+        plugin_id: str,
+        task_id: str,
+        event_handler: EventHandler,
+        python_executable: str | Path | None = None,
+        entrypoint_module: str | None = None,
+        extra_env: dict[str, str] | None = None,
+    ) -> None:
+        self._plugin_id = plugin_id
+        self._task_id = task_id
+        self._event_handler = event_handler
+        self._python_executable = str(python_executable) if python_executable else sys.executable
+        self._entrypoint_module = entrypoint_module
+        self._extra_env = {
+            str(key): str(value)
+            for key, value in (extra_env or {}).items()
+            if str(key).strip()
+        }
+        self._ctx = zmq.asyncio.Context.instance()
+        self._process: asyncio.subprocess.Process | None = None
+        self._req_socket: zmq.asyncio.Socket | None = None
+        self._sub_socket: zmq.asyncio.Socket | None = None
+        self._command_endpoint = ""
+        self._event_endpoint = ""
+        self._socket_paths: list[Path] = []
+        self._event_task: asyncio.Task | None = None
+        self._stdout_task: asyncio.Task | None = None
+        self._stderr_task: asyncio.Task | None = None
+        self._stream_coalescers: dict[str, LogCoalescer] = {}
+        self._startup_lock = asyncio.Lock()
+        self._request_lock = asyncio.Lock()
+        self._closed = False
+        self._started = False
+
+    async def start(self) -> None:
+        async with self._startup_lock:
+            if self._started:
+                return
+            self._closed = False
+            self._prepare_endpoints()
+            await self._spawn_worker()
+            self._open_sockets()
+            self._start_background_tasks()
+            self._started = True
+            try:
+                await self._wait_ready()
+            except Exception:
+                self._started = False
+                await self.terminate()
+                raise
+
+    async def request(
+        self,
+        *,
+        action: str,
+        payload: dict[str, Any],
+        runtime_context: TaskRuntimeContext | dict[str, Any] | None = None,
+        execution_binding_context: ExecutionBindingContext | dict[str, Any] | None = None,
+        timeout_sec: int | None = None,
+    ) -> protocol.WorkerReplyEnvelope:
+        if self._closed:
+            raise RuntimeError("工作进程客户端已关闭")
+        if not self._started:
+            await self.start()
+        if self._req_socket is None:
+            raise RuntimeError("工作进程请求套接字未初始化")
+
+        async with self._request_lock:
+            request_id = str(uuid.uuid4())
+            cmd = protocol.WorkerCommandEnvelope(
+                request_id=request_id,
+                action=action,
+                task_id=self._task_id,
+            )
+            command_payload = protocol.build_command_payload(
+                envelope=cmd,
+                payload=payload,
+                runtime_context=runtime_context,
+                execution_binding_context=execution_binding_context,
+            )
+            await self._req_socket.send_json(command_payload)
+            raw_reply = await self._recv_reply_or_raise(timeout_sec=timeout_sec)
+            reply = protocol.WorkerReplyEnvelope.from_dict(raw_reply)
+            if not reply.ok:
+                raise WorkerCommandError(
+                    error_code=reply.error_code,
+                    error_message=reply.error_message,
+                )
+            return reply
+
+    async def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+
+        try:
+            await self._shutdown_gracefully()
+        except Exception:
+            pass
+        await self._terminate_worker()
+        await self._stop_background_tasks()
+        self._close_sockets()
+        self._cleanup_socket_paths()
+        self._started = False
+
+    async def terminate(self) -> None:
+        self._closed = True
+        await self._terminate_worker()
+        await self._stop_background_tasks()
+        self._close_sockets()
+        self._cleanup_socket_paths()
+        self._started = False
+
+    @property
+    def command_endpoint(self) -> str:
+        return self._command_endpoint
+
+    @property
+    def event_endpoint(self) -> str:
+        return self._event_endpoint
+
+    def _prepare_endpoints(self) -> None:
+        raw_dir = Path(settings.PLUGIN_WORKER_IPC_DIR)
+        raw_dir.mkdir(parents=True, exist_ok=True)
+        short_id = hashlib.md5(self._task_id.encode("utf-8")).hexdigest()[:8]
+        cmd_path = raw_dir / f"s_{short_id}_c.sock"
+        evt_path = raw_dir / f"s_{short_id}_e.sock"
+        self._socket_paths = [cmd_path, evt_path]
+        self._cleanup_socket_paths()
+        self._command_endpoint = f"ipc://{cmd_path}"
+        self._event_endpoint = f"ipc://{evt_path}"
+        logger.debug(
+            "IPC 端点已准备完成，task_id={} 命令端点={} 事件端点={}",
+            self._task_id,
+            self._command_endpoint,
+            self._event_endpoint,
+        )
+
+    async def _spawn_worker(self) -> None:
+        env = dict(os.environ)
+        env["PYTHONUNBUFFERED"] = "1"
+        env["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
+        env.update(self._extra_env)
+
+        # Resolve entrypoint module: the part before ":" is the module,
+        # e.g. "saki_plugin_yolo_det.worker:main" → module = "saki_plugin_yolo_det.worker"
+        module = self._entrypoint_module
+        if not module:
+            raise RuntimeError(
+                f"插件 {self._plugin_id} 未设置 entrypoint_module; "
+                "外部插件必须在 plugin.yml 中声明 entrypoint"
+            )
+        if ":" in module:
+            module = module.split(":")[0]
+
+        command = [
+            self._python_executable,
+            "-m",
+            module,
+            "--plugin-id",
+            self._plugin_id,
+            "--task-id",
+            self._task_id,
+            "--command-endpoint",
+            self._command_endpoint,
+            "--event-endpoint",
+            self._event_endpoint,
+        ]
+        self._process = await asyncio.create_subprocess_exec(
+            *command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=env,
+        )
+
+    def _open_sockets(self) -> None:
+        self._req_socket = self._ctx.socket(zmq.REQ)
+        self._req_socket.connect(self._command_endpoint)
+        self._sub_socket = self._ctx.socket(zmq.SUB)
+        for topic in protocol.WORKER_EVENT_TOPICS:
+            self._sub_socket.setsockopt(zmq.SUBSCRIBE, topic.encode("utf-8"))
+        self._sub_socket.connect(self._event_endpoint)
+
+    def _start_background_tasks(self) -> None:
+        self._stream_coalescers = {
+            "stdout": LogCoalescer(emit=self._emit_log_event),
+            "stderr": LogCoalescer(emit=self._emit_log_event),
+        }
+        self._event_task = asyncio.create_task(
+            self._event_loop(),
+            name=f"worker-events-{self._task_id}",
+        )
+        process = self._process
+        if process and process.stdout:
+            self._stdout_task = asyncio.create_task(
+                self._stream_log_loop(process.stdout, "stdout"),
+                name=f"worker-stdout-{self._task_id}",
+            )
+        if process and process.stderr:
+            self._stderr_task = asyncio.create_task(
+                self._stream_log_loop(process.stderr, "stderr"),
+                name=f"worker-stderr-{self._task_id}",
+            )
+
+    async def _wait_ready(self) -> None:
+        timeout = max(1, int(settings.PLUGIN_WORKER_STARTUP_TIMEOUT_SEC))
+        poll_sec = max(0.05, int(settings.PLUGIN_WORKER_REQ_POLL_INTERVAL_MS) / 1000.0)
+        deadline = asyncio.get_running_loop().time() + timeout
+        last_error = ""
+        while asyncio.get_running_loop().time() < deadline:
+            if self._process and self._process.returncode is not None:
+                raise RuntimeError(
+                    f"工作进程在就绪前已退出 plugin_id={self._plugin_id} "
+                    f"task_id={self._task_id} return_code={self._process.returncode}"
+                )
+            try:
+                await self.request(action="ping", payload={}, timeout_sec=1)
+                return
+            except Exception as exc:
+                last_error = str(exc)
+                self._reset_request_socket()
+                await asyncio.sleep(poll_sec)
+        raise RuntimeError(
+            f"工作进程启动超时 plugin_id={self._plugin_id} "
+            f"command_endpoint={self._command_endpoint} "
+            f"event_endpoint={self._event_endpoint} error={last_error}"
+        )
+
+    async def _recv_reply_or_raise(self, *, timeout_sec: int | None) -> dict[str, Any]:
+        if self._req_socket is None:
+            raise RuntimeError("工作进程请求套接字缺失")
+        if timeout_sec is None:
+            raw = await self._req_socket.recv_json()
+        else:
+            try:
+                raw = await asyncio.wait_for(
+                    self._req_socket.recv_json(),
+                    timeout=max(1, int(timeout_sec)),
+                )
+            except asyncio.TimeoutError as exc:
+                self._reset_request_socket()
+                if self._process and self._process.returncode is not None:
+                    raise RuntimeError(
+                        f"工作进程已退出 plugin_id={self._plugin_id} "
+                        f"return_code={self._process.returncode}"
+                    ) from exc
+                raise RuntimeError(f"工作进程请求超时 endpoint={self._command_endpoint}") from exc
+        if not isinstance(raw, dict):
+            raise RuntimeError("工作进程响应载荷无效")
+        return raw
+
+    def _reset_request_socket(self) -> None:
+        if not self._command_endpoint:
+            return
+        old_socket = self._req_socket
+        self._req_socket = None
+        if old_socket is not None:
+            try:
+                old_socket.close(0)
+            except Exception:
+                pass
+        self._req_socket = self._ctx.socket(zmq.REQ)
+        self._req_socket.connect(self._command_endpoint)
+
+    async def _shutdown_gracefully(self) -> None:
+        if not self._started:
+            return
+        try:
+            await self.request(
+                action="shutdown",
+                payload={},
+                timeout_sec=max(1, int(settings.PLUGIN_WORKER_TERM_TIMEOUT_SEC)),
+            )
+        except Exception:
+            pass
+
+    async def _terminate_worker(self) -> None:
+        process = self._process
+        self._process = None
+        if process is None:
+            return
+        if process.returncode is not None:
+            return
+        process.terminate()
+        timeout = max(1, int(settings.PLUGIN_WORKER_TERM_TIMEOUT_SEC))
+        try:
+            await asyncio.wait_for(process.wait(), timeout=timeout)
+            return
+        except asyncio.TimeoutError:
+            process.kill()
+            await process.wait()
+
+    async def _event_loop(self) -> None:
+        if self._sub_socket is None:
+            return
+        try:
+            while True:
+                frames = await self._sub_socket.recv_multipart()
+                topic, envelope, payload = protocol.parse_event_frames(frames)
+                if envelope.task_id and envelope.task_id != self._task_id:
+                    continue
+                if not isinstance(payload, dict):
+                    continue
+                event_type = envelope.event_type or topic
+                if event_type == "log":
+                    payload = normalize_log_payload(
+                        payload,
+                        plugin_id=self._plugin_id,
+                        default_source="worker_event",
+                    )
+                try:
+                    await self._event_handler(event_type, payload)
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    logger.exception("工作进程事件处理失败，task_id={} 事件类型={}", self._task_id, event_type)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("工作进程事件循环失败，task_id={}", self._task_id)
+
+    async def _stream_log_loop(self, stream: asyncio.StreamReader, stream_name: str) -> None:
+        coalescer = self._stream_coalescers.get(stream_name)
+        tail_buffer = ""
+        try:
+            while True:
+                raw_chunk = await stream.read(_STREAM_READ_CHUNK_BYTES)
+                if not raw_chunk:
+                    break
+                chunk_text = raw_chunk.decode("utf-8", errors="replace").replace("\r", "\n")
+                tail_buffer += chunk_text
+
+                while True:
+                    newline_index = tail_buffer.find("\n")
+                    if newline_index < 0:
+                        break
+                    raw_line = tail_buffer[: newline_index + 1]
+                    tail_buffer = tail_buffer[newline_index + 1 :]
+                    await self._forward_stream_log_line(
+                        raw_line=raw_line,
+                        stream_name=stream_name,
+                        coalescer=coalescer,
+                    )
+
+                while len(tail_buffer.encode("utf-8")) > _STREAM_TAIL_BUFFER_LIMIT_BYTES:
+                    forced_line = tail_buffer[: _STREAM_TAIL_BUFFER_LIMIT_BYTES]
+                    tail_buffer = tail_buffer[_STREAM_TAIL_BUFFER_LIMIT_BYTES :]
+                    await self._forward_stream_log_line(
+                        raw_line=forced_line,
+                        stream_name=stream_name,
+                        coalescer=coalescer,
+                    )
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("工作进程流读取失败，task_id={} 流={}", self._task_id, stream_name)
+        finally:
+            if tail_buffer:
+                try:
+                    await self._forward_stream_log_line(
+                        raw_line=tail_buffer,
+                        stream_name=stream_name,
+                        coalescer=coalescer,
+                    )
+                except Exception:
+                    logger.exception(
+                        "工作进程流尾缓冲刷新失败，task_id={} 流={}",
+                        self._task_id,
+                        stream_name,
+                    )
+            if coalescer is not None:
+                try:
+                    await coalescer.flush()
+                except Exception:
+                    logger.exception(
+                        "工作进程流日志合并器刷新失败，task_id={} 流={}",
+                        self._task_id,
+                        stream_name,
+                    )
+
+    async def _emit_log_event(self, payload: dict[str, Any]) -> None:
+        await self._event_handler("log", payload)
+
+    async def _forward_stream_log_line(
+        self,
+        *,
+        raw_line: str,
+        stream_name: str,
+        coalescer: LogCoalescer | None,
+    ) -> None:
+        payload = normalize_stdio_log_line(
+            raw_line=raw_line,
+            plugin_id=self._plugin_id,
+            stream=stream_name,
+        )
+        if not payload:
+            return
+        try:
+            if coalescer is not None:
+                await coalescer.add(payload)
+            else:
+                await self._emit_log_event(payload)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("工作进程流日志转发失败，task_id={}", self._task_id)
+
+    async def _stop_background_tasks(self) -> None:
+        tasks = [task for task in (self._event_task, self._stdout_task, self._stderr_task) if task]
+        for task in tasks:
+            if task and not task.done():
+                task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+        for coalescer in self._stream_coalescers.values():
+            try:
+                await coalescer.close()
+            except Exception:
+                logger.exception("工作进程流日志合并器关闭失败，task_id={}", self._task_id)
+        self._stream_coalescers = {}
+
+        self._event_task = None
+        self._stdout_task = None
+        self._stderr_task = None
+
+    def _close_sockets(self) -> None:
+        if self._req_socket is not None:
+            self._req_socket.close(linger=0)
+            self._req_socket = None
+        if self._sub_socket is not None:
+            self._sub_socket.close(linger=0)
+            self._sub_socket = None
+
+    def _cleanup_socket_paths(self) -> None:
+        for path in self._socket_paths:
+            try:
+                if path.exists():
+                    path.unlink()
+                    logger.debug("已清理遗留套接字文件：{}", path)
+            except Exception as exc:
+                logger.warning("清理套接字失败 {}: {}", path, exc)

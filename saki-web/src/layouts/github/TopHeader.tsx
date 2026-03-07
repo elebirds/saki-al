@@ -2,17 +2,15 @@ import React from 'react'
 import type {MenuProps} from 'antd'
 import {Avatar, Button, Dropdown, Switch} from 'antd'
 import {
-    BellOutlined,
     DownOutlined,
-    GithubOutlined,
     GlobalOutlined,
     MoonOutlined,
     PlusOutlined,
     SunOutlined,
-    UserOutlined,
 } from '@ant-design/icons'
 import type {NavItem} from './types'
 import {useTranslation} from 'react-i18next'
+import sakiLogo from '../../assets/saki-logo.png'
 
 export type TopHeaderProps = {
     appTitle: string
@@ -29,7 +27,11 @@ export type TopHeaderProps = {
     language: string
     languageOptions: { value: string; label: string }[]
     onLanguageChange: (lng: string) => void
+    onQuickActionClick?: (action: 'new-project' | 'new-dataset') => void
+    onRepoOwnerClick?: () => void
+    onRepoNameClick?: () => void
     userName?: string
+    userAvatarUrl?: string
     userMenuItems: MenuProps['items']
     onUserMenuClick: MenuProps['onClick']
 }
@@ -49,7 +51,11 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
                                                         language,
                                                         languageOptions,
                                                         onLanguageChange,
+                                                        onQuickActionClick,
+                                                        onRepoOwnerClick,
+                                                        onRepoNameClick,
                                                         userName,
+                                                        userAvatarUrl,
                                                         userMenuItems,
                                                         onUserMenuClick,
                                                     }) => {
@@ -62,6 +68,8 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
         {key: 'new-project', label: t('layout.header.newProject')},
         {key: 'new-dataset', label: t('layout.header.newDataset')},
     ]
+    const resolvedUserName = userName || t('layout.header.user')
+    const userInitial = resolvedUserName.trim().charAt(0).toUpperCase() || '?'
 
     return (
         <header className={`bg-[var(--github-header)] ${showBorder ? 'border-b border-github-border' : ''}`}>
@@ -69,12 +77,25 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
                 <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
                     <div className="flex items-center gap-4 justify-self-start">
                         <div className="flex items-center gap-3">
-                            <GithubOutlined className="text-github-text text-2xl"/>
+                            <img
+                                src={sakiLogo}
+                                alt={`${repoOwner}/${repoName} logo`}
+                                className="h-8 w-8 rounded-sm object-cover [image-rendering:pixelated]"
+                            />
                             <div className="flex items-center gap-1 text-sm">
-                                <span className="text-github-text hover:underline cursor-pointer">{repoOwner}</span>
+                                <span
+                                    className={`text-github-text ${onRepoOwnerClick ? 'hover:underline cursor-pointer' : ''}`}
+                                    onClick={onRepoOwnerClick}
+                                >
+                                    {repoOwner}
+                                </span>
                                 <span className="text-github-muted">/</span>
                                 <span
-                                    className="text-github-text font-semibold hover:underline cursor-pointer">{repoName}</span>
+                                    className={`text-github-text font-semibold ${onRepoNameClick ? 'hover:underline cursor-pointer' : ''}`}
+                                    onClick={onRepoNameClick}
+                                >
+                                    {repoName}
+                                </span>
                             </div>
                         </div>
                         <span className="ml-2 text-xs text-github-muted">{appTitle}</span>
@@ -126,19 +147,26 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
                         >
                             <Button type="text" icon={<GlobalOutlined/>} className="!text-github-muted"/>
                         </Dropdown>
-                        <Dropdown menu={{items: plusMenuItems}} placement="bottomRight">
-                            <Button type="text" icon={<PlusOutlined/>} className="!text-github-muted"/>
+                        <Dropdown
+                            menu={{
+                                items: plusMenuItems,
+                                onClick: (info) => onQuickActionClick?.(info.key as 'new-project' | 'new-dataset'),
+                            }}
+                            placement="bottomRight"
+                        >
+                            <Button type="text" icon={<PlusOutlined/>} className="!text-github-muted" disabled={!onQuickActionClick}/>
                         </Dropdown>
-                        <Button type="text" icon={<BellOutlined/>} className="!text-github-muted"/>
                         <Dropdown menu={{items: userMenuItems, onClick: onUserMenuClick}} placement="bottomRight">
                             <Button type="text" className="!text-github-muted">
                                 <div className="flex items-center gap-2">
                                     <Avatar
                                         size={28}
-                                        icon={<UserOutlined/>}
-                                        className="bg-gradient-to-br from-orange-400 to-pink-500"
-                                    />
-                                    <span className="hidden lg:inline text-github-text">{userName || t('layout.header.user')}</span>
+                                        src={userAvatarUrl || undefined}
+                                        className={userAvatarUrl ? undefined : '!bg-gradient-to-br !from-green-400 !to-blue-500'}
+                                    >
+                                        {userInitial}
+                                    </Avatar>
+                                    <span className="hidden lg:inline text-github-text">{resolvedUserName}</span>
                                     <DownOutlined className="text-github-muted"/>
                                 </div>
                             </Button>

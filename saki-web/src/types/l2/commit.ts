@@ -2,6 +2,7 @@ import {AuthorType} from './project';
 
 export interface CommitRead {
     id: string;
+    commitHash: string;
     projectId: string;
     message: string;
     authorType: AuthorType;

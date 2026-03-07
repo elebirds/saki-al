@@ -8,7 +8,7 @@ import {ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import {EmptyState, LoadingState} from '../common';
 import {AnnotationSidebar, AnnotationToolbar, SampleList} from './index';
-import {Annotation, ProjectLabel, Sample} from '../../types';
+import {Annotation, DEFAULT_DETECTION_ANNOTATION_TYPES, DetectionAnnotationType, ProjectLabel, Sample} from '../../types';
 import {AccessScope, AnnotationLike, UseAnnotationStateReturn} from '../../hooks';
 
 export interface AnnotationWorkspaceLayoutProps<T extends AnnotationLike> {
@@ -19,9 +19,15 @@ export interface AnnotationWorkspaceLayoutProps<T extends AnnotationLike> {
     labels: ProjectLabel[];
     currentIndex: number;
     currentSample: Sample | undefined;
+    samplePage: number;
+    samplePageSize: number;
+    sampleTotal: number;
+    sampleOffset: number;
 
     // 标注状态
     annotationState: UseAnnotationStateReturn<T>;
+    selectedIds?: Set<string>;
+    enabledAnnotationTypes?: DetectionAnnotationType[];
 
     // 同步状态
     isSyncing: boolean;
@@ -29,9 +35,11 @@ export interface AnnotationWorkspaceLayoutProps<T extends AnnotationLike> {
 
     // 回调函数
     onSampleSelect: (index: number) => void;
+    onSamplePageChange: (page: number) => void;
     onPrev: () => void;
     onNext: () => void;
     onSubmit: () => void;
+    submitLabel?: string;
     onAnnotationSelect: (id: string) => void;
     onAnnotationDelete: (id: string) => void;
 
@@ -62,13 +70,21 @@ export function AnnotationWorkspaceLayout<T extends AnnotationLike>({
                                                                         labels,
                                                                         currentIndex,
                                                                         currentSample,
+                                                                        samplePage,
+                                                                        samplePageSize,
+                                                                        sampleTotal,
+                                                                        sampleOffset,
                                                                         annotationState,
+                                                                        selectedIds,
+                                                                        enabledAnnotationTypes = DEFAULT_DETECTION_ANNOTATION_TYPES,
                                                                         isSyncing,
                                                                         isSyncReady,
                                                                         onSampleSelect,
+                                                                        onSamplePageChange,
                                                                         onPrev,
                                                                         onNext,
                                                                         onSubmit,
+                                                                        submitLabel,
                                                                         onAnnotationSelect,
                                                                         onAnnotationDelete,
                                                                         onZoomIn,
@@ -103,17 +119,22 @@ export function AnnotationWorkspaceLayout<T extends AnnotationLike>({
     }
 
     return (
-        <div className="flex h-full bg-github-base text-github-text">
+        <div className="flex h-full bg-github-base text-github-text py-4">
             {/* Left Sidebar - Sample List */}
             <aside className="w-[250px] shrink-0">
                 <SampleList
                     samples={samples}
                     currentIndex={currentIndex}
                     onSampleSelect={onSampleSelect}
+                    total={sampleTotal}
+                    offset={sampleOffset}
+                    page={samplePage}
+                    pageSize={samplePageSize}
+                    onPageChange={onSamplePageChange}
                 />
             </aside>
 
-            <main className="flex h-full min-w-0 flex-1 flex-col">
+            <main className="px-2 flex h-full min-w-0 flex-1 flex-col">
                 {/* Toolbar */}
                 <AnnotationToolbar
                     labels={labels}
@@ -125,6 +146,7 @@ export function AnnotationWorkspaceLayout<T extends AnnotationLike>({
                     onRedo={annotationState.redo}
                     currentTool={annotationState.currentTool}
                     onToolChange={annotationState.setCurrentTool}
+                    enabledTools={enabledAnnotationTypes}
                     onZoomIn={onZoomIn}
                     onZoomOut={onZoomOut}
                     onResetView={onResetView}
@@ -154,13 +176,15 @@ export function AnnotationWorkspaceLayout<T extends AnnotationLike>({
             <AnnotationSidebar
                 annotations={annotationState.annotations as any[]}
                 selectedId={annotationState.selectedId}
+                selectedIds={selectedIds}
                 onAnnotationSelect={onAnnotationSelect}
                 onAnnotationDelete={onAnnotationDelete}
-                currentIndex={currentIndex}
-                totalSamples={samples.length}
+                currentIndex={Math.max(0, sampleOffset + currentIndex)}
+                totalSamples={sampleTotal}
                 onPrev={onPrev}
                 onNext={onNext}
                 onSubmit={onSubmit}
+                submitLabel={submitLabel}
                 renderAnnotationItem={renderAnnotationItem}
                 currentUserId={currentUserId}
                 canEditAnnotation={canEditAnnotation}

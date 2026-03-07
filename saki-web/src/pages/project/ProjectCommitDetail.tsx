@@ -211,10 +211,10 @@ const ProjectCommitDetail: React.FC = () => {
         setLoading(true)
         setTreeLoading(true)
         try {
-            const [commitData, diffData, datasetIds, labelData, memberData] = await Promise.all([
+            const [commitData, diffData, projectDatasets, labelData, memberData] = await Promise.all([
                 api.getCommit(commitId),
                 api.getCommitDiff(commitId),
-                api.getProjectDatasets(projectId),
+                api.getProjectDatasetDetails(projectId),
                 api.getProjectLabels(projectId).catch(() => []),
                 api.getProjectMembers(projectId).catch(() => []),
             ])
@@ -224,10 +224,7 @@ const ProjectCommitDetail: React.FC = () => {
             setLabels(labelData || [])
             setMembers(memberData || [])
 
-            const datasetResults = await Promise.all(
-                (datasetIds || []).map((id) => api.getDataset(id).catch(() => null))
-            )
-            const resolvedDatasets = datasetResults.filter(Boolean) as Dataset[]
+            const resolvedDatasets = (projectDatasets || []) as Dataset[]
             setDatasets(resolvedDatasets)
 
             const addedSamples = new Set(diffData?.addedSamples ?? [])
@@ -256,7 +253,13 @@ const ProjectCommitDetail: React.FC = () => {
                 let hasMore = true
 
                 while (hasMore && pendingSamples.size > 0) {
-                    const response = await api.getSamples(dataset.id, page, 200, 'createdAt', 'desc')
+                    const response = await api.getProjectSamples(projectId, dataset.id, {
+                        branchName,
+                        page,
+                        limit: 200,
+                        sortBy: 'createdAt',
+                        sortOrder: 'desc',
+                    })
                     const items = response.items || []
 
                     items.forEach((sample) => {
@@ -294,7 +297,7 @@ const ProjectCommitDetail: React.FC = () => {
             setLoading(false)
             setTreeLoading(false)
         }
-    }, [projectId, commitId])
+    }, [projectId, commitId, branchName])
 
     useEffect(() => {
         loadBaseData()
@@ -328,21 +331,21 @@ const ProjectCommitDetail: React.FC = () => {
                 let annotationNodes: CommitTreeNode[] = []
 
                 if (isAddedSample) {
-                    mergedAnnotations = await api.getAnnotationsAtCommit(commitId, typed.sampleId)
+                    mergedAnnotations = await api.getAnnotationsAtCommit(projectId, commitId, typed.sampleId)
                     annotationNodes = mergedAnnotations.map((annotation) =>
                         buildAnnotationNode(annotation, typed.sampleId!, 'added')
                     )
                 } else if (isRemovedSample) {
                     if (commit?.parentId) {
-                        mergedAnnotations = await api.getAnnotationsAtCommit(commit.parentId, typed.sampleId)
+                        mergedAnnotations = await api.getAnnotationsAtCommit(projectId, commit.parentId, typed.sampleId)
                     }
                     annotationNodes = mergedAnnotations.map((annotation) =>
                         buildAnnotationNode(annotation, typed.sampleId!, 'removed')
                     )
                 } else {
-                    const currentAnnotations = await api.getAnnotationsAtCommit(commitId, typed.sampleId)
+                    const currentAnnotations = await api.getAnnotationsAtCommit(projectId, commitId, typed.sampleId)
                     const parentAnnotations = (commit?.parentId && removedIds.size > 0)
-                        ? await api.getAnnotationsAtCommit(commit.parentId, typed.sampleId)
+                        ? await api.getAnnotationsAtCommit(projectId, commit.parentId, typed.sampleId)
                         : []
                     const addedAnnotations = currentAnnotations.filter((annotation) => addedIds.has(annotation.id))
                     const removedAnnotations = parentAnnotations.filter((annotation) => removedIds.has(annotation.id))
@@ -449,7 +452,7 @@ const ProjectCommitDetail: React.FC = () => {
                         <h1 className="text-2xl font-normal text-github-text">
                             {t('project.commitDetail.title')}{' '}
                             <span className="text-mono bg-github-input border border-github-border px-2 py-1 rounded-md text-base">
-                                {commit.id.slice(0, 7)}
+                                {commit.commitHash.slice(0, 8)}
                             </span>
                         </h1>
                         <div className="flex flex-wrap items-center gap-3 text-sm text-github-muted">
@@ -640,7 +643,9 @@ const ProjectCommitDetail: React.FC = () => {
                                                 {t('project.commitDetail.annotationId', {id: annotation.id})}
                                             </div>
                                             <div className="rounded-md border border-github-border bg-github-base p-2 text-xs text-github-muted">
-                                                <pre className="whitespace-pre-wrap">{JSON.stringify(annotation.data, null, 2)}</pre>
+                                                <pre className="whitespace-pre-wrap">
+                                                    {JSON.stringify(annotation.geometry ?? {}, null, 2)}
+                                                </pre>
                                             </div>
                                         </>
                                     )

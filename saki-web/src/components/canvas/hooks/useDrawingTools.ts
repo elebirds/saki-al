@@ -4,9 +4,10 @@ import {RectTool} from '../tools/RectTool';
 import {ObbTool} from '../tools/ObbTool';
 import {SelectTool} from '../tools/SelectTool';
 import {clampPoint} from '../../../utils/canvasUtils';
+import {ANNOTATION_TOOL_SELECT, ANNOTATION_TYPE_OBB, ANNOTATION_TYPE_RECT, AnnotationToolType} from '../../../types';
 import Konva from 'konva';
 
-export type ToolType = 'select' | 'rect' | 'obb';
+export type ToolType = AnnotationToolType;
 
 interface UseDrawingToolsOptions {
     currentTool: ToolType;
@@ -50,13 +51,13 @@ export function useDrawingTools(options: UseDrawingToolsOptions): UseDrawingTool
         let tool = toolsRef.current.get(type);
         if (!tool) {
             switch (type) {
-                case 'rect':
+                case ANNOTATION_TYPE_RECT:
                     tool = new RectTool();
                     break;
-                case 'obb':
+                case ANNOTATION_TYPE_OBB:
                     tool = new ObbTool();
                     break;
-                case 'select':
+                case ANNOTATION_TOOL_SELECT:
                 default:
                     tool = new SelectTool();
                     break;
@@ -107,7 +108,7 @@ export function useDrawingTools(options: UseDrawingToolsOptions): UseDrawingTool
         if (!ctx) return;
 
         // 对于选择工具，需要特殊处理取消选择
-        if (currentTool === 'select') {
+        if (currentTool === ANNOTATION_TOOL_SELECT) {
             const selectTool = activeTool as SelectTool;
             selectTool.onMouseDown(ctx);
             if (selectTool.shouldDeselect()) {

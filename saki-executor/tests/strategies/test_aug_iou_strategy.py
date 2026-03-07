@@ -1,8 +1,8 @@
-from saki_executor.strategies.aug_iou import DetectionBox, score_aug_iou_disagreement
+from saki_plugin_sdk.strategies.aug_iou import DetectionBox, score_aug_iou_disagreement
 
 
-def _box(cls_id: int, conf: float, x1: float, y1: float, x2: float, y2: float) -> DetectionBox:
-    return DetectionBox(cls_id=cls_id, conf=conf, xyxy=(x1, y1, x2, y2))
+def _box(class_index: int, confidence: float, x1: float, y1: float, x2: float, y2: float) -> DetectionBox:
+    return DetectionBox(class_index=class_index, confidence=confidence, bounds=(x1, y1, x2, y2))
 
 
 def test_aug_iou_disagreement_low_when_predictions_consistent():

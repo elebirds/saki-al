@@ -3,13 +3,9 @@ import {UploadFileResult, UploadProgress, UploadProgressEvent, UploadResult} fro
 import {api} from '../../services/api';
 
 interface UseUploadOptions {
-    /** Callback for each file completion */
     onFileComplete?: (result: UploadFileResult) => void;
-    /** Callback when upload starts */
     onStart?: (totalFiles: number) => void;
-    /** Callback when upload completes */
     onComplete?: (result: UploadResult) => void;
-    /** Callback for errors */
     onError?: (error: string) => void;
 }
 
@@ -65,11 +61,11 @@ export function useUpload(datasetId: string, options: UseUploadOptions = {}) {
                         ...prev,
                         currentFile: (event.index || 0) + 1,
                         currentFilename: event.filename || '',
-                        percentage: ((event.index || 0) / prev.totalFiles) * 100,
+                        percentage: ((event.index || 0) / Math.max(prev.totalFiles, 1)) * 100,
                     }));
                     break;
 
-                case 'file_complete':
+                case 'file_complete': {
                     const fileResult: UploadFileResult = {
                         id: event.sampleId,
                         filename: event.filename || '',
@@ -79,12 +75,13 @@ export function useUpload(datasetId: string, options: UseUploadOptions = {}) {
                     setProgress((prev) => ({
                         ...prev,
                         results: [...prev.results, fileResult],
-                        percentage: (((event.index || 0) + 1) / prev.totalFiles) * 100,
+                        percentage: (((event.index || 0) + 1) / Math.max(prev.totalFiles, 1)) * 100,
                     }));
                     onFileComplete?.(fileResult);
                     break;
+                }
 
-                case 'file_error':
+                case 'file_error': {
                     const errorResult: UploadFileResult = {
                         filename: event.filename || '',
                         status: 'error',
@@ -96,8 +93,9 @@ export function useUpload(datasetId: string, options: UseUploadOptions = {}) {
                     }));
                     onFileComplete?.(errorResult);
                     break;
+                }
 
-                case 'complete':
+                case 'complete': {
                     const uploadResult: UploadResult = {
                         uploaded: event.uploaded || 0,
                         errors: event.errors || 0,
@@ -110,9 +108,12 @@ export function useUpload(datasetId: string, options: UseUploadOptions = {}) {
                     }));
                     onComplete?.(uploadResult);
                     break;
+                }
+                default:
+                    break;
             }
         },
-        [onFileComplete, onComplete]
+        [onComplete, onFileComplete]
     );
 
     const upload = useCallback(
@@ -152,7 +153,7 @@ export function useUpload(datasetId: string, options: UseUploadOptions = {}) {
                 onError?.(errorMsg);
             }
         },
-        [datasetId, handleProgressEvent, onStart, onError]
+        [datasetId, handleProgressEvent, onError, onStart]
     );
 
     return {

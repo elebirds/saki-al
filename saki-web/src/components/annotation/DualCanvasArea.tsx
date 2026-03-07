@@ -10,7 +10,8 @@
 
 import {forwardRef, useImperativeHandle, useMemo, useRef} from 'react';
 import {AnnotationCanvas, AnnotationCanvasRef} from '../canvas';
-import {Annotation, MappedRegion} from '../../types';
+import {Annotation, AnnotationToolType, DetectionAnnotationType, MappedRegion} from '../../types';
+import {resolveAnnotationView} from '../../utils/annotationGeometry';
 
 // FEDO view 标识符
 export const VIEW_TIME_ENERGY = 'time-energy';
@@ -24,7 +25,7 @@ export interface DualCanvasAreaProps {
 
     // 标注操作
     onAnnotationCreate?: (event: {
-        type: 'rect' | 'obb';
+        type: DetectionAnnotationType;
         bbox: { x: number; y: number; width: number; height: number; rotation?: number };
         view: string; // 'time-energy' 或 'L-omegad'
     }) => void;
@@ -32,7 +33,7 @@ export interface DualCanvasAreaProps {
     onAnnotationDelete: (id: string) => void;
 
     // 工具和选择
-    currentTool: 'select' | 'rect' | 'obb';
+    currentTool: AnnotationToolType;
     labelColor: string;
     selectedId: string | null;
     selectedAnnotationIds?: Set<string>; // 所有应该被选中的标注 ID（包括关联的）
@@ -71,16 +72,19 @@ export const DualCanvasArea = forwardRef<DualCanvasAreaRef, DualCanvasAreaProps>
 
     // 根据 view 过滤标注，分别显示在对应的画布上
     const timeEnergyAnnotations = useMemo(() => {
-        return annotations.filter(ann => ann.extra?.view === VIEW_TIME_ENERGY);
+        return annotations.filter((ann) => {
+            const view = resolveAnnotationView(ann) || VIEW_TIME_ENERGY;
+            return view === VIEW_TIME_ENERGY;
+        });
     }, [annotations]);
 
     const lOmegadAnnotations = useMemo(() => {
-        return annotations.filter(ann => ann.extra?.view === VIEW_L_OMEGAD);
+        return annotations.filter((ann) => resolveAnnotationView(ann) === VIEW_L_OMEGAD);
     }, [annotations]);
 
     // 为 Time-Energy 画布创建标注时的回调
     const handleTimeEnergyCreate = (event: {
-        type: 'rect' | 'obb';
+        type: DetectionAnnotationType;
         bbox: { x: number; y: number; width: number; height: number; rotation?: number };
     }) => {
         if (onAnnotationCreate) {
@@ -93,7 +97,7 @@ export const DualCanvasArea = forwardRef<DualCanvasAreaRef, DualCanvasAreaProps>
 
     // 为 L-ωd 画布创建标注时的回调
     const handleLOmegadCreate = (event: {
-        type: 'rect' | 'obb';
+        type: DetectionAnnotationType;
         bbox: { x: number; y: number; width: number; height: number; rotation?: number };
     }) => {
         if (onAnnotationCreate) {

@@ -16,10 +16,9 @@ interface UserListItem {
 
 interface DatasetMembersProps {
     datasetId: string;
-    ownerId?: string;
 }
 
-const DatasetMembers: React.FC<DatasetMembersProps> = ({datasetId, ownerId}) => {
+const DatasetMembers: React.FC<DatasetMembersProps> = ({datasetId}) => {
     const {t} = useTranslation();
     const [members, setMembers] = useState<ResourceMember[]>([]);
     const [users, setUsers] = useState<UserListItem[]>([]);
@@ -52,7 +51,7 @@ const DatasetMembers: React.FC<DatasetMembersProps> = ({datasetId, ownerId}) => 
     const fetchUsers = async () => {
         try {
             // Use getUserList API (requires user:list permission)
-            const data = await api.getUserList();
+            const data = await api.getUserList(1, 100, undefined, 'dataset', datasetId);
             setUsers(data.items);
         } catch (error) {
             console.error('Failed to fetch users:', error);
@@ -126,8 +125,7 @@ const DatasetMembers: React.FC<DatasetMembersProps> = ({datasetId, ownerId}) => 
     // Get member user IDs to filter available users
     const memberUserIds = new Set(members.map(m => m.userId));
 
-    // Check if a member is the owner (by comparing with ownerId)
-    const isDatasetOwner = (userId: string) => userId === ownerId;
+    const isSupremoMember = (member: ResourceMember) => Boolean(member.roleIsSupremo);
 
     const columns = [
         {
@@ -153,7 +151,7 @@ const DatasetMembers: React.FC<DatasetMembersProps> = ({datasetId, ownerId}) => 
             title: t('common.actions'),
             key: 'action',
             render: (_: any, record: ResourceMember) => {
-                const isOwnerMember = isDatasetOwner(record.userId);
+                const isOwnerMember = isSupremoMember(record);
                 return (
                     <div className="flex items-center gap-3">
                         <Button

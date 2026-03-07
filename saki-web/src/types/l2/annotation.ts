@@ -9,9 +9,11 @@ export interface DualViewAnnotation {
     labelName: string;  // For display convenience
     labelColor: string; // For display convenience
     annotatorId?: string | null;  // ID of the user who created the annotation
+    source?: AnnotationSource;
+    confidence?: number;
     // Primary view (Time-Energy) - always a rect or OBB
     primary: {
-        type: 'rect' | 'obb';
+        type: DetectionAnnotationType;
         bbox: BoundingBox;
     };
     // Secondary view (L-ωd) - can be multiple polygons due to non-monotonic mapping
@@ -39,7 +41,50 @@ export interface MappedRegion {
 // ============================================================================
 
 export type AnnotationType = 'rect' | 'obb' | 'polygon' | 'polyline' | 'point' | 'keypoints';
-export type AnnotationSource = 'manual' | 'auto' | 'model' | 'system' | 'imported' | 'fedo_mapping';
+export type AnnotationSource =
+    | 'manual'
+    | 'auto'
+    | 'model'
+    | 'confirmed_model'
+    | 'system'
+    | 'imported'
+    | 'fedo_mapping';
+
+export const ANNOTATION_TYPE_RECT = 'rect' as const;
+export const ANNOTATION_TYPE_OBB = 'obb' as const;
+
+export const DETECTION_ANNOTATION_TYPES = [ANNOTATION_TYPE_RECT, ANNOTATION_TYPE_OBB] as const;
+export type DetectionAnnotationType = (typeof DETECTION_ANNOTATION_TYPES)[number];
+
+export const DEFAULT_DETECTION_ANNOTATION_TYPES: DetectionAnnotationType[] = [...DETECTION_ANNOTATION_TYPES];
+
+export const ANNOTATION_TOOL_SELECT = 'select' as const;
+export type AnnotationToolType = typeof ANNOTATION_TOOL_SELECT | DetectionAnnotationType;
+
+export function isDetectionAnnotationType(value: unknown): value is DetectionAnnotationType {
+    return value === ANNOTATION_TYPE_RECT || value === ANNOTATION_TYPE_OBB;
+}
+
+export interface RectGeometry {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+}
+
+export interface ObbGeometry {
+    cx: number;
+    cy: number;
+    width: number;
+    height: number;
+    angleDegCcw?: number;
+    angle_deg_ccw?: number;
+}
+
+export interface AnnotationGeometry {
+    rect?: RectGeometry;
+    obb?: ObbGeometry;
+}
 
 // ============================================================================
 // Annotation - Core annotation model
@@ -58,8 +103,8 @@ export interface Annotation {
     viewRole?: string;
     type: AnnotationType;
     source?: AnnotationSource;
-    data: Record<string, any>;  // Geometry data (bbox, points, etc.)
-    extra?: Record<string, any>;  // System-specific (e.g., view for FEDO)
+    geometry: AnnotationGeometry;
+    attrs?: Record<string, any>;
     confidence?: number;
     annotatorId?: string | null;  // ID of the user who created the annotation
 }
@@ -79,8 +124,8 @@ export interface AnnotationRead {
     viewRole: string;
     type: AnnotationType;
     source: AnnotationSource;
-    data: Record<string, any>;
-    extra?: Record<string, any>;
+    geometry: AnnotationGeometry;
+    attrs?: Record<string, any>;
     confidence: number;
     annotatorId?: string | null;
     createdAt: string;
@@ -98,8 +143,8 @@ export interface AnnotationDraftItem {
     viewRole?: string;
     type: AnnotationType;
     source?: AnnotationSource;
-    data: Record<string, any>;
-    extra?: Record<string, any>;
+    geometry: AnnotationGeometry;
+    attrs?: Record<string, any>;
     confidence?: number;
     annotatorId?: string | null;
 }
@@ -124,6 +169,35 @@ export interface AnnotationDraftCommitRequest {
     branchName: string;
     commitMessage: string;
     sampleIds?: string[];
+}
+
+export type AnnotationDraftBatchOperationType =
+    | 'clear_drafts'
+    | 'confirm_model_annotations'
+    | 'clear_unconfirmed_model_annotations';
+
+export interface AnnotationDraftBatchRequest {
+    branchName: string;
+    datasetId: string;
+    q?: string;
+    status?: 'all' | 'labeled' | 'unlabeled' | 'draft';
+    sortBy?: string;
+    sortOrder?: 'asc' | 'desc';
+    operation: AnnotationDraftBatchOperationType;
+    dryRun?: boolean;
+}
+
+export interface AnnotationDraftBatchResult {
+    operation: AnnotationDraftBatchOperationType;
+    dryRun: boolean;
+    branchName: string;
+    matchedSampleCount: number;
+    matchedDraftCount: number;
+    affectedDraftCount: number;
+    affectedAnnotationCount: number;
+    updatedDraftCount: number;
+    deletedDraftCount: number;
+    clearedWorkingCount: number;
 }
 
 export interface CommitResult {

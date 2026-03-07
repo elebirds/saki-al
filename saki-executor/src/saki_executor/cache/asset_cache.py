@@ -38,9 +38,10 @@ class AssetCache:
     def _evict_if_needed(
             self,
             protected: set[str] | None = None,
-            active_job_id: str | None = None,
+            active_task_id: str | None = None,
     ) -> None:
         protected = protected or set()
+        pinned_id = active_task_id
         total = self._current_size()
         if total <= self.max_bytes:
             return
@@ -50,7 +51,8 @@ class AssetCache:
                 (asset_hash, data)
                 for asset_hash, data in self._index.items()
                 if asset_hash not in protected and (
-                    not active_job_id or str(data.get("pin_job_id") or "") != active_job_id
+                    not pinned_id
+                    or str(data.get("pin_task_id") or "") != pinned_id
                 )
             ],
             key=lambda item: float(item[1].get("last_access", 0)),
@@ -73,17 +75,18 @@ class AssetCache:
             asset_hash: str,
             download_url: str,
             protected: set[str] | None = None,
-            pin_job_id: str | None = None,
+            pin_task_id: str | None = None,
     ) -> Path:
         path = self._asset_path(asset_hash)
         now = time.time()
+        pinned_id = pin_task_id
 
         if path.exists():
             record = self._index.get(asset_hash) or {}
             record["last_access"] = now
             record["size"] = path.stat().st_size
-            if pin_job_id:
-                record["pin_job_id"] = pin_job_id
+            if pinned_id:
+                record["pin_task_id"] = pinned_id
             self._index[asset_hash] = record
             self._save_index()
             return path
@@ -111,8 +114,11 @@ class AssetCache:
         self._index[asset_hash] = {
             "size": path.stat().st_size,
             "last_access": now,
-            "pin_job_id": pin_job_id,
+            "pin_task_id": pinned_id,
         }
-        self._evict_if_needed(protected=protected, active_job_id=pin_job_id)
+        self._evict_if_needed(
+            protected=protected,
+            active_task_id=pinned_id,
+        )
         self._save_index()
         return path

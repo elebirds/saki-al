@@ -1,33 +1,30 @@
 services:
   saki-api:
     build:
-      context: ./saki-api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./saki-api/Dockerfile
     container_name: saki-api
     ports:
       - "8000:8000"
-      - "50051:50051"
     environment:
-      - DATABASE_URL=${DATABASE_URL:-postgresql://${POSTGRES_USER:-saki}:${POSTGRES_PASSWORD:-saki_password}@postgres:5432/${POSTGRES_DB:-saki}}
+      # DATABASE_URL 由 entrypoint 脚本自动构建（正确处理密码特殊字符）
+      - SAKI_POSTGRES_DB=${SAKI_POSTGRES_DB:-saki}
+      - SAKI_POSTGRES_USER=${SAKI_POSTGRES_USER:-postgres}
+      - SAKI_POSTGRES_PASSWORD=${SAKI_POSTGRES_PASSWORD:-postgres}
       - SECRET_KEY=${SECRET_KEY:-YOUR_SUPER_SECRET_KEY_CHANGE_ME_IN_PRODUCTION}
-      - BACKEND_CORS_ORIGINS=${BACKEND_CORS_ORIGINS:-["http://localhost:3000","http://localhost:5173","http://localhost"]}
+      - BACKEND_CORS_ORIGINS=${BACKEND_CORS_ORIGINS:-["http://localhost","http://localhost:80","http://localhost:3000","http://localhost:5173"]}
       - UPLOAD_DIR=/app/data/uploads
       - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - REDIS_URL=${REDIS_URL:-redis://saki-redis:6379/0}
       - REDIS_KEY_PREFIX=${REDIS_KEY_PREFIX:-saki}
       - REDIS_WORKING_TTL_SECONDS=${REDIS_WORKING_TTL_SECONDS:-86400}
       - INTERNAL_TOKEN=${INTERNAL_TOKEN:-dev-secret}
-      - RUNTIME_GRPC_BIND=${RUNTIME_GRPC_BIND:-0.0.0.0:50051}
-      - RUNTIME_HEARTBEAT_TIMEOUT_SEC=${RUNTIME_HEARTBEAT_TIMEOUT_SEC:-30}
-      - RUNTIME_DISPATCH_INTERVAL_SEC=${RUNTIME_DISPATCH_INTERVAL_SEC:-3}
+      - RUNTIME_DOMAIN_GRPC_BIND=${RUNTIME_DOMAIN_GRPC_BIND:-0.0.0.0:50053}
       - RUNTIME_UPLOAD_URL_EXPIRE_HOURS=${RUNTIME_UPLOAD_URL_EXPIRE_HOURS:-2}
       - RUNTIME_MAX_RETRY_COUNT=${RUNTIME_MAX_RETRY_COUNT:-2}
-      - RUNTIME_RETRY_BASE_DELAY_SEC=${RUNTIME_RETRY_BASE_DELAY_SEC:-10}
-      - RUNTIME_ASSIGN_ACK_TIMEOUT_SEC=${RUNTIME_ASSIGN_ACK_TIMEOUT_SEC:-30}
-      - RUNTIME_STREAM_REJECT_CLOSE=${RUNTIME_STREAM_REJECT_CLOSE:-true}
-      - RUNTIME_REQUEST_IDEMPOTENCY_TTL_SEC=${RUNTIME_REQUEST_IDEMPOTENCY_TTL_SEC:-600}
-      - RUNTIME_REQUEST_IDEMPOTENCY_MAX_ENTRIES=${RUNTIME_REQUEST_IDEMPOTENCY_MAX_ENTRIES:-2048}
-      - RUNTIME_EXECUTOR_ALLOWLIST=${RUNTIME_EXECUTOR_ALLOWLIST:-[]}
+      - RUNTIME_DOMAIN_GRPC_SERVER_ENABLED=${RUNTIME_DOMAIN_GRPC_SERVER_ENABLED:-true}
+      - DISPATCHER_ADMIN_TARGET=${DISPATCHER_ADMIN_TARGET:-saki-dispatcher:50052}
+      - DISPATCHER_ADMIN_TIMEOUT_SEC=${DISPATCHER_ADMIN_TIMEOUT_SEC:-5}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - LOG_DIR=/app/logs
       - LOG_FILE_NAME=${LOG_FILE_NAME:-api.log}
@@ -40,15 +37,13 @@ services:
       - MINIO_SECURE=${MINIO_SECURE:-false}
       - MINIO_BUCKET_NAME=${MINIO_BUCKET_NAME:-saki-data}
     volumes:
-      # 持久化数据库和上传文件
-      - ./saki-api/data:/app/data
-      - ./saki-api/logs:/app/logs
+      # 持久化数据库和上传文件 (使用 SAKI_DATA_DIR 环境变量)
+      - ${SAKI_DATA_DIR:-./saki-api/data}:/app/data
+      - ${SAKI_DATA_DIR:-./saki-api/logs}:/app/logs
     depends_on:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_started
-      minio:
         condition: service_healthy
     restart: unless-stopped
     networks:
@@ -58,6 +53,37 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+
+  saki-dispatcher:
+    build:
+      context: .
+      dockerfile: ./saki-dispatcher/Dockerfile
+    container_name: saki-dispatcher
+    ports:
+      - "50051:50051"
+      - "50052:50052"
+    environment:
+      # DATABASE_URL 由 entrypoint 脚本自动构建（正确处理密码特殊字符）
+      - SAKI_POSTGRES_DB=${SAKI_POSTGRES_DB:-saki}
+      - SAKI_POSTGRES_USER=${SAKI_POSTGRES_USER:-postgres}
+      - SAKI_POSTGRES_PASSWORD=${SAKI_POSTGRES_PASSWORD:-postgres}
+      - INTERNAL_TOKEN=${INTERNAL_TOKEN:-dev-secret}
+      - RUNTIME_GRPC_BIND=${DISPATCHER_RUNTIME_GRPC_BIND:-0.0.0.0:50051}
+      - ADMIN_GRPC_BIND=${DISPATCHER_ADMIN_GRPC_BIND:-0.0.0.0:50052}
+      - DISPATCH_SCAN_INTERVAL_SEC=${DISPATCH_SCAN_INTERVAL_SEC:-3}
+      - RUNTIME_HEARTBEAT_TIMEOUT_SEC=${RUNTIME_HEARTBEAT_TIMEOUT_SEC:-30}
+      - ASSIGN_ACK_TIMEOUT_SEC=${ASSIGN_ACK_TIMEOUT_SEC:-30}
+      - RUNTIME_DOMAIN_TARGET=${RUNTIME_DOMAIN_TARGET:-saki-api:50053}
+      - RUNTIME_DOMAIN_TOKEN=${RUNTIME_DOMAIN_TOKEN:-dev-secret}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      saki-api:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - saki-network
 
   saki-web:
     build:
@@ -75,26 +101,28 @@ services:
     networks:
       - saki-network
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/"]
+      test: ["CMD-SHELL", "ps aux | grep nginx | grep -v grep || test -f /run/nginx.pid"]
       interval: 30s
       timeout: 10s
       retries: 3
+
   postgres:
     image: postgres:16-alpine
     container_name: saki-postgres
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-saki}
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${SAKI_POSTGRES_DB:-saki}
+      POSTGRES_USER: ${SAKI_POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${SAKI_POSTGRES_PASSWORD:-postgres}
     volumes:
-      - ./data/postgres:/var/lib/postgresql/data
+      # 持久化数据库数据 (使用 SAKI_DATA_DIR 环境变量)
+      - ${SAKI_DATA_DIR:-./data/postgres}:/var/lib/postgresql/data
     restart: unless-stopped
     networks:
       - saki-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-saki}"]
+      test: ["CMD-SHELL", "pg_isready -U ${SAKI_POSTGRES_USER:-postgres}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -102,20 +130,60 @@ services:
   minio:
     image: minio/minio:latest
     container_name: saki-minio
+    profiles:
+      - minio
     ports:
       - "9000:9000"      # API 端口
       - "9001:9001"      # 控制台端口
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
     volumes:
-      - ./data/minio:/data
+      # 持久化 MinIO 数据 (使用 SAKI_DATA_DIR 环境变量)
+      - ${SAKI_DATA_DIR:-./data/minio}:/data
     command: server /data --console-address ":9001"
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9000/minio/health/live >/dev/null"]
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - saki-network
+
+  # 数据库备份服务
+  db-backup:
+    image: postgres:16-alpine
+    container_name: saki-db-backup
+    profiles:
+      - backup
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${SAKI_POSTGRES_DB:-saki}
+      - POSTGRES_USER=${SAKI_POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${SAKI_POSTGRES_PASSWORD:-postgres}
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
+      - MINIO_SECURE=${MINIO_SECURE}
+      - MINIO_BUCKET_NAME=${MINIO_BUCKET_NAME}
+      - BACKUP_COS_PREFIX=${BACKUP_COS_PREFIX:-saki-backups/db}
+      - BACKUP_RETENTION_DAYS=${BACKUP_RETENTION_DAYS:-7}
+      - BACKUP_SCHEDULE=${BACKUP_SCHEDULE:-0 2 * * *}
+    volumes:
+      - ./scripts/backup-db.sh:/backup/backup-db.sh:ro
+      - ./.env:/backup/.env:ro
+    working_dir: /backup
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        apk add --no-cache postgresql-client aws-cli
+        echo "配置备份周期: ${BACKUP_SCHEDULE:-0 2 * * *}"
+        echo "${BACKUP_SCHEDULE:-0 2 * * *} /backup/backup-db.sh >> /backup/backup.log 2>&1" | crond -f -
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
     networks:
       - saki-network
 
@@ -124,10 +192,12 @@ services:
       context: ./saki-executor
       dockerfile: Dockerfile
     container_name: saki-executor
+    profiles:
+      - saki-executor
     environment:
-      - EXECUTOR_ID=${EXECUTOR_ID:-executor-1}
+      - EXECUTOR_ID=${EXECUTOR_ID:-}
       - EXECUTOR_VERSION=${EXECUTOR_VERSION:-0.1.0}
-      - API_GRPC_TARGET=${API_GRPC_TARGET:-saki-api:50051}
+      - API_GRPC_TARGET=${API_GRPC_TARGET:-saki-dispatcher:50051}
       - INTERNAL_TOKEN=${INTERNAL_TOKEN:-dev-secret}
       - HEARTBEAT_INTERVAL_SEC=${HEARTBEAT_INTERVAL_SEC:-10}
       - RUNS_DIR=/app/runs
@@ -145,23 +215,30 @@ services:
       - ENABLE_COMMAND_STDIN=${ENABLE_COMMAND_STDIN:-true}
       - DISCONNECT_FORCE_WAIT_SEC=${DISCONNECT_FORCE_WAIT_SEC:-20}
     volumes:
-      - ./saki-executor/runs:/app/runs
-      - ./saki-executor/cache:/app/cache
-      - ./saki-executor/logs:/app/logs
+      - ${SAKI_DATA_DIR:-./saki-executor/runs}:/app/runs
+      - ${SAKI_DATA_DIR:-./saki-executor/cache}:/app/cache
+      - ${SAKI_DATA_DIR:-./saki-executor/logs}:/app/logs
     depends_on:
-      saki-api:
-        condition: service_healthy
+      saki-dispatcher:
+        condition: service_started
     restart: unless-stopped
     networks:
       - saki-network
+
   redis:
     image: redis:7-alpine
     container_name: saki-redis
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
     restart: unless-stopped
     networks:
       - saki-network
+
 networks:
   saki-network:
     driver: bridge

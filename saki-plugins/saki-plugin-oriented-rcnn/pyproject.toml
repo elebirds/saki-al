@@ -1,0 +1,55 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "saki-plugin-oriented-rcnn"
+version = "1.0.0"
+description = "Oriented R-CNN plugin for Saki executor"
+requires-python = ">=3.11"
+dependencies = [
+    "saki-plugin-sdk",
+    "saki-ir",
+    "httpx>=0.27.0",
+    "numpy>=2.0.0",
+    "pillow>=10.0.0",
+]
+
+[project.optional-dependencies]
+profile-cpu = [
+    "torch>=2.2.0",
+    "torchvision>=0.17.0",
+    "onedl-mmengine>=0.10.7",
+    "onedl-mmcv>=2.1.0",
+    "onedl-mmdetection>=3.4.0",
+    "onedl-mmrotate>=1.1.0",
+    "shapely>=2.0.0",
+]
+profile-cuda = [
+    # 关键设计：锁定到 OneDL 已提供 cp312 预编译 mmcv._ext 的组合，避免运行时源码编译。
+    "torch>=2.9,<2.10",
+    "torchvision>=0.24,<0.25",
+    "onedl-mmengine==0.10.9",
+    "onedl-mmcv==2.3.2.post2",
+    "onedl-mmdetection==3.4.5",
+    "onedl-mmrotate==1.1.0.post1",
+    "shapely>=2.0.0",
+]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.7",
+]
+
+[[tool.uv.index]]
+# 关键设计：CUDA profile 优先使用 OneDL 预编译仓库中的 onedl-mmcv wheel。
+name = "onedl-cu129-torch290"
+url = "https://mmwheels.onedl.ai/cu129-torch290/simple"
+explicit = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/saki_plugin_oriented_rcnn"]
+
+[tool.uv.sources]
+saki-plugin-sdk = { path = "../../saki-plugin-sdk", editable = true }
+saki-ir = { path = "../../shared/saki-ir/python", editable = true }
+onedl-mmcv = [{ index = "onedl-cu129-torch290", marker = "extra == 'profile-cuda'" }]

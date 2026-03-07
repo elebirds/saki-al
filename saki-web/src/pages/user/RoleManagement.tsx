@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useRef, useState} from 'react';
+import React, {useCallback, useEffect, useState} from 'react';
 import {
     Button,
     Card,
@@ -19,17 +19,45 @@ import {
     Typography
 } from 'antd';
 import {DeleteOutlined, EditOutlined, LockOutlined, PlusOutlined} from '@ant-design/icons';
-import {Role, RoleCreate, RolePermissionCreate, RoleType, RoleUpdate} from '../../types';
+import {Role, RoleCreate, RolePermissionCatalog, RolePermissionCreate, RoleType, RoleUpdate} from '../../types';
 import {api} from '../../services/api';
 import {useTranslation} from 'react-i18next';
 import {usePermission} from '../../hooks';
 import {PaginatedList} from '../../components/common/PaginatedList';
+import {createEmptyPaginationResponse} from '../../types/pagination';
 
 const {TextArea} = Input;
 const {Text, Title} = Typography;
 
+type PermissionOption = {
+    value: string;
+    label: string;
+}
+
+type PermissionCategory = {
+    title: string;
+    permissions: PermissionOption[];
+}
+
+const filterPermissionCategories = (
+    categories: PermissionCategory[],
+    allowedPermissions?: Set<string>,
+) => {
+    if (!allowedPermissions) return categories
+    return categories
+        .map((category) => ({
+            ...category,
+            permissions: category.permissions.filter((perm) => allowedPermissions.has(perm.value)),
+        }))
+        .filter((category) => category.permissions.length > 0)
+}
+
 // 获取权限分类列表（根据国际化和角色类型过滤）
-const getPermissionCategories = (t: (key: string) => string, roleType?: RoleType) => {
+const getPermissionCategories = (
+    t: (key: string) => string,
+    roleType?: RoleType,
+    allowedPermissions?: Set<string>,
+) => {
     // 系统级权限（只有系统角色可以使用）
     const systemCategories = [
         {
@@ -54,10 +82,23 @@ const getPermissionCategories = (t: (key: string) => string, roleType?: RoleType
                 {value: 'role:assign_admin:all', label: t('role.management.permissionLabels.roleAssignAdmin')},
             ],
         },
+        {
+            title: t('role.management.permissionLabels.systemSettingsManagement'),
+            permissions: [
+                {value: 'system_setting:read:all', label: t('role.management.permissionLabels.systemSettingsRead')},
+                {value: 'system_setting:update:all', label: t('role.management.permissionLabels.systemSettingsUpdate')},
+            ],
+        },
     ];
 
     // 资源级权限（系统角色和资源角色都可以使用，但权限范围不同）
     const resourceCategories = [
+        {
+            title: t('role.management.permissionLabels.userManagement'),
+            permissions: [
+                {value: 'user:list:assigned', label: t('role.management.permissionLabels.userList')},
+            ],
+        },
         {
             title: t('role.management.permissionLabels.datasetManagementAll'),
             permissions: [
@@ -66,6 +107,7 @@ const getPermissionCategories = (t: (key: string) => string, roleType?: RoleType
                 {value: 'dataset:update:all', label: t('role.management.permissionLabels.datasetUpdateAll')},
                 {value: 'dataset:delete:all', label: t('role.management.permissionLabels.datasetDeleteAll')},
                 {value: 'dataset:assign:all', label: t('role.management.permissionLabels.datasetAssignAll')},
+                {value: 'dataset:link_project:all', label: t('role.management.permissionLabels.datasetLinkProjectAll')},
                 {value: 'dataset:export:all', label: t('role.management.permissionLabels.datasetExportAll')},
                 {value: 'dataset:import:all', label: t('role.management.permissionLabels.datasetImportAll')},
             ],
@@ -76,6 +118,10 @@ const getPermissionCategories = (t: (key: string) => string, roleType?: RoleType
                 {value: 'dataset:read:assigned', label: t('role.management.permissionLabels.datasetReadAssigned')},
                 {value: 'dataset:update:assigned', label: t('role.management.permissionLabels.datasetUpdateAssigned')},
                 {value: 'dataset:assign:assigned', label: t('role.management.permissionLabels.datasetAssignAssigned')},
+                {
+                    value: 'dataset:link_project:assigned',
+                    label: t('role.management.permissionLabels.datasetLinkProjectAssigned')
+                },
                 {value: 'dataset:export:assigned', label: t('role.management.permissionLabels.datasetExportAssigned')},
                 {value: 'dataset:import:assigned', label: t('role.management.permissionLabels.datasetImportAssigned')},
             ],
@@ -85,7 +131,6 @@ const getPermissionCategories = (t: (key: string) => string, roleType?: RoleType
             permissions: [
                 {value: 'sample:read:all', label: t('role.management.permissionLabels.sampleReadAll')},
                 {value: 'sample:create:all', label: t('role.management.permissionLabels.sampleCreateAll')},
-                {value: 'sample:update:all', label: t('role.management.permissionLabels.sampleUpdateAll')},
                 {value: 'sample:delete:all', label: t('role.management.permissionLabels.sampleDeleteAll')},
             ],
         },
@@ -94,7 +139,6 @@ const getPermissionCategories = (t: (key: string) => string, roleType?: RoleType
             permissions: [
                 {value: 'sample:read:assigned', label: t('role.management.permissionLabels.sampleReadAssigned')},
                 {value: 'sample:create:assigned', label: t('role.management.permissionLabels.sampleCreateAssigned')},
-                {value: 'sample:update:assigned', label: t('role.management.permissionLabels.sampleUpdateAssigned')},
                 {value: 'sample:delete:assigned', label: t('role.management.permissionLabels.sampleDeleteAssigned')},
             ],
         },
@@ -102,25 +146,21 @@ const getPermissionCategories = (t: (key: string) => string, roleType?: RoleType
             title: t('role.management.permissionLabels.labelManagementAll'),
             permissions: [
                 {value: 'label:read:all', label: t('role.management.permissionLabels.labelReadAll')},
-                {value: 'label:create:all', label: t('role.management.permissionLabels.labelCreateAll')},
-                {value: 'label:update:all', label: t('role.management.permissionLabels.labelUpdateAll')},
-                {value: 'label:delete:all', label: t('role.management.permissionLabels.labelDeleteAll')},
+                {value: 'label:manage:all', label: t('role.management.permissionLabels.labelManageAll')},
             ],
         },
         {
             title: t('role.management.permissionLabels.labelManagementAssigned'),
             permissions: [
                 {value: 'label:read:assigned', label: t('role.management.permissionLabels.labelReadAssigned')},
-                {value: 'label:create:assigned', label: t('role.management.permissionLabels.labelCreateAssigned')},
-                {value: 'label:update:assigned', label: t('role.management.permissionLabels.labelUpdateAssigned')},
-                {value: 'label:delete:assigned', label: t('role.management.permissionLabels.labelDeleteAssigned')},
+                {value: 'label:manage:assigned', label: t('role.management.permissionLabels.labelManageAssigned')},
             ],
         },
         {
             title: t('role.management.permissionLabels.annotationManagementAll'),
             permissions: [
                 {value: 'annotation:read:all', label: t('role.management.permissionLabels.annotationReadAll')},
-                {value: 'annotation:modify:all', label: t('role.management.permissionLabels.annotationModifyAll')},
+                {value: 'annotation:create:all', label: t('role.management.permissionLabels.annotationModifyAll')},
             ],
         },
         {
@@ -128,16 +168,87 @@ const getPermissionCategories = (t: (key: string) => string, roleType?: RoleType
             permissions: [
                 {value: 'annotation:read:assigned', label: t('role.management.permissionLabels.annotationReadAssigned')},
                 {
-                    value: 'annotation:modify:assigned',
+                    value: 'annotation:create:assigned',
                     label: t('role.management.permissionLabels.annotationModifyAssigned')
                 },
             ],
         },
         {
-            title: t('role.management.permissionLabels.annotationManagementSelf'),
+            title: t('role.management.permissionLabels.projectManagementAll'),
             permissions: [
-                {value: 'annotation:read:self', label: t('role.management.permissionLabels.annotationReadSelf')},
-                {value: 'annotation:modify:self', label: t('role.management.permissionLabels.annotationModifySelf')},
+                {value: 'project:create:all', label: t('role.management.permissionLabels.projectCreateAll')},
+                {value: 'project:read:all', label: t('role.management.permissionLabels.projectReadAll')},
+                {value: 'project:update:all', label: t('role.management.permissionLabels.projectUpdateAll')},
+                {value: 'project:archive:all', label: t('role.management.permissionLabels.projectArchiveAll')},
+                {value: 'project:delete:all', label: t('role.management.permissionLabels.projectDeleteAll')},
+                {value: 'project:assign:all', label: t('role.management.permissionLabels.projectAssignAll')},
+                {value: 'project:export:all', label: t('role.management.permissionLabels.projectExportAll')},
+            ],
+        },
+        {
+            title: t('role.management.permissionLabels.projectManagementAssigned'),
+            permissions: [
+                {value: 'project:read:assigned', label: t('role.management.permissionLabels.projectReadAssigned')},
+                {value: 'project:update:assigned', label: t('role.management.permissionLabels.projectUpdateAssigned')},
+                {
+                    value: 'project:archive:assigned',
+                    label: t('role.management.permissionLabels.projectArchiveAssigned')
+                },
+                {value: 'project:delete:assigned', label: t('role.management.permissionLabels.projectDeleteAssigned')},
+                {value: 'project:assign:assigned', label: t('role.management.permissionLabels.projectAssignAssigned')},
+                {value: 'project:export:assigned', label: t('role.management.permissionLabels.projectExportAssigned')},
+            ],
+        },
+        {
+            title: t('role.management.permissionLabels.commitManagementAll'),
+            permissions: [
+                {value: 'commit:create:all', label: t('role.management.permissionLabels.commitCreateAll')},
+                {value: 'commit:read:all', label: t('role.management.permissionLabels.commitReadAll')},
+            ],
+        },
+        {
+            title: t('role.management.permissionLabels.commitManagementAssigned'),
+            permissions: [
+                {value: 'commit:create:assigned', label: t('role.management.permissionLabels.commitCreateAssigned')},
+                {value: 'commit:read:assigned', label: t('role.management.permissionLabels.commitReadAssigned')},
+            ],
+        },
+        {
+            title: t('role.management.permissionLabels.branchManagementAll'),
+            permissions: [
+                {value: 'branch:manage:all', label: t('role.management.permissionLabels.branchManageAll')},
+                {value: 'branch:read:all', label: t('role.management.permissionLabels.branchReadAll')},
+                {value: 'branch:switch:all', label: t('role.management.permissionLabels.branchSwitchAll')},
+            ],
+        },
+        {
+            title: t('role.management.permissionLabels.branchManagementAssigned'),
+            permissions: [
+                {value: 'branch:manage:assigned', label: t('role.management.permissionLabels.branchManageAssigned')},
+                {value: 'branch:read:assigned', label: t('role.management.permissionLabels.branchReadAssigned')},
+                {value: 'branch:switch:assigned', label: t('role.management.permissionLabels.branchSwitchAssigned')},
+            ],
+        },
+        {
+            title: t('role.management.permissionLabels.runtimeManagementAll'),
+            permissions: [
+                {value: 'loop:read:all', label: t('role.management.permissionLabels.loopReadAll')},
+                {value: 'loop:manage:all', label: t('role.management.permissionLabels.loopManageAll')},
+                {value: 'round:read:all', label: t('role.management.permissionLabels.jobReadAll')},
+                {value: 'round:manage:all', label: t('role.management.permissionLabels.jobManageAll')},
+                {value: 'model:read:all', label: t('role.management.permissionLabels.modelReadAll')},
+                {value: 'model:manage:all', label: t('role.management.permissionLabels.modelManageAll')},
+            ],
+        },
+        {
+            title: t('role.management.permissionLabels.runtimeManagementAssigned'),
+            permissions: [
+                {value: 'loop:read:assigned', label: t('role.management.permissionLabels.loopReadAssigned')},
+                {value: 'loop:manage:assigned', label: t('role.management.permissionLabels.loopManageAssigned')},
+                {value: 'round:read:assigned', label: t('role.management.permissionLabels.jobReadAssigned')},
+                {value: 'round:manage:assigned', label: t('role.management.permissionLabels.jobManageAssigned')},
+                {value: 'model:read:assigned', label: t('role.management.permissionLabels.modelReadAssigned')},
+                {value: 'model:manage:assigned', label: t('role.management.permissionLabels.modelManageAssigned')},
             ],
         },
     ];
@@ -146,30 +257,29 @@ const getPermissionCategories = (t: (key: string) => string, roleType?: RoleType
     if (roleType === 'system') {
         // 系统角色：返回系统级权限（:all）和资源级权限（:all）
         const allCategories = [...systemCategories, ...resourceCategories];
-        return allCategories.map(category => ({
+        return filterPermissionCategories(allCategories.map(category => ({
             ...category,
             permissions: category.permissions.filter(p => p.value.endsWith(':all')),
-        })).filter(category => category.permissions.length > 0);
+        })).filter(category => category.permissions.length > 0), allowedPermissions);
     } else if (roleType === 'resource') {
-        // 资源角色：只返回资源级权限（:assigned 和 :self），不包含系统级权限
-        return resourceCategories.map(category => ({
+        // 资源角色：只返回资源级权限（:assigned），不包含系统级权限
+        return filterPermissionCategories(resourceCategories.map(category => ({
             ...category,
-            permissions: category.permissions.filter(p => p.value.endsWith(':assigned') || p.value.endsWith(':self')),
-        })).filter(category => category.permissions.length > 0);
+            permissions: category.permissions.filter(p => p.value.endsWith(':assigned')),
+        })).filter(category => category.permissions.length > 0), allowedPermissions);
     }
 
     // 没有指定类型，返回所有权限
-    return [...systemCategories, ...resourceCategories];
+    return filterPermissionCategories([...systemCategories, ...resourceCategories], allowedPermissions);
 };
 
 const RoleManagement: React.FC = () => {
     const {t} = useTranslation();
-    const [roles, setRoles] = useState<Role[]>([]);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingRole, setEditingRole] = useState<Role | null>(null);
     const [roleTypeFilter, setRoleTypeFilter] = useState<RoleType | 'all'>('all');
-    const [tableHeight, setTableHeight] = useState<number>(500);
-    const tableContainerRef = useRef<HTMLDivElement>(null);
+    const [permissionCatalog, setPermissionCatalog] = useState<RolePermissionCatalog | null>(null);
+    const [catalogLoading, setCatalogLoading] = useState(false);
     const [form] = Form.useForm();
     const [refreshKey, setRefreshKey] = useState(0);
 
@@ -182,7 +292,7 @@ const RoleManagement: React.FC = () => {
 
     const fetchRoles = useCallback(async (page: number, pageSize: number) => {
         if (!canReadRoles) {
-            return {items: [], total: 0, limit: pageSize, offset: 0, size: 0} as any;
+            return createEmptyPaginationResponse<Role>(pageSize, page);
         }
         try {
             const type = roleTypeFilter === 'all' ? undefined : roleTypeFilter;
@@ -199,25 +309,31 @@ const RoleManagement: React.FC = () => {
         }
     }, [permissionLoading, canReadRoles, roleTypeFilter]);
 
-    // 计算表格高度
-    useEffect(() => {
-        const updateTableHeight = () => {
-            if (tableContainerRef.current) {
-                const containerHeight = tableContainerRef.current.clientHeight;
-                // 减去：表格头部(约55px) + 分页器(约64px)
-                const calculatedHeight = containerHeight - 119;
-                setTableHeight(Math.max(300, calculatedHeight)); // 最小高度300px
-            }
-        };
+    const loadPermissionCatalog = useCallback(async () => {
+        if (!canReadRoles) return
+        setCatalogLoading(true)
+        try {
+            const catalog = await api.getPermissionCatalog()
+            setPermissionCatalog(catalog)
+        } catch (error: any) {
+            message.error(error.message || t('role.management.fetchError'))
+        } finally {
+            setCatalogLoading(false)
+        }
+    }, [canReadRoles, t])
 
-        // 使用 setTimeout 确保 DOM 已渲染
-        const timeoutId = setTimeout(updateTableHeight, 0);
-        window.addEventListener('resize', updateTableHeight);
-        return () => {
-            clearTimeout(timeoutId);
-            window.removeEventListener('resize', updateTableHeight);
-        };
-    }, [roles, roleTypeFilter]); // 当数据或加载状态变化时重新计算
+    useEffect(() => {
+        if (!permissionLoading && canReadRoles) {
+            void loadPermissionCatalog()
+        }
+    }, [permissionLoading, canReadRoles, loadPermissionCatalog])
+
+    const getAllowedPermissionSet = useCallback((roleType?: RoleType): Set<string> => {
+        if (!permissionCatalog) return new Set()
+        if (roleType === 'system') return new Set(permissionCatalog.systemPermissions || [])
+        if (roleType === 'resource') return new Set(permissionCatalog.resourcePermissions || [])
+        return new Set(permissionCatalog.allPermissions || [])
+    }, [permissionCatalog])
 
     const handleAdd = () => {
         setEditingRole(null);
@@ -229,17 +345,8 @@ const RoleManagement: React.FC = () => {
     // 处理角色类型变更
     const handleRoleTypeChange = (type: RoleType) => {
         const currentPermissions = form.getFieldValue('permissions') || [];
-
-        // 根据新类型过滤权限
-        let validPermissions: string[] = [];
-        if (type === 'system') {
-            // 系统角色：只保留 :all 权限
-            validPermissions = currentPermissions.filter((p: string) => p.endsWith(':all'));
-        } else if (type === 'resource') {
-            // 资源角色：只保留 :assigned 和 :self 权限
-            validPermissions = currentPermissions.filter((p: string) => p.endsWith(':assigned') || p.endsWith(':self'));
-        }
-
+        const allowed = getAllowedPermissionSet(type)
+        const validPermissions = currentPermissions.filter((p: string) => allowed.has(p))
         form.setFieldsValue({permissions: validPermissions});
     };
 
@@ -271,18 +378,17 @@ const RoleManagement: React.FC = () => {
             const values = await form.validateFields();
             const roleType = values.type as RoleType;
             let permissions = values.permissions || [];
+            const allowedPermissions = getAllowedPermissionSet(roleType)
 
             // 验证权限与角色类型匹配
             if (roleType === 'system') {
-                // 系统角色只能有 :all 权限
-                const invalidPerms = permissions.filter((p: string) => !p.endsWith(':all'));
+                const invalidPerms = permissions.filter((p: string) => !allowedPermissions.has(p));
                 if (invalidPerms.length > 0) {
                     message.error(t('role.management.invalidPermissionsForSystemRole'));
                     return;
                 }
             } else if (roleType === 'resource') {
-                // 资源角色只能有 :assigned 和 :self 权限
-                const invalidPerms = permissions.filter((p: string) => !p.endsWith(':assigned') && !p.endsWith(':self'));
+                const invalidPerms = permissions.filter((p: string) => !allowedPermissions.has(p));
                 if (invalidPerms.length > 0) {
                     message.error(t('role.management.invalidPermissionsForResourceRole'));
                     return;
@@ -439,7 +545,7 @@ const RoleManagement: React.FC = () => {
     }
 
     return (
-        <div className="flex h-full flex-col overflow-hidden p-6">
+        <div className="flex min-h-full flex-col p-6">
             <div className="mb-4 flex flex-shrink-0 items-center justify-between">
                 <span className="m-0 font-semibold">{t('role.management.title')}</span>
                 <div className="flex items-center gap-2">
@@ -468,21 +574,27 @@ const RoleManagement: React.FC = () => {
                     )}
                 </div>
             </div>
-            <div ref={tableContainerRef} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <div>
                 <PaginatedList<Role>
                     fetchData={fetchRoles}
-                    onItemsChange={setRoles}
                     refreshKey={refreshKey}
                     resetPageOnRefresh
                     initialPageSize={20}
                     pageSizeOptions={['10', '20', '50', '100']}
+                    adaptivePageSize={{
+                        enabled: true,
+                        mode: 'table',
+                        itemHeight: 54,
+                        rowGap: 0,
+                        reservedHeight: 56,
+                    }}
                     renderItems={(items, loading) => (
                         <Table
                             columns={columns}
                             dataSource={items}
                             rowKey="id"
                             loading={loading}
-                            scroll={{y: tableHeight, x: 'max-content'}}
+                            scroll={{x: 'max-content'}}
                             pagination={false}
                         />
                     )}
@@ -575,7 +687,7 @@ const RoleManagement: React.FC = () => {
                     >
                         {({getFieldValue}) => {
                             const roleType = getFieldValue('type') as RoleType | undefined;
-                            const categories = getPermissionCategories(t, roleType);
+                            const categories = getPermissionCategories(t, roleType, getAllowedPermissionSet(roleType));
 
                             return (
                                 <Form.Item
@@ -584,7 +696,11 @@ const RoleManagement: React.FC = () => {
                                 >
                                     <Checkbox.Group className="w-full">
                                         <Card size="small" className="max-h-[400px] overflow-y-auto">
-                                            {!roleType ? (
+                                            {catalogLoading ? (
+                                                <div className="flex min-h-[120px] items-center justify-center">
+                                                    <Spin size="small"/>
+                                                </div>
+                                            ) : !roleType ? (
                                                 <div className="p-5 text-center text-gray-500">
                                                     {t('role.management.selectRoleTypeFirst')}
                                                 </div>

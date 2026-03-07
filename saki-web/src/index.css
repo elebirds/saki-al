@@ -147,16 +147,19 @@ code {
 
 .full-height-tabs .ant-tabs-content-holder {
     flex: 1;
-    overflow: hidden;
-    height: 100%;
+    overflow: visible;
+    height: auto;
+    min-height: 0;
 }
 
 .full-height-tabs .ant-tabs-content {
-    height: 100%;
+    height: auto;
+    min-height: 0;
 }
 
 .full-height-tabs .ant-tabs-tabpane {
-    height: 100%;
+    height: auto;
+    min-height: 0;
 }
 
 /* Setup 页面动画 */

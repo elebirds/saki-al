@@ -2,17 +2,16 @@
 全局异常处理。
 """
 
-from loguru import logger
 from typing import Optional
 
 from fastapi import Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import HTTPException as FastAPIHTTPException
 from fastapi.responses import JSONResponse
+from loguru import logger
 
 from saki_api.core.enums import ErrorCode
 from saki_api.core.response import ApiResponse
-
 
 
 class AppException(Exception):

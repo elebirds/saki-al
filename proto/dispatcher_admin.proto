@@ -1,0 +1,123 @@
+syntax = "proto3";
+
+package saki.dispatcher.admin.v1;
+option go_package = "github.com/elebirds/saki/saki-dispatcher/internal/gen/dispatcheradminv1;dispatcheradminv1";
+
+message LoopCommandRequest {
+  string command_id = 1;
+  string loop_id = 2;
+}
+
+message ConfirmLoopRequest {
+  string command_id = 1;
+  string loop_id = 2;
+  bool force = 3;
+}
+
+message RoundCommandRequest {
+  string command_id = 1;
+  string round_id = 2;
+  string reason = 3;
+}
+
+message RetryRoundRequest {
+  string command_id = 1;
+  string round_id = 2;
+  string reason = 3;
+}
+
+message TaskCommandRequest {
+  string command_id = 1;
+  string task_id = 2;
+  string reason = 3;
+}
+
+message DispatchTaskRequest {
+  string command_id = 1;
+  string task_id = 2;
+}
+
+message CommandResponse {
+  string command_id = 1;
+  string status = 2;
+  string message = 3;
+  string request_id = 4;
+}
+
+message RuntimeSummaryRequest {}
+
+message RuntimeSummaryResponse {
+  int64 online_executors = 1;
+  int64 busy_executors = 2;
+  int64 pending_assign_count = 3;
+  int64 pending_stop_count = 4;
+  int64 queued_task_count = 5;
+  string latest_heartbeat_at = 6;
+}
+
+message ExecutorReadRequest {
+  string executor_id = 1;
+}
+
+message ExecutorListRequest {}
+
+message ExecutorRead {
+  string executor_id = 1;
+  string version = 2;
+  string status = 3;
+  bool is_online = 4;
+  string current_task_id = 5;
+  string last_seen_at = 6;
+  string last_error = 7;
+  int64 pending_assign_count = 8;
+  int64 pending_stop_count = 9;
+}
+
+message ExecutorReadResponse {
+  ExecutorRead item = 1;
+}
+
+message ExecutorListResponse {
+  repeated ExecutorRead items = 1;
+}
+
+message RuntimeDomainStatusRequest {}
+
+message RuntimeDomainStatusResponse {
+  bool configured = 1;
+  bool enabled = 2;
+  string state = 3;
+  string target = 4;
+  int64 consecutive_failures = 5;
+  string last_error = 6;
+  string last_connected_at = 7;
+  string next_retry_at = 8;
+}
+
+message SetRuntimeDomainEnabledRequest {
+  string command_id = 1;
+  bool enabled = 2;
+}
+
+message ReconnectRuntimeDomainRequest {
+  string command_id = 1;
+}
+
+service DispatcherAdmin {
+  rpc StartLoop(LoopCommandRequest) returns (CommandResponse);
+  rpc StartNextRound(LoopCommandRequest) returns (CommandResponse);
+  rpc PauseLoop(LoopCommandRequest) returns (CommandResponse);
+  rpc ResumeLoop(LoopCommandRequest) returns (CommandResponse);
+  rpc StopLoop(LoopCommandRequest) returns (CommandResponse);
+  rpc ConfirmLoop(ConfirmLoopRequest) returns (CommandResponse);
+  rpc StopRound(RoundCommandRequest) returns (CommandResponse);
+  rpc RetryRound(RetryRoundRequest) returns (CommandResponse);
+  rpc StopTask(TaskCommandRequest) returns (CommandResponse);
+  rpc DispatchTask(DispatchTaskRequest) returns (CommandResponse);
+  rpc GetRuntimeSummary(RuntimeSummaryRequest) returns (RuntimeSummaryResponse);
+  rpc GetExecutor(ExecutorReadRequest) returns (ExecutorReadResponse);
+  rpc ListExecutors(ExecutorListRequest) returns (ExecutorListResponse);
+  rpc GetRuntimeDomainStatus(RuntimeDomainStatusRequest) returns (RuntimeDomainStatusResponse);
+  rpc SetRuntimeDomainEnabled(SetRuntimeDomainEnabledRequest) returns (CommandResponse);
+  rpc ReconnectRuntimeDomain(ReconnectRuntimeDomainRequest) returns (CommandResponse);
+}

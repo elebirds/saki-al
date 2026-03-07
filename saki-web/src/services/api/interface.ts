@@ -1,11 +1,13 @@
 import {
+    AnnotationDraftBatchRequest,
+    AnnotationDraftBatchResult,
     AnnotationDraftCommitRequest,
     AnnotationDraftPayload,
     AnnotationDraftRead,
     AnnotationRead,
     AnnotationSyncRequest,
     AnnotationSyncResponse,
-    ALLoop,
+    Loop,
     AvailableTypesResponse,
     CommitDiff,
     CommitHistoryItem,
@@ -19,50 +21,91 @@ import {
     Project,
     ProjectBranch,
     ProjectCreate,
+    ProjectForkCreate,
     ProjectLabel,
     ProjectLabelCreate,
     ProjectLabelUpdate,
     ProjectSample,
-    RuntimeArtifactsResponse,
-    JobArtifactDownload,
-    RuntimeJob,
-    RuntimeJobCommandResponse,
-    RuntimeJobCreateRequest,
-    RuntimeJobEvent,
-    RuntimeMetricPoint,
-    RuntimeTopKCandidate,
+    RuntimeRound,
+    RoundSelectionApplyRequest,
+    RoundSelectionApplyResponse,
+    RoundSelectionRead,
+    RuntimeRoundCommandResponse,
+    RuntimeStep,
+    RuntimeRoundArtifactsResponse,
+    RuntimeTaskCandidate,
+    RoundEventQuery,
+    RoundEventQueryResponse,
+    TaskEventQuery,
+    TaskEventQueryResponse,
+    RuntimeTaskMetricPoint,
+    TaskArtifactDownload,
+    TaskArtifactsResponse,
+    RoundPredictionCleanupResponse,
     LoopCreateRequest,
-    LoopRecoverRequest,
+    LoopActionRequest,
+    LoopActionResponse,
     LoopUpdateRequest,
-    LoopRound,
     LoopSummary,
-    SimulationExperimentCreateRequest,
-    SimulationExperimentCreateResponse,
-    SimulationExperimentCurves,
+    LoopSnapshotRead,
+    LoopGateResponse,
+    RoundMissingSamplesQuery,
+    RoundMissingSamplesResponse,
+    PredictionApplyRequest,
+    PredictionApplyResponse,
+    PredictionDetailRead,
+    PredictionCreateRequest,
+    PredictionRead,
+    PredictionTaskRead,
     RuntimePluginCatalogResponse,
     RuntimeExecutorListResponse,
     RuntimeExecutorRead,
     RuntimeExecutorStatsRange,
     RuntimeExecutorStatsResponse,
-    AnnotationBatch,
-    AnnotationBatchItem,
     ProjectModel,
     ModelArtifactDownload,
+    ModelPublishFromRoundRequest,
+    ProjectModelQuery,
     ResourceMember,
     ResourceMemberCreate,
     ResourceMemberUpdate,
     ResourcePermissions,
     Role,
     RoleCreate,
+    RolePermissionCatalog,
     RoleInfo,
     RoleType,
     RoleUpdate,
     Sample,
+    SystemSettingsBundle,
+    SystemStatus,
     SystemPermissions,
     User,
     UserSystemRole,
     UserSystemRoleAssign,
+    ImportExecuteRequest,
+    ImportProgressEvent,
+    ImportTaskCreateResponse,
+    ImportTaskResultResponse,
+    ImportTaskStatusResponse,
+    ImportUploadAbortResponse,
+    ImportUploadCompleteRequest,
+    ImportUploadInitRequest,
+    ImportUploadInitResponse,
+    ImportUploadPartSignRequest,
+    ImportUploadPartSignResponse,
+    ImportUploadSessionResponse,
+    SampleBulkImportRequest,
     UploadProgressEvent,
+    AnnotationBulkRequest,
+    DatasetImportPrepareRequest,
+    ProjectAnnotationImportPrepareRequest,
+    ProjectAssociatedImportPrepareRequest,
+    ProjectExportChunkRequest,
+    ProjectExportChunkResponse,
+    ProjectExportResolveRequest,
+    ProjectExportResolveResponse,
+    ProjectIOCapabilities,
 } from '../../types';
 
 
@@ -83,18 +126,28 @@ export interface ApiService {
     // ============================================================================
     // System
     // ============================================================================
-    getSystemStatus(): Promise<{ initialized: boolean }>;
+    getSystemStatus(): Promise<SystemStatus>;
 
     setupSystem(email: string, password: string, fullName?: string): Promise<User>;
 
     getAvailableTypes(): Promise<AvailableTypesResponse>;
+
+    getSystemSettingsBundle(): Promise<SystemSettingsBundle>;
+
+    updateSystemSettings(values: Record<string, unknown>): Promise<SystemSettingsBundle>;
 
     // ============================================================================
     // User Management
     // ============================================================================
     getUsers(page?: number, limit?: number): Promise<PaginationResponse<User>>;
 
-    getUserList(page?: number, limit?: number): Promise<PaginationResponse<{
+    getUserList(
+        page?: number,
+        limit?: number,
+        q?: string,
+        resourceType?: 'dataset' | 'project',
+        resourceId?: string,
+    ): Promise<PaginationResponse<{
         id: string;
         email: string;
         fullName?: string
@@ -121,6 +174,8 @@ export interface ApiService {
     getResourcePermissions(resourceType: string, resourceId: string): Promise<ResourcePermissions>;
 
     // Role management
+    getPermissionCatalog(): Promise<RolePermissionCatalog>;
+
     getRoles(type?: RoleType, page?: number, limit?: number): Promise<PaginationResponse<Role>>;
 
     getRole(roleId: string): Promise<Role>;
@@ -141,7 +196,7 @@ export interface ApiService {
     // ============================================================================
     // Dataset APIs
     // ============================================================================
-    getDatasets(page?: number, limit?: number): Promise<PaginationResponse<Dataset>>;
+    getDatasets(page?: number, limit?: number, q?: string): Promise<PaginationResponse<Dataset>>;
 
     getDataset(id: string): Promise<Dataset | undefined>;
 
@@ -150,19 +205,6 @@ export interface ApiService {
     updateDataset(id: string, dataset: Partial<DatasetUpdate>): Promise<Dataset>;
 
     deleteDataset(id: string): Promise<void>;
-
-    getDatasetStats(id: string): Promise<{
-        datasetId: string;
-        totalSamples: number;
-        labeledSamples: number;
-        unlabeledSamples: number;
-        skippedSamples: number;
-        completionRate: number;
-        linkedProjects: number;
-        memberCount: number;
-    }>;
-
-    exportDataset(id: string, format?: string, includeUnlabeled?: boolean): Promise<any>;
 
     // ============================================================================
     // Dataset Members APIs
@@ -183,62 +225,84 @@ export interface ApiService {
     getProjects(page?: number, limit?: number): Promise<PaginationResponse<Project>>;
 
     createProject(payload: ProjectCreate): Promise<Project>;
+    forkProject(projectId: string, payload: ProjectForkCreate): Promise<Project>;
 
     getProject(id: string): Promise<Project>;
 
     updateProject(projectId: string, payload: Partial<Project>): Promise<Project>;
+    archiveProject(projectId: string): Promise<Project>;
+    unarchiveProject(projectId: string): Promise<Project>;
 
     getProjectDatasets(projectId: string): Promise<string[]>;
+    getProjectDatasetDetails(projectId: string): Promise<Dataset[]>;
+    linkProjectDatasets(projectId: string, datasetIds: string[]): Promise<string[]>;
+    unlinkProjectDatasets(projectId: string, datasetIds: string[]): Promise<number>;
 
     getProjectBranches(projectId: string): Promise<ProjectBranch[]>;
 
-    getProjectLoops(projectId: string): Promise<ALLoop[]>;
+    getProjectIOCapabilities(projectId: string): Promise<ProjectIOCapabilities>;
 
-    createProjectLoop(projectId: string, payload: LoopCreateRequest): Promise<ALLoop>;
+    resolveProjectExport(
+        projectId: string,
+        payload: ProjectExportResolveRequest,
+        signal?: AbortSignal,
+    ): Promise<ProjectExportResolveResponse>;
 
-    getLoopById(loopId: string): Promise<ALLoop>;
+    getProjectExportChunk(
+        projectId: string,
+        payload: ProjectExportChunkRequest,
+        signal?: AbortSignal,
+    ): Promise<ProjectExportChunkResponse>;
 
-    updateLoop(loopId: string, payload: LoopUpdateRequest): Promise<ALLoop>;
+    getProjectLoops(projectId: string): Promise<Loop[]>;
 
-    startLoop(loopId: string): Promise<ALLoop>;
+    createProjectLoop(projectId: string, payload: LoopCreateRequest): Promise<Loop>;
 
-    recoverLoop(loopId: string, payload: LoopRecoverRequest): Promise<ALLoop>;
+    getLoopById(loopId: string): Promise<Loop>;
 
-    pauseLoop(loopId: string): Promise<ALLoop>;
+    updateLoop(loopId: string, payload: LoopUpdateRequest): Promise<Loop>;
 
-    resumeLoop(loopId: string): Promise<ALLoop>;
-
-    stopLoop(loopId: string): Promise<ALLoop>;
-
-    getLoopRounds(loopId: string, limit?: number): Promise<LoopRound[]>;
+    actLoop(loopId: string, payload: LoopActionRequest): Promise<LoopActionResponse>;
+    getLoopSnapshot(loopId: string): Promise<LoopSnapshotRead>;
+    getLoopGate(loopId: string): Promise<LoopGateResponse>;
+    createPrediction(projectId: string, payload: PredictionCreateRequest): Promise<PredictionRead>;
+    listPredictions(projectId: string, limit?: number): Promise<PredictionRead[]>;
+    listPredictionTasks(projectId: string, limit?: number): Promise<PredictionTaskRead[]>;
+    getPredictionTask(taskId: string): Promise<PredictionTaskRead>;
+    getPredictionDetail(predictionId: string, itemLimit?: number): Promise<PredictionDetailRead>;
+    applyPrediction(
+        predictionId: string,
+        payload: PredictionApplyRequest,
+    ): Promise<PredictionApplyResponse>;
+    cleanupRoundPredictions(loopId: string, roundIndex: number): Promise<RoundPredictionCleanupResponse>;
 
     getLoopSummary(loopId: string): Promise<LoopSummary>;
 
-    createSimulationExperiment(
-        projectId: string,
-        payload: SimulationExperimentCreateRequest
-    ): Promise<SimulationExperimentCreateResponse>;
-
-    getSimulationExperimentCurves(groupId: string): Promise<SimulationExperimentCurves>;
-
     getRuntimePlugins(): Promise<RuntimePluginCatalogResponse>;
 
-    getLoopJobs(loopId: string, limit?: number): Promise<RuntimeJob[]>;
+    getLoopRounds(loopId: string, limit?: number): Promise<RuntimeRound[]>;
 
-    createLoopJob(loopId: string, payload: RuntimeJobCreateRequest, autoDispatch?: boolean): Promise<RuntimeJob>;
+    stopRound(roundId: string, reason?: string): Promise<RuntimeRoundCommandResponse>;
 
-    stopJob(jobId: string, reason?: string): Promise<RuntimeJobCommandResponse>;
+    getRound(roundId: string): Promise<RuntimeRound>;
+    getRoundSelection(roundId: string): Promise<RoundSelectionRead>;
+    applyRoundSelection(roundId: string, payload: RoundSelectionApplyRequest): Promise<RoundSelectionApplyResponse>;
+    resetRoundSelection(roundId: string): Promise<RoundSelectionApplyResponse>;
+    getRoundMissingSamples(
+        loopId: string,
+        roundId: string,
+        params?: RoundMissingSamplesQuery,
+    ): Promise<RoundMissingSamplesResponse>;
 
-    getJob(jobId: string): Promise<RuntimeJob>;
+    getRoundSteps(roundId: string, limit?: number): Promise<RuntimeStep[]>;
+    getRoundArtifacts(roundId: string, limit?: number): Promise<RuntimeRoundArtifactsResponse>;
+    getRoundEvents(roundId: string, query?: RoundEventQuery): Promise<RoundEventQueryResponse>;
 
-    getJobEvents(jobId: string, afterSeq?: number): Promise<RuntimeJobEvent[]>;
-
-    getJobMetricSeries(jobId: string, limit?: number): Promise<RuntimeMetricPoint[]>;
-
-    getJobSamplingTopK(jobId: string, limit?: number): Promise<RuntimeTopKCandidate[]>;
-
-    getJobArtifacts(jobId: string): Promise<RuntimeArtifactsResponse>;
-    getJobArtifactDownloadUrl(jobId: string, artifactName: string, expiresInHours?: number): Promise<JobArtifactDownload>;
+    getTaskEvents(taskId: string, query?: TaskEventQuery): Promise<TaskEventQueryResponse>;
+    getTaskMetricSeries(taskId: string, limit?: number): Promise<RuntimeTaskMetricPoint[]>;
+    getTaskCandidates(taskId: string, limit?: number): Promise<RuntimeTaskCandidate[]>;
+    getTaskArtifacts(taskId: string): Promise<TaskArtifactsResponse>;
+    getTaskArtifactDownloadUrl(taskId: string, artifactName: string, expiresInHours?: number): Promise<TaskArtifactDownload>;
 
     getRuntimeExecutors(): Promise<RuntimeExecutorListResponse>;
 
@@ -246,20 +310,11 @@ export interface ApiService {
 
     getRuntimeExecutor(executorId: string): Promise<RuntimeExecutorRead>;
 
-    createAnnotationBatchFromJob(jobId: string, limit?: number): Promise<AnnotationBatch>;
+    publishModelFromRound(projectId: string, payload: ModelPublishFromRoundRequest): Promise<ProjectModel>;
 
-    getAnnotationBatch(batchId: string): Promise<AnnotationBatch>;
+    getProjectModels(projectId: string, limitOrQuery?: number | ProjectModelQuery): Promise<ProjectModel[]>;
 
-    getAnnotationBatchItems(batchId: string, limit?: number): Promise<AnnotationBatchItem[]>;
-
-    registerModelFromJob(projectId: string, payload: {
-        jobId: string;
-        name?: string;
-        versionTag?: string;
-        status?: string;
-    }): Promise<ProjectModel>;
-
-    getProjectModels(projectId: string, limit?: number): Promise<ProjectModel[]>;
+    getModel(modelId: string): Promise<ProjectModel>;
 
     promoteModel(modelId: string, status?: string): Promise<ProjectModel>;
 
@@ -267,7 +322,8 @@ export interface ApiService {
 
     getAssetDownloadUrl(
         assetId: string,
-        expiresInHours?: number
+        expiresInHours?: number,
+        datasetId?: string,
     ): Promise<{
         assetId: string;
         downloadUrl: string;
@@ -285,6 +341,7 @@ export interface ApiService {
     ): Promise<ProjectBranch>;
 
     updateBranch(
+        projectId: string,
         branchId: string,
         payload: {
             name?: string;
@@ -293,7 +350,7 @@ export interface ApiService {
         }
     ): Promise<ProjectBranch>;
 
-    deleteBranch(branchId: string): Promise<void>;
+    deleteBranch(projectId: string, branchId: string): Promise<void>;
 
     getProjectCommits(projectId: string): Promise<CommitHistoryItem[]>;
 
@@ -304,6 +361,7 @@ export interface ApiService {
     getCommitDiff(commitId: string, compareWithId?: string): Promise<CommitDiff>;
 
     getProjectMembers(projectId: string): Promise<ResourceMember[]>;
+    getAvailableProjectRoles(projectId: string): Promise<RoleInfo[]>;
 
     addProjectMember(projectId: string, member: ResourceMemberCreate): Promise<void>;
 
@@ -315,16 +373,17 @@ export interface ApiService {
 
     createProjectLabel(projectId: string, payload: ProjectLabelCreate): Promise<ProjectLabel>;
 
-    updateProjectLabel(labelId: string, payload: ProjectLabelUpdate): Promise<ProjectLabel>;
+    updateProjectLabel(projectId: string, labelId: string, payload: ProjectLabelUpdate): Promise<ProjectLabel>;
 
-    deleteProjectLabel(labelId: string): Promise<void>;
+    deleteProjectLabel(projectId: string, labelId: string): Promise<void>;
+
+    reorderProjectLabels(projectId: string, labelIds: string[]): Promise<ProjectLabel[]>;
 
     getProjectSamples(
         projectId: string,
         datasetId: string,
         params: {
             q?: string;
-            batchId?: string;
             status?: 'all' | 'labeled' | 'unlabeled' | 'draft';
             branchName?: string;
             sortBy?: string;
@@ -334,7 +393,7 @@ export interface ApiService {
         }
     ): Promise<PaginationResponse<ProjectSample>>;
 
-    getAnnotationsAtCommit(commitId: string, sampleId?: string): Promise<AnnotationRead[]>;
+    getAnnotationsAtCommit(projectId: string, commitId: string, sampleId?: string): Promise<AnnotationRead[]>;
 
     getWorkingAnnotations(projectId: string, sampleId: string, branchName?: string): Promise<AnnotationDraftPayload | null>;
 
@@ -344,17 +403,101 @@ export interface ApiService {
         payload: AnnotationDraftPayload & { branchName?: string }
     ): Promise<void>;
 
-    syncWorkingToDraft(projectId: string, sampleId: string, branchName?: string): Promise<AnnotationDraftRead | null>;
+    syncWorkingToDraft(
+        projectId: string,
+        sampleId: string,
+        branchName?: string,
+        reviewEmpty?: boolean
+    ): Promise<AnnotationDraftRead | null>;
 
     listAnnotationDrafts(
         projectId: string,
         branchName?: string,
         sampleId?: string
     ): Promise<AnnotationDraftRead[]>;
+    deleteAnnotationDrafts(
+        projectId: string,
+        branchName?: string,
+        sampleId?: string
+    ): Promise<void>;
+    batchOperateAnnotationDrafts(
+        projectId: string,
+        payload: AnnotationDraftBatchRequest
+    ): Promise<AnnotationDraftBatchResult>;
 
     commitAnnotationDrafts(projectId: string, payload: AnnotationDraftCommitRequest): Promise<CommitResult>;
 
     syncAnnotation(projectId: string, sampleId: string, payload: AnnotationSyncRequest): Promise<AnnotationSyncResponse>;
+
+    // ============================================================================
+    // Import APIs
+    // ============================================================================
+    executeDatasetImageImport(
+        datasetId: string,
+        payload: ImportExecuteRequest,
+    ): Promise<ImportTaskCreateResponse>;
+
+    initImportUploadSession(payload: ImportUploadInitRequest): Promise<ImportUploadInitResponse>;
+    signImportUploadParts(
+        sessionId: string,
+        payload: ImportUploadPartSignRequest,
+    ): Promise<ImportUploadPartSignResponse>;
+    completeImportUploadSession(
+        sessionId: string,
+        payload: ImportUploadCompleteRequest,
+    ): Promise<ImportUploadSessionResponse>;
+    abortImportUploadSession(sessionId: string): Promise<ImportUploadAbortResponse>;
+    getImportUploadSession(sessionId: string): Promise<ImportUploadSessionResponse>;
+
+    prepareDatasetImageImport(
+        datasetId: string,
+        payload: DatasetImportPrepareRequest,
+    ): Promise<ImportTaskCreateResponse>;
+
+    executeProjectAnnotationImport(
+        projectId: string,
+        payload: ImportExecuteRequest,
+    ): Promise<ImportTaskCreateResponse>;
+
+    prepareProjectAnnotationImport(
+        projectId: string,
+        payload: ProjectAnnotationImportPrepareRequest,
+    ): Promise<ImportTaskCreateResponse>;
+
+    executeProjectAssociatedImport(
+        projectId: string,
+        payload: ImportExecuteRequest,
+    ): Promise<ImportTaskCreateResponse>;
+
+    prepareProjectAssociatedImport(
+        projectId: string,
+        payload: ProjectAssociatedImportPrepareRequest,
+    ): Promise<ImportTaskCreateResponse>;
+
+    getImportTaskStatus(taskId: string): Promise<ImportTaskStatusResponse>;
+    getImportTaskResult(taskId: string): Promise<ImportTaskResultResponse>;
+
+    streamImportTaskEvents(
+        taskId: string,
+        afterSeq: number,
+        onProgress: (event: ImportProgressEvent) => void,
+        signal?: AbortSignal,
+    ): Promise<void>;
+
+    bulkUploadSamples(
+        datasetId: string,
+        files: File[],
+    ): Promise<ImportTaskCreateResponse>;
+
+    bulkImportSamples(
+        datasetId: string,
+        payload: SampleBulkImportRequest,
+    ): Promise<ImportTaskCreateResponse>;
+
+    bulkSaveAnnotations(
+        projectId: string,
+        payload: AnnotationBulkRequest,
+    ): Promise<ImportTaskCreateResponse>;
 
     // ============================================================================
     // Sample APIs
@@ -363,10 +506,11 @@ export interface ApiService {
                page?: number,
                limit?: number,
                sortBy?: string,
-               sortOrder?: 'asc' | 'desc'
+               sortOrder?: 'asc' | 'desc',
+               q?: string
     ): Promise<PaginationResponse<Sample>>;
 
-    deleteSample(datasetId: string, sampleId: string): Promise<void>;
+    deleteSample(datasetId: string, sampleId: string, force?: boolean): Promise<void>;
 
     uploadSamplesWithProgress(
         datasetId: string,

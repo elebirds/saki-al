@@ -26,7 +26,7 @@ export interface UploadProgress {
 }
 
 export interface UploadProgressEvent {
-    event: 'start' | 'file_start' | 'file_complete' | 'file_error' | 'complete';
+    event: 'start' | 'file_start' | 'progress' | 'file_complete' | 'file_error' | 'complete';
     total?: number;
     index?: number;
     filename?: string;

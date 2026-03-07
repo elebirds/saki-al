@@ -1,17 +1,23 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {Button, Select} from 'antd';
-import {DeleteOutlined} from '@ant-design/icons';
+import {Button, Modal, message} from 'antd';
 import {useNavigate, useParams, useSearchParams} from 'react-router-dom';
 import {useTranslation} from 'react-i18next';
-import {AnnotationWorkspaceLayout, DualCanvasArea, DualCanvasAreaRef} from '../../components/annotation';
+import {
+    AnnotationWorkspaceLayout,
+    DraftBatchActionsDrawer,
+    DualCanvasArea,
+    DualCanvasAreaRef,
+} from '../../components/annotation';
 import CommitModal from '../../components/project/CommitModal';
 import {
     Annotation,
+    AnnotationDraftBatchOperationType,
+    AnnotationDraftBatchResult,
     AnnotationDraftItem,
     AnnotationDraftPayload,
     Dataset,
+    DetectionAnnotationType,
     DualViewAnnotation,
-    ProjectBranch,
     ProjectLabel,
 } from '../../types';
 import {api} from '../../services/api';
@@ -20,14 +26,17 @@ import {useAnnotationShortcuts, useAnnotationState, useAnnotationSync, useWorksp
 import {useProjectSampleList} from '../../hooks/project/useProjectSampleList';
 import {useResourcePermission} from '../../hooks/permission/usePermission';
 import {canModifyAnnotation} from '../../store/permissionStore';
+import {attrsFromAnnotationLike, hydrateDraftPayload} from '../../utils/annotationGeometry';
 import {generateUUID} from '../../utils/uuid';
 import {useFedoAnnotations} from '../../hooks/annotation/useFedoAnnotations';
+import {parseProjectSampleSort} from '../../utils/projectSampleSort';
 
 export interface ProjectFedoWorkspaceProps {
     dataset: Dataset;
+    enabledAnnotationTypes: DetectionAnnotationType[];
 }
 
-const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset}) => {
+const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset, enabledAnnotationTypes}) => {
     const {t} = useTranslation();
     const {projectId, datasetId} = useParams<{ projectId: string; datasetId: string }>();
     const navigate = useNavigate();
@@ -36,7 +45,6 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset}) =>
     const user = useAuthStore((state) => state.user);
 
     const [labels, setLabels] = useState<ProjectLabel[]>([]);
-    const [branches, setBranches] = useState<ProjectBranch[]>([]);
     const [loadingMeta, setLoadingMeta] = useState(true);
     const [commitModalOpen, setCommitModalOpen] = useState(false);
     const [commitLoading, setCommitLoading] = useState(false);
@@ -44,6 +52,11 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset}) =>
     const [pendingIndex, setPendingIndex] = useState<'first' | 'last' | null>(null);
     const [timeEnergyImageUrl, setTimeEnergyImageUrl] = useState('');
     const [lWdImageUrl, setLWdImageUrl] = useState('');
+    const [batchDrawerOpen, setBatchDrawerOpen] = useState(false);
+    const [runningBatchOperation, setRunningBatchOperation] = useState<AnnotationDraftBatchOperationType | null>(null);
+    const [batchPreviewResults, setBatchPreviewResults] = useState<
+        Partial<Record<AnnotationDraftBatchOperationType, AnnotationDraftBatchResult>>
+    >({});
 
     const {can: canProject} = useResourcePermission('project', projectId);
     const canAnnotate = canProject('annotation:create:assigned');
@@ -51,13 +64,16 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset}) =>
 
     const branchName = searchParams.get('branch') || 'master';
     const q = searchParams.get('q') || '';
-    const batchId = searchParams.get('batchId') || '';
     const status = (searchParams.get('status') || 'all') as 'all' | 'labeled' | 'unlabeled' | 'draft';
-    const sortValue = searchParams.get('sort') || 'createdAt:desc';
     const page = Number(searchParams.get('page') || 1);
     const pageSize = Number(searchParams.get('pageSize') || 24);
     const sampleId = searchParams.get('sampleId') || '';
-    const [sortBy, sortOrder] = sortValue.split(':');
+    const parsedSort = parseProjectSampleSort(searchParams.get('sort'));
+    const sortBy = parsedSort.sortBy;
+    const sortOrder = parsedSort.sortOrder;
+    const runtimeScope = (searchParams.get('runtimeScope') || '') as '' | 'round_missing_labels';
+    const runtimeLoopId = searchParams.get('runtimeLoopId') || '';
+    const runtimeRoundId = searchParams.get('runtimeRoundId') || '';
 
     const updateParams = useCallback((updates: Record<string, string | null>) => {
         const next = new URLSearchParams(searchParams);
@@ -76,13 +92,15 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset}) =>
         datasetId,
         filters: {
             q: q || undefined,
-            batchId: batchId || undefined,
             status,
             branchName,
             sortBy,
             sortOrder: sortOrder as 'asc' | 'desc',
             page,
             limit: pageSize,
+            runtimeScope: runtimeScope || undefined,
+            runtimeLoopId: runtimeLoopId || undefined,
+            runtimeRoundId: runtimeRoundId || undefined,
         },
         enabled: !!projectId && !!datasetId,
     });
@@ -95,7 +113,10 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset}) =>
 
     const currentSample = currentIndex >= 0 ? samples[currentIndex] : undefined;
 
-    const annotationState = useAnnotationState<DualViewAnnotation>({initialAnnotations: []});
+    const annotationState = useAnnotationState<DualViewAnnotation>({
+        initialAnnotations: [],
+        enabledTools: enabledAnnotationTypes,
+    });
 
     useWorkspaceCommon({labels, annotationState});
 
@@ -103,9 +124,9 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset}) =>
         return new Map(labels.map((label) => [label.id, label]));
     }, [labels]);
 
-    const canEditAnnotation = useCallback((annotation: Annotation) => {
-        return canModifyAnnotation('annotation:create:assigned', annotation.annotatorId, user?.id);
-    }, [user?.id]);
+    const canEditAnnotation = useCallback((_annotation: Annotation) => {
+        return canModifyAnnotation('annotation:create:assigned', 'project', projectId);
+    }, [projectId]);
 
     const {
         loadSnapshot,
@@ -117,10 +138,15 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset}) =>
         enabled: !!projectId && !!currentSample?.id,
     });
 
-    const flushDraft = useCallback(async () => {
+    const flushDraft = useCallback(async (options?: { reviewEmpty?: boolean }) => {
         if (!projectId || !currentSample?.id) return;
         try {
-            await api.syncWorkingToDraft(projectId, currentSample.id, branchName);
+            await api.syncWorkingToDraft(
+                projectId,
+                currentSample.id,
+                branchName,
+                options?.reviewEmpty === true
+            );
         } catch (error) {
             console.warn('Failed to flush draft', error);
         }
@@ -135,24 +161,12 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset}) =>
     useEffect(() => {
         if (!projectId) return;
         setLoadingMeta(true);
-        Promise.all([
-            api.getProjectLabels(projectId),
-            api.getProjectBranches(projectId),
-        ])
-            .then(([labelData, branchData]) => {
+        api.getProjectLabels(projectId)
+            .then((labelData) => {
                 setLabels(labelData || []);
-                setBranches(branchData || []);
             })
             .finally(() => setLoadingMeta(false));
     }, [projectId]);
-
-    useEffect(() => {
-        if (branches.length === 0) return;
-        const active = branches.find((b) => b.name === branchName) || branches[0];
-        if (active.name !== branchName) {
-            updateParams({branch: active.name, page: '1'});
-        }
-    }, [branches, branchName, updateParams]);
 
     useEffect(() => {
         if (!sampleId && samples.length > 0) {
@@ -172,10 +186,11 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset}) =>
     }, [pendingIndex, samples, searchParams, setSearchParams]);
 
     const mapDraftPayloadToAnnotations = useCallback((payload: AnnotationDraftPayload | null) => {
-        if (!payload || payload.annotations.length === 0) {
+        const normalized = hydrateDraftPayload(payload);
+        if (!normalized || normalized.annotations.length === 0) {
             return [];
         }
-        return payload.annotations.map((item) => {
+        return normalized.annotations.map((item) => {
             const groupId = item.groupId || generateUUID();
             const lineageId = item.lineageId || generateUUID();
             const itemId = item.id || lineageId;
@@ -193,13 +208,30 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset}) =>
                 viewRole: item.viewRole,
                 type: item.type,
                 source: item.source,
-                data: item.data,
-                extra: item.extra,
+                geometry: item.geometry,
+                attrs: item.attrs || {},
                 confidence: item.confidence,
                 annotatorId: item.annotatorId,
             } as Annotation;
         });
     }, [labelMap, projectId, currentSample?.id]);
+
+    const buildDraftItem = useCallback((annotation: Annotation): AnnotationDraftItem => ({
+        id: annotation.id,
+        projectId: projectId || undefined,
+        sampleId: currentSample?.id,
+        labelId: annotation.labelId,
+        groupId: annotation.groupId || annotation.id,
+        lineageId: annotation.lineageId || annotation.id,
+        parentId: annotation.parentId ?? null,
+        viewRole: annotation.viewRole || 'main',
+        type: annotation.type,
+        source: annotation.source || 'manual',
+        geometry: annotation.geometry,
+        attrs: attrsFromAnnotationLike(annotation),
+        confidence: annotation.confidence ?? 1,
+        annotatorId: annotation.annotatorId ?? user?.id ?? null,
+    }), [projectId, currentSample?.id, user?.id]);
 
     const handleSyncActions = useCallback(async (actions: {
         type: 'add' | 'update' | 'delete';
@@ -232,6 +264,7 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset}) =>
         annotationState,
         t,
         hasAnyEditPermission: canAnnotate,
+        enabledAnnotationTypes,
         canEditAnnotation,
         onSyncActions: handleSyncActions,
     });
@@ -240,6 +273,42 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset}) =>
         const mapped = mapDraftPayloadToAnnotations(payload);
         applyBaseAnnotations(mapped);
     }, [applyBaseAnnotations, mapDraftPayloadToAnnotations]);
+
+    const syncAndApplyWorkspace = useCallback(async (actions: {
+        type: 'add' | 'update' | 'delete';
+        groupId: string;
+        data?: AnnotationDraftItem;
+    }[]) => {
+        const updated = await handleSyncActions(actions);
+        if (updated) {
+            applyBaseAnnotations(updated);
+        }
+    }, [handleSyncActions, applyBaseAnnotations]);
+
+    const selectedModelAnnotation = useMemo(() => {
+        if (!annotationState.selectedId) return null;
+        const row = canvasAnnotations.find((ann) => ann.id === annotationState.selectedId);
+        if (!row) return null;
+        return String(row.source || '').toLowerCase() === 'model' ? row : null;
+    }, [annotationState.selectedId, canvasAnnotations]);
+
+    const handleConfirmSelectedModel = useCallback(async () => {
+        if (!selectedModelAnnotation) {
+            message.warning(t('annotation.workspace.noPendingModelSelected'));
+            return;
+        }
+        const groupId = selectedModelAnnotation.groupId || selectedModelAnnotation.id;
+        await syncAndApplyWorkspace([{
+            type: 'update',
+            groupId,
+            data: buildDraftItem({
+                ...selectedModelAnnotation,
+                groupId,
+                source: 'confirmed_model',
+            }),
+        }]);
+        message.success(t('annotation.workspace.confirmSelectedDone'));
+    }, [selectedModelAnnotation, syncAndApplyWorkspace, buildDraftItem, t]);
 
     const loadAnnotations = useCallback(async () => {
         if (!projectId || !currentSample?.id) return;
@@ -256,6 +325,100 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset}) =>
         loadAnnotations();
     }, [loadAnnotations]);
 
+    const runBatchOperation = useCallback(async (
+        operation: AnnotationDraftBatchOperationType,
+        dryRun: boolean
+    ) => {
+        if (!projectId || !datasetId) return null;
+        const result = await api.batchOperateAnnotationDrafts(projectId, {
+            branchName,
+            datasetId,
+            q: q || undefined,
+            status,
+            sortBy,
+            sortOrder: sortOrder as 'asc' | 'desc',
+            operation,
+            dryRun,
+        });
+        return result;
+    }, [projectId, datasetId, api, branchName, q, status, sortBy, sortOrder]);
+
+    const handleRunBatchOperation = useCallback(async (operation: AnnotationDraftBatchOperationType) => {
+        if (!projectId || !datasetId) return;
+        setRunningBatchOperation(operation);
+        try {
+            await flushDraft();
+            const preview = await runBatchOperation(operation, true);
+            if (!preview) return;
+            setBatchPreviewResults((prev) => ({...prev, [operation]: preview}));
+
+            if (preview.affectedDraftCount <= 0 && preview.affectedAnnotationCount <= 0) {
+                message.info(t('annotation.workspace.batch.messages.noAffected'));
+                return;
+            }
+
+            const operationTitle = ({
+                confirm_model_annotations: t('annotation.workspace.batch.ops.confirmModel.title'),
+                clear_unconfirmed_model_annotations: t('annotation.workspace.batch.ops.clearUnconfirmed.title'),
+                clear_drafts: t('annotation.workspace.batch.ops.clearDrafts.title'),
+            } as Record<AnnotationDraftBatchOperationType, string>)[operation];
+
+            Modal.confirm({
+                title: t('annotation.workspace.batch.confirmTitle', {operation: operationTitle}),
+                content: t('annotation.workspace.batch.confirmContent', {
+                    samples: preview.matchedSampleCount,
+                    drafts: preview.affectedDraftCount,
+                    annotations: preview.affectedAnnotationCount,
+                }),
+                okText: t('annotation.workspace.batch.confirmOk'),
+                cancelText: t('common.cancel'),
+                okButtonProps: {
+                    danger: operation !== 'confirm_model_annotations',
+                },
+                onOk: async () => {
+                    setRunningBatchOperation(operation);
+                    try {
+                        await flushDraft();
+                        const applied = await runBatchOperation(operation, false);
+                        if (!applied) return;
+                        if (operation === 'confirm_model_annotations') {
+                            message.success(t('annotation.workspace.batch.messages.confirmModelDone', {
+                                count: applied.affectedAnnotationCount,
+                            }));
+                        }
+                        if (operation === 'clear_unconfirmed_model_annotations') {
+                            message.success(t('annotation.workspace.batch.messages.clearUnconfirmedDone', {
+                                count: applied.affectedAnnotationCount,
+                            }));
+                        }
+                        if (operation === 'clear_drafts') {
+                            message.success(t('annotation.workspace.batch.messages.clearDraftsDone', {
+                                count: applied.deletedDraftCount,
+                            }));
+                        }
+                        await reloadSamples();
+                        if (currentSample?.id) {
+                            await loadAnnotations();
+                        }
+                    } finally {
+                        setRunningBatchOperation(null);
+                    }
+                },
+            });
+        } finally {
+            setRunningBatchOperation(null);
+        }
+    }, [
+        projectId,
+        datasetId,
+        flushDraft,
+        runBatchOperation,
+        t,
+        reloadSamples,
+        currentSample?.id,
+        loadAnnotations,
+    ]);
+
     useEffect(() => {
         return () => {
             flushDraftRef.current();
@@ -267,6 +430,16 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset}) =>
         await flushDraft();
         updateParams({sampleId: samples[index].id});
     }, [samples, flushDraft, updateParams]);
+
+    const handleSamplePageChange = useCallback(async (nextPage: number) => {
+        if (nextPage === page) return;
+        await flushDraft();
+        setPendingIndex('first');
+        updateParams({
+            page: String(nextPage),
+            sampleId: null,
+        });
+    }, [page, flushDraft, updateParams]);
 
     const handleNext = useCallback(async () => {
         if (currentIndex < 0) return;
@@ -298,9 +471,10 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset}) =>
     }, [currentIndex, samples, page, flushDraft, updateParams]);
 
     const handleSubmitAndNext = useCallback(async () => {
-        await flushDraft();
+        const shouldReviewEmpty = annotationState.annotations.length === 0;
+        await flushDraft({reviewEmpty: shouldReviewEmpty});
         handleNext();
-    }, [flushDraft, handleNext]);
+    }, [annotationState.annotations.length, flushDraft, handleNext]);
 
     const handleCommit = useCallback(async (messageText: string) => {
         if (!projectId) return;
@@ -324,6 +498,7 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset}) =>
     useAnnotationShortcuts({
         currentTool: annotationState.currentTool,
         onToolChange: annotationState.setCurrentTool,
+        enabledTools: enabledAnnotationTypes,
         onNext: handleNext,
         onPrev: handlePrev,
         onSubmit: handleSubmitAndNext,
@@ -332,13 +507,14 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset}) =>
         disabled: annotationsLoading,
     });
 
-    const backToSamples = useCallback(() => {
+    const backToSamples = useCallback(async () => {
         if (!projectId || !datasetId) return;
+        await flushDraft();
         const next = new URLSearchParams(searchParams);
         next.set('datasetId', datasetId);
         next.delete('sampleId');
         navigate(`/projects/${projectId}/samples?${next.toString()}`);
-    }, [projectId, datasetId, searchParams, navigate]);
+    }, [projectId, datasetId, searchParams, navigate, flushDraft]);
 
     useEffect(() => {
         let cancelled = false;
@@ -346,7 +522,7 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset}) =>
         const resolveAssetUrl = async (assetId?: string) => {
             if (!assetId) return '';
             try {
-                const data = await api.getAssetDownloadUrl(assetId);
+                const data = await api.getAssetDownloadUrl(assetId, 1, datasetId);
                 return (data.downloadUrl || '') as string;
             } catch (error) {
                 return '';
@@ -403,40 +579,6 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset}) =>
 
     return (
         <div className="flex h-full flex-col gap-4">
-            <div className="flex items-center gap-3">
-                <Select
-                    value={branchName}
-                    onChange={async (value) => {
-                        await flushDraft();
-                        updateParams({branch: value, page: '1'});
-                    }}
-                    className="min-w-[160px]"
-                    loading={loadingMeta}
-                >
-                    {branches.map((branch) => (
-                        <Select.Option key={branch.id} value={branch.name}>
-                            {branch.name}
-                        </Select.Option>
-                    ))}
-                </Select>
-                <div className="flex-1"/>
-                <Select
-                    value={sortValue}
-                    onChange={async (value) => {
-                        await flushDraft();
-                        updateParams({sort: value, page: '1'});
-                    }}
-                    className="min-w-[200px]"
-                >
-                    <Select.Option value="createdAt:desc">{t('annotation.workspace.sort.createdNewest')}</Select.Option>
-                    <Select.Option value="createdAt:asc">{t('annotation.workspace.sort.createdOldest')}</Select.Option>
-                    <Select.Option value="updatedAt:desc">{t('annotation.workspace.sort.updatedNewest')}</Select.Option>
-                    <Select.Option value="updatedAt:asc">{t('annotation.workspace.sort.updatedOldest')}</Select.Option>
-                    <Select.Option value="name:asc">{t('annotation.workspace.sort.nameAZ')}</Select.Option>
-                    <Select.Option value="name:desc">{t('annotation.workspace.sort.nameZA')}</Select.Option>
-                </Select>
-            </div>
-
             <AnnotationWorkspaceLayout
                 loading={loadingMeta || samplesLoading || annotationsLoading}
                 dataset={dataset}
@@ -444,24 +586,43 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset}) =>
                 labels={labels}
                 currentIndex={Math.max(0, currentIndex)}
                 currentSample={currentSample}
+                samplePage={page}
+                samplePageSize={meta.limit || pageSize}
+                sampleTotal={meta.total}
+                sampleOffset={meta.offset}
                 annotationState={annotationState}
+                selectedIds={selectedAnnotationIds}
+                enabledAnnotationTypes={enabledAnnotationTypes}
                 isSyncing={false}
                 isSyncReady
                 onBack={backToSamples}
                 toolbarExtraActions={
-                    <button
-                        className="px-3 py-1 text-sm font-medium text-white bg-[#1677ff] rounded disabled:opacity-50"
-                        onClick={() => setCommitModalOpen(true)}
-                        disabled={!canCommit}
-                        type="button"
-                    >
-                        {t('annotation.workspace.commitDrafts')}
-                    </button>
+                    <>
+                        <Button
+                            onClick={() => setBatchDrawerOpen(true)}
+                            disabled={!canAnnotate}
+                        >
+                            {t('annotation.workspace.batch.entry')}
+                        </Button>
+                        <Button
+                            type="primary"
+                            onClick={() => setCommitModalOpen(true)}
+                            disabled={!canCommit}
+                        >
+                            {t('annotation.workspace.commitDrafts')}
+                        </Button>
+                    </>
                 }
                 onSampleSelect={handleSampleSelect}
+                onSamplePageChange={handleSamplePageChange}
                 onPrev={handlePrev}
                 onNext={handleNext}
                 onSubmit={handleSubmitAndNext}
+                submitLabel={
+                    annotationState.annotations.length === 0
+                        ? t('annotation.workspace.submitNextEmpty')
+                        : t('annotation.workspace.submitNext')
+                }
                 onAnnotationSelect={(id) => {
                     handleAnnotationSelect(id);
                     annotationState.setCurrentTool('select');
@@ -491,59 +652,17 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset}) =>
                         canEditAnnotation={canEditAnnotation}
                     />
                 }
-                renderAnnotationItem={(item: Annotation, index: number) => {
-                    const isSelected = selectedAnnotationIds.has(item.id);
-                    const canEdit = canEditAnnotation(item);
-                    const isAutoGenerated = false;
-                    const isMine = item.annotatorId && item.annotatorId === user?.id;
+            />
 
-                    return (
-                        <div
-                            className={`cursor-pointer border-l-[4px] px-4 py-2 ${
-                                isSelected ? 'bg-[var(--github-selected-bg)]' : 'bg-transparent'
-                            } ${canEdit ? 'opacity-100' : 'opacity-70'}`}
-                            style={{
-                                borderLeftColor: isSelected ? item.labelColor || '#1890ff' : 'transparent',
-                            }}
-                            onClick={() => {
-                                handleAnnotationSelect(item.id);
-                                annotationState.setCurrentTool('select');
-                            }}
-                        >
-                            <div className="flex items-center justify-between gap-2">
-                                <div className="flex-1">
-                                    <div className="flex items-center gap-2">
-                                        <span
-                        className="inline-flex h-2.5 w-2.5 rounded-full"
-                        style={{backgroundColor: item.labelColor || '#1890ff'}}
-                    />
-                                        <span className="text-sm">{item.labelName || 'Label'}</span>
-                                        <span className="text-xs text-github-muted">#{index + 1}</span>
-                                    </div>
-                                    <div className="mt-1 text-[11px] text-github-muted">
-                                        {isAutoGenerated
-                                            ? t('annotation.workspace.annotationSource.auto')
-                                            : isMine
-                                                ? t('annotation.workspace.annotationSource.mine')
-                                                : t('annotation.workspace.annotationSource.others')}
-                                    </div>
-                                </div>
-                                {canEdit && !isAutoGenerated ? (
-                                    <Button
-                                        type="text"
-                                        danger
-                                        size="small"
-                                        icon={<DeleteOutlined/>}
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleDeleteAnnotation(item.id);
-                                        }}
-                                    />
-                                ) : null}
-                            </div>
-                        </div>
-                    );
-                }}
+            <DraftBatchActionsDrawer
+                open={batchDrawerOpen}
+                onClose={() => setBatchDrawerOpen(false)}
+                canAnnotate={canAnnotate}
+                onConfirmSelected={() => void handleConfirmSelectedModel()}
+                confirmSelectedDisabled={!selectedModelAnnotation}
+                onRunBatchOperation={(operation) => void handleRunBatchOperation(operation)}
+                runningOperation={runningBatchOperation}
+                previewResults={batchPreviewResults}
             />
 
             <CommitModal

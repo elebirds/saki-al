@@ -232,6 +232,75 @@ config_schema:
         - label: URL 自定义
           value: "custom_url"
 
+    - key: init_mode
+      label: 初始化模式
+      type: select
+      required: true
+      default: "checkpoint_direct"
+      description: checkpoint_direct=直接加载检查点；arch_yaml_plus_weights=先按 YAML 构建再部分加载权重
+      options:
+        - label: 直接检查点加载（兼容默认）
+          value: "checkpoint_direct"
+        - label: YAML 架构 + 权重迁移
+          value: "arch_yaml_plus_weights"
+
+    - key: model_arch_source
+      label: 架构来源
+      type: select
+      required: true
+      default: "builtin"
+      options:
+        - label: 内置架构
+          value: "builtin"
+        - label: 本地 YAML
+          value: "custom_local"
+      visible: "form.init_mode === 'arch_yaml_plus_weights'"
+
+    - key: model_arch_preset
+      label: 架构预设
+      type: select
+      default: null
+      options:
+        - label: "YOLOv8n.yaml"
+          value: "yolov8n.yaml"
+          visible: "form.yolo_task === 'detect'"
+        - label: "YOLOv8s.yaml"
+          value: "yolov8s.yaml"
+          visible: "form.yolo_task === 'detect'"
+        - label: "YOLOv8m.yaml"
+          value: "yolov8m.yaml"
+          visible: "form.yolo_task === 'detect'"
+        - label: "YOLOv8l.yaml"
+          value: "yolov8l.yaml"
+          visible: "form.yolo_task === 'detect'"
+        - label: "YOLOv8x.yaml"
+          value: "yolov8x.yaml"
+          visible: "form.yolo_task === 'detect'"
+        - label: "YOLOv8n-OBB.yaml"
+          value: "yolov8n-obb.yaml"
+          visible: "form.yolo_task === 'obb'"
+        - label: "YOLOv8s-OBB.yaml"
+          value: "yolov8s-obb.yaml"
+          visible: "form.yolo_task === 'obb'"
+        - label: "YOLOv8m-OBB.yaml"
+          value: "yolov8m-obb.yaml"
+          visible: "form.yolo_task === 'obb'"
+        - label: "YOLOv8l-OBB.yaml"
+          value: "yolov8l-obb.yaml"
+          visible: "form.yolo_task === 'obb'"
+        - label: "YOLOv8x-OBB.yaml"
+          value: "yolov8x-obb.yaml"
+          visible: "form.yolo_task === 'obb'"
+      visible: "form.init_mode === 'arch_yaml_plus_weights' && form.model_arch_source === 'builtin'"
+
+    - key: model_arch_custom_ref
+      label: 架构 YAML 路径
+      type: string
+      default: ""
+      props:
+        placeholder: "/path/to/model.yaml"
+      visible: "form.init_mode === 'arch_yaml_plus_weights' && form.model_arch_source === 'custom_local'"
+
     # 模型预设 - 依赖 yolo_task，使用 visible 表达式
     - key: model_preset
       label: 预设模型

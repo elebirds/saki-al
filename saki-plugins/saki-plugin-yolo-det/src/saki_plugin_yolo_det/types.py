@@ -20,6 +20,8 @@ class TrainConfig:
     yolo_task: str = "obb"
     cache: bool = False
     workers: int = 2
+    init_mode: str = "checkpoint_direct"
+    arch_yaml_ref: str = ""
 
 
 @dataclass(frozen=True)

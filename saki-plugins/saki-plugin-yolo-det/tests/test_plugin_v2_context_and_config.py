@@ -309,6 +309,84 @@ def test_config_service_workers_default_and_clamp():
     assert int(getattr(high_cfg, "workers", -1)) == 32
 
 
+def test_config_service_init_mode_defaults_to_checkpoint_direct():
+    service = YoloConfigService()
+    cfg = service.resolve_config(
+        {
+            "yolo_task": "detect",
+            "model_source": "preset",
+        }
+    )
+    assert str(getattr(cfg, "init_mode", "")) == "checkpoint_direct"
+    assert str(getattr(cfg, "model_arch_source", "")) == "builtin"
+    assert str(getattr(cfg, "model_arch_preset", "")) == ""
+    assert str(getattr(cfg, "model_arch_custom_ref", "")) == ""
+
+
+def test_config_service_arch_yaml_mode_infers_builtin_arch_from_preset():
+    service = YoloConfigService()
+    cfg = service.resolve_config(
+        {
+            "yolo_task": "detect",
+            "model_source": "preset",
+            "model_preset": "yolov8m.pt",
+            "init_mode": "arch_yaml_plus_weights",
+            "model_arch_source": "builtin",
+        }
+    )
+    assert str(getattr(cfg, "init_mode", "")) == "arch_yaml_plus_weights"
+    assert str(getattr(cfg, "model_arch_source", "")) == "builtin"
+    assert str(getattr(cfg, "model_arch_preset", "")) == "yolov8m.yaml"
+
+
+def test_config_service_arch_yaml_mode_requires_explicit_preset_when_cannot_infer():
+    service = YoloConfigService()
+    with pytest.raises(ValueError, match="model_arch_preset is required"):
+        service.resolve_config(
+            {
+                "yolo_task": "detect",
+                "model_source": "custom_local",
+                "model_custom_ref": "/tmp/yolov8m_backbone.pt",
+                "init_mode": "arch_yaml_plus_weights",
+                "model_arch_source": "builtin",
+            }
+        )
+
+
+def test_config_service_arch_yaml_mode_validates_custom_yaml_path(tmp_path: Path):
+    service = YoloConfigService()
+    yaml_path = tmp_path / "custom_arch.yaml"
+    yaml_path.write_text("nc: 1\n", encoding="utf-8")
+    cfg = service.resolve_config(
+        {
+            "yolo_task": "detect",
+            "model_source": "custom_local",
+            "model_custom_ref": str(tmp_path / "weights.pt"),
+            "init_mode": "arch_yaml_plus_weights",
+            "model_arch_source": "custom_local",
+            "model_arch_custom_ref": str(yaml_path),
+        }
+    )
+    assert str(getattr(cfg, "model_arch_source", "")) == "custom_local"
+    assert str(getattr(cfg, "model_arch_custom_ref", "")) == str(yaml_path)
+
+
+@pytest.mark.anyio
+async def test_config_service_resolve_arch_yaml_ref_uses_builtin_inferred_preset():
+    service = YoloConfigService()
+    arch_ref = await service.resolve_arch_yaml_ref(
+        workspace=Workspace("/tmp/unused", "unused"),
+        params={
+            "yolo_task": "obb",
+            "model_source": "preset",
+            "model_preset": "yolov8s-obb.pt",
+            "init_mode": "arch_yaml_plus_weights",
+            "model_arch_source": "builtin",
+        },
+    )
+    assert arch_ref == "yolov8s-obb.yaml"
+
+
 def test_config_service_init_fails_when_task_has_no_preset(monkeypatch):
     plugin_yml = Path(__file__).resolve().parents[1] / "plugin.yml"
     manifest = PluginManifest.from_yaml(plugin_yml)

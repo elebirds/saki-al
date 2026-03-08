@@ -18,6 +18,9 @@ from saki_plugin_sdk.strategies.builtin import CANONICAL_AUG_IOU_STRATEGY, norma
 
 class YoloConfigService:
     _VALID_YOLO_TASKS = ("detect", "obb")
+    _VALID_MODEL_SOURCES = ("preset", "custom_local", "custom_url")
+    _VALID_INIT_MODES = ("checkpoint_direct", "arch_yaml_plus_weights")
+    _VALID_MODEL_ARCH_SOURCES = ("builtin", "custom_local")
     _DEFAULT_AUG_NAMES = tuple(spec.name for spec in build_default_augmentation_specs())
     _VALID_AUG_IOU_MODES = ("rect", "obb", "boundary")
     _WORKERS_MIN = 0
@@ -29,30 +32,36 @@ class YoloConfigService:
             Path(__file__).resolve().parents[2] / "plugin.yml"
         )
         self._task_presets = self._extract_task_presets_from_manifest()
+        self._task_arch_presets = self._extract_task_arch_presets_from_manifest()
 
     @property
     def manifest(self) -> PluginManifest:
         return self._manifest
 
-    def _extract_task_presets_from_manifest(self) -> dict[str, tuple[str, ...]]:
+    def _extract_task_option_values_from_manifest(
+        self,
+        *,
+        field_key: str,
+        field_label: str,
+    ) -> dict[str, tuple[str, ...]]:
         schema = self._manifest.config_schema if isinstance(self._manifest.config_schema, dict) else {}
         fields = schema.get("fields")
         if not isinstance(fields, list):
             raise ValueError("plugin manifest config_schema.fields must be a list")
-        model_preset_field = next(
+        target_field = next(
             (
                 item
                 for item in fields
-                if isinstance(item, dict) and str(item.get("key") or "").strip() == "model_preset"
+                if isinstance(item, dict) and str(item.get("key") or "").strip() == field_key
             ),
             None,
         )
-        if not isinstance(model_preset_field, dict):
-            raise ValueError("plugin manifest config_schema.fields missing model_preset field")
-        options_raw = model_preset_field.get("options")
+        if not isinstance(target_field, dict):
+            raise ValueError(f"plugin manifest config_schema.fields missing {field_key} field")
+        options_raw = target_field.get("options")
         options = options_raw if isinstance(options_raw, list) else []
 
-        task_presets: dict[str, tuple[str, ...]] = {}
+        task_values: dict[str, tuple[str, ...]] = {}
         for task in self._VALID_YOLO_TASKS:
             filtered = filter_options(
                 [item for item in options if isinstance(item, dict)],
@@ -63,17 +72,29 @@ class YoloConfigService:
             ordered_values: list[str] = []
             seen: set[str] = set()
             for option in filtered:
-                value = str(option.get("value") or "").strip()
+                value = str(option.get("value") or "").strip().lower()
                 if not value or value in seen:
                     continue
                 seen.add(value)
                 ordered_values.append(value)
             if not ordered_values:
                 raise ValueError(
-                    f"manifest model_preset options must include at least one preset for yolo_task={task}"
+                    f"manifest {field_label} options must include at least one preset for yolo_task={task}"
                 )
-            task_presets[task] = tuple(ordered_values)
-        return task_presets
+            task_values[task] = tuple(ordered_values)
+        return task_values
+
+    def _extract_task_presets_from_manifest(self) -> dict[str, tuple[str, ...]]:
+        return self._extract_task_option_values_from_manifest(
+            field_key="model_preset",
+            field_label="model_preset",
+        )
+
+    def _extract_task_arch_presets_from_manifest(self) -> dict[str, tuple[str, ...]]:
+        return self._extract_task_option_values_from_manifest(
+            field_key="model_arch_preset",
+            field_label="model_arch_preset",
+        )
 
     @staticmethod
     def _read_param(payload: Any, key: str, default: Any = None) -> Any:
@@ -87,6 +108,43 @@ class YoloConfigService:
         if not presets:
             raise ValueError(f"unsupported yolo_task: {yolo_task!r}, must be one of {self._VALID_YOLO_TASKS}")
         return presets
+
+    def _arch_presets_for_task(self, yolo_task: str) -> tuple[str, ...]:
+        task = str(yolo_task or "").strip().lower()
+        presets = self._task_arch_presets.get(task)
+        if not presets:
+            raise ValueError(f"unsupported yolo_task: {yolo_task!r}, must be one of {self._VALID_YOLO_TASKS}")
+        return presets
+
+    @staticmethod
+    def _basename_from_ref(model_ref: str) -> str:
+        raw = str(model_ref or "").strip()
+        if not raw:
+            return ""
+        return Path(raw.split("?", 1)[0]).name.strip().lower()
+
+    def _infer_arch_preset(
+        self,
+        *,
+        yolo_task: str,
+        model_source: str,
+        model_preset: str,
+        model_custom_ref: str,
+    ) -> str:
+        allowed = set(self._arch_presets_for_task(yolo_task))
+        if model_source == "preset":
+            basename = self._basename_from_ref(model_preset)
+        else:
+            basename = self._basename_from_ref(model_custom_ref)
+        if not basename:
+            return ""
+        if basename in allowed:
+            return basename
+        if basename.endswith(".pt"):
+            candidate = f"{basename[:-3]}.yaml"
+            if candidate in allowed:
+                return candidate
+        return ""
 
     def resolve_config(
         self,
@@ -128,6 +186,8 @@ class YoloConfigService:
         allowed_presets = self._presets_for_task(yolo_task)
 
         source = str(config.model_source).strip().lower()
+        if source not in self._VALID_MODEL_SOURCES:
+            raise ValueError(f"unsupported model_source: {source!r}, must be one of {self._VALID_MODEL_SOURCES}")
         preset_val = self._read_param(config, "model_preset")
         preset = str(preset_val or "").strip()
         if source == "preset":
@@ -143,6 +203,49 @@ class YoloConfigService:
         custom_ref = str(custom_ref_val or "").strip()
         if source != "preset" and not custom_ref:
             raise ValueError("model_custom_ref is required for custom model source")
+
+        init_mode = str(self._read_param(config, "init_mode", "checkpoint_direct") or "checkpoint_direct").strip().lower()
+        if init_mode not in self._VALID_INIT_MODES:
+            raise ValueError(f"unsupported init_mode: {init_mode!r}, must be one of {self._VALID_INIT_MODES}")
+        arch_source = str(self._read_param(config, "model_arch_source", "builtin") or "builtin").strip().lower()
+        arch_preset = str(self._read_param(config, "model_arch_preset") or "").strip().lower()
+        arch_custom_ref = str(self._read_param(config, "model_arch_custom_ref") or "").strip()
+        if init_mode == "arch_yaml_plus_weights":
+            if arch_source not in self._VALID_MODEL_ARCH_SOURCES:
+                raise ValueError(
+                    f"unsupported model_arch_source: {arch_source!r}, must be one of {self._VALID_MODEL_ARCH_SOURCES}"
+                )
+            if arch_source == "builtin":
+                allowed_arch_presets = self._arch_presets_for_task(yolo_task)
+                if not arch_preset:
+                    arch_preset = self._infer_arch_preset(
+                        yolo_task=yolo_task,
+                        model_source=source,
+                        model_preset=preset,
+                        model_custom_ref=custom_ref,
+                    )
+                if not arch_preset:
+                    raise ValueError(
+                        "model_arch_preset is required for init_mode=arch_yaml_plus_weights "
+                        "when model_arch_source=builtin and cannot infer from model reference"
+                    )
+                if arch_preset not in allowed_arch_presets:
+                    raise ValueError(
+                        f"model_arch_preset={arch_preset or '<empty>'} is not allowed for yolo_task={yolo_task}; "
+                        f"allowed={list(allowed_arch_presets)}"
+                    )
+                arch_custom_ref = ""
+            else:
+                if not arch_custom_ref:
+                    raise ValueError(
+                        "model_arch_custom_ref is required for init_mode=arch_yaml_plus_weights "
+                        "when model_arch_source=custom_local"
+                    )
+                arch_preset = ""
+        else:
+            arch_source = "builtin"
+            arch_preset = ""
+            arch_custom_ref = ""
 
         strategy_key = normalize_strategy_name(strategy or "")
         aug_raw = self._read_param(config, "aug_iou_enabled_augs")
@@ -180,6 +283,10 @@ class YoloConfigService:
                 "model_source": source,
                 "model_preset": preset,
                 "model_custom_ref": "" if source == "preset" else custom_ref,
+                "init_mode": init_mode,
+                "model_arch_source": arch_source,
+                "model_arch_preset": arch_preset,
+                "model_arch_custom_ref": arch_custom_ref,
                 "aug_iou_enabled_augs": list(aug_enabled),
                 "aug_iou_iou_mode": aug_iou_mode,
                 "aug_iou_boundary_d": aug_iou_boundary_d,
@@ -229,6 +336,60 @@ class YoloConfigService:
             return str(target)
 
         raise RuntimeError(f"unsupported model_source: {source or '<empty>'}")
+
+    async def resolve_arch_yaml_ref(
+        self,
+        *,
+        workspace: WorkspaceProtocol,
+        params: Any,
+    ) -> str:
+        del workspace
+        init_mode = str(self._read_param(params, "init_mode", "checkpoint_direct") or "checkpoint_direct").strip().lower()
+        if init_mode != "arch_yaml_plus_weights":
+            return ""
+        yolo_task = str(self._read_param(params, "yolo_task", "obb") or "obb").strip().lower()
+        arch_source = str(self._read_param(params, "model_arch_source", "builtin") or "builtin").strip().lower()
+        arch_preset = str(self._read_param(params, "model_arch_preset") or "").strip().lower()
+        arch_custom_ref = str(self._read_param(params, "model_arch_custom_ref") or "").strip()
+
+        if arch_source == "builtin":
+            if not arch_preset:
+                model_source = str(self._read_param(params, "model_source", "preset") or "preset").strip().lower()
+                model_preset = str(self._read_param(params, "model_preset") or "").strip()
+                model_custom_ref = str(self._read_param(params, "model_custom_ref") or "").strip()
+                arch_preset = self._infer_arch_preset(
+                    yolo_task=yolo_task,
+                    model_source=model_source,
+                    model_preset=model_preset,
+                    model_custom_ref=model_custom_ref,
+                )
+            allowed_arch_presets = self._arch_presets_for_task(yolo_task)
+            if not arch_preset:
+                raise RuntimeError(
+                    "model_arch_preset is required for init_mode=arch_yaml_plus_weights "
+                    "when model_arch_source=builtin and cannot infer from model reference"
+                )
+            if arch_preset not in allowed_arch_presets:
+                raise RuntimeError(
+                    f"model_arch_preset={arch_preset} is not allowed for yolo_task={yolo_task}; "
+                    f"allowed={list(allowed_arch_presets)}"
+                )
+            return arch_preset
+
+        if arch_source == "custom_local":
+            if not arch_custom_ref:
+                raise RuntimeError("model_arch_custom_ref is required")
+            arch_path = Path(arch_custom_ref).expanduser()
+            if not arch_path.exists():
+                raise RuntimeError(f"custom local model yaml not found: {arch_path}")
+            if arch_path.suffix.lower() not in (".yaml", ".yml"):
+                raise RuntimeError("model_arch_custom_ref must be a .yaml or .yml file")
+            return str(arch_path)
+
+        raise RuntimeError(
+            f"unsupported model_arch_source: {arch_source or '<empty>'}, "
+            f"must be one of {self._VALID_MODEL_ARCH_SOURCES}"
+        )
 
     async def resolve_best_or_fallback_model(self, *, workspace: WorkspaceProtocol, params: Any) -> str:
         best_path = workspace.artifacts_dir / "best.pt"

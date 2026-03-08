@@ -138,6 +138,7 @@ class YoloRuntimeService:
             plugin_config=resolved_params,
             execution_context=context,
             resolve_model_ref=self._config_service.resolve_model_ref,
+            resolve_arch_ref=self._config_service.resolve_arch_yaml_ref,
         )
         await emit(
             "log",
@@ -158,6 +159,30 @@ class YoloRuntimeService:
             run_train_sync=self._run_train_sync,
             to_int=to_int,
         )
+        init_load_summary = (
+            dict(train_result.get("init_load_summary"))
+            if isinstance(train_result.get("init_load_summary"), dict)
+            else {}
+        )
+        if init_load_summary:
+            await emit(
+                "log",
+                {
+                    "level": "INFO",
+                    "message": (
+                        "初始化权重加载摘要 "
+                        f"mode={init_load_summary.get('mode')} "
+                        f"arch_yaml={init_load_summary.get('arch_yaml')} "
+                        f"weights_ref={init_load_summary.get('weights_ref')} "
+                        f"loaded={init_load_summary.get('loaded_tensors')}/{init_load_summary.get('target_tensors')} "
+                        f"source_total={init_load_summary.get('source_tensors')} "
+                        f"shape_mismatch={init_load_summary.get('shape_mismatch_tensors')}"
+                    ),
+                },
+            )
+            report_init_load_summary = dict(init_load_summary)
+        else:
+            report_init_load_summary = {}
         train_summary = (
             dict(train_result.get("train_summary"))
             if isinstance(train_result.get("train_summary"), dict)
@@ -189,6 +214,8 @@ class YoloRuntimeService:
             to_int=to_int,
             to_bool=to_bool,
         )
+        if report_init_load_summary:
+            report_meta["init_load_summary"] = report_init_load_summary
         report_meta["train_summary"] = train_summary
         metrics_source = str(train_result.get("metrics_source") or "unknown")
         missing_canonical = [key for key in _TRAIN_CANONICAL_KEYS if key not in metrics]
@@ -320,6 +347,8 @@ class YoloRuntimeService:
         deterministic: bool,
         strong_deterministic: bool,
         yolo_task: str = "obb",
+        init_mode: str = "checkpoint_direct",
+        arch_yaml_ref: str = "",
         cache: bool = False,
         workers: int = 2,
         epoch_callback: Callable[[dict[str, Any]], None] | None = None,
@@ -345,6 +374,8 @@ class YoloRuntimeService:
             to_float=to_float,
             to_int=to_int,
             yolo_task=yolo_task,
+            init_mode=init_mode,
+            arch_yaml_ref=arch_yaml_ref,
             epoch_callback=epoch_callback,
         )
 

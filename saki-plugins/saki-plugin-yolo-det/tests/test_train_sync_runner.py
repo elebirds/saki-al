@@ -8,6 +8,7 @@ import pytest
 from saki_plugin_yolo_det.metrics_parser import normalize_metrics
 from saki_plugin_yolo_det.train_sync_runner import (
     _build_epoch_update_callback,
+    _build_training_model,
     _build_train_kwargs,
     _collect_epoch_raw_metrics,
 )
@@ -148,3 +149,110 @@ def test_build_train_kwargs_enables_ram_cache_when_requested():
     )
     assert kwargs["workers"] == 2
     assert kwargs["cache"] == "ram"
+
+
+def test_build_train_kwargs_arch_yaml_mode_sets_pretrained_false():
+    kwargs = _build_train_kwargs(
+        dataset_yaml=Path("/tmp/dataset.yaml"),
+        epochs=10,
+        batch=8,
+        imgsz=640,
+        patience=20,
+        device="cuda:0",
+        train_seed=123,
+        deterministic=False,
+        strong_deterministic=False,
+        init_mode="arch_yaml_plus_weights",
+        train_project_dir=Path("/tmp/project"),
+    )
+    assert kwargs["pretrained"] is False
+
+
+class _FakeTensor:
+    def __init__(self, *shape: int):
+        self.shape = tuple(shape)
+
+
+class _FakeModule:
+    def __init__(self, state: dict[str, _FakeTensor]):
+        self._state = dict(state)
+        self.loaded_payload: dict[str, _FakeTensor] = {}
+        self.loaded_strict: bool | None = None
+
+    def state_dict(self):
+        return dict(self._state)
+
+    def load_state_dict(self, payload, strict=False):
+        self.loaded_payload = dict(payload)
+        self.loaded_strict = bool(strict)
+        return object()
+
+
+def test_build_training_model_arch_yaml_plus_weights_partially_loads_matching_keys():
+    target_module = _FakeModule(
+        {
+            "model.0.conv.weight": _FakeTensor(32, 3, 3, 3),
+            "model.1.bn.weight": _FakeTensor(32),
+            "model.22.detect.weight": _FakeTensor(80, 32),
+        }
+    )
+    source_module = _FakeModule(
+        {
+            "0.conv.weight": _FakeTensor(32, 3, 3, 3),
+            "model.1.bn.weight": _FakeTensor(32),
+            "cls.head.weight": _FakeTensor(1000, 128),
+        }
+    )
+
+    class _FakeYOLO:
+        def __init__(self, model_ref: str, task: str | None = None):
+            self.model_ref = model_ref
+            self.task = task
+            if model_ref == "arch.yaml":
+                self.model = target_module
+            elif model_ref == "weights.pt":
+                self.model = source_module
+            else:
+                raise RuntimeError(f"unexpected model_ref={model_ref}")
+
+    model, summary = _build_training_model(
+        YOLO=_FakeYOLO,
+        base_model="weights.pt",
+        yolo_task="detect",
+        init_mode="arch_yaml_plus_weights",
+        arch_yaml_ref="arch.yaml",
+    )
+    assert getattr(model, "model_ref", "") == "arch.yaml"
+    assert summary["loaded_tensors"] == 2
+    assert summary["shape_mismatch_tensors"] == 0
+    assert summary["missing_in_target_tensors"] == 1
+    assert target_module.loaded_strict is False
+    assert set(target_module.loaded_payload.keys()) == {"model.0.conv.weight", "model.1.bn.weight"}
+
+
+def test_build_training_model_arch_yaml_plus_weights_fails_when_no_tensor_matched():
+    target_module = _FakeModule(
+        {
+            "model.0.conv.weight": _FakeTensor(32, 3, 3, 3),
+        }
+    )
+    source_module = _FakeModule(
+        {
+            "cls.head.weight": _FakeTensor(1000, 128),
+        }
+    )
+
+    class _FakeYOLO:
+        def __init__(self, model_ref: str, task: str | None = None):
+            self.model_ref = model_ref
+            self.task = task
+            self.model = target_module if model_ref == "arch.yaml" else source_module
+
+    with pytest.raises(RuntimeError, match="loaded 0 tensors"):
+        _build_training_model(
+            YOLO=_FakeYOLO,
+            base_model="weights.pt",
+            yolo_task="detect",
+            init_mode="arch_yaml_plus_weights",
+            arch_yaml_ref="arch.yaml",
+        )

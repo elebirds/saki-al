@@ -15,6 +15,7 @@ from saki_plugin_sdk.base import EventCallback
 ToIntFn = Callable[[Any, int], int]
 ToBoolFn = Callable[[Any, bool], bool]
 ResolveModelRefFn = Callable[..., Awaitable[str]]
+ResolveArchRefFn = Callable[..., Awaitable[str]]
 
 
 def _format_epoch_metric_summary(metrics_row: dict[str, Any]) -> str:
@@ -44,6 +45,7 @@ async def resolve_train_config(
     plugin_config: PluginConfig,
     execution_context: ExecutionBindingContext,
     resolve_model_ref: ResolveModelRefFn,
+    resolve_arch_ref: ResolveArchRefFn,
 ) -> TrainConfig:
     """Build a ``TrainConfig`` from a resolved ``PluginConfig``.
 
@@ -60,6 +62,13 @@ async def resolve_train_config(
         workspace=workspace,
         params=plugin_config,
     )
+    init_mode = str(getattr(plugin_config, "init_mode", "checkpoint_direct") or "checkpoint_direct").strip().lower()
+    arch_yaml_ref = ""
+    if init_mode == "arch_yaml_plus_weights":
+        arch_yaml_ref = await resolve_arch_ref(
+            workspace=workspace,
+            params=plugin_config,
+        )
     try:
         workers = int(getattr(plugin_config, "workers", 2))
     except Exception:
@@ -80,6 +89,8 @@ async def resolve_train_config(
         yolo_task=str(plugin_config.yolo_task),
         cache=bool(getattr(plugin_config, "cache", False)),
         workers=max(0, min(32, workers)),
+        init_mode=init_mode,
+        arch_yaml_ref=str(arch_yaml_ref or ""),
     )
 
 
@@ -101,6 +112,8 @@ async def run_train_with_epoch_stream(
             "level": "INFO",
             "message": (
                 f"YOLO 训练开始 base_model={config.resolved_base_model} "
+                f"init_mode={config.init_mode} "
+                f"arch_yaml={config.arch_yaml_ref or '<none>'} "
                 f"epochs={config.epochs} batch={config.batch} imgsz={config.imgsz} "
                 f"patience={config.patience} requested_device={config.requested_device} "
                 f"resolved_backend={config.resolved_backend} device={config.device} "
@@ -139,6 +152,8 @@ async def run_train_with_epoch_stream(
                 deterministic=config.deterministic,
                 strong_deterministic=config.strong_deterministic,
                 yolo_task=config.yolo_task,
+                init_mode=config.init_mode,
+                arch_yaml_ref=config.arch_yaml_ref,
                 cache=config.cache,
                 workers=config.workers,
                 epoch_callback=_on_epoch_update,

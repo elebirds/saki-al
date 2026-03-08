@@ -186,11 +186,18 @@ async def test_resolve_train_config_reads_cache_flag_and_workers():
         del kwargs
         return "yolov8n.pt"
 
+    async def _resolve_arch_ref(**kwargs):
+        del kwargs
+        return ""
+
     resolved = await resolve_train_config(
         workspace=SimpleNamespace(),  # type: ignore[arg-type]
         plugin_config=plugin_config,  # type: ignore[arg-type]
         execution_context=execution_context,  # type: ignore[arg-type]
         resolve_model_ref=_resolve_model_ref,
+        resolve_arch_ref=_resolve_arch_ref,
     )
     assert resolved.cache is True
     assert resolved.workers == 6
+    assert resolved.init_mode == "checkpoint_direct"
+    assert resolved.arch_yaml_ref == ""

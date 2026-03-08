@@ -28,6 +28,46 @@ class OrientedRCNNPlugin(ExecutorPlugin):
         self.logger.info(
             f"Oriented R-CNN 插件 v{self.version} 已加载，支持策略：{self.supported_strategies}"
         )
+        self.logger.info(self._build_init_config_log())
+
+    def _build_init_config_log(self) -> str:
+        schema = self.request_config_schema() or {}
+        fields = schema.get("fields") if isinstance(schema, dict) else None
+        if not isinstance(fields, list):
+            return "插件初始化配置摘要：未找到 config_schema.fields。"
+
+        by_key = {
+            str(item.get("key") or "").strip(): item
+            for item in fields
+            if isinstance(item, dict)
+        }
+        mode_field = by_key.get("aug_iou_iou_mode", {})
+        d_field = by_key.get("aug_iou_boundary_d", {})
+        augs_field = by_key.get("aug_iou_enabled_augs", {})
+
+        mode_default = str(mode_field.get("default") or "obb")
+        mode_options_raw = mode_field.get("options")
+        mode_options = [
+            str(item.get("value") or "").strip()
+            for item in (mode_options_raw if isinstance(mode_options_raw, list) else [])
+            if isinstance(item, dict) and str(item.get("value") or "").strip()
+        ]
+        mode_options_text = "/".join(mode_options) if mode_options else "rect/obb/boundary"
+
+        d_default = int(d_field.get("default") or 3)
+        d_props = d_field.get("props") if isinstance(d_field.get("props"), dict) else {}
+        d_min = int(d_props.get("min") or 1)
+        d_max = int(d_props.get("max") or 128)
+
+        aug_default_raw = augs_field.get("default")
+        aug_default_count = len(aug_default_raw) if isinstance(aug_default_raw, list) else 0
+
+        return (
+            "插件初始化配置摘要："
+            f"aug_iou_iou_mode 默认={mode_default} 可选={mode_options_text}；"
+            f"aug_iou_boundary_d 默认={d_default} 范围=[{d_min},{d_max}]；"
+            f"aug_iou_enabled_augs 默认项数={aug_default_count}。"
+        )
 
     async def on_start(self, task_id: str, workspace: WorkspaceProtocol) -> None:
         await super().on_start(task_id, workspace)
@@ -142,13 +182,21 @@ class OrientedRCNNPlugin(ExecutorPlugin):
         *,
         context: ExecutionBindingContext,
     ) -> list[dict[str, Any]]:
-        return await self._runtime.predict_unlabeled_batch(
+        candidates = await self._runtime.predict_unlabeled_batch(
             workspace=workspace,
             unlabeled_samples=unlabeled_samples,
             strategy=strategy,
             params=params,
             context=context,
         )
+        top = candidates[0] if candidates else {}
+        top_sample = str(top.get("sample_id") or "")
+        top_score = float(top.get("score") or 0.0)
+        self.logger.info(
+            f"score 采样完成 strategy={strategy} 候选数={len(candidates)} "
+            f"top_sample={top_sample or '-'} top_score={top_score:.6f}"
+        )
+        return candidates
 
     async def predict_samples_batch(
         self,

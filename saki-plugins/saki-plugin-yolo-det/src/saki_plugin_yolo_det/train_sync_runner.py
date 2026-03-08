@@ -86,6 +86,7 @@ def _build_train_kwargs(
     train_seed: int,
     deterministic: bool,
     strong_deterministic: bool,
+    cache: bool = False,
     train_project_dir: Path,
 ) -> dict[str, Any]:
     kwargs: dict[str, Any] = {
@@ -106,6 +107,8 @@ def _build_train_kwargs(
         # 严格确定性：关闭多 worker 与 AMP，减少跨轮漂移。
         kwargs["workers"] = 0
         kwargs["amp"] = False
+    if cache:
+        kwargs["cache"] = "ram"
     return kwargs
 
 
@@ -122,6 +125,7 @@ def run_train_sync(
     train_seed: int,
     deterministic: bool,
     strong_deterministic: bool,
+    cache: bool = False,
     stop_flag: Event,
     load_yolo: LoadYoloFn,
     ensure_cjk_plot_font: EnsureFontFn,
@@ -164,6 +168,7 @@ def run_train_sync(
             train_seed=train_seed,
             deterministic=deterministic,
             strong_deterministic=strong_deterministic,
+            cache=cache,
             train_project_dir=train_project_dir,
         )
     )

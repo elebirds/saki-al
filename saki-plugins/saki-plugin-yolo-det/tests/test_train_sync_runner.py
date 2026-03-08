@@ -129,3 +129,21 @@ def test_build_train_kwargs_for_non_deterministic_mode():
     assert kwargs["deterministic"] is False
     assert "workers" not in kwargs
     assert "amp" not in kwargs
+    assert "cache" not in kwargs
+
+
+def test_build_train_kwargs_enables_ram_cache_when_requested():
+    kwargs = _build_train_kwargs(
+        dataset_yaml=Path("/tmp/dataset.yaml"),
+        epochs=10,
+        batch=8,
+        imgsz=640,
+        patience=20,
+        device="cuda:0",
+        train_seed=123,
+        deterministic=False,
+        strong_deterministic=False,
+        cache=True,
+        train_project_dir=Path("/tmp/project"),
+    )
+    assert kwargs["cache"] == "ram"

@@ -108,6 +108,12 @@ config_schema:
         min: 1
         max: 1000
 
+    - key: cache
+      label: 资源缓存
+      type: boolean
+      default: false
+      description: 开启后使用内存缓存训练资源（Ultralytics cache=ram）
+
     # 预测参数组
     - key: predict_conf
       label: 预测置信度

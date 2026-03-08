@@ -73,6 +73,7 @@ async def resolve_train_config(
         deterministic=bool(getattr(plugin_config, "deterministic", False)),
         strong_deterministic=bool(getattr(plugin_config, "strong_deterministic", False)),
         yolo_task=str(plugin_config.yolo_task),
+        cache=bool(getattr(plugin_config, "cache", False)),
     )
 
 
@@ -98,7 +99,7 @@ async def run_train_with_epoch_stream(
                 f"patience={config.patience} requested_device={config.requested_device} "
                 f"resolved_backend={config.resolved_backend} device={config.device} "
                 f"train_seed={config.train_seed} deterministic={config.deterministic} "
-                f"strong_deterministic={config.strong_deterministic}"
+                f"strong_deterministic={config.strong_deterministic} cache={config.cache}"
             ),
         },
     )
@@ -130,6 +131,7 @@ async def run_train_with_epoch_stream(
                 deterministic=config.deterministic,
                 strong_deterministic=config.strong_deterministic,
                 yolo_task=config.yolo_task,
+                cache=config.cache,
                 epoch_callback=_on_epoch_update,
             )
         except BaseException as exc:  # pragma: no cover - delegated to caller path

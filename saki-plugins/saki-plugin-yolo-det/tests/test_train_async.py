@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
-from saki_plugin_yolo_det.train_async import _format_epoch_metric_summary, run_train_with_epoch_stream
+from saki_plugin_yolo_det.train_async import (
+    _format_epoch_metric_summary,
+    resolve_train_config,
+    run_train_with_epoch_stream,
+)
 from saki_plugin_yolo_det.types import TrainConfig
 
 
@@ -144,3 +149,34 @@ def test_format_epoch_metric_summary_prioritizes_common_keys():
     assert "map50=" in text
     assert "precision=" in text
     assert "extra=" in text
+
+
+@pytest.mark.anyio
+async def test_resolve_train_config_reads_cache_flag():
+    plugin_config = SimpleNamespace(
+        epochs=3,
+        batch=4,
+        imgsz=640,
+        patience=7,
+        device="auto",
+        train_seed=11,
+        deterministic=False,
+        strong_deterministic=False,
+        yolo_task="detect",
+        cache=True,
+    )
+    execution_context = SimpleNamespace(
+        device_binding=SimpleNamespace(backend="cpu", device_spec="cpu"),
+    )
+
+    async def _resolve_model_ref(**kwargs):
+        del kwargs
+        return "yolov8n.pt"
+
+    resolved = await resolve_train_config(
+        workspace=SimpleNamespace(),  # type: ignore[arg-type]
+        plugin_config=plugin_config,  # type: ignore[arg-type]
+        execution_context=execution_context,  # type: ignore[arg-type]
+        resolve_model_ref=_resolve_model_ref,
+    )
+    assert resolved.cache is True

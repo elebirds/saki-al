@@ -972,6 +972,10 @@ export class RealApiService implements ApiService {
         return normalizeLoop(response.data);
     }
 
+    async deleteLoop(loopId: string): Promise<void> {
+        await this.client.delete(`/loops/${loopId}`);
+    }
+
     async actLoop(loopId: string, payload: LoopActionRequest): Promise<LoopActionResponse> {
         const response = await this.client.post<LoopActionResponse>(`/loops/${loopId}:act`, payload ?? {});
         return {

@@ -262,6 +262,7 @@ export interface ApiService {
     getLoopById(loopId: string): Promise<Loop>;
 
     updateLoop(loopId: string, payload: LoopUpdateRequest): Promise<Loop>;
+    deleteLoop(loopId: string): Promise<void>;
 
     actLoop(loopId: string, payload: LoopActionRequest): Promise<LoopActionResponse>;
     getLoopSnapshot(loopId: string): Promise<LoopSnapshotRead>;

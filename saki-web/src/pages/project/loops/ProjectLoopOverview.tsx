@@ -1,5 +1,5 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
-import {Alert, Button, Card, Empty, Spin, Tag, Typography, message} from 'antd';
+import {Alert, Button, Card, Empty, Popconfirm, Spin, Tag, Typography, message} from 'antd';
 import {useTranslation} from 'react-i18next';
 import {useNavigate, useParams} from 'react-router-dom';
 
@@ -7,6 +7,7 @@ import {useResourcePermission} from '../../../hooks';
 import {api} from '../../../services/api';
 import {Loop, LoopSummary, ProjectBranch, RuntimePluginCatalogItem} from '../../../types';
 import {getSummaryMetricsBySource, pickPreviewMetric} from './runtimeMetricView';
+import {isLoopDeletable} from './loopLifecycle';
 
 const {Title, Text} = Typography;
 
@@ -48,6 +49,7 @@ const ProjectLoopOverview: React.FC = () => {
     const [branches, setBranches] = useState<ProjectBranch[]>([]);
     const [plugins, setPlugins] = useState<RuntimePluginCatalogItem[]>([]);
     const [summaryMap, setSummaryMap] = useState<Record<string, LoopSummary>>({});
+    const [deletingLoopId, setDeletingLoopId] = useState<string>('');
 
     const availableBranchCount = useMemo(() => {
         const bound = new Set(loops.map((item) => item.branchId));
@@ -88,6 +90,24 @@ const ProjectLoopOverview: React.FC = () => {
         if (!canManageLoops) return;
         void loadData();
     }, [canManageLoops, loadData]);
+
+    const handleDeleteLoop = useCallback(async (loop: Loop) => {
+        if (!projectId) return;
+        if (!isLoopDeletable(loop.lifecycle)) {
+            message.warning(`当前生命周期 ${loop.lifecycle} 不允许删除`);
+            return;
+        }
+        setDeletingLoopId(loop.id);
+        try {
+            await api.deleteLoop(loop.id);
+            message.success('Loop 已删除');
+            await loadData();
+        } catch (error: any) {
+            message.error(error?.message || '删除 Loop 失败');
+        } finally {
+            setDeletingLoopId('');
+        }
+    }, [projectId, loadData]);
 
     if (loading) {
         return (
@@ -165,6 +185,28 @@ const ProjectLoopOverview: React.FC = () => {
                                         >
                                             {t('project.loopOverview.enterDetail')}
                                         </Button>,
+                                        <Popconfirm
+                                            key="delete"
+                                            title="删除当前 Loop？"
+                                            description="该操作不可恢复，会清理该 Loop 的运行时派生数据。"
+                                            okText="确认删除"
+                                            cancelText="取消"
+                                            okButtonProps={{
+                                                danger: true,
+                                                loading: deletingLoopId === loop.id,
+                                            }}
+                                            onConfirm={() => void handleDeleteLoop(loop)}
+                                            disabled={!isLoopDeletable(loop.lifecycle) || deletingLoopId === loop.id}
+                                        >
+                                            <Button
+                                                type="link"
+                                                danger
+                                                disabled={!isLoopDeletable(loop.lifecycle)}
+                                                loading={deletingLoopId === loop.id}
+                                            >
+                                                删除
+                                            </Button>
+                                        </Popconfirm>,
                                     ]}
                                 >
                                     <div className="flex w-full flex-col gap-2.5">

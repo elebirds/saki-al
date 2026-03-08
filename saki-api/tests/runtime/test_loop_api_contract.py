@@ -18,7 +18,12 @@ from saki_api.modules.runtime.api.http.endpoints import (
     snapshot_endpoints,
 )
 from saki_api.modules.runtime.api.http.endpoints import round_step_query_endpoints as round_step_query_endpoint
-from saki_api.core.exceptions import BadRequestAppException, NotFoundAppException
+from saki_api.core.exceptions import (
+    BadRequestAppException,
+    ConflictAppException,
+    ForbiddenAppException,
+    NotFoundAppException,
+)
 from saki_api.infra.db.session import _session_ctx
 from saki_api.modules.shared.modeling.enums import (
     AuthorType,
@@ -32,7 +37,12 @@ from saki_api.modules.shared.modeling.enums import (
     StepDispatchKind,
     StepStatus,
     StepType,
+    SnapshotUpdateMode,
+    SnapshotValPolicy,
+    RoundSelectionOverrideOp,
+    SnapshotPartition,
     TaskType,
+    VisibilitySource,
     RuntimeTaskKind,
     RuntimeTaskStatus,
     RuntimeTaskType,
@@ -42,10 +52,20 @@ from saki_api.modules.project.domain.commit import Commit
 from saki_api.modules.project.domain.commit_sample_state import CommitSampleState
 from saki_api.modules.project.domain.label import Label
 from saki_api.modules.project.domain.project import Project, ProjectDataset
+from saki_api.modules.runtime.domain.al_loop_visibility import ALLoopVisibility
+from saki_api.modules.runtime.domain.al_round_selection_override import ALRoundSelectionOverride
 from saki_api.modules.runtime.domain.al_snapshot_sample import ALSnapshotSample
+from saki_api.modules.runtime.domain.dispatch_outbox import TaskDispatchOutbox
+from saki_api.modules.runtime.domain.loop import Loop
+from saki_api.modules.runtime.domain.model import Model
+from saki_api.modules.runtime.domain.model_class_schema import ModelClassSchema
+from saki_api.modules.runtime.domain.prediction import Prediction
+from saki_api.modules.runtime.domain.prediction_binding import PredictionBinding
+from saki_api.modules.runtime.domain.prediction_item import PredictionItem
 from saki_api.modules.runtime.domain.round import Round
 from saki_api.modules.runtime.domain.step import Step
 from saki_api.modules.runtime.domain.task import Task
+from saki_api.modules.runtime.domain.task_candidate_item import TaskCandidateItem
 from saki_api.modules.runtime.domain.task_event import TaskEvent
 from saki_api.modules.runtime.domain.task_metric_point import TaskMetricPoint
 from saki_api.modules.runtime.domain.al_snapshot_version import ALSnapshotVersion
@@ -434,6 +454,537 @@ async def test_loop_endpoints_create_list_get_update_contract(loop_api_env, monk
             assert updated.config.get("sampling", {}).get("strategy") == "uncertainty_1_minus_max_conf"
             assert updated.config.get("sampling", {}).get("topk") == 256
             assert updated.config.get("plugin") == {"epochs": 30, "lr": 0.001}
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_delete_loop_hard_delete_with_production_model_preserved(loop_api_env, monkeypatch):
+    session_local = loop_api_env
+
+    async def _allow(*args, **kwargs) -> None:
+        del args, kwargs
+        return None
+
+    monkeypatch.setattr(loop_query_endpoint, "_ensure_project_perm", _allow)
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        sample_ids = await _seed_project_samples(session, project=project, count=3)
+        labels = await _seed_project_labels(session, project=project, names=["car"])
+        service = RuntimeService(session)
+        current_user_id = uuid.uuid4()
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-delete-target",
+                    branch_id=branch.id,
+                    model_arch="yolo_det_v1",
+                    config=_loop_config({"sampling": {"strategy": "random_baseline", "topk": 200}}),
+                    lifecycle=LoopLifecycle.DRAFT,
+                ),
+            )
+
+            loop.lifecycle = LoopLifecycle.COMPLETED
+            session.add(loop)
+            await session.flush()
+
+            round1 = Round(
+                project_id=project.id,
+                loop_id=loop.id,
+                round_index=1,
+                attempt_index=1,
+                mode=loop.mode,
+                state=RoundStatus.COMPLETED,
+                plugin_id=loop.model_arch,
+                step_counts={"succeeded": 1},
+                resolved_params={},
+                resources={},
+            )
+            round2 = Round(
+                project_id=project.id,
+                loop_id=loop.id,
+                round_index=2,
+                attempt_index=1,
+                mode=loop.mode,
+                state=RoundStatus.FAILED,
+                plugin_id=loop.model_arch,
+                step_counts={"failed": 1},
+                resolved_params={},
+                resources={},
+                retry_of_round_id=None,
+            )
+            session.add_all([round1, round2])
+            await session.flush()
+            round2.retry_of_round_id = round1.id
+            session.add(round2)
+            await session.flush()
+
+            task1 = Task(
+                project_id=project.id,
+                kind=RuntimeTaskKind.STEP,
+                task_type=RuntimeTaskType.TRAIN,
+                status=RuntimeTaskStatus.SUCCEEDED,
+                plugin_id=loop.model_arch,
+                resolved_params={},
+                attempt=1,
+                max_attempts=2,
+            )
+            task2 = Task(
+                project_id=project.id,
+                kind=RuntimeTaskKind.STEP,
+                task_type=RuntimeTaskType.SCORE,
+                status=RuntimeTaskStatus.FAILED,
+                plugin_id=loop.model_arch,
+                resolved_params={},
+                attempt=1,
+                max_attempts=2,
+            )
+            external_task = Task(
+                project_id=project.id,
+                kind=RuntimeTaskKind.STEP,
+                task_type=RuntimeTaskType.PREDICT,
+                status=RuntimeTaskStatus.READY,
+                plugin_id=loop.model_arch,
+                resolved_params={},
+                attempt=1,
+                max_attempts=2,
+            )
+            session.add_all([task1, task2, external_task])
+            await session.flush()
+
+            step1 = Step(
+                round_id=round1.id,
+                step_type=StepType.TRAIN,
+                dispatch_kind=StepDispatchKind.DISPATCHABLE,
+                state=StepStatus.SUCCEEDED,
+                round_index=1,
+                step_index=1,
+                depends_on_step_ids=[],
+                resolved_params={},
+                metrics={},
+                artifacts={},
+                task_id=task1.id,
+                attempt=1,
+                max_attempts=2,
+            )
+            step2 = Step(
+                round_id=round2.id,
+                step_type=StepType.SCORE,
+                dispatch_kind=StepDispatchKind.DISPATCHABLE,
+                state=StepStatus.FAILED,
+                round_index=2,
+                step_index=1,
+                depends_on_step_ids=[],
+                resolved_params={},
+                metrics={},
+                artifacts={},
+                task_id=task2.id,
+                attempt=1,
+                max_attempts=2,
+            )
+            session.add_all([step1, step2])
+            await session.flush()
+
+            now = datetime.now(UTC)
+            session.add_all(
+                [
+                    TaskCandidateItem(
+                        task_id=task1.id,
+                        sample_id=sample_ids[0],
+                        rank=1,
+                        score=0.9,
+                        reason={},
+                        prediction_snapshot={},
+                    ),
+                    TaskEvent(
+                        task_id=task1.id,
+                        seq=1,
+                        ts=now,
+                        event_type="metric",
+                        payload={},
+                    ),
+                    TaskMetricPoint(
+                        task_id=task1.id,
+                        metric_step=1,
+                        epoch=1,
+                        metric_name="loss",
+                        metric_value=0.1,
+                        ts=now,
+                    ),
+                    TaskDispatchOutbox(
+                        task_id=task1.id,
+                        executor_id="executor-1",
+                        request_id=f"req-{uuid.uuid4().hex}",
+                        payload={},
+                        status="pending",
+                        attempt_count=0,
+                        next_attempt_at=now,
+                    ),
+                ]
+            )
+            await session.flush()
+
+            snapshot_version = ALSnapshotVersion(
+                loop_id=loop.id,
+                version_index=1,
+                parent_version_id=None,
+                update_mode=SnapshotUpdateMode.INIT,
+                val_policy=SnapshotValPolicy.ANCHOR_ONLY,
+                seed="seed-loop-delete",
+                rule_json={},
+                manifest_hash="manifest-loop-delete",
+                sample_count=1,
+            )
+            session.add(snapshot_version)
+            await session.flush()
+
+            loop.active_snapshot_version_id = snapshot_version.id
+            session.add(loop)
+            await session.flush()
+
+            session.add_all(
+                [
+                    ALSnapshotSample(
+                        snapshot_version_id=snapshot_version.id,
+                        sample_id=sample_ids[0],
+                        partition=SnapshotPartition.TRAIN_POOL,
+                        cohort_index=0,
+                        locked=False,
+                    ),
+                    ALLoopVisibility(
+                        loop_id=loop.id,
+                        sample_id=sample_ids[0],
+                        visible_in_train=True,
+                        source=VisibilitySource.SNAPSHOT_INIT,
+                        revealed_round_index=1,
+                        reveal_commit_id=None,
+                    ),
+                    ALRoundSelectionOverride(
+                        round_id=round1.id,
+                        sample_id=sample_ids[0],
+                        op=RoundSelectionOverrideOp.INCLUDE,
+                        created_by=None,
+                        reason="manual include",
+                    ),
+                ]
+            )
+            await session.flush()
+
+            production_model = Model(
+                project_id=project.id,
+                source_round_id=round1.id,
+                source_task_id=task1.id,
+                parent_model_id=None,
+                plugin_id=loop.model_arch,
+                model_arch=loop.model_arch,
+                name="production-model",
+                version_tag="v1",
+                primary_artifact_name="best.pt",
+                weights_path="s3://bucket/production.pt",
+                status="production",
+                metrics={},
+                artifacts={},
+                publish_manifest={},
+            )
+            candidate_model = Model(
+                project_id=project.id,
+                source_round_id=round1.id,
+                source_task_id=task1.id,
+                parent_model_id=None,
+                plugin_id=loop.model_arch,
+                model_arch=loop.model_arch,
+                name="candidate-model",
+                version_tag="v1",
+                primary_artifact_name="best.pt",
+                weights_path="s3://bucket/candidate.pt",
+                status="candidate",
+                metrics={},
+                artifacts={},
+                publish_manifest={},
+            )
+            archived_model = Model(
+                project_id=project.id,
+                source_round_id=round2.id,
+                source_task_id=task2.id,
+                parent_model_id=None,
+                plugin_id=loop.model_arch,
+                model_arch=loop.model_arch,
+                name="archived-model",
+                version_tag="v1",
+                primary_artifact_name="best.pt",
+                weights_path="s3://bucket/archived.pt",
+                status="archived",
+                metrics={},
+                artifacts={},
+                publish_manifest={},
+            )
+            session.add_all([production_model, candidate_model, archived_model])
+            await session.flush()
+
+            dependent_model = Model(
+                project_id=project.id,
+                source_round_id=None,
+                source_task_id=None,
+                parent_model_id=archived_model.id,
+                plugin_id=loop.model_arch,
+                model_arch=loop.model_arch,
+                name="dependent-model",
+                version_tag="v1",
+                primary_artifact_name="best.pt",
+                weights_path="s3://bucket/dependent.pt",
+                status="candidate",
+                metrics={},
+                artifacts={},
+                publish_manifest={},
+            )
+            session.add(dependent_model)
+            await session.flush()
+
+            session.add_all(
+                [
+                    ModelClassSchema(
+                        model_id=candidate_model.id,
+                        label_id=labels[0].id,
+                        class_index=0,
+                        class_name="car",
+                        class_name_norm="car",
+                        schema_hash="schema-candidate",
+                    ),
+                    ModelClassSchema(
+                        model_id=archived_model.id,
+                        label_id=labels[0].id,
+                        class_index=1,
+                        class_name="car",
+                        class_name_norm="car-archived",
+                        schema_hash="schema-archived",
+                    ),
+                ]
+            )
+            await session.flush()
+
+            prediction_by_task = Prediction(
+                project_id=project.id,
+                plugin_id=loop.model_arch,
+                model_id=production_model.id,
+                task_id=task1.id,
+                scope_type="all",
+                scope_payload={},
+                status="ready",
+                total_items=1,
+                params={},
+            )
+            prediction_by_model = Prediction(
+                project_id=project.id,
+                plugin_id=loop.model_arch,
+                model_id=candidate_model.id,
+                task_id=external_task.id,
+                scope_type="all",
+                scope_payload={},
+                status="ready",
+                total_items=1,
+                params={},
+            )
+            session.add_all([prediction_by_task, prediction_by_model])
+            await session.flush()
+
+            session.add_all(
+                [
+                    PredictionBinding(
+                        prediction_id=prediction_by_task.id,
+                        model_id=production_model.id,
+                        schema_hash="binding-task",
+                        by_index_json=["car"],
+                        by_name_json={"car": 0},
+                    ),
+                    PredictionBinding(
+                        prediction_id=prediction_by_model.id,
+                        model_id=candidate_model.id,
+                        schema_hash="binding-model",
+                        by_index_json=["car"],
+                        by_name_json={"car": 0},
+                    ),
+                    PredictionItem(
+                        prediction_id=prediction_by_task.id,
+                        sample_id=sample_ids[0],
+                        rank=1,
+                        score=0.8,
+                        confidence=0.7,
+                        geometry={},
+                        attrs={},
+                        meta={},
+                    ),
+                    PredictionItem(
+                        prediction_id=prediction_by_model.id,
+                        sample_id=sample_ids[1],
+                        rank=1,
+                        score=0.7,
+                        confidence=0.6,
+                        geometry={},
+                        attrs={},
+                        meta={},
+                    ),
+                ]
+            )
+            await session.flush()
+
+            await loop_query_endpoint.delete_loop(
+                loop_id=loop.id,
+                runtime_service=service,
+                session=session,
+                current_user_id=current_user_id,
+            )
+
+            assert await session.get(Loop, loop.id) is None
+            assert await session.get(Round, round1.id) is None
+            assert await session.get(Round, round2.id) is None
+            assert await session.get(Step, step1.id) is None
+            assert await session.get(Step, step2.id) is None
+            assert await session.get(Task, task1.id) is None
+            assert await session.get(Task, task2.id) is None
+            assert await session.get(Task, external_task.id) is not None
+
+            assert (
+                await session.exec(
+                    select(TaskCandidateItem).where(TaskCandidateItem.task_id == task1.id)
+                )
+            ).first() is None
+            assert (
+                await session.exec(
+                    select(TaskEvent).where(TaskEvent.task_id == task1.id)
+                )
+            ).first() is None
+            assert (
+                await session.exec(
+                    select(TaskMetricPoint).where(TaskMetricPoint.task_id == task1.id)
+                )
+            ).first() is None
+            assert (
+                await session.exec(
+                    select(TaskDispatchOutbox).where(TaskDispatchOutbox.task_id == task1.id)
+                )
+            ).first() is None
+            assert (
+                await session.exec(
+                    select(ALRoundSelectionOverride).where(ALRoundSelectionOverride.round_id == round1.id)
+                )
+            ).first() is None
+            assert (
+                await session.exec(
+                    select(ALLoopVisibility).where(ALLoopVisibility.loop_id == loop.id)
+                )
+            ).first() is None
+            assert (
+                await session.exec(
+                    select(ALSnapshotVersion).where(ALSnapshotVersion.id == snapshot_version.id)
+                )
+            ).first() is None
+            assert (
+                await session.exec(
+                    select(ALSnapshotSample).where(ALSnapshotSample.snapshot_version_id == snapshot_version.id)
+                )
+            ).first() is None
+
+            assert await session.get(Prediction, prediction_by_task.id) is None
+            assert await session.get(Prediction, prediction_by_model.id) is None
+
+            assert await session.get(Model, candidate_model.id) is None
+            assert await session.get(Model, archived_model.id) is None
+            assert (
+                await session.exec(
+                    select(ModelClassSchema).where(ModelClassSchema.model_id.in_([candidate_model.id, archived_model.id]))
+                )
+            ).first() is None
+
+            refreshed_production_model = await session.get(Model, production_model.id)
+            assert refreshed_production_model is not None
+            assert refreshed_production_model.source_round_id is None
+            assert refreshed_production_model.source_task_id is None
+
+            refreshed_dependent_model = await session.get(Model, dependent_model.id)
+            assert refreshed_dependent_model is not None
+            assert refreshed_dependent_model.parent_model_id is None
+
+            recreated_loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-delete-recreated",
+                    branch_id=branch.id,
+                    model_arch="yolo_det_v1",
+                    config=_loop_config({"sampling": {"strategy": "random_baseline", "topk": 200}}),
+                ),
+            )
+            assert recreated_loop.branch_id == branch.id
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_delete_loop_rejects_non_terminal_lifecycle(loop_api_env):
+    session_local = loop_api_env
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        service = RuntimeService(session)
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-running-delete-reject",
+                    branch_id=branch.id,
+                    model_arch="yolo_det_v1",
+                    config=_loop_config({"sampling": {"strategy": "random_baseline", "topk": 200}}),
+                    lifecycle=LoopLifecycle.DRAFT,
+                ),
+            )
+            loop.lifecycle = LoopLifecycle.RUNNING
+            session.add(loop)
+            await session.flush()
+
+            with pytest.raises(ConflictAppException, match="cannot be deleted"):
+                await service.delete_loop(loop.id)
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_delete_loop_endpoint_requires_manage_permission(loop_api_env, monkeypatch):
+    session_local = loop_api_env
+
+    async def _deny(*args, **kwargs) -> None:
+        del args, kwargs
+        raise ForbiddenAppException("forbidden")
+
+    monkeypatch.setattr(loop_query_endpoint, "_ensure_project_perm", _deny)
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        service = RuntimeService(session)
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-delete-perm-check",
+                    branch_id=branch.id,
+                    model_arch="yolo_det_v1",
+                    config=_loop_config({"sampling": {"strategy": "random_baseline", "topk": 200}}),
+                    lifecycle=LoopLifecycle.COMPLETED,
+                ),
+            )
+            with pytest.raises(ForbiddenAppException):
+                await loop_query_endpoint.delete_loop(
+                    loop_id=loop.id,
+                    runtime_service=service,
+                    session=session,
+                    current_user_id=uuid.uuid4(),
+                )
         finally:
             _session_ctx.reset(token)
 

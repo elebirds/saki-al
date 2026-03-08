@@ -36,6 +36,7 @@ import {
 } from './runtimeMetricView';
 import {ROUND_WS_RECONNECT_DELAYS, buildRoundEventsWsUrl} from './runtimeRoundWs';
 import {formatDateTime} from './runtimeTime';
+import {isLoopDeletable} from './loopLifecycle';
 import {
     Loop,
     LoopSnapshotRead,
@@ -203,6 +204,7 @@ const ProjectLoopDetail: React.FC = () => {
     const canManageLoops = canProject('loop:manage:assigned');
     const [loading, setLoading] = useState(true);
     const [controlLoading, setControlLoading] = useState(false);
+    const [deleteLoading, setDeleteLoading] = useState(false);
     const [cleaningRound, setCleaningRound] = useState<number | null>(null);
     const [loop, setLoop] = useState<Loop | null>(null);
     const [summary, setSummary] = useState<LoopSummary | null>(null);
@@ -590,6 +592,24 @@ const ProjectLoopDetail: React.FC = () => {
         }
     };
 
+    const handleDeleteLoop = useCallback(async () => {
+        if (!loopId || !projectId || !loop) return;
+        if (!isLoopDeletable(loop.lifecycle)) {
+            messageApi.warning(`当前生命周期 ${loop.lifecycle} 不允许删除`);
+            return;
+        }
+        setDeleteLoading(true);
+        try {
+            await api.deleteLoop(loopId);
+            messageApi.success('Loop 已删除');
+            navigate(`/projects/${projectId}/loops`);
+        } catch (error: any) {
+            messageApi.error(error?.message || '删除 Loop 失败');
+        } finally {
+            setDeleteLoading(false);
+        }
+    }, [loopId, projectId, loop, messageApi, navigate]);
+
     const refreshPredictions = useCallback(async () => {
         if (!loopId || !projectId) return;
         setPredictionLoading(true);
@@ -873,6 +893,7 @@ const ProjectLoopDetail: React.FC = () => {
 
     const continueLabel = primaryAction ? `Continue · ${primaryAction.label}` : 'Continue';
     const continueDisabled = !primaryAction || !primaryAction.runnable;
+    const canDeleteLoop = Boolean(loop && isLoopDeletable(loop.lifecycle));
     const advancedActionItems = (gateInfo?.actions || [])
         .filter((item) => item.key !== primaryAction?.key)
         .map((item) => ({
@@ -984,6 +1005,19 @@ const ProjectLoopDetail: React.FC = () => {
                         >
                             <Button>高级操作</Button>
                         </Dropdown>
+                        <Popconfirm
+                            title="删除当前 Loop？"
+                            description="该操作不可恢复，会清理该 Loop 的运行时派生数据。"
+                            okText="确认删除"
+                            cancelText="取消"
+                            okButtonProps={{danger: true, loading: deleteLoading}}
+                            onConfirm={() => void handleDeleteLoop()}
+                            disabled={!canDeleteLoop || deleteLoading}
+                        >
+                            <Button danger loading={deleteLoading} disabled={!canDeleteLoop}>
+                                删除 Loop
+                            </Button>
+                        </Popconfirm>
                     </div>
                 </div>
             </Card>

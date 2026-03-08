@@ -202,6 +202,24 @@ async def update_loop(
     return await _build_loop_read(runtime_service, updated)
 
 
+@router.delete("/loops/{loop_id}", response_model=None)
+async def delete_loop(
+    *,
+    loop_id: uuid.UUID,
+    runtime_service: RuntimeServiceDep,
+    session: AsyncSession = Depends(get_session),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
+):
+    loop = await runtime_service.loop_repo.get_by_id_or_raise(loop_id)
+    await _ensure_project_perm(
+        session=session,
+        current_user_id=current_user_id,
+        project_id=loop.project_id,
+        required=Permissions.LOOP_MANAGE,
+    )
+    await runtime_service.delete_loop(loop_id)
+
+
 @router.get("/loops/{loop_id}/rounds", response_model=List[RoundRead])
 async def list_loop_rounds(
     *,

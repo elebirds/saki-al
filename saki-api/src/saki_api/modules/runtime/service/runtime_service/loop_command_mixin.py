@@ -5,7 +5,10 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from saki_api.core.exceptions import BadRequestAppException, NotFoundAppException
+from sqlalchemy import or_
+from sqlmodel import delete, select, update
+
+from saki_api.core.exceptions import BadRequestAppException, ConflictAppException, NotFoundAppException
 from saki_api.infra.db.transaction import transactional
 from saki_api.modules.runtime.api.round_step import (
     LoopCreateData,
@@ -13,8 +16,24 @@ from saki_api.modules.runtime.api.round_step import (
     LoopPatch,
     LoopUpdateRequest,
 )
+from saki_api.modules.runtime.domain.al_loop_visibility import ALLoopVisibility
+from saki_api.modules.runtime.domain.al_round_selection_override import ALRoundSelectionOverride
+from saki_api.modules.runtime.domain.al_snapshot_sample import ALSnapshotSample
+from saki_api.modules.runtime.domain.al_snapshot_version import ALSnapshotVersion
+from saki_api.modules.runtime.domain.dispatch_outbox import TaskDispatchOutbox
 from saki_api.modules.runtime.domain import phase_for_mode
 from saki_api.modules.runtime.domain.loop import Loop
+from saki_api.modules.runtime.domain.model import Model
+from saki_api.modules.runtime.domain.model_class_schema import ModelClassSchema
+from saki_api.modules.runtime.domain.prediction import Prediction
+from saki_api.modules.runtime.domain.prediction_binding import PredictionBinding
+from saki_api.modules.runtime.domain.prediction_item import PredictionItem
+from saki_api.modules.runtime.domain.round import Round
+from saki_api.modules.runtime.domain.step import Step
+from saki_api.modules.runtime.domain.task import Task
+from saki_api.modules.runtime.domain.task_candidate_item import TaskCandidateItem
+from saki_api.modules.runtime.domain.task_event import TaskEvent
+from saki_api.modules.runtime.domain.task_metric_point import TaskMetricPoint
 from saki_api.modules.runtime.service.catalog.runtime_plugin_catalog_service import (
     extract_executor_plugins,
 )
@@ -330,3 +349,198 @@ class LoopCommandMixin:
         if not patch_payload:
             return loop
         return await self.loop_repo.update_or_raise(loop_id, patch_payload)
+
+    @transactional
+    async def delete_loop(self, loop_id: uuid.UUID) -> None:
+        loop_stmt = (
+            select(Loop)
+            .where(Loop.id == loop_id)
+            .with_for_update()
+        )
+        loop = (await self.session.exec(loop_stmt)).first()
+        if loop is None:
+            raise NotFoundAppException(f"Loop {loop_id} not found")
+
+        allowed_lifecycles = {
+            LoopLifecycle.DRAFT,
+            LoopLifecycle.STOPPED,
+            LoopLifecycle.COMPLETED,
+            LoopLifecycle.FAILED,
+        }
+        if loop.lifecycle not in allowed_lifecycles:
+            lifecycle_text = str(loop.lifecycle.value if hasattr(loop.lifecycle, "value") else loop.lifecycle)
+            raise ConflictAppException(f"loop in lifecycle {lifecycle_text} cannot be deleted")
+
+        round_ids = list(
+            (
+                await self.session.exec(
+                    select(Round.id).where(Round.loop_id == loop_id)
+                )
+            ).all()
+        )
+
+        task_ids: list[uuid.UUID] = []
+        if round_ids:
+            step_rows = list(
+                (
+                    await self.session.exec(
+                        select(Step.task_id).where(
+                            Step.round_id.in_(round_ids),
+                            Step.task_id.is_not(None),
+                        )
+                    )
+                ).all()
+            )
+            task_ids = sorted({row for row in step_rows if row is not None}, key=str)
+
+        source_model_filters = []
+        if round_ids:
+            source_model_filters.append(Model.source_round_id.in_(round_ids))
+        if task_ids:
+            source_model_filters.append(Model.source_task_id.in_(task_ids))
+
+        production_model_ids: set[uuid.UUID] = set()
+        deletable_model_ids: set[uuid.UUID] = set()
+        if source_model_filters:
+            model_rows = list(
+                (
+                    await self.session.exec(
+                        select(Model.id, Model.status)
+                        .where(or_(*source_model_filters))
+                        .with_for_update()
+                    )
+                ).all()
+            )
+            for model_id, status in model_rows:
+                status_text = str(status or "").strip().lower()
+                if status_text == "production":
+                    production_model_ids.add(model_id)
+                else:
+                    deletable_model_ids.add(model_id)
+
+        if production_model_ids:
+            await self.session.exec(
+                update(Model)
+                .where(Model.id.in_(list(production_model_ids)))
+                .values(
+                    source_round_id=None,
+                    source_task_id=None,
+                )
+            )
+
+        if deletable_model_ids:
+            await self.session.exec(
+                update(Model)
+                .where(Model.parent_model_id.in_(list(deletable_model_ids)))
+                .values(parent_model_id=None)
+            )
+
+        prediction_filters = []
+        if task_ids:
+            prediction_filters.append(Prediction.task_id.in_(task_ids))
+        if deletable_model_ids:
+            prediction_filters.append(Prediction.model_id.in_(list(deletable_model_ids)))
+
+        prediction_ids: list[uuid.UUID] = []
+        if prediction_filters:
+            prediction_ids = sorted(
+                {
+                    row
+                    for row in (
+                        await self.session.exec(
+                            select(Prediction.id).where(or_(*prediction_filters))
+                        )
+                    ).all()
+                    if row is not None
+                },
+                key=str,
+            )
+
+        if prediction_ids:
+            await self.session.exec(
+                delete(PredictionItem).where(PredictionItem.prediction_id.in_(prediction_ids))
+            )
+            await self.session.exec(
+                delete(PredictionBinding).where(PredictionBinding.prediction_id.in_(prediction_ids))
+            )
+            await self.session.exec(
+                delete(Prediction).where(Prediction.id.in_(prediction_ids))
+            )
+
+        if deletable_model_ids:
+            await self.session.exec(
+                delete(ModelClassSchema).where(ModelClassSchema.model_id.in_(list(deletable_model_ids)))
+            )
+            await self.session.exec(
+                delete(Model).where(Model.id.in_(list(deletable_model_ids)))
+            )
+
+        if task_ids:
+            await self.session.exec(
+                delete(TaskDispatchOutbox).where(TaskDispatchOutbox.task_id.in_(task_ids))
+            )
+            await self.session.exec(
+                delete(TaskEvent).where(TaskEvent.task_id.in_(task_ids))
+            )
+            await self.session.exec(
+                delete(TaskMetricPoint).where(TaskMetricPoint.task_id.in_(task_ids))
+            )
+            await self.session.exec(
+                delete(TaskCandidateItem).where(TaskCandidateItem.task_id.in_(task_ids))
+            )
+
+        if round_ids:
+            await self.session.exec(
+                delete(Step).where(Step.round_id.in_(round_ids))
+            )
+
+        if task_ids:
+            await self.session.exec(
+                delete(Task).where(Task.id.in_(task_ids))
+            )
+
+        if round_ids:
+            await self.session.exec(
+                delete(ALRoundSelectionOverride).where(ALRoundSelectionOverride.round_id.in_(round_ids))
+            )
+            await self.session.exec(
+                update(Round)
+                .where(Round.retry_of_round_id.in_(round_ids))
+                .values(retry_of_round_id=None)
+            )
+            await self.session.exec(
+                delete(Round).where(Round.id.in_(round_ids))
+            )
+
+        snapshot_version_ids = list(
+            (
+                await self.session.exec(
+                    select(ALSnapshotVersion.id).where(ALSnapshotVersion.loop_id == loop_id)
+                )
+            ).all()
+        )
+
+        if loop.active_snapshot_version_id is not None:
+            loop.active_snapshot_version_id = None
+            self.session.add(loop)
+            await self.session.flush()
+
+        if snapshot_version_ids:
+            await self.session.exec(
+                delete(ALSnapshotSample).where(ALSnapshotSample.snapshot_version_id.in_(snapshot_version_ids))
+            )
+            await self.session.exec(
+                update(ALSnapshotVersion)
+                .where(ALSnapshotVersion.parent_version_id.in_(snapshot_version_ids))
+                .values(parent_version_id=None)
+            )
+            await self.session.exec(
+                delete(ALSnapshotVersion).where(ALSnapshotVersion.id.in_(snapshot_version_ids))
+            )
+
+        await self.session.exec(
+            delete(ALLoopVisibility).where(ALLoopVisibility.loop_id == loop_id)
+        )
+
+        await self.session.delete(loop)
+        await self.session.flush()

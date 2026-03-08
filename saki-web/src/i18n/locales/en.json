@@ -921,6 +921,40 @@
         "modelRequestParams": "Model Request Parameters",
         "pluginSchemaHint": "Final payload merges plugin defaults with your edits.",
         "noDynamicSchema": "Current plugin does not define a dynamic schema"
+      },
+      "configExchange": {
+        "actions": {
+          "title": "Config JSON",
+          "exportToClipboard": "Export JSON (Copy to Clipboard)",
+          "importFromClipboard": "Import from Clipboard",
+          "importFromText": "Paste JSON to Import"
+        },
+        "importModal": {
+          "title": "Paste Loop Config JSON",
+          "inputHint": "Supports full V1 loop JSON and legacy format {\"pluginConfig\": {...}}.",
+          "inputPlaceholder": "Paste JSON configuration here",
+          "previewTitle": "Formatted Preview",
+          "confirm": "Import",
+          "cancel": "Cancel"
+        },
+        "exportModal": {
+          "title": "Export JSON (Manual Copy)",
+          "hint": "Clipboard write failed. Please copy the JSON below manually.",
+          "confirm": "Done"
+        },
+        "messages": {
+          "exportCopied": "Config JSON copied to clipboard",
+          "exportClipboardFailed": "Failed to write clipboard. Opened manual copy dialog.",
+          "importClipboardFailed": "Failed to read clipboard. Please use paste import.",
+          "importClipboardEmpty": "Clipboard is empty",
+          "importFailed": "Import failed: {{reason}}",
+          "importSuccess": "Import completed: applied {{applied}}, ignored {{ignored}}.",
+          "importAutoSwitchedPlugin": "Auto-switched plugin: {{from}} -> {{to}}.",
+          "importStrategyFallback": "Sampling strategy is incompatible with target plugin and was reset to default.",
+          "importPreferredExecutorCleared": "Preferred executor is incompatible with target plugin and was cleared.",
+          "importBranchIgnored": "Current page does not allow importing branch fields, ignored.",
+          "importPreviewInvalidJson": "Invalid JSON format, preview unavailable."
+        }
       }
     },
     "loopConfig": {
@@ -997,6 +1031,40 @@
         "maxRoundsRequired": "Please enter max rounds",
         "modelRequestParams": "Model Request Parameters",
         "noDynamicSchema": "Current plugin does not define a dynamic schema"
+      },
+      "configExchange": {
+        "actions": {
+          "title": "Config JSON",
+          "exportToClipboard": "Export JSON (Copy to Clipboard)",
+          "importFromClipboard": "Import from Clipboard",
+          "importFromText": "Paste JSON to Import"
+        },
+        "importModal": {
+          "title": "Paste Loop Config JSON",
+          "inputHint": "Supports full V1 loop JSON and legacy format {\"pluginConfig\": {...}}.",
+          "inputPlaceholder": "Paste JSON configuration here",
+          "previewTitle": "Formatted Preview",
+          "confirm": "Import",
+          "cancel": "Cancel"
+        },
+        "exportModal": {
+          "title": "Export JSON (Manual Copy)",
+          "hint": "Clipboard write failed. Please copy the JSON below manually.",
+          "confirm": "Done"
+        },
+        "messages": {
+          "exportCopied": "Config JSON copied to clipboard",
+          "exportClipboardFailed": "Failed to write clipboard. Opened manual copy dialog.",
+          "importClipboardFailed": "Failed to read clipboard. Please use paste import.",
+          "importClipboardEmpty": "Clipboard is empty",
+          "importFailed": "Import failed: {{reason}}",
+          "importSuccess": "Import completed: applied {{applied}}, ignored {{ignored}}.",
+          "importAutoSwitchedPlugin": "Auto-switched plugin: {{from}} -> {{to}}.",
+          "importStrategyFallback": "Sampling strategy is incompatible with target plugin and was reset to default.",
+          "importPreferredExecutorCleared": "Preferred executor is incompatible with target plugin and was cleared.",
+          "importBranchIgnored": "branchId is ignored on the config page.",
+          "importPreviewInvalidJson": "Invalid JSON format, preview unavailable."
+        }
       }
     },
     "predictionTasks": {

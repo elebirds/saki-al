@@ -948,6 +948,40 @@
         "modelRequestParams": "模型请求参数",
         "pluginSchemaHint": "参数会和插件默认配置合并后提交。",
         "noDynamicSchema": "当前插件未定义动态参数 schema"
+      },
+      "configExchange": {
+        "actions": {
+          "title": "配置 JSON",
+          "exportToClipboard": "导出 JSON（复制到剪贴板）",
+          "importFromClipboard": "从剪贴板导入",
+          "importFromText": "粘贴导入"
+        },
+        "importModal": {
+          "title": "粘贴导入 Loop 配置",
+          "inputHint": "支持 V1 整表单 JSON；也兼容旧格式 {\"pluginConfig\": {...}}。",
+          "inputPlaceholder": "请粘贴 JSON 配置",
+          "previewTitle": "格式化预览",
+          "confirm": "确认导入",
+          "cancel": "取消"
+        },
+        "exportModal": {
+          "title": "导出 JSON（手动复制）",
+          "hint": "剪贴板写入失败，请手动复制下面内容。",
+          "confirm": "我已复制"
+        },
+        "messages": {
+          "exportCopied": "配置 JSON 已复制到剪贴板",
+          "exportClipboardFailed": "无法写入剪贴板，已打开手动复制弹窗",
+          "importClipboardFailed": "读取剪贴板失败，请改用粘贴导入",
+          "importClipboardEmpty": "剪贴板为空，无法导入",
+          "importFailed": "导入失败：{{reason}}",
+          "importSuccess": "导入完成：应用 {{applied}} 项，忽略 {{ignored}} 项。",
+          "importAutoSwitchedPlugin": "已自动切换插件：{{from}} -> {{to}}。",
+          "importStrategyFallback": "采样策略与目标插件不兼容，已回退到默认策略。",
+          "importPreferredExecutorCleared": "指定 Executor 与目标插件不兼容，已自动清空。",
+          "importBranchIgnored": "当前页面不支持导入分支字段，已忽略。",
+          "importPreviewInvalidJson": "JSON 格式不合法，无法生成预览。"
+        }
       }
     },
     "loopConfig": {
@@ -1024,6 +1058,40 @@
         "maxRoundsRequired": "请填写最大轮次",
         "modelRequestParams": "模型请求参数",
         "noDynamicSchema": "当前插件未定义动态参数 schema"
+      },
+      "configExchange": {
+        "actions": {
+          "title": "配置 JSON",
+          "exportToClipboard": "导出 JSON（复制到剪贴板）",
+          "importFromClipboard": "从剪贴板导入",
+          "importFromText": "粘贴导入"
+        },
+        "importModal": {
+          "title": "粘贴导入 Loop 配置",
+          "inputHint": "支持 V1 整表单 JSON；也兼容旧格式 {\"pluginConfig\": {...}}。",
+          "inputPlaceholder": "请粘贴 JSON 配置",
+          "previewTitle": "格式化预览",
+          "confirm": "确认导入",
+          "cancel": "取消"
+        },
+        "exportModal": {
+          "title": "导出 JSON（手动复制）",
+          "hint": "剪贴板写入失败，请手动复制下面内容。",
+          "confirm": "我已复制"
+        },
+        "messages": {
+          "exportCopied": "配置 JSON 已复制到剪贴板",
+          "exportClipboardFailed": "无法写入剪贴板，已打开手动复制弹窗",
+          "importClipboardFailed": "读取剪贴板失败，请改用粘贴导入",
+          "importClipboardEmpty": "剪贴板为空，无法导入",
+          "importFailed": "导入失败：{{reason}}",
+          "importSuccess": "导入完成：应用 {{applied}} 项，忽略 {{ignored}} 项。",
+          "importAutoSwitchedPlugin": "已自动切换插件：{{from}} -> {{to}}。",
+          "importStrategyFallback": "采样策略与目标插件不兼容，已回退到默认策略。",
+          "importPreferredExecutorCleared": "指定 Executor 与目标插件不兼容，已自动清空。",
+          "importBranchIgnored": "配置页不支持导入 branchId，已忽略。",
+          "importPreviewInvalidJson": "JSON 格式不合法，无法生成预览。"
+        }
       }
     },
     "predictionTasks": {

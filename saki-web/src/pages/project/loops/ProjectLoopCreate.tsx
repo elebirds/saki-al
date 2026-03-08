@@ -3,9 +3,11 @@ import {
     Alert,
     Button,
     Card,
+    Dropdown,
     Form,
     Input,
     InputNumber,
+    Modal,
     Radio,
     Select,
     Slider,
@@ -37,6 +39,7 @@ import {
     RANDOM_BASELINE_STRATEGY,
 } from './loopPayloadBuilder';
 import {buildExecutorCapabilitySummary, executorSupportsPlugin} from '../../runtime/executorCapability';
+import {exportLoopFormValues, importLoopFormValues} from './loopConfigExchange';
 
 const {Title, Text} = Typography;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -58,6 +61,10 @@ const ProjectLoopCreate: React.FC = () => {
     const [project, setProject] = useState<Project | null>(null);
     const [labels, setLabels] = useState<ProjectLabel[]>([]);
     const [createForm] = Form.useForm<LoopEditorFormValues>();
+    const [importModalOpen, setImportModalOpen] = useState(false);
+    const [importJsonText, setImportJsonText] = useState('');
+    const [exportModalOpen, setExportModalOpen] = useState(false);
+    const [exportJsonText, setExportJsonText] = useState('');
 
     const selectedMode = Form.useWatch('mode', createForm) || 'active_learning';
     const selectedSamplingStrategy = Form.useWatch('samplingStrategy', createForm) || '';
@@ -92,6 +99,24 @@ const ProjectLoopCreate: React.FC = () => {
         })),
         [commits, t],
     );
+    const importPreview = useMemo(() => {
+        const text = String(importJsonText || '').trim();
+        if (!text) {
+            return {formatted: '', error: ''};
+        }
+        try {
+            const parsed = JSON.parse(text);
+            return {
+                formatted: JSON.stringify(parsed, null, 2),
+                error: '',
+            };
+        } catch {
+            return {
+                formatted: '',
+                error: t('project.loopCreate.configExchange.messages.importPreviewInvalidJson'),
+            };
+        }
+    }, [importJsonText, t]);
 
     const loadData = useCallback(async () => {
         if (!projectId || !canManageLoops) return;
@@ -174,9 +199,166 @@ const ProjectLoopCreate: React.FC = () => {
         void loadData();
     }, [canManageLoops, loadData]);
 
+    const applyPluginSelection = useCallback((
+        pluginId: string,
+        options?: {
+            samplingStrategy?: string;
+            pluginConfig?: Record<string, any>;
+            preferredExecutorId?: string;
+        },
+    ): {strategyFallback: boolean; preferredExecutorCleared: boolean} => {
+        const plugin = plugins.find((item) => item.pluginId === pluginId);
+        if (!plugin) {
+            return {strategyFallback: false, preferredExecutorCleared: false};
+        }
+
+        const currentStrategy = String(
+            options?.samplingStrategy ?? createForm.getFieldValue('samplingStrategy') ?? '',
+        ).trim();
+        const pluginConfigFromForm = createForm.getFieldValue('pluginConfig');
+        const currentPluginConfig = options?.pluginConfig ?? (
+            typeof pluginConfigFromForm === 'object' && pluginConfigFromForm !== null
+                ? pluginConfigFromForm as Record<string, any>
+                : {}
+        );
+        const currentPreferredExecutorId = String(
+            options?.preferredExecutorId ?? createForm.getFieldValue('preferredExecutorId') ?? '',
+        ).trim();
+        const currentPreferredExecutor = currentPreferredExecutorId
+            ? executors.find((item) => item.executorId === currentPreferredExecutorId)
+            : undefined;
+        const strategySupported = !currentStrategy || plugin.supportedStrategies.includes(currentStrategy);
+        const preferredExecutorCleared = Boolean(
+            currentPreferredExecutor
+            && !executorSupportsPlugin(currentPreferredExecutor, pluginId),
+        );
+        createForm.setFieldsValue({
+            modelArch: pluginId,
+            samplingStrategy: strategySupported
+                ? currentStrategy
+                : pickDefaultSamplingStrategy(plugin),
+            pluginConfig: mergePluginConfigWithDefaults(plugin, currentPluginConfig),
+            preferredExecutorId: preferredExecutorCleared
+                ? undefined
+                : (currentPreferredExecutorId || undefined),
+        });
+        return {
+            strategyFallback: !strategySupported,
+            preferredExecutorCleared,
+        };
+    }, [createForm, executors, plugins]);
+
     const handlePluginConfigChange = useCallback((newValues: Record<string, any>) => {
         createForm.setFieldsValue({pluginConfig: newValues});
     }, [createForm]);
+
+    const applyImportedConfig = useCallback((rawJsonText: string) => {
+        const currentModelArch = String(createForm.getFieldValue('modelArch') || '').trim();
+        const imported = importLoopFormValues(rawJsonText, {
+            plugins,
+            currentModelArch,
+            allowBranchId: true,
+        });
+
+        const importedValues = {...imported.values};
+        const importedModelArch = String(importedValues.modelArch || '').trim();
+        const pluginRelatedPatch = {
+            samplingStrategy: importedValues.samplingStrategy,
+            pluginConfig: importedValues.pluginConfig,
+            preferredExecutorId: importedValues.preferredExecutorId,
+        };
+        delete importedValues.modelArch;
+        delete importedValues.samplingStrategy;
+        delete importedValues.pluginConfig;
+        delete importedValues.preferredExecutorId;
+
+        let switchSummary = {strategyFallback: false, preferredExecutorCleared: false};
+        const hasPluginPatch = Boolean(
+            importedModelArch
+            || pluginRelatedPatch.samplingStrategy !== undefined
+            || pluginRelatedPatch.pluginConfig !== undefined
+            || pluginRelatedPatch.preferredExecutorId !== undefined,
+        );
+        if (hasPluginPatch) {
+            const targetPluginId = importedModelArch || currentModelArch;
+            if (targetPluginId) {
+                switchSummary = applyPluginSelection(targetPluginId, {
+                    samplingStrategy: pluginRelatedPatch.samplingStrategy,
+                    pluginConfig: pluginRelatedPatch.pluginConfig as Record<string, any> | undefined,
+                    preferredExecutorId: pluginRelatedPatch.preferredExecutorId as string | undefined,
+                });
+            }
+        }
+
+        createForm.setFieldsValue(importedValues);
+        const switched = Boolean(importedModelArch) && importedModelArch !== currentModelArch;
+        const notes: string[] = [];
+        if (switched) {
+            notes.push(t('project.loopCreate.configExchange.messages.importAutoSwitchedPlugin', {
+                from: currentModelArch,
+                to: importedModelArch,
+            }));
+        }
+        if (switchSummary.strategyFallback) {
+            notes.push(t('project.loopCreate.configExchange.messages.importStrategyFallback'));
+        }
+        if (switchSummary.preferredExecutorCleared) {
+            notes.push(t('project.loopCreate.configExchange.messages.importPreferredExecutorCleared'));
+        }
+        if (imported.meta.ignoredByContextKeys.includes('branchId')) {
+            notes.push(t('project.loopCreate.configExchange.messages.importBranchIgnored'));
+        }
+        const summaryText = t('project.loopCreate.configExchange.messages.importSuccess', {
+            applied: imported.meta.appliedFieldCount,
+            ignored: imported.meta.ignoredFieldCount,
+        });
+        message.success(notes.length > 0 ? `${summaryText} ${notes.join(' ')}` : summaryText);
+    }, [applyPluginSelection, createForm, plugins, t]);
+
+    const handleExportConfigJson = useCallback(async () => {
+        const values = createForm.getFieldsValue(true);
+        const plugin = plugins.find((item) => item.pluginId === values.modelArch);
+        const jsonText = exportLoopFormValues(values, plugin);
+        try {
+            if (!navigator.clipboard?.writeText) {
+                throw new Error('clipboard_unavailable');
+            }
+            await navigator.clipboard.writeText(jsonText);
+            message.success(t('project.loopCreate.configExchange.messages.exportCopied'));
+        } catch {
+            setExportJsonText(jsonText);
+            setExportModalOpen(true);
+            message.warning(t('project.loopCreate.configExchange.messages.exportClipboardFailed'));
+        }
+    }, [createForm, plugins, t]);
+
+    const handleImportFromText = useCallback((rawJsonText: string) => {
+        try {
+            applyImportedConfig(rawJsonText);
+            setImportModalOpen(false);
+            setImportJsonText('');
+        } catch (error: any) {
+            const reason = error?.message || 'unknown_error';
+            message.error(t('project.loopCreate.configExchange.messages.importFailed', {reason}));
+        }
+    }, [applyImportedConfig, t]);
+
+    const handleImportFromClipboard = useCallback(async () => {
+        try {
+            if (!navigator.clipboard?.readText) {
+                throw new Error('clipboard_unavailable');
+            }
+            const rawText = await navigator.clipboard.readText();
+            if (!String(rawText || '').trim()) {
+                message.warning(t('project.loopCreate.configExchange.messages.importClipboardEmpty'));
+                return;
+            }
+            handleImportFromText(rawText);
+        } catch {
+            message.warning(t('project.loopCreate.configExchange.messages.importClipboardFailed'));
+            setImportModalOpen(true);
+        }
+    }, [handleImportFromText, t]);
 
     const handleCreate = async () => {
         if (!projectId) return;
@@ -303,29 +485,7 @@ const ProjectLoopCreate: React.FC = () => {
                                     value: item.pluginId,
                                 }))}
                                 onChange={(value) => {
-                                    const plugin = plugins.find((item) => item.pluginId === value);
-                                    if (!plugin) return;
-                                    const currentStrategy = createForm.getFieldValue('samplingStrategy');
-                                    const currentPluginConfig = createForm.getFieldValue('pluginConfig') || {};
-                                    const currentPreferredExecutorId = String(
-                                        createForm.getFieldValue('preferredExecutorId') || '',
-                                    ).trim();
-                                    const currentPreferredExecutor = executors.find(
-                                        (item) => item.executorId === currentPreferredExecutorId,
-                                    );
-                                    createForm.setFieldsValue({
-                                        samplingStrategy:
-                                            plugin.supportedStrategies.includes(currentStrategy)
-                                                ? currentStrategy
-                                                : pickDefaultSamplingStrategy(plugin),
-                                        pluginConfig: mergePluginConfigWithDefaults(plugin, currentPluginConfig),
-                                        preferredExecutorId: (
-                                            currentPreferredExecutor
-                                            && !executorSupportsPlugin(currentPreferredExecutor, String(value))
-                                        )
-                                            ? undefined
-                                            : currentPreferredExecutorId || undefined,
-                                    });
+                                    applyPluginSelection(String(value));
                                 }}
                             />
                         </Form.Item>
@@ -566,7 +726,45 @@ const ProjectLoopCreate: React.FC = () => {
                 <Card
                     className="!mt-4 !border-github-border !bg-github-panel"
                     title={selectedPlugin?.requestConfigSchema?.title || t('project.loopCreate.form.modelRequestParams')}
-                    extra={<Text type="secondary">{t('project.loopCreate.form.pluginSchemaHint')}</Text>}
+                    extra={(
+                        <div className="flex flex-wrap items-center gap-2">
+                            <Dropdown
+                                menu={{
+                                    items: [
+                                        {
+                                            key: 'export',
+                                            label: t('project.loopCreate.configExchange.actions.exportToClipboard'),
+                                        },
+                                        {
+                                            key: 'import_clipboard',
+                                            label: t('project.loopCreate.configExchange.actions.importFromClipboard'),
+                                        },
+                                        {
+                                            key: 'import_text',
+                                            label: t('project.loopCreate.configExchange.actions.importFromText'),
+                                        },
+                                    ],
+                                    onClick: ({key}) => {
+                                        if (key === 'export') {
+                                            void handleExportConfigJson();
+                                            return;
+                                        }
+                                        if (key === 'import_clipboard') {
+                                            void handleImportFromClipboard();
+                                            return;
+                                        }
+                                        setImportModalOpen(true);
+                                    },
+                                }}
+                                trigger={['click']}
+                            >
+                                <Button size="small">
+                                    {t('project.loopCreate.configExchange.actions.title')}
+                                </Button>
+                            </Dropdown>
+                            <Text type="secondary">{t('project.loopCreate.form.pluginSchemaHint')}</Text>
+                        </div>
+                    )}
                 >
                     {pluginConfigSchema.fields.length === 0 ? (
                         <Alert type="info" showIcon message={t('project.loopCreate.form.noDynamicSchema')}/>
@@ -602,6 +800,54 @@ const ProjectLoopCreate: React.FC = () => {
                     </div>
                 </Card>
             </Form>
+
+            <Modal
+                title={t('project.loopCreate.configExchange.importModal.title')}
+                open={importModalOpen}
+                onCancel={() => setImportModalOpen(false)}
+                onOk={() => handleImportFromText(importJsonText)}
+                okText={t('project.loopCreate.configExchange.importModal.confirm')}
+                cancelText={t('project.loopCreate.configExchange.importModal.cancel')}
+                width={880}
+            >
+                <div className="space-y-3">
+                    <Text type="secondary">{t('project.loopCreate.configExchange.importModal.inputHint')}</Text>
+                    <Input.TextArea
+                        rows={10}
+                        value={importJsonText}
+                        onChange={(event) => setImportJsonText(event.target.value)}
+                        placeholder={t('project.loopCreate.configExchange.importModal.inputPlaceholder')}
+                    />
+                    {importPreview.error ? (
+                        <Alert type="warning" showIcon message={importPreview.error}/>
+                    ) : null}
+                    {importPreview.formatted ? (
+                        <>
+                            <Text strong>{t('project.loopCreate.configExchange.importModal.previewTitle')}</Text>
+                            <Input.TextArea
+                                rows={8}
+                                readOnly
+                                value={importPreview.formatted}
+                            />
+                        </>
+                    ) : null}
+                </div>
+            </Modal>
+
+            <Modal
+                title={t('project.loopCreate.configExchange.exportModal.title')}
+                open={exportModalOpen}
+                onCancel={() => setExportModalOpen(false)}
+                onOk={() => setExportModalOpen(false)}
+                okText={t('project.loopCreate.configExchange.exportModal.confirm')}
+                cancelButtonProps={{style: {display: 'none'}}}
+                width={880}
+            >
+                <div className="space-y-3">
+                    <Text type="secondary">{t('project.loopCreate.configExchange.exportModal.hint')}</Text>
+                    <Input.TextArea rows={14} readOnly value={exportJsonText}/>
+                </div>
+            </Modal>
         </div>
     );
 };

@@ -29,7 +29,7 @@ type Querier interface {
 	FailDispatchingTaskByAck(ctx context.Context, arg FailDispatchingTaskByAckParams) (int64, error)
 	FindRoundIDByStep(ctx context.Context, stepID uuid.UUID) (uuid.UUID, error)
 	GetCommandLogByCommandID(ctx context.Context, commandID string) (GetCommandLogByCommandIDRow, error)
-	GetDependencyTaskStatusesByIDs(ctx context.Context, taskIds []uuid.UUID) ([]Runtimetaskstatus, error)
+	GetDependencyTaskStatusesByIDs(ctx context.Context, taskIds []uuid.UUID) ([]GetDependencyTaskStatusesByIDsRow, error)
 	GetLatestAssignedExecutorByTaskIDs(ctx context.Context, taskIds []uuid.UUID) (string, error)
 	GetLatestRoundByLoop(ctx context.Context, loopID uuid.UUID) (GetLatestRoundByLoopRow, error)
 	GetLatestSucceededTrainTaskIDByRound(ctx context.Context, roundID uuid.UUID) (uuid.UUID, error)

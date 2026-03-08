@@ -47,24 +47,31 @@ func (q *Queries) DeleteTaskCandidatesByTaskID(ctx context.Context, taskID uuid.
 }
 
 const getDependencyTaskStatusesByIDs = `-- name: GetDependencyTaskStatusesByIDs :many
-SELECT status
+SELECT
+  status,
+  result_ready_at
 FROM task
 WHERE id = ANY($1::uuid[])
 `
 
-func (q *Queries) GetDependencyTaskStatusesByIDs(ctx context.Context, taskIds []uuid.UUID) ([]Runtimetaskstatus, error) {
+type GetDependencyTaskStatusesByIDsRow struct {
+	Status        Runtimetaskstatus
+	ResultReadyAt pgtype.Timestamptz
+}
+
+func (q *Queries) GetDependencyTaskStatusesByIDs(ctx context.Context, taskIds []uuid.UUID) ([]GetDependencyTaskStatusesByIDsRow, error) {
 	rows, err := q.db.Query(ctx, getDependencyTaskStatusesByIDs, taskIds)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Runtimetaskstatus
+	var items []GetDependencyTaskStatusesByIDsRow
 	for rows.Next() {
-		var status Runtimetaskstatus
-		if err := rows.Scan(&status); err != nil {
+		var i GetDependencyTaskStatusesByIDsRow
+		if err := rows.Scan(&i.Status, &i.ResultReadyAt); err != nil {
 			return nil, err
 		}
-		items = append(items, status)
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -219,6 +226,7 @@ JOIN step s ON s.task_id = t.id
 WHERE s.round_id = $1::uuid
   AND t.task_type = 'SCORE'::runtimetasktype
   AND t.status = 'SUCCEEDED'::runtimetaskstatus
+  AND t.result_ready_at IS NOT NULL
 ORDER BY s.step_index DESC
 LIMIT 1
 `

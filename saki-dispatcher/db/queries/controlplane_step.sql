@@ -54,7 +54,9 @@ WHERE k.id = sqlc.arg(task_id)::uuid
 FOR UPDATE OF k SKIP LOCKED;
 
 -- name: GetDependencyTaskStatusesByIDs :many
-SELECT status
+SELECT
+  status,
+  result_ready_at
 FROM task
 WHERE id = ANY(sqlc.arg(task_ids)::uuid[]);
 
@@ -77,6 +79,7 @@ JOIN step s ON s.task_id = t.id
 WHERE s.round_id = sqlc.arg(round_id)::uuid
   AND t.task_type = 'SCORE'::runtimetasktype
   AND t.status = 'SUCCEEDED'::runtimetaskstatus
+  AND t.result_ready_at IS NOT NULL
 ORDER BY s.step_index DESC
 LIMIT 1;
 

@@ -1071,6 +1071,7 @@ CREATE TABLE public.task (
     max_attempts integer NOT NULL,
     started_at timestamp with time zone,
     ended_at timestamp with time zone,
+    result_ready_at timestamp with time zone,
     last_error character varying(4000)
 );
 

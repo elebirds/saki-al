@@ -1330,6 +1330,30 @@ type ImportTaskEvent struct {
 	Detail       []byte
 }
 
+type ImportUploadSession struct {
+	CreatedAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
+	ID                uuid.UUID
+	UserID            uuid.UUID
+	Mode              string
+	ResourceType      string
+	ResourceID        uuid.UUID
+	Filename          string
+	Size              int32
+	ContentType       string
+	FileSha256        pgtype.Text
+	ObjectKey         string
+	Bucket            pgtype.Text
+	Strategy          string
+	MultipartUploadID pgtype.Text
+	Status            string
+	Error             pgtype.Text
+	UploadedSize      int32
+	ExpiresAt         pgtype.Timestamptz
+	CompletedAt       pgtype.Timestamptz
+	MetaInfo          []byte
+}
+
 type Label struct {
 	ID          uuid.UUID
 	CreatedAt   pgtype.Timestamptz
@@ -1671,6 +1695,7 @@ type Task struct {
 	MaxAttempts        int32
 	StartedAt          pgtype.Timestamptz
 	EndedAt            pgtype.Timestamptz
+	ResultReadyAt      pgtype.Timestamptz
 	LastError          pgtype.Text
 }
 

@@ -32,4 +32,5 @@ class Task(UUIDMixin, TimestampMixin, SQLModel, table=True):
     max_attempts: int = Field(default=2, ge=1)
     started_at: datetime | None = Field(default=None, sa_type=sa.DateTime(timezone=True))
     ended_at: datetime | None = Field(default=None, sa_type=sa.DateTime(timezone=True))
+    result_ready_at: datetime | None = Field(default=None, sa_type=sa.DateTime(timezone=True))
     last_error: str | None = Field(default=None, max_length=4000)

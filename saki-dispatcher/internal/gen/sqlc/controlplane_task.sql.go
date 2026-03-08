@@ -17,6 +17,7 @@ UPDATE task
 SET status = 'CANCELLED'::runtimetaskstatus,
     last_error = $1,
     ended_at = COALESCE(ended_at, now()),
+    result_ready_at = NULL,
     updated_at = now()
 WHERE id = $2::uuid
 `
@@ -54,6 +55,7 @@ SET status = 'FAILED'::runtimetaskstatus,
     started_at = COALESCE(started_at, now()),
     ended_at = COALESCE(ended_at, now()),
     last_error = $1,
+    result_ready_at = NULL,
     updated_at = now()
 WHERE id = $2::uuid
   AND status = 'DISPATCHING'::runtimetaskstatus
@@ -336,6 +338,7 @@ SET status = 'RETRYING'::runtimetaskstatus,
     last_error = $1,
     assigned_executor_id = NULL,
     ended_at = NULL,
+    result_ready_at = NULL,
     updated_at = now()
 WHERE id = $2::uuid
   AND status = 'RUNNING'::runtimetaskstatus
@@ -360,6 +363,7 @@ UPDATE task
 SET status = 'RUNNING'::runtimetaskstatus,
     started_at = COALESCE(started_at, now()),
     last_error = NULL,
+    result_ready_at = NULL,
     updated_at = now()
 WHERE id = $1::uuid
   AND status = 'READY'::runtimetaskstatus
@@ -378,6 +382,7 @@ UPDATE task
 SET status = 'DISPATCHING'::runtimetaskstatus,
     assigned_executor_id = $1,
     last_error = NULL,
+    result_ready_at = NULL,
     updated_at = now()
 WHERE id = $2::uuid
 `
@@ -400,6 +405,7 @@ UPDATE task
 SET status = 'DISPATCHING'::runtimetaskstatus,
     assigned_executor_id = $1,
     last_error = NULL,
+    result_ready_at = NULL,
     updated_at = now()
 WHERE id = $2::uuid
   AND status = 'READY'::runtimetaskstatus
@@ -467,6 +473,7 @@ UPDATE task
 SET status = 'READY'::runtimetaskstatus,
     last_error = NULL,
     ended_at = NULL,
+    result_ready_at = NULL,
     updated_at = now()
 WHERE id = $1::uuid
   AND status = 'RETRYING'::runtimetaskstatus
@@ -485,6 +492,7 @@ UPDATE task
 SET status = 'READY'::runtimetaskstatus,
     last_error = NULL,
     ended_at = NULL,
+    result_ready_at = NULL,
     updated_at = now()
 WHERE id = $1::uuid
   AND status = 'PENDING'::runtimetaskstatus
@@ -504,6 +512,7 @@ SET status = 'READY'::runtimetaskstatus,
     assigned_executor_id = NULL,
     ended_at = NULL,
     last_error = $1,
+    result_ready_at = NULL,
     updated_at = now()
 WHERE id = $2::uuid
   AND status IN (
@@ -539,6 +548,7 @@ SET status = 'FAILED'::runtimetaskstatus,
     started_at = COALESCE(started_at, now()),
     ended_at = COALESCE(ended_at, now()),
     last_error = $1,
+    result_ready_at = NULL,
     updated_at = now()
 WHERE id = $2::uuid
   AND status = 'RUNNING'::runtimetaskstatus
@@ -569,6 +579,7 @@ SET status = 'RETRYING'::runtimetaskstatus,
     assigned_executor_id = NULL,
     ended_at = NULL,
     last_error = $1,
+    result_ready_at = NULL,
     updated_at = now()
 WHERE id = $2::uuid
   AND status = 'RUNNING'::runtimetaskstatus
@@ -599,6 +610,7 @@ SET status = 'READY'::runtimetaskstatus,
     assigned_executor_id = NULL,
     last_error = $1,
     ended_at = NULL,
+    result_ready_at = NULL,
     updated_at = now()
 WHERE id = $2::uuid
   AND status IN (
@@ -628,6 +640,7 @@ SET status = 'READY'::runtimetaskstatus,
     assigned_executor_id = NULL,
     ended_at = NULL,
     last_error = $1,
+    result_ready_at = NULL,
     updated_at = now()
 WHERE id = $2::uuid
   AND status = 'DISPATCHING'::runtimetaskstatus
@@ -653,6 +666,7 @@ UPDATE task
 SET status = 'READY'::runtimetaskstatus,
     assigned_executor_id = NULL,
     last_error = 'executor unavailable or queue full',
+    result_ready_at = NULL,
     updated_at = now()
 WHERE id = $1::uuid
 `
@@ -672,6 +686,7 @@ SET status = 'RETRYING'::runtimetaskstatus,
     assigned_executor_id = NULL,
     ended_at = NULL,
     last_error = $1,
+    result_ready_at = NULL,
     updated_at = now()
 WHERE id = $2::uuid
   AND status = 'DISPATCHING'::runtimetaskstatus
@@ -717,6 +732,10 @@ SET status = $1::runtimetaskstatus,
       ) THEN NULL
       ELSE assigned_executor_id
     END,
+    result_ready_at = CASE
+      WHEN $1::runtimetaskstatus = 'SUCCEEDED'::runtimetaskstatus THEN COALESCE(result_ready_at, now())
+      ELSE NULL
+    END,
     updated_at = now()
 WHERE id = $3::uuid
   AND status = $4::runtimetaskstatus
@@ -755,6 +774,10 @@ SET status = $1::runtimetaskstatus,
         'SKIPPED'::runtimetaskstatus
       ) THEN COALESCE(ended_at, now())
       ELSE ended_at
+    END,
+    result_ready_at = CASE
+      WHEN $1::runtimetaskstatus = 'SUCCEEDED'::runtimetaskstatus THEN COALESCE(result_ready_at, now())
+      ELSE NULL
     END,
     last_error = $3::text,
     updated_at = now()
@@ -802,6 +825,24 @@ SET status = $1::runtimetaskstatus,
         'SKIPPED'::runtimetaskstatus
       ) THEN COALESCE(ended_at, now())
       ELSE ended_at
+    END,
+    result_ready_at = CASE
+      WHEN $1::runtimetaskstatus IN (
+        'PENDING'::runtimetaskstatus,
+        'READY'::runtimetaskstatus,
+        'DISPATCHING'::runtimetaskstatus,
+        'SYNCING_ENV'::runtimetaskstatus,
+        'PROBING_RUNTIME'::runtimetaskstatus,
+        'BINDING_DEVICE'::runtimetaskstatus,
+        'RUNNING'::runtimetaskstatus,
+        'RETRYING'::runtimetaskstatus
+      ) THEN NULL
+      WHEN $1::runtimetaskstatus IN (
+        'FAILED'::runtimetaskstatus,
+        'CANCELLED'::runtimetaskstatus,
+        'SKIPPED'::runtimetaskstatus
+      ) THEN NULL
+      ELSE result_ready_at
     END,
     last_error = $2::text,
     updated_at = now()

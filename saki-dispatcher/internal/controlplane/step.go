@@ -2,6 +2,7 @@ package controlplane
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -18,6 +19,12 @@ import (
 	db "github.com/elebirds/saki/saki-dispatcher/internal/gen/sqlc"
 	"github.com/elebirds/saki/saki-dispatcher/internal/runtime_domain_client"
 )
+
+var errSelectCandidatesNotReady = errors.New("select candidates not ready")
+
+func isOrchestratorRetryableError(err error) bool {
+	return runtime_domain_client.IsTransientError(err) || errors.Is(err, errSelectCandidatesNotReady)
+}
 
 func (s *Service) dispatchPending(ctx context.Context, limit int) (int, error) {
 	if !s.dbEnabled() {
@@ -440,7 +447,7 @@ func (s *Service) executeOrchestratorStepTx(
 		if lastError == "" {
 			lastError = "编排步骤执行失败"
 		}
-		if runtime_domain_client.IsTransientError(err) {
+		if isOrchestratorRetryableError(err) {
 			retried, retryErr := s.markOrchestratorTaskRetryingTx(ctx, tx, taskID, lastError)
 			if retryErr != nil {
 				return false, retryErr
@@ -532,7 +539,7 @@ func (s *Service) runSelectTopKTx(ctx context.Context, tx pgx.Tx, stepPayload st
 	scoreTaskID, err := s.qtx(tx).GetSucceededScoreTaskIDByRound(ctx, stepPayload.RoundID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
-			return fmt.Errorf("SELECT 依赖的 SCORE task 结果尚未就绪: task_id=%s step_id=%s", selectTaskID, stepPayload.StepID)
+			return fmt.Errorf("%w: score task not ready task_id=%s step_id=%s round_id=%s", errSelectCandidatesNotReady, selectTaskID, stepPayload.StepID, stepPayload.RoundID)
 		}
 		return err
 	}
@@ -542,6 +549,9 @@ func (s *Service) runSelectTopKTx(ctx context.Context, tx pgx.Tx, stepPayload st
 	})
 	if err != nil {
 		return err
+	}
+	if len(rows) == 0 {
+		return fmt.Errorf("%w: score_task_id=%s round_id=%s", errSelectCandidatesNotReady, scoreTaskID, stepPayload.RoundID)
 	}
 
 	type candidateRow struct {
@@ -1028,16 +1038,26 @@ func (s *Service) dependenciesSatisfiedTx(ctx context.Context, tx pgx.Tx, depend
 	if len(dependencyIDs) == 0 {
 		return true, nil
 	}
-	states, err := s.qtx(tx).GetDependencyTaskStatusesByIDs(ctx, dependencyIDs)
+	rows, err := s.qtx(tx).GetDependencyTaskStatusesByIDs(ctx, dependencyIDs)
 	if err != nil {
 		return false, err
 	}
-	for _, state := range states {
-		if state != db.RuntimetaskstatusSUCCEEDED {
-			return false, nil
+	return dependencyRowsReady(rows, len(dependencyIDs)), nil
+}
+
+func dependencyRowsReady(rows []db.GetDependencyTaskStatusesByIDsRow, expectedCount int) bool {
+	if len(rows) != expectedCount {
+		return false
+	}
+	for _, row := range rows {
+		if row.Status != db.RuntimetaskstatusSUCCEEDED {
+			return false
+		}
+		if !row.ResultReadyAt.Valid {
+			return false
 		}
 	}
-	return len(states) == len(dependencyIDs), nil
+	return true
 }
 
 type stepRuntimeRequirements struct {

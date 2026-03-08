@@ -1,10 +1,12 @@
 package controlplane
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/spf13/cast"
 	"google.golang.org/protobuf/types/known/structpb"
 
@@ -634,5 +636,45 @@ func TestBuildTaskResultCandidateRows(t *testing.T) {
 	}
 	if _, exists := snapshot["base_predictions"]; !exists {
 		t.Fatalf("prediction_snapshot should include base_predictions: %v", snapshot)
+	}
+}
+
+func TestDependencyRowsReadyRequiresSucceededAndMaterialized(t *testing.T) {
+	rows := []db.GetDependencyTaskStatusesByIDsRow{
+		{
+			Status:        db.RuntimetaskstatusSUCCEEDED,
+			ResultReadyAt: pgtype.Timestamptz{Valid: true},
+		},
+		{
+			Status:        db.RuntimetaskstatusSUCCEEDED,
+			ResultReadyAt: pgtype.Timestamptz{Valid: true},
+		},
+	}
+	if !dependencyRowsReady(rows, 2) {
+		t.Fatal("all succeeded dependencies with materialized results should pass")
+	}
+
+	rows[1].ResultReadyAt = pgtype.Timestamptz{Valid: false}
+	if dependencyRowsReady(rows, 2) {
+		t.Fatal("dependency without result_ready_at should block")
+	}
+
+	rows[1] = db.GetDependencyTaskStatusesByIDsRow{
+		Status:        db.RuntimetaskstatusRUNNING,
+		ResultReadyAt: pgtype.Timestamptz{Valid: true},
+	}
+	if dependencyRowsReady(rows, 2) {
+		t.Fatal("dependency not in succeeded status should block")
+	}
+
+	if dependencyRowsReady(rows[:1], 2) {
+		t.Fatal("dependency count mismatch should block")
+	}
+}
+
+func TestIsOrchestratorRetryableErrorIncludesSelectCandidatesNotReady(t *testing.T) {
+	wrapped := fmt.Errorf("wrapped: %w", errSelectCandidatesNotReady)
+	if !isOrchestratorRetryableError(wrapped) {
+		t.Fatal("select candidates not ready error should be retryable")
 	}
 }

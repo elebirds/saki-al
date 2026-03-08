@@ -75,6 +75,7 @@ UPDATE task
 SET status = 'DISPATCHING'::runtimetaskstatus,
     assigned_executor_id = sqlc.arg(assigned_executor_id),
     last_error = NULL,
+    result_ready_at = NULL,
     updated_at = now()
 WHERE id = sqlc.arg(task_id)::uuid;
 
@@ -83,6 +84,7 @@ UPDATE task
 SET status = 'READY'::runtimetaskstatus,
     last_error = NULL,
     ended_at = NULL,
+    result_ready_at = NULL,
     updated_at = now()
 WHERE id = sqlc.arg(task_id)::uuid
   AND status = 'PENDING'::runtimetaskstatus;
@@ -92,6 +94,7 @@ UPDATE task
 SET status = 'READY'::runtimetaskstatus,
     last_error = NULL,
     ended_at = NULL,
+    result_ready_at = NULL,
     updated_at = now()
 WHERE id = sqlc.arg(task_id)::uuid
   AND status = 'RETRYING'::runtimetaskstatus;
@@ -101,6 +104,7 @@ UPDATE task
 SET status = 'DISPATCHING'::runtimetaskstatus,
     assigned_executor_id = sqlc.arg(assigned_executor_id),
     last_error = NULL,
+    result_ready_at = NULL,
     updated_at = now()
 WHERE id = sqlc.arg(task_id)::uuid
   AND status = 'READY'::runtimetaskstatus;
@@ -110,6 +114,7 @@ UPDATE task
 SET status = 'READY'::runtimetaskstatus,
     assigned_executor_id = NULL,
     last_error = 'executor unavailable or queue full',
+    result_ready_at = NULL,
     updated_at = now()
 WHERE id = sqlc.arg(task_id)::uuid;
 
@@ -135,6 +140,24 @@ SET status = sqlc.arg(status)::runtimetaskstatus,
       ) THEN COALESCE(ended_at, now())
       ELSE ended_at
     END,
+    result_ready_at = CASE
+      WHEN sqlc.arg(status)::runtimetaskstatus IN (
+        'PENDING'::runtimetaskstatus,
+        'READY'::runtimetaskstatus,
+        'DISPATCHING'::runtimetaskstatus,
+        'SYNCING_ENV'::runtimetaskstatus,
+        'PROBING_RUNTIME'::runtimetaskstatus,
+        'BINDING_DEVICE'::runtimetaskstatus,
+        'RUNNING'::runtimetaskstatus,
+        'RETRYING'::runtimetaskstatus
+      ) THEN NULL
+      WHEN sqlc.arg(status)::runtimetaskstatus IN (
+        'FAILED'::runtimetaskstatus,
+        'CANCELLED'::runtimetaskstatus,
+        'SKIPPED'::runtimetaskstatus
+      ) THEN NULL
+      ELSE result_ready_at
+    END,
     last_error = sqlc.narg(last_error)::text,
     updated_at = now()
 WHERE id = sqlc.arg(task_id)::uuid;
@@ -144,6 +167,7 @@ UPDATE task
 SET status = 'RUNNING'::runtimetaskstatus,
     started_at = COALESCE(started_at, now()),
     last_error = NULL,
+    result_ready_at = NULL,
     updated_at = now()
 WHERE id = sqlc.arg(task_id)::uuid
   AND status = 'READY'::runtimetaskstatus;
@@ -155,6 +179,7 @@ SET status = 'RETRYING'::runtimetaskstatus,
     last_error = sqlc.arg(last_error),
     assigned_executor_id = NULL,
     ended_at = NULL,
+    result_ready_at = NULL,
     updated_at = now()
 WHERE id = sqlc.arg(task_id)::uuid
   AND status = 'RUNNING'::runtimetaskstatus
@@ -184,6 +209,10 @@ SET status = sqlc.arg(status)::runtimetaskstatus,
       ) THEN NULL
       ELSE assigned_executor_id
     END,
+    result_ready_at = CASE
+      WHEN sqlc.arg(status)::runtimetaskstatus = 'SUCCEEDED'::runtimetaskstatus THEN COALESCE(result_ready_at, now())
+      ELSE NULL
+    END,
     updated_at = now()
 WHERE id = sqlc.arg(task_id)::uuid
   AND status = sqlc.arg(from_status)::runtimetaskstatus;
@@ -202,6 +231,10 @@ SET status = sqlc.arg(status)::runtimetaskstatus,
       ) THEN COALESCE(ended_at, now())
       ELSE ended_at
     END,
+    result_ready_at = CASE
+      WHEN sqlc.arg(status)::runtimetaskstatus = 'SUCCEEDED'::runtimetaskstatus THEN COALESCE(result_ready_at, now())
+      ELSE NULL
+    END,
     last_error = sqlc.narg(last_error)::text,
     updated_at = now()
 WHERE id = sqlc.arg(task_id)::uuid;
@@ -211,6 +244,7 @@ UPDATE task
 SET status = 'CANCELLED'::runtimetaskstatus,
     last_error = sqlc.arg(last_error),
     ended_at = COALESCE(ended_at, now()),
+    result_ready_at = NULL,
     updated_at = now()
 WHERE id = sqlc.arg(task_id)::uuid;
 
@@ -220,6 +254,7 @@ SET status = 'READY'::runtimetaskstatus,
     assigned_executor_id = NULL,
     last_error = sqlc.arg(last_error),
     ended_at = NULL,
+    result_ready_at = NULL,
     updated_at = now()
 WHERE id = sqlc.arg(task_id)::uuid
   AND status IN (
@@ -235,6 +270,7 @@ SET status = 'READY'::runtimetaskstatus,
     assigned_executor_id = NULL,
     ended_at = NULL,
     last_error = sqlc.arg(last_error),
+    result_ready_at = NULL,
     updated_at = now()
 WHERE id = sqlc.arg(task_id)::uuid
   AND status = 'DISPATCHING'::runtimetaskstatus
@@ -247,6 +283,7 @@ SET status = 'RETRYING'::runtimetaskstatus,
     assigned_executor_id = NULL,
     ended_at = NULL,
     last_error = sqlc.arg(last_error),
+    result_ready_at = NULL,
     updated_at = now()
 WHERE id = sqlc.arg(task_id)::uuid
   AND status = 'DISPATCHING'::runtimetaskstatus
@@ -260,6 +297,7 @@ SET status = 'FAILED'::runtimetaskstatus,
     started_at = COALESCE(started_at, now()),
     ended_at = COALESCE(ended_at, now()),
     last_error = sqlc.arg(last_error),
+    result_ready_at = NULL,
     updated_at = now()
 WHERE id = sqlc.arg(task_id)::uuid
   AND status = 'DISPATCHING'::runtimetaskstatus
@@ -271,6 +309,7 @@ SET status = 'READY'::runtimetaskstatus,
     assigned_executor_id = NULL,
     ended_at = NULL,
     last_error = sqlc.arg(last_error),
+    result_ready_at = NULL,
     updated_at = now()
 WHERE id = sqlc.arg(task_id)::uuid
   AND status IN (
@@ -291,6 +330,7 @@ SET status = 'RETRYING'::runtimetaskstatus,
     assigned_executor_id = NULL,
     ended_at = NULL,
     last_error = sqlc.arg(last_error),
+    result_ready_at = NULL,
     updated_at = now()
 WHERE id = sqlc.arg(task_id)::uuid
   AND status = 'RUNNING'::runtimetaskstatus
@@ -307,6 +347,7 @@ SET status = 'FAILED'::runtimetaskstatus,
     started_at = COALESCE(started_at, now()),
     ended_at = COALESCE(ended_at, now()),
     last_error = sqlc.arg(last_error),
+    result_ready_at = NULL,
     updated_at = now()
 WHERE id = sqlc.arg(task_id)::uuid
   AND status = 'RUNNING'::runtimetaskstatus

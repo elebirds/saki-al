@@ -125,6 +125,23 @@ class TrainingDataService:
             for item in samples
             if str(item.get("id") or "") not in labeled_sample_ids
         ]
+        mode = str(runtime_context.mode or "").strip().lower()
+        manual_train_mode = mode == "manual" and task_type == "train"
+        manual_negative_pool_scope = "empty_confirmed_only" if manual_train_mode else "n/a"
+        empty_confirmed_candidates = 0
+        unknown_review_state_count = 0
+        if manual_train_mode:
+            manual_negative_candidates: list[dict[str, Any]] = []
+            for item in negative_candidates:
+                review_state = self._extract_sample_commit_review_state(item)
+                if review_state == "empty_confirmed":
+                    manual_negative_candidates.append(item)
+                elif review_state == "labeled":
+                    continue
+                else:
+                    unknown_review_state_count += 1
+            negative_candidates = manual_negative_candidates
+            empty_confirmed_candidates = len(negative_candidates)
         try:
             split_seed = max(0, int(runtime_context.split_seed))
         except Exception:
@@ -176,6 +193,9 @@ class TrainingDataService:
                         f"negative_sample_ratio生效值={effective_ratio_text} "
                         f"正样本数={len(positive_samples)} "
                         f"负样本候选数={len(negative_candidates)} "
+                        f"manual_negative_pool_scope={manual_negative_pool_scope} "
+                        f"empty_confirmed_candidates={empty_confirmed_candidates} "
+                        f"unknown_review_state_count={unknown_review_state_count} "
                         f"预计保留上限={keep_limit}"
                     ),
                 },
@@ -205,6 +225,9 @@ class TrainingDataService:
                         f"负样本候选数={len(negative_candidates)} "
                         f"负样本保留数={len(negative_kept)} "
                         f"负样本裁剪数={max(0, len(negative_candidates) - len(negative_kept))} "
+                        f"manual_negative_pool_scope={manual_negative_pool_scope} "
+                        f"empty_confirmed_candidates={empty_confirmed_candidates} "
+                        f"unknown_review_state_count={unknown_review_state_count} "
                         f"保留上限={keep_limit} "
                         f"negative_ratio={'inf' if negative_sample_ratio is None else f'{float(negative_sample_ratio):g}'}"
                     ),
@@ -244,7 +267,6 @@ class TrainingDataService:
             val_ratio = 0.2
         val_ratio = min(0.5, max(0.05, val_ratio))
 
-        mode = str(runtime_context.mode or "").strip().lower()
         snapshot_mode = mode in {"active_learning", "simulation"} and task_type == "train"
         split_source = "random"
         if snapshot_mode:
@@ -371,6 +393,14 @@ class TrainingDataService:
         if not math.isfinite(value):
             return 0.0
         return max(0.0, value)
+
+    @staticmethod
+    def _extract_sample_commit_review_state(sample: dict[str, Any] | None) -> str:
+        if not isinstance(sample, dict):
+            return ""
+        meta = sample.get("meta")
+        meta_map = meta if isinstance(meta, dict) else {}
+        return str(meta_map.get("_commit_review_state") or "").strip().lower()
 
     @staticmethod
     def _split_samples_from_snapshot(

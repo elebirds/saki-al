@@ -21,6 +21,7 @@ from saki_api.infra.grpc import runtime_codec
 from saki_api.infra.storage.provider import get_storage_provider
 from saki_api.modules.annotation.domain.annotation import Annotation
 from saki_api.modules.annotation.domain.camap import CommitAnnotationMap
+from saki_api.modules.project.domain.commit_sample_state import CommitSampleState
 from saki_api.modules.project.domain.label import Label
 from saki_api.modules.project.domain.project import ProjectDataset
 from saki_api.modules.runtime.domain.al_loop_visibility import ALLoopVisibility
@@ -35,6 +36,7 @@ from saki_api.modules.runtime.service.application.control_plane_dto import (
     RuntimeUploadTicketRequestDTO,
 )
 from saki_api.modules.shared.modeling.enums import (
+    CommitSampleReviewState,
     LoopMode,
     SnapshotPartition,
     StepType,
@@ -267,6 +269,8 @@ class RuntimeControlIngressService:
             snapshot_scope_sample_ids: set[uuid.UUID] | None = None
             snapshot_split_hints: dict[str, str] | None = None
             snapshot_partition_hints: dict[str, str] | None = None
+            commit_review_state_hints: dict[str, str] | None = None
+            manual_train_eval_scope_sample_ids: set[uuid.UUID] | None = None
             if query_type in {pb.SAMPLES, pb.UNLABELED_SAMPLES, pb.ANNOTATIONS}:
                 loop_id, mode, step_type, snapshot = await self._resolve_task_snapshot_scope(
                     session=session,
@@ -359,6 +363,49 @@ class RuntimeControlIngressService:
                             snapshot_scope_sample_ids = visible_ids.union(val_ids)
                             snapshot_split_hints = {str(sample_id): "train" for sample_id in visible_ids}
                             snapshot_split_hints.update({str(sample_id): "val" for sample_id in val_ids})
+                step_type_text = str(
+                    step_type.value if hasattr(step_type, "value") else step_type
+                ).strip().lower()
+                if (
+                    query_type == pb.SAMPLES
+                    and mode == LoopMode.MANUAL
+                    and step_type_text in {StepType.TRAIN.value, StepType.EVAL.value}
+                ):
+                    review_rows = (
+                        await session.exec(
+                            select(CommitSampleState.sample_id, CommitSampleState.state).where(
+                                CommitSampleState.commit_id == commit_id,
+                                CommitSampleState.state.in_(
+                                    (
+                                        CommitSampleReviewState.LABELED,
+                                        CommitSampleReviewState.EMPTY_CONFIRMED,
+                                    )
+                                ),
+                            )
+                        )
+                    ).all()
+                    review_state_by_sample_id: dict[uuid.UUID, str] = {}
+                    for sample_id, state in review_rows:
+                        state_text = str(state.value if hasattr(state, "value") else state).strip().lower()
+                        if state_text:
+                            review_state_by_sample_id[sample_id] = state_text
+                    manual_train_eval_scope_sample_ids = set(review_state_by_sample_id.keys())
+                    manual_annotated_sample_ids = {
+                        row[0] if isinstance(row, (tuple, list)) else row
+                        for row in (
+                            await session.exec(
+                                select(CommitAnnotationMap.sample_id)
+                                .where(CommitAnnotationMap.commit_id == commit_id)
+                                .distinct()
+                            )
+                        ).all()
+                    }
+                    manual_train_eval_scope_sample_ids.update(manual_annotated_sample_ids)
+                    if review_state_by_sample_id:
+                        commit_review_state_hints = {
+                            str(sample_id): state_text
+                            for sample_id, state_text in review_state_by_sample_id.items()
+                        }
 
             if query_type in {pb.SAMPLES, pb.UNLABELED_SAMPLES}:
                 dataset_ids = [
@@ -377,6 +424,10 @@ class RuntimeControlIngressService:
                     if not snapshot_scope_sample_ids:
                         return irpb.DataBatchIR(), None
                     base_stmt = base_stmt.where(Sample.id.in_(list(snapshot_scope_sample_ids)))
+                elif manual_train_eval_scope_sample_ids is not None:
+                    if not manual_train_eval_scope_sample_ids:
+                        return irpb.DataBatchIR(), None
+                    base_stmt = base_stmt.where(Sample.id.in_(list(manual_train_eval_scope_sample_ids)))
                 elif query_type == pb.UNLABELED_SAMPLES:
                     labeled_ids = [
                         row[0] if isinstance(row, (tuple, list)) else row
@@ -404,6 +455,7 @@ class RuntimeControlIngressService:
                     samples=page,
                     snapshot_split_hints=snapshot_split_hints,
                     snapshot_partition_hints=snapshot_partition_hints,
+                    commit_review_state_hints=commit_review_state_hints,
                 )
                 return irpb.DataBatchIR(items=items), next_cursor
 
@@ -476,6 +528,7 @@ class RuntimeControlIngressService:
         samples: list[Sample],
         snapshot_split_hints: dict[str, str] | None = None,
         snapshot_partition_hints: dict[str, str] | None = None,
+        commit_review_state_hints: dict[str, str] | None = None,
     ) -> list[irpb.DataItemIR]:
         items: list[irpb.DataItemIR] = []
         for sample in samples:
@@ -503,6 +556,13 @@ class RuntimeControlIngressService:
                 partition_hint = snapshot_partition_hints.get(str(sample.id))
                 if partition_hint:
                     meta_payload["_snapshot_partition"] = partition_hint
+            if commit_review_state_hints:
+                review_state_hint = str(commit_review_state_hints.get(str(sample.id)) or "").strip().lower()
+                if review_state_hint in {
+                    CommitSampleReviewState.LABELED.value,
+                    CommitSampleReviewState.EMPTY_CONFIRMED.value,
+                }:
+                    meta_payload["_commit_review_state"] = review_state_hint
             items.append(
                 irpb.DataItemIR(
                     sample=irpb.SampleRecord(

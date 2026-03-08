@@ -6,7 +6,12 @@ import json
 from typing import Any
 
 from saki_plugin_sdk import ExecutionBindingContext, EventCallback, TrainArtifact, TrainOutput, WorkspaceProtocol
-from saki_plugin_sdk.strategies.builtin import score_by_strategy
+from saki_plugin_sdk.strategies.builtin import (
+    CANONICAL_AUG_IOU_STRATEGY,
+    CANONICAL_UNCERTAINTY_STRATEGY,
+    normalize_strategy_name,
+    score_by_strategy,
+)
 
 
 class DemoDetectionInternal:
@@ -205,33 +210,69 @@ class DemoDetectionInternal:
             context: ExecutionBindingContext,
     ) -> list[dict[str, Any]]:
         del workspace, context
+        strategy_key = normalize_strategy_name(strategy)
+        random_seed = int(params.get("sampling_seed", params.get("random_seed", 0)) or 0)
+        round_index = int(params.get("round_index", 1) or 1)
         candidates: list[dict[str, Any]] = []
         for sample in unlabeled_samples:
             sample_id = str(sample.get("id") or "")
             if not sample_id:
                 continue
-            score, reason = score_by_strategy(strategy, sample_id)
+            base_prediction = {
+                "class_index": 0,
+                "class_name": "demo",
+                "confidence": 0.8,
+                "geometry": {
+                    "rect": {
+                        "x": 10.0,
+                        "y": 10.0,
+                        "width": 90.0,
+                        "height": 90.0,
+                    }
+                },
+            }
+            if strategy_key == CANONICAL_UNCERTAINTY_STRATEGY:
+                score, reason = score_by_strategy(
+                    strategy_key,
+                    sample_id,
+                    random_seed=random_seed,
+                    round_index=round_index,
+                    predictions=[base_prediction],
+                )
+            elif strategy_key == CANONICAL_AUG_IOU_STRATEGY:
+                aug_prediction = {
+                    **base_prediction,
+                    "confidence": 0.75,
+                    "geometry": {
+                        "rect": {
+                            "x": 14.0,
+                            "y": 10.0,
+                            "width": 90.0,
+                            "height": 90.0,
+                        }
+                    },
+                }
+                score, reason = score_by_strategy(
+                    strategy_key,
+                    sample_id,
+                    random_seed=random_seed,
+                    round_index=round_index,
+                    predictions_by_aug=[[base_prediction], [aug_prediction]],
+                )
+            else:
+                score, reason = score_by_strategy(
+                    strategy_key,
+                    sample_id,
+                    random_seed=random_seed,
+                    round_index=round_index,
+                )
             candidates.append(
                 {
                     "sample_id": sample_id,
                     "score": score,
                     "reason": reason,
                     "prediction_snapshot": {
-                        "base_predictions": [
-                            {
-                                "class_index": 0,
-                                "class_name": "demo",
-                                "confidence": float(score),
-                                "geometry": {
-                                    "rect": {
-                                        "x": 10.0,
-                                        "y": 10.0,
-                                        "width": 90.0,
-                                        "height": 90.0,
-                                    }
-                                },
-                            }
-                        ]
+                        "base_predictions": [base_prediction]
                     },
                 }
             )

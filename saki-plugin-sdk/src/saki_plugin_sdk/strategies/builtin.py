@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 import hashlib
-import random
-from typing import Any
+from typing import Any, Mapping, Sequence
+
+from saki_plugin_sdk.strategies.aug_iou import build_detection_boxes, score_aug_iou_disagreement
 
 
 CANONICAL_UNCERTAINTY_STRATEGY = "uncertainty_1_minus_max_conf"
@@ -8,44 +11,53 @@ CANONICAL_AUG_IOU_STRATEGY = "aug_iou_disagreement"
 CANONICAL_RANDOM_STRATEGY = "random_baseline"
 
 
-def _seed_from(sample_id: str, salt: str, random_seed: int = 0, round_index: int = 1) -> int:
-    h = hashlib.sha256(f"{sample_id}:{salt}:{random_seed}:{round_index}".encode("utf-8")).hexdigest()
-    return int(h[:8], 16)
+def _clamp01(value: float) -> float:
+    if value < 0.0:
+        return 0.0
+    if value > 1.0:
+        return 1.0
+    return value
 
 
-def uncertainty_1_minus_max_conf(
-        sample_id: str,
-        *,
-        random_seed: int = 0,
-        round_index: int = 1,
+def score_random_baseline(
+    sample_id: str,
+    *,
+    random_seed: int = 0,
 ) -> tuple[float, dict[str, Any]]:
-    rng = random.Random(_seed_from(sample_id, "uncertainty", random_seed=random_seed, round_index=round_index))
-    max_conf = rng.random()
-    score = 1.0 - max_conf
-    return score, {"max_conf": max_conf}
+    digest = hashlib.sha256(f"{int(random_seed)}:{sample_id}".encode("utf-8")).hexdigest()
+    score = int(digest[:8], 16) / float(0xFFFFFFFF)
+    score = _clamp01(float(score))
+    return score, {
+        "strategy": CANONICAL_RANDOM_STRATEGY,
+        "random_seed": int(random_seed),
+        "rand": score,
+    }
 
 
-def aug_iou_disagreement(
-        sample_id: str,
-        *,
-        random_seed: int = 0,
-        round_index: int = 1,
+def score_uncertainty_1_minus_max_conf(
+    predictions: Sequence[Mapping[str, Any]],
 ) -> tuple[float, dict[str, Any]]:
-    rng = random.Random(_seed_from(sample_id, "aug_iou", random_seed=random_seed, round_index=round_index))
-    raw_iou = rng.uniform(0.0, 1.0)
-    score = 1.0 - raw_iou
-    return score, {"mean_iou": raw_iou, "strategy": "mock_aug_iou"}
+    conf_values = [float(item.get("confidence") or 0.0) for item in predictions]
+    max_conf = max(conf_values) if conf_values else 0.0
+    max_conf = _clamp01(float(max_conf))
+    score = _clamp01(1.0 - max_conf)
+    return score, {
+        "strategy": CANONICAL_UNCERTAINTY_STRATEGY,
+        "max_conf": max_conf,
+        "pred_count": len(predictions),
+    }
 
 
-def random_baseline(
-        sample_id: str,
-        *,
-        random_seed: int = 0,
-        round_index: int = 1,
+def score_aug_iou_disagreement_from_rows(
+    predictions_by_aug: Sequence[Sequence[Mapping[str, Any]]],
 ) -> tuple[float, dict[str, Any]]:
-    rng = random.Random(_seed_from(sample_id, "random", random_seed=random_seed, round_index=round_index))
-    score = rng.random()
-    return score, {"rand": score, "random_seed": random_seed, "round_index": round_index}
+    boxes_by_aug = [build_detection_boxes(rows) for rows in predictions_by_aug]
+    score, reason = score_aug_iou_disagreement(boxes_by_aug)
+    merged = {
+        "strategy": CANONICAL_AUG_IOU_STRATEGY,
+        **dict(reason or {}),
+    }
+    return float(score), merged
 
 
 def normalize_strategy_name(strategy: str) -> str:
@@ -53,17 +65,24 @@ def normalize_strategy_name(strategy: str) -> str:
 
 
 def score_by_strategy(
-        strategy: str,
-        sample_id: str,
-        *,
-        random_seed: int = 0,
-        round_index: int = 1,
+    strategy: str,
+    sample_id: str,
+    *,
+    random_seed: int = 0,
+    round_index: int = 1,
+    predictions: Sequence[Mapping[str, Any]] | None = None,
+    predictions_by_aug: Sequence[Sequence[Mapping[str, Any]]] | None = None,
 ) -> tuple[float, dict[str, Any]]:
+    del round_index
     key = normalize_strategy_name(strategy)
     if key == CANONICAL_UNCERTAINTY_STRATEGY:
-        return uncertainty_1_minus_max_conf(sample_id, random_seed=random_seed, round_index=round_index)
+        if predictions is None:
+            raise ValueError("strategy=uncertainty_1_minus_max_conf requires predictions")
+        return score_uncertainty_1_minus_max_conf(predictions)
     if key == CANONICAL_AUG_IOU_STRATEGY:
-        return aug_iou_disagreement(sample_id, random_seed=random_seed, round_index=round_index)
+        if predictions_by_aug is None:
+            raise ValueError("strategy=aug_iou_disagreement requires predictions_by_aug")
+        return score_aug_iou_disagreement_from_rows(predictions_by_aug)
     if key == CANONICAL_RANDOM_STRATEGY:
-        return random_baseline(sample_id, random_seed=random_seed, round_index=round_index)
+        return score_random_baseline(sample_id, random_seed=random_seed)
     raise ValueError(f"unsupported strategy: {strategy}")

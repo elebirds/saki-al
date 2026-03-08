@@ -1,14 +1,8 @@
 from __future__ import annotations
 
-import hashlib
 from pathlib import Path
 from threading import Event
 from typing import Any, Callable
-
-
-def _stable_random_score(*, sample_id: str, random_seed: int) -> float:
-    digest = hashlib.sha256(f"{random_seed}:{sample_id}".encode("utf-8")).hexdigest()
-    return int(digest[:8], 16) / float(0xFFFFFFFF)
 
 
 def score_unlabeled_samples(
@@ -23,8 +17,6 @@ def score_unlabeled_samples(
     predict_single_image: Callable[..., list[dict[str, Any]]],
     predict_with_aug: Callable[..., list[list[dict[str, Any]]]],
     extract_predictions: Callable[[Any], list[dict[str, Any]]],
-    build_detection_boxes: Callable[[list[dict[str, Any]]], list[Any]],
-    score_aug_iou_disagreement: Callable[[list[list[Any]]], tuple[float, dict[str, Any]]],
     score_by_strategy: Callable[..., tuple[float, dict[str, Any]]],
     normalize_strategy_name: Callable[[str], str],
     random_seed: int,
@@ -55,8 +47,13 @@ def score_unlabeled_samples(
                 imgsz=imgsz,
                 device=device,
             )
-            boxes_by_aug = [build_detection_boxes(item) for item in preds_by_aug]
-            score, reason = score_aug_iou_disagreement(boxes_by_aug)
+            score, reason = score_by_strategy(
+                strategy_key,
+                sample_id,
+                random_seed=random_seed,
+                round_index=round_index,
+                predictions_by_aug=preds_by_aug,
+            )
             candidates.append(
                 {
                     "sample_id": sample_id,
@@ -79,15 +76,13 @@ def score_unlabeled_samples(
                 imgsz=imgsz,
                 device=device,
             )
-            conf_values = [float(item.get("confidence") or 0.0) for item in rows]
-            max_conf = max(conf_values) if conf_values else 0.0
-            uncertainty = 1.0 - max(0.0, min(1.0, max_conf))
-            score = uncertainty
-            reason = {
-                "strategy": "uncertainty_1_minus_max_conf",
-                "max_conf": max_conf,
-                "pred_count": len(rows),
-            }
+            score, reason = score_by_strategy(
+                strategy_key,
+                sample_id,
+                random_seed=random_seed,
+                round_index=round_index,
+                predictions=rows,
+            )
             candidates.append(
                 {
                     "sample_id": sample_id,
@@ -103,16 +98,17 @@ def score_unlabeled_samples(
             continue
 
         if strategy_key == "random_baseline":
-            score = _stable_random_score(sample_id=sample_id, random_seed=random_seed)
+            score, reason = score_by_strategy(
+                strategy_key,
+                sample_id,
+                random_seed=random_seed,
+                round_index=round_index,
+            )
             candidates.append(
                 {
                     "sample_id": sample_id,
                     "score": score,
-                    "reason": {
-                        "strategy": "random_baseline",
-                        "random_seed": int(random_seed),
-                        "rand": score,
-                    },
+                    "reason": reason,
                 }
             )
             continue

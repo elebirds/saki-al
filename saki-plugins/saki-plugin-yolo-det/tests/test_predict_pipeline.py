@@ -5,15 +5,8 @@ from threading import Event
 
 import pytest
 
-from saki_plugin_yolo_det.predict_pipeline import _stable_random_score, score_unlabeled_samples
-
-
-def test_stable_random_score_is_deterministic() -> None:
-    first = _stable_random_score(sample_id="sample-a", random_seed=11)
-    second = _stable_random_score(sample_id="sample-a", random_seed=11)
-    third = _stable_random_score(sample_id="sample-b", random_seed=11)
-    assert first == second
-    assert first != third
+from saki_plugin_sdk.strategies.builtin import normalize_strategy_name, score_by_strategy
+from saki_plugin_yolo_det.predict_pipeline import score_unlabeled_samples
 
 
 def test_random_baseline_candidates_are_round_invariant(tmp_path: Path) -> None:
@@ -37,10 +30,8 @@ def test_random_baseline_candidates_are_round_invariant(tmp_path: Path) -> None:
         "predict_single_image": lambda **_kw: [],
         "predict_with_aug": lambda **_kw: [],
         "extract_predictions": lambda _pred: [],
-        "build_detection_boxes": lambda _rows: [],
-        "score_aug_iou_disagreement": lambda _rows: (0.0, {}),
-        "score_by_strategy": lambda *args, **kwargs: (0.0, {"args": args, "kwargs": kwargs}),
-        "normalize_strategy_name": lambda name: str(name).strip().lower(),
+        "score_by_strategy": score_by_strategy,
+        "normalize_strategy_name": normalize_strategy_name,
         "random_seed": 7,
     }
     round_1 = score_unlabeled_samples(round_index=1, **kwargs)
@@ -52,12 +43,12 @@ def test_random_baseline_candidates_are_round_invariant(tmp_path: Path) -> None:
     assert all("round_index" not in (row.get("reason") or {}) for row in round_1)
 
 
-def test_aug_iou_strategy_passes_qbox_rows_to_build_boxes(tmp_path: Path) -> None:
+def test_aug_iou_strategy_passes_qbox_rows_to_sdk_strategy(tmp_path: Path) -> None:
     sample = tmp_path / "a.jpg"
     sample.write_bytes(b"\x00")
     unlabeled_samples = [{"id": "sample-a", "local_path": str(sample)}]
 
-    seen_rows: list[list[dict]] = []
+    seen_rows: list[list[list[dict]]] = []
 
     def _predict_with_aug(**_kw):
         return [
@@ -79,11 +70,10 @@ def test_aug_iou_strategy_passes_qbox_rows_to_build_boxes(tmp_path: Path) -> Non
             ],
         ]
 
-    def _build_detection_boxes(rows):
-        seen_rows.append(rows)
-        return rows
-
-    def _score_aug_iou(rows_by_aug):
+    def _score_by_strategy(strategy, sample_id, **kwargs):
+        del strategy, sample_id
+        rows_by_aug = kwargs["predictions_by_aug"]
+        seen_rows.append(rows_by_aug)
         assert rows_by_aug[0][0]["qbox"] == (0.0, 0.0, 4.0, 0.0, 4.0, 2.0, 0.0, 2.0)
         assert rows_by_aug[1][0]["qbox"] == (0.2, 0.0, 4.2, 0.0, 4.2, 2.0, 0.2, 2.0)
         return 0.42, {"score": 0.42}
@@ -99,14 +89,12 @@ def test_aug_iou_strategy_passes_qbox_rows_to_build_boxes(tmp_path: Path) -> Non
         predict_single_image=lambda **_kw: [],
         predict_with_aug=_predict_with_aug,
         extract_predictions=lambda _pred: [],
-        build_detection_boxes=_build_detection_boxes,
-        score_aug_iou_disagreement=_score_aug_iou,
-        score_by_strategy=lambda *args, **kwargs: (0.0, {"args": args, "kwargs": kwargs}),
-        normalize_strategy_name=lambda name: str(name).strip().lower(),
+        score_by_strategy=_score_by_strategy,
+        normalize_strategy_name=normalize_strategy_name,
         random_seed=7,
         round_index=1,
     )
     assert len(rows) == 1
     assert rows[0]["sample_id"] == "sample-a"
     assert rows[0]["score"] == pytest.approx(0.42)
-    assert len(seen_rows) == 2
+    assert len(seen_rows) == 1

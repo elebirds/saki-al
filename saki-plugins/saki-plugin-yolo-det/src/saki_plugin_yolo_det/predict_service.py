@@ -15,7 +15,6 @@ except Exception:  # pragma: no cover - optional dependency
     Image = None  # type: ignore
 
 from saki_plugin_sdk import ExecutionBindingContext, WorkspaceProtocol
-from saki_plugin_sdk.strategies.aug_iou import build_detection_boxes, score_aug_iou_disagreement
 from saki_plugin_sdk.strategies.builtin import normalize_strategy_name, score_by_strategy
 from saki_ir import flip_quad8, geometry_to_quad8_local, normalize_quad8, quad8_to_aabb_rect
 from saki_plugin_yolo_det.common import clamp, to_float, to_int, to_yolo_device
@@ -154,8 +153,6 @@ class YoloPredictService:
             predict_single_image=self._predict_single_image,
             predict_with_aug=self._predict_with_aug,
             extract_predictions=self._extract_predictions,
-            build_detection_boxes=build_detection_boxes,
-            score_aug_iou_disagreement=score_aug_iou_disagreement,
             score_by_strategy=score_by_strategy,
             normalize_strategy_name=normalize_strategy_name,
             random_seed=random_seed,

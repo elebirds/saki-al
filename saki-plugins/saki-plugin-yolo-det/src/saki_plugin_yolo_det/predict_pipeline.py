@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 from threading import Event
 from typing import Any, Callable
@@ -75,7 +76,10 @@ def score_unlabeled_samples(
                         "strategy": "aug_iou_disagreement",
                         "aug_count": len(preds_by_aug),
                         "pred_per_aug": [len(item) for item in preds_by_aug],
-                        "base_predictions": preds_by_aug[0][:30] if preds_by_aug else [],
+                        "base_predictions": [
+                            export_prediction_entry(item)
+                            for item in (preds_by_aug[0] if preds_by_aug else [])[:30]
+                        ],
                     },
                 }
             )
@@ -103,7 +107,7 @@ def score_unlabeled_samples(
                     "prediction_snapshot": {
                         "strategy": reason.get("strategy"),
                         "pred_count": len(rows),
-                        "base_predictions": rows[:30],
+                        "base_predictions": [export_prediction_entry(item) for item in rows[:30]],
                     },
                 }
             )
@@ -177,3 +181,26 @@ def predict_with_augmentations(
         rows = [inverse_augmented_prediction_row(item, view=view) for item in rows]
         results_by_aug.append(rows)
     return results_by_aug
+
+
+def export_prediction_entry(item: Mapping[str, Any]) -> dict[str, Any]:
+    out: dict[str, Any] = {
+        "class_index": int(item.get("class_index", 0)),
+        "class_name": str(item.get("class_name") or ""),
+        "confidence": float(item.get("confidence") or 0.0),
+        "geometry": dict(item.get("geometry") or {}),
+    }
+    label_id = str(item.get("label_id") or "").strip()
+    if label_id:
+        out["label_id"] = label_id
+
+    attrs_raw = item.get("attrs")
+    attrs: dict[str, Any] = dict(attrs_raw) if isinstance(attrs_raw, Mapping) else {}
+    qbox_raw = item.get("qbox")
+    if qbox_raw is not None:
+        qbox = tuple(float(v) for v in qbox_raw[:8]) if isinstance(qbox_raw, (list, tuple)) else None
+        if qbox is not None and len(qbox) == 8:
+            attrs.setdefault("qbox", list(qbox))
+    if attrs:
+        out["attrs"] = attrs
+    return out

@@ -20,7 +20,11 @@ from saki_plugin_sdk.strategies.builtin import normalize_strategy_name, score_by
 from saki_ir import normalize_quad8, quad8_to_aabb_rect
 from saki_plugin_yolo_det.common import to_float, to_int, to_yolo_device
 from saki_plugin_yolo_det.config_service import YoloConfigService
-from saki_plugin_yolo_det.predict_pipeline import predict_with_augmentations, score_unlabeled_samples
+from saki_plugin_yolo_det.predict_pipeline import (
+    export_prediction_entry,
+    predict_with_augmentations,
+    score_unlabeled_samples,
+)
 
 
 class YoloPredictService:
@@ -209,7 +213,7 @@ class YoloPredictService:
                     },
                     "prediction_snapshot": {
                         "pred_count": len(predictions),
-                        "base_predictions": predictions[:30],
+                        "base_predictions": [export_prediction_entry(item) for item in predictions[:30]],
                     },
                 }
             )

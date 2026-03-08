@@ -26,14 +26,38 @@ func compileRoundConfig(loop loopRow, roundIndex int) map[string]any {
 	if globalSeed == "" {
 		panic(fmt.Sprintf("loop %s missing config.reproducibility.global_seed", loop.ID.String()))
 	}
-	splitSeed := deriveScopedSeed(globalSeed, "split")
-	trainSeed := deriveScopedSeed(globalSeed, "train")
-	samplingSeed := deriveScopedSeed(globalSeed, "sampling")
+	splitSeed := resolveSeedWithOverride(
+		reproConfig,
+		keySplitSeed,
+		deriveScopedSeed(globalSeed, "split"),
+		loop.ID.String(),
+	)
+	trainSeed := resolveSeedWithOverride(
+		reproConfig,
+		keyTrainSeed,
+		deriveScopedSeed(globalSeed, "train"),
+		loop.ID.String(),
+	)
+	samplingSeed := resolveSeedWithOverride(
+		reproConfig,
+		keySamplingSeed,
+		deriveScopedSeed(globalSeed, "sampling"),
+		loop.ID.String(),
+	)
 
 	deterministicLevel := strings.TrimSpace(toString(reproConfig["deterministic_level"]))
 	deterministicLevel, deterministicEnabled, strongDeterministicEnabled := parseDeterministicLevel(deterministicLevel)
 	reproConfig["global_seed"] = globalSeed
 	reproConfig["deterministic_level"] = deterministicLevel
+	if _, ok := reproConfig[keySplitSeed]; ok {
+		reproConfig[keySplitSeed] = int(splitSeed)
+	}
+	if _, ok := reproConfig[keyTrainSeed]; ok {
+		reproConfig[keyTrainSeed] = int(trainSeed)
+	}
+	if _, ok := reproConfig[keySamplingSeed]; ok {
+		reproConfig[keySamplingSeed] = int(samplingSeed)
+	}
 
 	payload := map[string]any{
 		"loop_id":              loop.ID.String(),
@@ -196,6 +220,36 @@ func deriveScopedSeed(globalSeed string, scope string) uint32 {
 	raw := fmt.Sprintf("%s:%s", strings.TrimSpace(globalSeed), scope)
 	sum := sha256.Sum256([]byte(raw))
 	return binary.BigEndian.Uint32(sum[:4])
+}
+
+const (
+	keySplitSeed    = "split_seed"
+	keyTrainSeed    = "train_seed"
+	keySamplingSeed = "sampling_seed"
+)
+
+func resolveSeedWithOverride(
+	reproConfig map[string]any,
+	key string,
+	derived uint32,
+	loopID string,
+) uint32 {
+	raw, ok := reproConfig[key]
+	if !ok {
+		return derived
+	}
+	value, err := cast.ToInt64E(raw)
+	if err != nil {
+		panic(fmt.Sprintf("loop %s invalid config.reproducibility.%s: %v", loopID, key, raw))
+	}
+	if value < 0 {
+		panic(fmt.Sprintf("loop %s invalid config.reproducibility.%s: %v", loopID, key, raw))
+	}
+	const maxUint32 = ^uint32(0)
+	if value > int64(maxUint32) {
+		panic(fmt.Sprintf("loop %s invalid config.reproducibility.%s: %v", loopID, key, raw))
+	}
+	return uint32(value)
 }
 
 func parseDeterministicLevel(level string) (string, bool, bool) {

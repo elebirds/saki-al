@@ -61,6 +61,12 @@ class LoopCommandMixin:
     ) -> float | None:
         return self._extract_training_negative_sample_ratio(dict(config or {}))
 
+    def _extract_config_seed_overrides(
+        self,
+        config: dict[str, Any] | None,
+    ) -> tuple[int | None, int | None, int | None]:
+        return self._extract_reproducibility_seed_overrides(dict(config or {}))
+
     @staticmethod
     def _extract_config_preferred_executor_id(config: dict[str, Any] | None) -> str:
         execution = (config or {}).get("execution")
@@ -235,6 +241,16 @@ class LoopCommandMixin:
             ):
                 raise BadRequestAppException(
                     "config.reproducibility.deterministic_level is immutable once lifecycle is not draft"
+                )
+            current_seed_overrides = self._extract_config_seed_overrides(loop.config or {})
+            next_seed_overrides = self._extract_config_seed_overrides(normalized_config)
+            if (
+                str(loop.lifecycle.value if hasattr(loop.lifecycle, "value") else loop.lifecycle).strip().lower()
+                != "draft"
+                and current_seed_overrides != next_seed_overrides
+            ):
+                raise BadRequestAppException(
+                    "config.reproducibility.split_seed/train_seed/sampling_seed are immutable once lifecycle is not draft"
                 )
             current_finalize_train = (
                 self._extract_config_finalize_train(loop.config or {})

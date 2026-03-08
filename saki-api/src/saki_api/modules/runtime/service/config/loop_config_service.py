@@ -56,6 +56,46 @@ def _normalize_deterministic_level(value: Any) -> str:
     )
 
 
+def _normalize_non_negative_seed(value: Any, *, field_name: str) -> int:
+    if isinstance(value, bool):
+        raise BadRequestAppException(
+            f"invalid config.reproducibility.{field_name}: {value}. must be an integer >= 0"
+        )
+    if isinstance(value, int):
+        seed = value
+    elif isinstance(value, float):
+        if (not math.isfinite(value)) or (not value.is_integer()):
+            raise BadRequestAppException(
+                f"invalid config.reproducibility.{field_name}: {value}. must be an integer >= 0"
+            )
+        seed = int(value)
+    elif isinstance(value, str):
+        text = value.strip()
+        if not text:
+            raise BadRequestAppException(
+                f"invalid config.reproducibility.{field_name}: {value}. must be an integer >= 0"
+            )
+        try:
+            seed = int(text)
+        except Exception as exc:
+            raise BadRequestAppException(
+                f"invalid config.reproducibility.{field_name}: {value}. must be an integer >= 0"
+            ) from exc
+    else:
+        try:
+            seed = int(value)
+        except Exception as exc:
+            raise BadRequestAppException(
+                f"invalid config.reproducibility.{field_name}: {value}. must be an integer >= 0"
+            ) from exc
+
+    if seed < 0:
+        raise BadRequestAppException(
+            f"invalid config.reproducibility.{field_name}: {value}. must be an integer >= 0"
+        )
+    return seed
+
+
 def _normalize_snapshot_val_policy(value: Any) -> str:
     if isinstance(value, SnapshotValPolicy):
         return str(value.value)
@@ -161,6 +201,12 @@ def normalize_loop_config(raw_config: dict[str, Any] | None, *, mode: str) -> di
             reproducibility_map.get("deterministic_level")
         ),
     }
+    for seed_key in ("split_seed", "train_seed", "sampling_seed"):
+        if seed_key in reproducibility_map:
+            normalized_repro[seed_key] = _normalize_non_negative_seed(
+                reproducibility_map.get(seed_key),
+                field_name=seed_key,
+            )
     normalized_execution = dict(execution) if isinstance(execution, dict) else {}
     normalized_training = _normalize_training_config(training)
 
@@ -239,6 +285,9 @@ def validate_loop_config(config: dict[str, Any], *, mode: str) -> None:
     if not global_seed:
         raise BadRequestAppException("all loop modes require config.reproducibility.global_seed")
     _normalize_deterministic_level(reproducibility_map.get("deterministic_level"))
+    for seed_key in ("split_seed", "train_seed", "sampling_seed"):
+        if seed_key in reproducibility_map:
+            _normalize_non_negative_seed(reproducibility_map.get(seed_key), field_name=seed_key)
 
     if mode == "manual":
         if sampling_map:
@@ -318,6 +367,25 @@ def get_loop_global_seed(raw_config: dict[str, Any] | None) -> str:
     reproducibility = config.get("reproducibility")
     reproducibility_map = reproducibility if isinstance(reproducibility, dict) else {}
     return str(reproducibility_map.get("global_seed") or "").strip()
+
+
+def extract_reproducibility_seed_overrides(
+    raw_config: dict[str, Any] | None,
+) -> tuple[int | None, int | None, int | None]:
+    config = dict(raw_config or {})
+    reproducibility = config.get("reproducibility")
+    reproducibility_map = reproducibility if isinstance(reproducibility, dict) else {}
+
+    def _extract(key: str) -> int | None:
+        if key not in reproducibility_map:
+            return None
+        return _normalize_non_negative_seed(reproducibility_map.get(key), field_name=key)
+
+    return (
+        _extract("split_seed"),
+        _extract("train_seed"),
+        _extract("sampling_seed"),
+    )
 
 
 def extract_training_include_label_ids(raw_config: dict[str, Any] | None) -> list[str]:

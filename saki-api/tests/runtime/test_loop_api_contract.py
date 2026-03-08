@@ -813,6 +813,136 @@ async def test_create_loop_accepts_deterministic_and_strong_deterministic_levels
 
 
 @pytest.mark.anyio
+async def test_create_loop_accepts_reproducibility_seed_overrides(loop_api_env):
+    session_local = loop_api_env
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        service = RuntimeService(session)
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-seed-overrides",
+                    branch_id=branch.id,
+                    mode=LoopMode.ACTIVE_LEARNING,
+                    model_arch="yolo_det_v1",
+                    config=_loop_config(
+                        {
+                            "sampling": {"strategy": "random_baseline", "topk": 200},
+                            "reproducibility": {
+                                "global_seed": "seed-override-main",
+                                "split_seed": 17,
+                                "train_seed": 27,
+                                "sampling_seed": 37,
+                            },
+                        }
+                    ),
+                    lifecycle=LoopLifecycle.DRAFT,
+                ),
+            )
+            repro = dict(loop.config.get("reproducibility") or {})
+            assert int(repro.get("split_seed") or 0) == 17
+            assert int(repro.get("train_seed") or 0) == 27
+            assert int(repro.get("sampling_seed") or 0) == 37
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_create_loop_allows_partial_reproducibility_seed_overrides(loop_api_env):
+    session_local = loop_api_env
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        service = RuntimeService(session)
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-seed-overrides-partial",
+                    branch_id=branch.id,
+                    mode=LoopMode.ACTIVE_LEARNING,
+                    model_arch="yolo_det_v1",
+                    config=_loop_config(
+                        {
+                            "sampling": {"strategy": "random_baseline", "topk": 200},
+                            "reproducibility": {
+                                "global_seed": "seed-override-main-2",
+                                "split_seed": 17,
+                            },
+                        }
+                    ),
+                    lifecycle=LoopLifecycle.DRAFT,
+                ),
+            )
+            repro = dict(loop.config.get("reproducibility") or {})
+            assert int(repro.get("split_seed") or 0) == 17
+            assert "train_seed" not in repro
+            assert "sampling_seed" not in repro
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_create_loop_rejects_invalid_reproducibility_seed_overrides(loop_api_env):
+    session_local = loop_api_env
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        service = RuntimeService(session)
+
+        token = _session_ctx.set(session)
+        try:
+            with pytest.raises(BadRequestAppException, match="split_seed"):
+                await service.create_loop(
+                    project.id,
+                    LoopCreateRequest(
+                        name="loop-invalid-split-seed",
+                        branch_id=branch.id,
+                        mode=LoopMode.ACTIVE_LEARNING,
+                        model_arch="yolo_det_v1",
+                        config=_loop_config(
+                            {
+                                "sampling": {"strategy": "random_baseline", "topk": 200},
+                                "reproducibility": {
+                                    "global_seed": "seed-invalid-seed-1",
+                                    "split_seed": -1,
+                                },
+                            }
+                        ),
+                        lifecycle=LoopLifecycle.DRAFT,
+                    ),
+                )
+            with pytest.raises(BadRequestAppException, match="train_seed"):
+                await service.create_loop(
+                    project.id,
+                    LoopCreateRequest(
+                        name="loop-invalid-train-seed",
+                        branch_id=branch.id,
+                        mode=LoopMode.ACTIVE_LEARNING,
+                        model_arch="yolo_det_v1",
+                        config=_loop_config(
+                            {
+                                "sampling": {"strategy": "random_baseline", "topk": 200},
+                                "reproducibility": {
+                                    "global_seed": "seed-invalid-seed-2",
+                                    "train_seed": 1.5,
+                                },
+                            }
+                        ),
+                        lifecycle=LoopLifecycle.DRAFT,
+                    ),
+                )
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
 async def test_create_loop_rejects_legacy_deterministic_level_values(loop_api_env):
     session_local = loop_api_env
 
@@ -840,6 +970,56 @@ async def test_create_loop_rejects_legacy_deterministic_level_values(loop_api_en
                             }
                         ),
                         lifecycle=LoopLifecycle.DRAFT,
+                    ),
+                )
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_update_loop_rejects_seed_override_change_after_non_draft(loop_api_env):
+    session_local = loop_api_env
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        service = RuntimeService(session)
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-seed-overrides-locked",
+                    branch_id=branch.id,
+                    mode=LoopMode.ACTIVE_LEARNING,
+                    model_arch="yolo_det_v1",
+                    config=_loop_config(
+                        {
+                            "sampling": {"strategy": "random_baseline", "topk": 200},
+                            "reproducibility": {
+                                "global_seed": "seed-lock-overrides",
+                                "split_seed": 17,
+                                "train_seed": 27,
+                                "sampling_seed": 37,
+                            },
+                        }
+                    ),
+                    lifecycle=LoopLifecycle.RUNNING,
+                ),
+            )
+            with pytest.raises(BadRequestAppException, match="split_seed/train_seed/sampling_seed are immutable"):
+                await service.update_loop(
+                    loop.id,
+                    LoopUpdateRequest(
+                        config={
+                            "sampling": {"strategy": "random_baseline", "topk": 200},
+                            "reproducibility": {
+                                "global_seed": "seed-lock-overrides",
+                                "split_seed": 18,
+                                "train_seed": 27,
+                                "sampling_seed": 37,
+                            },
+                        }
                     ),
                 )
         finally:

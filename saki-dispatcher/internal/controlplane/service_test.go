@@ -268,6 +268,62 @@ func TestCompileRoundConfigSeedsStableAcrossRoundIndex(t *testing.T) {
 	}
 }
 
+func TestCompileRoundConfigUsesSeedOverridesWhenProvided(t *testing.T) {
+	loop := loopRow{
+		ID:             mustUUID("f1fa6112-6ea6-4367-a83a-e6f993790ad1"),
+		Mode:           modeAL,
+		QueryBatchSize: 128,
+		ModelArch:      "yolo_det_v1",
+		Config: []byte(`{
+			"sampling": {"strategy": "random_baseline", "topk": 32},
+			"reproducibility": {
+				"global_seed": "seed-fixed",
+				"split_seed": 17,
+				"train_seed": 27,
+				"sampling_seed": 37
+			}
+		}`),
+	}
+	config := compileRoundConfig(loop, 1)
+	if got := cast.ToInt(config["split_seed"]); got != 17 {
+		t.Fatalf("split_seed override mismatch: %d", got)
+	}
+	if got := cast.ToInt(config["train_seed"]); got != 27 {
+		t.Fatalf("train_seed override mismatch: %d", got)
+	}
+	if got := cast.ToInt(config["sampling_seed"]); got != 37 {
+		t.Fatalf("sampling_seed override mismatch: %d", got)
+	}
+}
+
+func TestCompileRoundConfigAllowsPartialSeedOverrides(t *testing.T) {
+	loop := loopRow{
+		ID:             mustUUID("f1fa6112-6ea6-4367-a83a-e6f993790ad2"),
+		Mode:           modeAL,
+		QueryBatchSize: 128,
+		ModelArch:      "yolo_det_v1",
+		Config: []byte(`{
+			"sampling": {"strategy": "random_baseline", "topk": 32},
+			"reproducibility": {
+				"global_seed": "seed-fixed",
+				"split_seed": 17
+			}
+		}`),
+	}
+	config := compileRoundConfig(loop, 1)
+	if got := cast.ToInt(config["split_seed"]); got != 17 {
+		t.Fatalf("split_seed override mismatch: %d", got)
+	}
+	wantTrain := int(deriveScopedSeed("seed-fixed", "train"))
+	if got := cast.ToInt(config["train_seed"]); got != wantTrain {
+		t.Fatalf("train_seed should fallback to derived value: got=%d want=%d", got, wantTrain)
+	}
+	wantSampling := int(deriveScopedSeed("seed-fixed", "sampling"))
+	if got := cast.ToInt(config["sampling_seed"]); got != wantSampling {
+		t.Fatalf("sampling_seed should fallback to derived value: got=%d want=%d", got, wantSampling)
+	}
+}
+
 func TestCompileRoundConfigDeterministicLevelDefaultsToOff(t *testing.T) {
 	loop := loopRow{
 		ID:             mustUUID("f1fa6112-6ea6-4367-a83a-e6f993790acb"),

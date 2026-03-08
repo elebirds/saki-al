@@ -90,7 +90,7 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
     )
 
     return (
-        <aside className="w-[296px] shrink-0 hidden lg:block">
+        <aside className="w-[296px] shrink-0 hidden lg:block lg:max-h-[calc(100vh-220px)] lg:overflow-y-auto lg:pr-1">
             <div className="mb-4">
                 <div className="flex items-center justify-between mb-2">
                     <h3 className="font-semibold text-github-text">{t('project.sidebar.about')}</h3>

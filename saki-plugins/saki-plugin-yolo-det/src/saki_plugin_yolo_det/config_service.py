@@ -12,10 +12,13 @@ from saki_plugin_sdk import (
     PluginManifest,
     WorkspaceProtocol,
 )
+from saki_plugin_sdk.augmentations import build_default_augmentation_specs
+from saki_plugin_sdk.strategies.builtin import CANONICAL_AUG_IOU_STRATEGY, normalize_strategy_name
 
 
 class YoloConfigService:
     _VALID_YOLO_TASKS = ("detect", "obb")
+    _DEFAULT_AUG_NAMES = tuple(spec.name for spec in build_default_augmentation_specs())
 
     def __init__(self) -> None:
         self._manifest = PluginManifest.from_yaml(
@@ -81,15 +84,40 @@ class YoloConfigService:
             raise ValueError(f"unsupported yolo_task: {yolo_task!r}, must be one of {self._VALID_YOLO_TASKS}")
         return presets
 
-    def resolve_config(self, raw_config: dict[str, Any] | None) -> PluginConfig:
+    def resolve_config(
+        self,
+        raw_config: dict[str, Any] | None,
+        *,
+        strategy: str | None = None,
+    ) -> PluginConfig:
         config = PluginConfig.from_manifest(
             self._manifest,
             raw_config if isinstance(raw_config, dict) else None,
             validate=True,
         )
-        return self._validate_and_normalize_config(config)
+        return self._validate_and_normalize_config(config, strategy=strategy)
 
-    def _validate_and_normalize_config(self, config: PluginConfig) -> PluginConfig:
+    @classmethod
+    def _normalize_aug_names(cls, values: list[Any]) -> tuple[str, ...]:
+        allowed = set(cls._DEFAULT_AUG_NAMES)
+        requested: set[str] = set()
+        for raw in values:
+            name = str(raw or "").strip().lower()
+            if not name:
+                continue
+            if name not in allowed:
+                raise ValueError(
+                    f"aug_iou_enabled_augs has unsupported op={name!r}; allowed={list(cls._DEFAULT_AUG_NAMES)}"
+                )
+            requested.add(name)
+        return tuple(name for name in cls._DEFAULT_AUG_NAMES if name in requested)
+
+    def _validate_and_normalize_config(
+        self,
+        config: PluginConfig,
+        *,
+        strategy: str | None = None,
+    ) -> PluginConfig:
         yolo_task = str(config.yolo_task).strip().lower()
         if yolo_task not in self._VALID_YOLO_TASKS:
             raise ValueError(f"unsupported yolo_task: {yolo_task!r}, must be one of {self._VALID_YOLO_TASKS}")
@@ -112,17 +140,33 @@ class YoloConfigService:
         if source != "preset" and not custom_ref:
             raise ValueError("model_custom_ref is required for custom model source")
 
+        strategy_key = normalize_strategy_name(strategy or "")
+        aug_raw = self._read_param(config, "aug_iou_enabled_augs")
+        if aug_raw is None:
+            aug_values: list[Any] = []
+        elif isinstance(aug_raw, (list, tuple, set)):
+            aug_values = list(aug_raw)
+        else:
+            raise ValueError("aug_iou_enabled_augs must be an array")
+        aug_enabled = self._normalize_aug_names(aug_values)
+        if strategy_key == CANONICAL_AUG_IOU_STRATEGY:
+            if not aug_enabled:
+                raise ValueError("strategy=aug_iou_disagreement requires non-empty aug_iou_enabled_augs")
+            if "identity" not in set(aug_enabled):
+                raise ValueError("aug_iou_enabled_augs must include 'identity' for aug_iou_disagreement")
+
         return config.model_copy(
             update={
                 "yolo_task": yolo_task,
                 "model_source": source,
                 "model_preset": preset,
                 "model_custom_ref": "" if source == "preset" else custom_ref,
+                "aug_iou_enabled_augs": list(aug_enabled),
             }
         )
 
-    def validate_params(self, params: dict[str, Any]) -> None:
-        self.resolve_config(params)
+    def validate_params(self, params: dict[str, Any], *, strategy: str | None = None) -> None:
+        self.resolve_config(params, strategy=strategy)
 
     async def resolve_model_ref(
         self,

@@ -223,6 +223,29 @@ def test_config_service_rejects_preset_task_mismatch():
         )
 
 
+def test_config_service_aug_iou_requires_identity_when_strategy_is_aug_iou():
+    service = YoloConfigService()
+    cfg = service.resolve_config(
+        {
+            "yolo_task": "detect",
+            "model_source": "preset",
+        },
+        strategy="aug_iou_disagreement",
+    )
+    augs = list(getattr(cfg, "aug_iou_enabled_augs", []))
+    assert "identity" in augs
+
+    with pytest.raises(ValueError, match="must include 'identity'"):
+        service.resolve_config(
+            {
+                "yolo_task": "detect",
+                "model_source": "preset",
+                "aug_iou_enabled_augs": ["hflip", "rot90"],
+            },
+            strategy="aug_iou_disagreement",
+        )
+
+
 def test_config_service_init_fails_when_task_has_no_preset(monkeypatch):
     plugin_yml = Path(__file__).resolve().parents[1] / "plugin.yml"
     manifest = PluginManifest.from_yaml(plugin_yml)
@@ -486,7 +509,7 @@ async def test_predict_service_uncertainty_accepts_suffixless_local_path(tmp_pat
     from PIL import Image as PILImage
 
     class _ConfigStub:
-        def resolve_config(self, _params: dict[str, Any]):
+        def resolve_config(self, _params: dict[str, Any], **_kwargs: Any):
             return SimpleNamespace(
                 topk=10,
                 sampling_topk=10,
@@ -616,7 +639,7 @@ async def test_predict_service_direct_predict_accepts_suffixless_local_path(tmp_
     from PIL import Image as PILImage
 
     class _ConfigStub:
-        def resolve_config(self, _params: dict[str, Any]):
+        def resolve_config(self, _params: dict[str, Any], **_kwargs: Any):
             return SimpleNamespace(
                 predict_conf=0.1,
                 imgsz=640,

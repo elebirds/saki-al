@@ -38,6 +38,7 @@ function evaluateVisible(
   context: {
     annotationTypes?: string[];
     fieldValues?: Record<string, any>;
+    samplingStrategy?: string;
   },
 ): boolean {
   if (!expr || typeof expr !== 'string') {
@@ -53,6 +54,7 @@ function evaluateVisible(
     // 构建安全的评估上下文
     const ctx = {
       annotation_types: [...context.annotationTypes ?? []] as any,
+      sampling_strategy: String(context.samplingStrategy ?? '').trim().toLowerCase(),
     };
 
     // 添加 includes 辅助方法
@@ -90,6 +92,7 @@ function filterOptions(
   context: {
     annotationTypes?: string[];
     fieldValues?: Record<string, any>;
+    samplingStrategy?: string;
   },
 ): any[] {
   if (!options) return [];
@@ -100,6 +103,15 @@ function filterOptions(
  * 表单值转换：后端 -> 表单
  */
 function toFormValue(field: PluginConfigField, value: unknown): unknown {
+  if (field.type === 'multi_select') {
+    if (Array.isArray(value)) {
+      return [...value];
+    }
+    if (value == null || value === '') {
+      return [];
+    }
+    return [String(value)];
+  }
   if (field.type === 'integer_array') {
     if (Array.isArray(value)) {
       return value.map((item) => String(item));
@@ -132,6 +144,27 @@ function toFormValue(field: PluginConfigField, value: unknown): unknown {
  * 表单值转换：表单 -> 后端
  */
 export function normalizeSubmitValue(field: PluginConfigField, value: unknown): unknown {
+  if (field.type === 'multi_select') {
+    const source = Array.isArray(value) ? value : [];
+    const result: Array<string | number | boolean> = [];
+    const seen = new Set<string>();
+    for (const item of source) {
+      if (item === undefined || item === null) {
+        continue;
+      }
+      const normalized = typeof item === 'string' ? item.trim() : item;
+      if (normalized === '') {
+        continue;
+      }
+      const dedupeKey = `${typeof normalized}:${String(normalized).toLowerCase()}`;
+      if (seen.has(dedupeKey)) {
+        continue;
+      }
+      seen.add(dedupeKey);
+      result.push(normalized as string | number | boolean);
+    }
+    return result;
+  }
   if (field.type === 'integer_array') {
     const source = Array.isArray(value) ? value : [];
     const result: number[] = [];
@@ -185,7 +218,18 @@ function buildRules(field: PluginConfigField) {
 
   // 必填验证
   if (field.required) {
-    rules.push({ required: true, message: `${field.label} 是必填项` });
+    if (field.type === 'multi_select') {
+      rules.push({
+        validator: (_: any, value: unknown) => {
+          if (Array.isArray(value) && value.length > 0) {
+            return Promise.resolve();
+          }
+          return Promise.reject(new Error(`${field.label} 是必填项`));
+        },
+      });
+    } else {
+      rules.push({ required: true, message: `${field.label} 是必填项` });
+    }
   }
 
   // 数值类型约束 (从 props 或字段级属性获取)
@@ -244,8 +288,9 @@ export const DynamicConfigForm: React.FC<PluginConfigFormProps> = ({
     () => ({
       annotationTypes: context.annotationTypes ?? [],
       fieldValues: values ?? {},
+      samplingStrategy: context.samplingStrategy ?? '',
     }),
-    [context.annotationTypes, values],
+    [context.annotationTypes, context.samplingStrategy, values],
   );
 
   // 评估字段可见性
@@ -369,6 +414,29 @@ export const DynamicConfigForm: React.FC<PluginConfigFormProps> = ({
               extra={field.description}
             >
               <Select
+                options={filteredOptions.map((opt) => ({
+                  label: opt.label,
+                  value: opt.value,
+                }))}
+                disabled={disabled}
+                placeholder={props.placeholder}
+              />
+            </Form.Item>
+          );
+        }
+
+        case 'multi_select': {
+          const filteredOptions = filterOptions(field.options, evalContext);
+          return (
+            <Form.Item
+              key={field.key}
+              name={keyPath}
+              label={field.label}
+              rules={rules}
+              extra={field.description}
+            >
+              <Select
+                mode="multiple"
                 options={filteredOptions.map((opt) => ({
                   label: opt.label,
                   value: opt.value,

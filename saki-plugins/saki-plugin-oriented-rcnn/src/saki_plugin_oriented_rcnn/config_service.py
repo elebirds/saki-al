@@ -15,6 +15,8 @@ from typing import Any
 import httpx
 
 from saki_plugin_sdk import PluginConfig, PluginManifest, WorkspaceProtocol
+from saki_plugin_sdk.augmentations import build_default_augmentation_specs
+from saki_plugin_sdk.strategies.builtin import CANONICAL_AUG_IOU_STRATEGY, normalize_strategy_name
 
 from saki_plugin_oriented_rcnn.common import to_float, to_int
 from saki_plugin_oriented_rcnn.types import OrientedRCNNConfig
@@ -23,6 +25,7 @@ from saki_plugin_oriented_rcnn.types import OrientedRCNNConfig
 class OrientedRCNNConfigService:
     _VALID_MODEL_SOURCES = ("preset", "custom_local", "custom_url")
     _VALID_GEOMETRY_MODES = ("auto", "obb", "rect")
+    _DEFAULT_AUG_NAMES = tuple(spec.name for spec in build_default_augmentation_specs())
 
     def __init__(self) -> None:
         self._manifest = PluginManifest.from_yaml(
@@ -33,7 +36,27 @@ class OrientedRCNNConfigService:
     def manifest(self) -> PluginManifest:
         return self._manifest
 
-    def resolve_config(self, raw_config: dict[str, Any] | None) -> OrientedRCNNConfig:
+    @classmethod
+    def _normalize_aug_names(cls, values: list[Any]) -> tuple[str, ...]:
+        allowed = set(cls._DEFAULT_AUG_NAMES)
+        requested: set[str] = set()
+        for raw in values:
+            name = str(raw or "").strip().lower()
+            if not name:
+                continue
+            if name not in allowed:
+                raise ValueError(
+                    f"aug_iou_enabled_augs has unsupported op={name!r}; allowed={list(cls._DEFAULT_AUG_NAMES)}"
+                )
+            requested.add(name)
+        return tuple(name for name in cls._DEFAULT_AUG_NAMES if name in requested)
+
+    def resolve_config(
+        self,
+        raw_config: dict[str, Any] | None,
+        *,
+        strategy: str | None = None,
+    ) -> OrientedRCNNConfig:
         config = PluginConfig.from_manifest(
             self._manifest,
             raw_config if isinstance(raw_config, dict) else None,
@@ -66,6 +89,20 @@ class OrientedRCNNConfigService:
                 }
             )
         )
+        strategy_key = normalize_strategy_name(strategy or "")
+        aug_raw = getattr(config, "aug_iou_enabled_augs", None)
+        if aug_raw is None:
+            aug_values: list[Any] = []
+        elif isinstance(aug_raw, (list, tuple, set)):
+            aug_values = list(aug_raw)
+        else:
+            raise ValueError("aug_iou_enabled_augs must be an array")
+        aug_enabled = self._normalize_aug_names(aug_values)
+        if strategy_key == CANONICAL_AUG_IOU_STRATEGY:
+            if not aug_enabled:
+                raise ValueError("strategy=aug_iou_disagreement requires non-empty aug_iou_enabled_augs")
+            if "identity" not in set(aug_enabled):
+                raise ValueError("aug_iou_enabled_augs must include 'identity' for aug_iou_disagreement")
 
         return OrientedRCNNConfig(
             epochs=max(1, to_int(getattr(config, "epochs", 12), 12)),
@@ -81,6 +118,7 @@ class OrientedRCNNConfigService:
             max_per_img=max(10, to_int(getattr(config, "max_per_img", 2000), 2000)),
             predict_geometry_mode=geometry_mode,
             device=str(getattr(config, "device", "auto") or "auto").strip().lower(),
+            aug_iou_enabled_augs=aug_enabled,
             annotation_types=annotation_types,
             split_seed=max(0, to_int(getattr(config, "split_seed", 0), 0)),
             train_seed=max(0, to_int(getattr(config, "train_seed", 0), 0)),
@@ -89,8 +127,8 @@ class OrientedRCNNConfigService:
             deterministic=bool(getattr(config, "deterministic", True)),
         )
 
-    def validate_params(self, params: dict[str, Any]) -> None:
-        _ = self.resolve_config(params)
+    def validate_params(self, params: dict[str, Any], *, strategy: str | None = None) -> None:
+        _ = self.resolve_config(params, strategy=strategy)
 
     async def resolve_model_ref(
         self,

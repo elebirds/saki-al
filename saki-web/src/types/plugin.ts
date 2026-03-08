@@ -26,7 +26,7 @@ export interface PluginConfigFieldOption {
 export interface PluginConfigField {
   key: string;
   label: string;
-  type: 'string' | 'integer' | 'number' | 'boolean' | 'select' | 'textarea' | 'integer_array';
+  type: 'string' | 'integer' | 'number' | 'boolean' | 'select' | 'multi_select' | 'textarea' | 'integer_array';
   required?: boolean;
   min?: number;
   max?: number;
@@ -63,6 +63,7 @@ export interface PluginConfigFormProps {
   context?: {
     annotationTypes?: string[]; // ctx.annotation_types
     fieldValues?: Record<string, any>; // form.*
+    samplingStrategy?: string; // ctx.sampling_strategy
   };
   disabled?: boolean;
   /** 外部 Form 实例（可选，用于嵌套表单场景） */

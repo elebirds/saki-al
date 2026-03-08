@@ -49,6 +49,7 @@ const ProjectLoopConfig: React.FC = () => {
 
     const selectedPluginId = Form.useWatch('modelArch', configForm);
     const selectedMode = Form.useWatch('mode', configForm) || 'active_learning';
+    const selectedSamplingStrategy = Form.useWatch('samplingStrategy', configForm) || '';
     const selectedDeterministicLevel = Form.useWatch('deterministicLevel', configForm) || 'off';
     const selectedOracleInputMode = Form.useWatch(['simulationConfig', 'oracleInputMode'], configForm) || 'select';
     const pluginConfigValues: Record<string, any> = Form.useWatch('pluginConfig', configForm) || {};
@@ -562,6 +563,7 @@ const ProjectLoopConfig: React.FC = () => {
                                 context={{
                                     annotationTypes: projectAnnotationTypes,
                                     fieldValues: pluginConfigValues,
+                                    samplingStrategy: selectedSamplingStrategy,
                                 }}
                                 form={configForm}
                                 namePrefix="pluginConfig"

@@ -68,6 +68,36 @@ def test_build_augmented_views_has_expected_shapes_and_extra_dedupe() -> None:
     assert shape_map["affine_rot_p12"] == (8, 10)
 
 
+def test_build_augmented_views_enabled_names_uses_default_order_not_selection_order() -> None:
+    image = np.zeros((8, 10, 3), dtype=np.uint8)
+    views = build_augmented_views(
+        image,
+        np_mod=np,
+        image_cls=Image,
+        enabled_names=["rot270", "identity", "rot90", "rot270"],
+    )
+    assert [item.name for item in views] == ["identity", "rot90", "rot270"]
+
+
+def test_build_augmented_views_enabled_names_rejects_unknown_and_empty() -> None:
+    image = np.zeros((8, 10, 3), dtype=np.uint8)
+    with pytest.raises(ValueError, match="unknown augmentation"):
+        build_augmented_views(
+            image,
+            np_mod=np,
+            image_cls=Image,
+            enabled_names=["identity", "unknown_aug_x"],
+        )
+
+    with pytest.raises(ValueError, match="at least one augmentation"):
+        build_augmented_views(
+            image,
+            np_mod=np,
+            image_cls=Image,
+            enabled_names=[],
+        )
+
+
 @pytest.mark.parametrize(
     "op_name",
     ["identity", "hflip", "vflip", "rot90", "rot180", "rot270", "transpose", "transverse"],

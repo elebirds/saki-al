@@ -692,7 +692,7 @@ export interface RuntimeRequestConfigFieldOption {
 export interface RuntimeRequestConfigField {
     key: string;
     label: string;
-    type: 'integer' | 'number' | 'string' | 'boolean' | 'select';
+    type: 'integer' | 'number' | 'string' | 'boolean' | 'select' | 'multi_select' | 'textarea' | 'integer_array';
     required?: boolean;
     min?: number;
     max?: number;

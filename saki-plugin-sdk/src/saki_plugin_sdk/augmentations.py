@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from collections.abc import Sequence
 from typing import Any, Callable
 
 from saki_ir import geometry_to_quad8_local, normalize_quad8, quad8_to_aabb_rect
@@ -70,6 +71,7 @@ def build_augmented_views(
     np_mod: Any,
     image_cls: Any,
     extra_specs: tuple[AugmentationSpec, ...] | list[AugmentationSpec] = (),
+    enabled_names: Sequence[str] | None = None,
 ) -> list[AugmentedView]:
     base = np_mod.ascontiguousarray(image)
     if getattr(base, "ndim", 0) < 2:
@@ -78,6 +80,7 @@ def build_augmented_views(
     orig_h = int(base.shape[0])
     orig_w = int(base.shape[1])
     specs = _merge_specs(extra_specs=extra_specs)
+    specs = _select_specs(specs=specs, enabled_names=enabled_names)
 
     views: list[AugmentedView] = []
     for raw_spec in specs:
@@ -202,6 +205,37 @@ def _merge_specs(
         merged.append(normalized)
 
     return merged
+
+
+def _select_specs(
+    *,
+    specs: list[AugmentationSpec],
+    enabled_names: Sequence[str] | None,
+) -> list[AugmentationSpec]:
+    if enabled_names is None:
+        return specs
+
+    enabled: list[str] = []
+    seen: set[str] = set()
+    for raw in enabled_names:
+        name = _normalize_name(raw)
+        if name in seen:
+            continue
+        seen.add(name)
+        enabled.append(name)
+
+    if not enabled:
+        raise ValueError("enabled_names must include at least one augmentation")
+
+    available = {spec.name for spec in specs}
+    unknown = [name for name in enabled if name not in available]
+    if unknown:
+        raise ValueError(f"enabled_names contains unknown augmentation(s): {unknown}")
+
+    filtered = [spec for spec in specs if spec.name in seen]
+    if not filtered:
+        raise ValueError("enabled_names selects no augmentation")
+    return filtered
 
 
 def _normalize_name(value: Any) -> str:

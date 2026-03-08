@@ -24,6 +24,7 @@ class OrientedRCNNConfig:
     max_per_img: int
     predict_geometry_mode: str
     device: str
+    aug_iou_enabled_augs: tuple[str, ...]
 
     # 由上游 runtime 注入，用于几何输出策略自动决策
     annotation_types: tuple[str, ...]

@@ -60,6 +60,7 @@ const ProjectLoopCreate: React.FC = () => {
     const [createForm] = Form.useForm<LoopEditorFormValues>();
 
     const selectedMode = Form.useWatch('mode', createForm) || 'active_learning';
+    const selectedSamplingStrategy = Form.useWatch('samplingStrategy', createForm) || '';
     const selectedDeterministicLevel = Form.useWatch('deterministicLevel', createForm) || 'off';
     const selectedPluginId = Form.useWatch('modelArch', createForm);
     const selectedOracleInputMode = Form.useWatch(['simulationConfig', 'oracleInputMode'], createForm) || 'select';
@@ -577,6 +578,7 @@ const ProjectLoopCreate: React.FC = () => {
                             context={{
                                 annotationTypes: projectAnnotationTypes,
                                 fieldValues: pluginConfigValues,
+                                samplingStrategy: selectedSamplingStrategy,
                             }}
                             form={createForm}
                             namePrefix="pluginConfig"

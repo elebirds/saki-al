@@ -4,6 +4,7 @@ import math
 import threading
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import numpy as np
 
@@ -11,6 +12,7 @@ import pytest
 from PIL import Image
 
 import saki_plugin_oriented_rcnn.predict_service as predict_service_mod
+from saki_plugin_oriented_rcnn.config_service import OrientedRCNNConfigService
 from saki_plugin_oriented_rcnn.predict_service import OrientedRCNNPredictService
 from saki_plugin_sdk.strategies.builtin import (
     CANONICAL_AUG_IOU_STRATEGY,
@@ -162,3 +164,46 @@ def test_predict_with_augmentations_rebuilds_geometry_from_restored_qbox(
     assert obb.get("cy") == pytest.approx(3.0, abs=1e-6)
     assert obb.get("width") == pytest.approx(4.0, abs=1e-6)
     assert obb.get("height") == pytest.approx(2.0, abs=1e-6)
+
+
+def test_predict_with_augmentations_forwards_enabled_aug_names(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    image_path = tmp_path / "sample.png"
+    Image.fromarray(np.zeros((8, 10, 3), dtype=np.uint8)).save(image_path)
+
+    service = OrientedRCNNPredictService(
+        stop_flag=threading.Event(),
+        config_service=object(),  # type: ignore[arg-type]
+    )
+    captured: dict[str, Any] = {}
+
+    def _fake_build_augmented_views(*_args, **kwargs):
+        captured["enabled_names"] = kwargs.get("enabled_names")
+        return []
+
+    monkeypatch.setattr(predict_service_mod, "build_augmented_views", _fake_build_augmented_views)
+    outputs = service._predict_with_augmentations(
+        model=object(),
+        image_path=image_path,
+        classes=("ship",),
+        geometry_mode="obb",
+        score_thr=0.1,
+        max_per_img=100,
+        enabled_aug_names=("identity", "rot90"),
+    )
+    assert outputs == []
+    assert captured["enabled_names"] == ("identity", "rot90")
+
+
+def test_oriented_config_service_aug_iou_requires_identity() -> None:
+    service = OrientedRCNNConfigService()
+    cfg = service.resolve_config({}, strategy="aug_iou_disagreement")
+    assert "identity" in set(cfg.aug_iou_enabled_augs)
+
+    with pytest.raises(ValueError, match="must include 'identity'"):
+        service.resolve_config(
+            {"aug_iou_enabled_augs": ["hflip", "rot90"]},
+            strategy="aug_iou_disagreement",
+        )

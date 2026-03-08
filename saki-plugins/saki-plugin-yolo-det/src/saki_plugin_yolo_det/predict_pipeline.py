@@ -27,6 +27,7 @@ def score_unlabeled_samples(
     normalize_strategy_name: Callable[[str], str],
     random_seed: int,
     round_index: int,
+    aug_enabled_names: tuple[str, ...] | list[str] | None = None,
 ) -> list[dict[str, Any]]:
     strategy_key = normalize_strategy_name(strategy)
     need_model = strategy_key in {"aug_iou_disagreement", "uncertainty_1_minus_max_conf"}
@@ -52,6 +53,7 @@ def score_unlabeled_samples(
                 conf=conf,
                 imgsz=imgsz,
                 device=device,
+                enabled_aug_names=aug_enabled_names,
             )
             score, reason = score_by_strategy(
                 strategy_key,
@@ -142,6 +144,7 @@ def predict_with_augmentations(
     np_mod: Any,
     extract_predictions: Callable[[Any], list[dict[str, Any]]],
     extra_aug_specs: tuple[AugmentationSpec, ...] | list[AugmentationSpec] = (),
+    enabled_aug_names: tuple[str, ...] | list[str] | None = None,
 ) -> list[list[dict[str, Any]]]:
     ensure_image_deps()
     with image_cls.open(image_path) as img:
@@ -153,6 +156,7 @@ def predict_with_augmentations(
         np_mod=np_mod,
         image_cls=image_cls,
         extra_specs=extra_aug_specs,
+        enabled_names=enabled_aug_names,
     )
 
     results_by_aug: list[list[dict[str, Any]]] = []

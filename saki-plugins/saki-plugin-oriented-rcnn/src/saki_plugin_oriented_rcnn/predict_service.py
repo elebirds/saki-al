@@ -46,7 +46,7 @@ class OrientedRCNNPredictService:
         context: ExecutionBindingContext,
     ) -> list[dict[str, Any]]:
         self._stop_flag.clear()
-        cfg = self._config_service.resolve_config(params)
+        cfg = self._config_service.resolve_config(params, strategy=strategy)
 
         schema = load_class_schema(workspace)
         classes = tuple(str(v) for v in (schema.get("classes") or []) if str(v).strip())
@@ -108,6 +108,7 @@ class OrientedRCNNPredictService:
             max_per_img=int(cfg.max_per_img),
             random_seed=random_seed,
             round_index=round_index,
+            aug_enabled_names=tuple(cfg.aug_iou_enabled_augs),
         )
 
         candidates.sort(key=lambda row: float(row.get("score") or 0.0), reverse=True)
@@ -289,6 +290,7 @@ class OrientedRCNNPredictService:
         max_per_img: int,
         random_seed: int,
         round_index: int,
+        aug_enabled_names: tuple[str, ...] | None = None,
     ) -> list[dict[str, Any]]:
         strategy_key = normalize_strategy_name(strategy)
         rows: list[dict[str, Any]] = []
@@ -344,6 +346,7 @@ class OrientedRCNNPredictService:
                     geometry_mode=geometry_mode,
                     score_thr=score_thr,
                     max_per_img=max_per_img,
+                    enabled_aug_names=aug_enabled_names,
                 )
                 score, reason = score_by_strategy(
                     strategy_key,
@@ -458,6 +461,7 @@ class OrientedRCNNPredictService:
         geometry_mode: str,
         score_thr: float,
         max_per_img: int,
+        enabled_aug_names: tuple[str, ...] | None = None,
     ) -> list[list[dict[str, Any]]]:
         """生成多视角预测并映射回原图坐标系。
 
@@ -470,7 +474,12 @@ class OrientedRCNNPredictService:
             rgb = img.convert("RGB")
             base_img = np.array(rgb)
 
-        views = build_augmented_views(base_img, np_mod=np, image_cls=Image)
+        views = build_augmented_views(
+            base_img,
+            np_mod=np,
+            image_cls=Image,
+            enabled_names=enabled_aug_names,
+        )
 
         outputs: list[list[dict[str, Any]]] = []
         for view in views:

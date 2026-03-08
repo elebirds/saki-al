@@ -72,7 +72,7 @@ class ConfigField(BaseModel):
     """
     key: str
     label: str
-    type: str  # 'integer', 'number', 'string', 'boolean', 'select', 'textarea', 'integer_array'
+    type: str  # 'integer', 'number', 'string', 'boolean', 'select', 'multi_select', 'textarea', 'integer_array'
     required: bool = False
     # Field-level constraints (can also use props)
     min: float | None = None
@@ -104,6 +104,7 @@ _COERCE_MAP: dict[str, type] = {
     "boolean": bool,
     "string": str,
     "select": str,
+    "multi_select": list,
     "textarea": str,
     "integer_array": list,
 }
@@ -122,8 +123,25 @@ def _coerce(value: Any, field_type: str) -> Any:
         return value
     if target is bool and isinstance(value, str):
         return value.lower() in ("true", "1", "yes")
-    if target is list and isinstance(value, str):
-        return [v.strip() for v in value.split(",") if v.strip()]
+    if field_type == "integer_array":
+        if isinstance(value, str):
+            return [v.strip() for v in value.split(",") if v.strip()]
+        if isinstance(value, (list, tuple, set)):
+            return list(value)
+        return value
+    if field_type == "multi_select":
+        if isinstance(value, (list, tuple, set)):
+            normalized: list[Any] = []
+            for item in value:
+                if isinstance(item, str):
+                    text = item.strip()
+                    if not text:
+                        continue
+                    normalized.append(text)
+                    continue
+                normalized.append(item)
+            return normalized
+        return value
     try:
         return target(value)
     except (ValueError, TypeError):
@@ -142,7 +160,11 @@ def _validate_field(key: str, value: Any, field_def: ConfigField) -> list[str]:
     errors: list[str] = []
 
     # --- required ---
-    if field_def.required and (value is None or (isinstance(value, str) and not value.strip())):
+    if field_def.required and (
+        value is None
+        or (isinstance(value, str) and not value.strip())
+        or (field_def.type == "multi_select" and isinstance(value, list) and len(value) == 0)
+    ):
         errors.append(f"config field '{key}' is required")
 
     if value is None:
@@ -175,6 +197,23 @@ def _validate_field(key: str, value: Any, field_def: ConfigField) -> list[str]:
                     f"config field '{key}' = {value!r} is not one of "
                     f"the allowed options: {sorted(allowed)}"
                 )
+    if field_type == "multi_select":
+        if not isinstance(value, list):
+            errors.append(f"config field '{key}' must be an array for type=multi_select")
+            return errors
+        options = field_def.options or []
+        if not options:
+            return errors
+        allowed = {
+            str(o.value).strip().lower()
+            for o in options
+            if isinstance(o, ConfigFieldOption)
+        }
+        invalid = [item for item in value if str(item).strip().lower() not in allowed]
+        if invalid:
+            errors.append(
+                f"config field '{key}' has invalid options {invalid!r}; allowed={sorted(allowed)}"
+            )
 
     return errors
 

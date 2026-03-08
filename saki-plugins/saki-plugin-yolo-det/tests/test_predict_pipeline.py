@@ -98,3 +98,34 @@ def test_aug_iou_strategy_passes_qbox_rows_to_sdk_strategy(tmp_path: Path) -> No
     assert rows[0]["sample_id"] == "sample-a"
     assert rows[0]["score"] == pytest.approx(0.42)
     assert len(seen_rows) == 1
+
+
+def test_aug_iou_strategy_forwards_enabled_aug_names(tmp_path: Path) -> None:
+    sample = tmp_path / "a.jpg"
+    sample.write_bytes(b"\x00")
+    unlabeled_samples = [{"id": "sample-a", "local_path": str(sample)}]
+    seen_enabled: list[tuple[str, ...] | list[str] | None] = []
+
+    def _predict_with_aug(**kwargs):
+        seen_enabled.append(kwargs.get("enabled_aug_names"))
+        return [[], []]
+
+    rows = score_unlabeled_samples(
+        unlabeled_samples=unlabeled_samples,
+        strategy="aug_iou_disagreement",
+        conf=0.25,
+        imgsz=640,
+        device="cpu",
+        stop_flag=Event(),
+        get_model=lambda: object(),
+        predict_single_image=lambda **_kw: [],
+        predict_with_aug=_predict_with_aug,
+        extract_predictions=lambda _pred: [],
+        score_by_strategy=lambda _strategy, _sample_id, **_kwargs: (0.3, {"score": 0.3}),
+        normalize_strategy_name=normalize_strategy_name,
+        random_seed=7,
+        round_index=1,
+        aug_enabled_names=("identity", "rot90"),
+    )
+    assert len(rows) == 1
+    assert seen_enabled == [("identity", "rot90")]

@@ -65,7 +65,7 @@ class YoloPredictService:
         context: ExecutionBindingContext,
     ) -> list[dict[str, Any]]:
         self._stop_flag.clear()
-        cfg = self._config_service.resolve_config(params)
+        cfg = self._config_service.resolve_config(params, strategy=strategy)
 
         topk = max(1, to_int(getattr(cfg, "topk", getattr(cfg, "sampling_topk", 200)), 200))
         conf = to_float(cfg.predict_conf, 0.1)
@@ -98,6 +98,7 @@ class YoloPredictService:
             device=device,
             random_seed=random_seed,
             round_index=round_index,
+            aug_enabled_names=tuple(getattr(cfg, "aug_iou_enabled_augs", ()) or ()),
         )
         candidates.sort(key=lambda item: float(item.get("score") or 0.0), reverse=True)
         return candidates[:topk]
@@ -142,6 +143,7 @@ class YoloPredictService:
         device: Any,
         random_seed: int,
         round_index: int,
+        aug_enabled_names: tuple[str, ...] | None = None,
     ) -> list[dict[str, Any]]:
         return score_unlabeled_samples(
             unlabeled_samples=unlabeled_samples,
@@ -158,6 +160,7 @@ class YoloPredictService:
             normalize_strategy_name=normalize_strategy_name,
             random_seed=random_seed,
             round_index=round_index,
+            aug_enabled_names=aug_enabled_names,
         )
 
     def _predict_samples_sync(
@@ -255,6 +258,7 @@ class YoloPredictService:
         conf: float,
         imgsz: int,
         device: Any,
+        enabled_aug_names: tuple[str, ...] | None = None,
     ) -> list[list[dict[str, Any]]]:
         if Image is None or np is None:
             raise RuntimeError("numpy and pillow are required for yolo_det_v1 plugin")
@@ -268,6 +272,7 @@ class YoloPredictService:
             image_cls=Image,
             np_mod=np,
             extract_predictions=self._extract_predictions,
+            enabled_aug_names=enabled_aug_names,
         )
 
     def _extract_predictions(self, result) -> list[dict[str, Any]]:

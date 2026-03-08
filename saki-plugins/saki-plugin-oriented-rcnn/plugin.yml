@@ -109,6 +109,54 @@ config_schema:
         max: 1.0
         step: 0.01
 
+    - key: aug_iou_enabled_augs
+      label: aug_iou 增强项
+      type: multi_select
+      required: true
+      description: 仅在 aug_iou_disagreement 下生效，且必须包含 identity
+      default:
+        - identity
+        - hflip
+        - vflip
+        - rot90
+        - rot180
+        - rot270
+        - transpose
+        - transverse
+        - bright
+        - dark
+        - contrast_up
+        - affine_rot_p12
+        - affine_rot_m12
+      options:
+        - label: identity
+          value: identity
+        - label: hflip
+          value: hflip
+        - label: vflip
+          value: vflip
+        - label: rot90
+          value: rot90
+        - label: rot180
+          value: rot180
+        - label: rot270
+          value: rot270
+        - label: transpose
+          value: transpose
+        - label: transverse
+          value: transverse
+        - label: bright
+          value: bright
+        - label: dark
+          value: dark
+        - label: contrast_up
+          value: contrast_up
+        - label: affine_rot_p12
+          value: affine_rot_p12
+        - label: affine_rot_m12
+          value: affine_rot_m12
+      visible: "ctx.sampling_strategy === 'aug_iou_disagreement'"
+
     - key: val_split_ratio
       label: 验证集比例
       type: number

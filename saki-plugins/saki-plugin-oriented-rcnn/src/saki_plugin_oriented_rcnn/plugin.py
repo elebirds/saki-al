@@ -19,6 +19,23 @@ from saki_plugin_oriented_rcnn.runtime_service import OrientedRCNNRuntimeService
 
 
 class OrientedRCNNPlugin(ExecutorPlugin):
+    _DEFAULT_AUG_NAMES = (
+        "identity",
+        "hflip",
+        "vflip",
+        "rot90",
+        "rot180",
+        "rot270",
+        "transpose",
+        "transverse",
+        "bright",
+        "dark",
+        "contrast_up",
+        "affine_rot_p12",
+        "affine_rot_m12",
+    )
+    _VALID_AUG_IOU_MODES = {"rect", "obb", "boundary"}
+
     def __init__(self) -> None:
         super().__init__()
         self._manifest = self._load_manifest()
@@ -76,6 +93,42 @@ class OrientedRCNNPlugin(ExecutorPlugin):
             return json.dumps(dict(params or {}), ensure_ascii=False, sort_keys=True)
         except Exception:
             return str(params)
+
+    @classmethod
+    def _resolve_aug_iou_enabled_augs(cls, params: dict[str, Any]) -> tuple[str, ...]:
+        raw = params.get("aug_iou_enabled_augs")
+        if not isinstance(raw, (list, tuple, set)):
+            return cls._DEFAULT_AUG_NAMES
+        requested = {str(item or "").strip().lower() for item in raw if str(item or "").strip()}
+        if not requested:
+            return ()
+        return tuple(name for name in cls._DEFAULT_AUG_NAMES if name in requested)
+
+    @classmethod
+    def _resolve_aug_iou_mode(cls, params: dict[str, Any]) -> str:
+        mode = str(params.get("aug_iou_iou_mode", "obb") or "obb").strip().lower()
+        if mode in cls._VALID_AUG_IOU_MODES:
+            return mode
+        return "obb"
+
+    @staticmethod
+    def _resolve_aug_iou_boundary_d(params: dict[str, Any]) -> int:
+        try:
+            value = int(params.get("aug_iou_boundary_d", 3))
+        except Exception:
+            value = 3
+        return max(1, min(128, value))
+
+    @staticmethod
+    def _aug_iou_strategy_desc(mode: str, boundary_d: int) -> str:
+        if mode == "rect":
+            return "AABB IoU（axis-aligned）"
+        if mode == "boundary":
+            return (
+                f"Boundary IoU（d={boundary_d}px）；优先 qbox 环带 IoU，"
+                "qbox/shapely 不可用时回退到 AABB 边界近似"
+            )
+        return "OBB IoU；优先 qbox 多边形 IoU，qbox/shapely 不可用时回退到 AABB IoU"
 
     async def on_start(self, task_id: str, workspace: WorkspaceProtocol) -> None:
         await super().on_start(task_id, workspace)
@@ -207,6 +260,16 @@ class OrientedRCNNPlugin(ExecutorPlugin):
             f"score 采样完成 strategy={strategy} 候选数={len(candidates)} "
             f"top_sample={top_sample or '-'} top_score={top_score:.6f}"
         )
+        if str(strategy or "").strip().lower() == "aug_iou_disagreement":
+            mode = self._resolve_aug_iou_mode(params)
+            boundary_d = self._resolve_aug_iou_boundary_d(params)
+            enabled_augs = self._resolve_aug_iou_enabled_augs(params)
+            enabled_text = ",".join(enabled_augs) if enabled_augs else "-"
+            self.logger.info(
+                "score 采样细节 "
+                f"strategy=aug_iou_disagreement enabled_augs=[{enabled_text}] "
+                f"iou_mode={mode} iou_policy={self._aug_iou_strategy_desc(mode, boundary_d)}"
+            )
         return candidates
 
     async def predict_samples_batch(

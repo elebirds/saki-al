@@ -25,6 +25,12 @@ from saki_plugin_yolo_det.types import TrainConfig
 from saki_ir.proto.saki.ir.v1 import annotation_ir_pb2 as irpb
 
 
+def test_plugin_init_config_log_uses_request_schema_property() -> None:
+    plugin = YoloDetectionPlugin()
+    text = plugin._build_init_config_log()
+    assert "插件初始化配置摘要" in text
+
+
 class _RuntimeStub:
     def __init__(self) -> None:
         self.last_train_context: ExecutionBindingContext | None = None

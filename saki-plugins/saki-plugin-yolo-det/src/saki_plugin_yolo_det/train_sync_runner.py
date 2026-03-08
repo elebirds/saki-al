@@ -87,6 +87,7 @@ def _build_train_kwargs(
     deterministic: bool,
     strong_deterministic: bool,
     cache: bool = False,
+    workers: int = 2,
     train_project_dir: Path,
 ) -> dict[str, Any]:
     kwargs: dict[str, Any] = {
@@ -98,6 +99,7 @@ def _build_train_kwargs(
         "device": device,
         "seed": int(train_seed),
         "deterministic": bool(deterministic),
+        "workers": max(0, int(workers)),
         "project": str(train_project_dir),
         "name": "yolo_train",
         "exist_ok": True,
@@ -126,6 +128,7 @@ def run_train_sync(
     deterministic: bool,
     strong_deterministic: bool,
     cache: bool = False,
+    workers: int = 2,
     stop_flag: Event,
     load_yolo: LoadYoloFn,
     ensure_cjk_plot_font: EnsureFontFn,
@@ -169,6 +172,7 @@ def run_train_sync(
             deterministic=deterministic,
             strong_deterministic=strong_deterministic,
             cache=cache,
+            workers=workers,
             train_project_dir=train_project_dir,
         )
     )

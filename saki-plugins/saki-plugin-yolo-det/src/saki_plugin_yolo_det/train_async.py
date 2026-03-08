@@ -60,6 +60,11 @@ async def resolve_train_config(
         workspace=workspace,
         params=plugin_config,
     )
+    try:
+        workers = int(getattr(plugin_config, "workers", 2))
+    except Exception:
+        workers = 2
+
     return TrainConfig(
         epochs=int(plugin_config.epochs),
         batch=int(plugin_config.batch),
@@ -74,6 +79,7 @@ async def resolve_train_config(
         strong_deterministic=bool(getattr(plugin_config, "strong_deterministic", False)),
         yolo_task=str(plugin_config.yolo_task),
         cache=bool(getattr(plugin_config, "cache", False)),
+        workers=max(0, min(32, workers)),
     )
 
 
@@ -99,7 +105,8 @@ async def run_train_with_epoch_stream(
                 f"patience={config.patience} requested_device={config.requested_device} "
                 f"resolved_backend={config.resolved_backend} device={config.device} "
                 f"train_seed={config.train_seed} deterministic={config.deterministic} "
-                f"strong_deterministic={config.strong_deterministic} cache={config.cache}"
+                f"strong_deterministic={config.strong_deterministic} "
+                f"cache={config.cache} workers={config.workers}"
             ),
         },
     )
@@ -133,6 +140,7 @@ async def run_train_with_epoch_stream(
                 strong_deterministic=config.strong_deterministic,
                 yolo_task=config.yolo_task,
                 cache=config.cache,
+                workers=config.workers,
                 epoch_callback=_on_epoch_update,
             )
         except BaseException as exc:  # pragma: no cover - delegated to caller path

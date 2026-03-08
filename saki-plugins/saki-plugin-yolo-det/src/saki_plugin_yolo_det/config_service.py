@@ -20,6 +20,9 @@ class YoloConfigService:
     _VALID_YOLO_TASKS = ("detect", "obb")
     _DEFAULT_AUG_NAMES = tuple(spec.name for spec in build_default_augmentation_specs())
     _VALID_AUG_IOU_MODES = ("rect", "obb", "boundary")
+    _WORKERS_MIN = 0
+    _WORKERS_MAX = 32
+    _WORKERS_DEFAULT = 2
 
     def __init__(self) -> None:
         self._manifest = PluginManifest.from_yaml(
@@ -165,6 +168,11 @@ class YoloConfigService:
         except Exception:
             aug_iou_boundary_d = 3
         aug_iou_boundary_d = max(1, min(128, aug_iou_boundary_d))
+        try:
+            workers = int(self._read_param(config, "workers", self._WORKERS_DEFAULT))
+        except Exception:
+            workers = self._WORKERS_DEFAULT
+        workers = max(self._WORKERS_MIN, min(self._WORKERS_MAX, workers))
 
         return config.model_copy(
             update={
@@ -175,6 +183,7 @@ class YoloConfigService:
                 "aug_iou_enabled_augs": list(aug_enabled),
                 "aug_iou_iou_mode": aug_iou_mode,
                 "aug_iou_boundary_d": aug_iou_boundary_d,
+                "workers": workers,
             }
         )
 

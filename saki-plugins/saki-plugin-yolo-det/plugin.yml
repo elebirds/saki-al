@@ -114,6 +114,16 @@ config_schema:
       default: false
       description: 开启后使用内存缓存训练资源（Ultralytics cache=ram）
 
+    - key: workers
+      label: DataLoader 线程数
+      type: integer
+      default: 2
+      description: 训练加载数据使用的 worker 数；0 表示主进程加载
+      props:
+        min: 0
+        max: 32
+        step: 1
+
     # 预测参数组
     - key: predict_conf
       label: 预测置信度

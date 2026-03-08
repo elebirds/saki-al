@@ -89,7 +89,7 @@ def test_build_train_kwargs_for_deterministic_mode():
     )
     assert kwargs["seed"] == 123
     assert kwargs["deterministic"] is True
-    assert "workers" not in kwargs
+    assert kwargs["workers"] == 2
     assert "amp" not in kwargs
 
 
@@ -127,7 +127,7 @@ def test_build_train_kwargs_for_non_deterministic_mode():
     )
     assert kwargs["seed"] == 123
     assert kwargs["deterministic"] is False
-    assert "workers" not in kwargs
+    assert kwargs["workers"] == 2
     assert "amp" not in kwargs
     assert "cache" not in kwargs
 
@@ -146,4 +146,5 @@ def test_build_train_kwargs_enables_ram_cache_when_requested():
         cache=True,
         train_project_dir=Path("/tmp/project"),
     )
+    assert kwargs["workers"] == 2
     assert kwargs["cache"] == "ram"

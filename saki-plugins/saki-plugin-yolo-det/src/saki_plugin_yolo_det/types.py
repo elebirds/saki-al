@@ -19,6 +19,7 @@ class TrainConfig:
     strong_deterministic: bool
     yolo_task: str = "obb"
     cache: bool = False
+    workers: int = 2
 
 
 @dataclass(frozen=True)

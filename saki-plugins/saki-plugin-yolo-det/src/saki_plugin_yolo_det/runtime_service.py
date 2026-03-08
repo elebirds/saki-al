@@ -321,6 +321,7 @@ class YoloRuntimeService:
         strong_deterministic: bool,
         yolo_task: str = "obb",
         cache: bool = False,
+        workers: int = 2,
         epoch_callback: Callable[[dict[str, Any]], None] | None = None,
     ) -> dict[str, Any]:
         return run_train_sync(
@@ -336,6 +337,7 @@ class YoloRuntimeService:
             deterministic=deterministic,
             strong_deterministic=strong_deterministic,
             cache=cache,
+            workers=workers,
             stop_flag=self._stop_flag,
             load_yolo=self._load_yolo,
             ensure_cjk_plot_font=self._ensure_cjk_plot_font,

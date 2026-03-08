@@ -36,6 +36,7 @@ def _make_train_config() -> TrainConfig:
         deterministic=False,
         strong_deterministic=False,
         yolo_task="obb",
+        workers=2,
     )
 
 
@@ -51,6 +52,7 @@ async def test_run_train_with_epoch_stream_emits_progress_then_log_then_metric(t
         emitted.append((event_type, payload))
 
     def _run_train_sync(**kwargs):
+        assert kwargs["workers"] == 2
         callback = kwargs["epoch_callback"]
         callback(
             {
@@ -102,6 +104,7 @@ async def test_run_train_with_epoch_stream_uses_train_output_best_metrics_as_fin
         emitted.append((event_type, payload))
 
     def _run_train_sync(**kwargs):
+        assert kwargs["workers"] == 2
         callback = kwargs["epoch_callback"]
         callback(
             {
@@ -161,7 +164,7 @@ def test_format_epoch_metric_summary_prioritizes_common_keys():
 
 
 @pytest.mark.anyio
-async def test_resolve_train_config_reads_cache_flag():
+async def test_resolve_train_config_reads_cache_flag_and_workers():
     plugin_config = SimpleNamespace(
         epochs=3,
         batch=4,
@@ -173,6 +176,7 @@ async def test_resolve_train_config_reads_cache_flag():
         strong_deterministic=False,
         yolo_task="detect",
         cache=True,
+        workers=6,
     )
     execution_context = SimpleNamespace(
         device_binding=SimpleNamespace(backend="cpu", device_spec="cpu"),
@@ -189,3 +193,4 @@ async def test_resolve_train_config_reads_cache_flag():
         resolve_model_ref=_resolve_model_ref,
     )
     assert resolved.cache is True
+    assert resolved.workers == 6

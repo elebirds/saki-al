@@ -28,6 +28,8 @@ def score_unlabeled_samples(
     random_seed: int,
     round_index: int,
     aug_enabled_names: tuple[str, ...] | list[str] | None = None,
+    aug_iou_mode: str = "obb",
+    aug_iou_boundary_d: int = 3,
 ) -> list[dict[str, Any]]:
     strategy_key = normalize_strategy_name(strategy)
     need_model = strategy_key in {"aug_iou_disagreement", "uncertainty_1_minus_max_conf"}
@@ -61,6 +63,8 @@ def score_unlabeled_samples(
                 random_seed=random_seed,
                 round_index=round_index,
                 predictions_by_aug=preds_by_aug,
+                aug_iou_mode=aug_iou_mode,
+                aug_iou_boundary_d=aug_iou_boundary_d,
             )
             candidates.append(
                 {

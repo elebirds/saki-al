@@ -99,6 +99,8 @@ class YoloPredictService:
             random_seed=random_seed,
             round_index=round_index,
             aug_enabled_names=tuple(getattr(cfg, "aug_iou_enabled_augs", ()) or ()),
+            aug_iou_mode=str(getattr(cfg, "aug_iou_iou_mode", "obb") or "obb"),
+            aug_iou_boundary_d=int(getattr(cfg, "aug_iou_boundary_d", 3) or 3),
         )
         candidates.sort(key=lambda item: float(item.get("score") or 0.0), reverse=True)
         return candidates[:topk]
@@ -144,6 +146,8 @@ class YoloPredictService:
         random_seed: int,
         round_index: int,
         aug_enabled_names: tuple[str, ...] | None = None,
+        aug_iou_mode: str = "obb",
+        aug_iou_boundary_d: int = 3,
     ) -> list[dict[str, Any]]:
         return score_unlabeled_samples(
             unlabeled_samples=unlabeled_samples,
@@ -161,6 +165,8 @@ class YoloPredictService:
             random_seed=random_seed,
             round_index=round_index,
             aug_enabled_names=aug_enabled_names,
+            aug_iou_mode=aug_iou_mode,
+            aug_iou_boundary_d=aug_iou_boundary_d,
         )
 
     def _predict_samples_sync(

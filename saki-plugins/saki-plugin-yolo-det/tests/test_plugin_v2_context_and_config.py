@@ -234,6 +234,8 @@ def test_config_service_aug_iou_requires_identity_when_strategy_is_aug_iou():
     )
     augs = list(getattr(cfg, "aug_iou_enabled_augs", []))
     assert "identity" in augs
+    assert str(getattr(cfg, "aug_iou_iou_mode", "")) == "obb"
+    assert int(getattr(cfg, "aug_iou_boundary_d", 0)) == 3
 
     with pytest.raises(ValueError, match="must include 'identity'"):
         service.resolve_config(
@@ -244,6 +246,31 @@ def test_config_service_aug_iou_requires_identity_when_strategy_is_aug_iou():
             },
             strategy="aug_iou_disagreement",
         )
+
+
+def test_config_service_aug_iou_mode_and_boundary_d_validation():
+    service = YoloConfigService()
+    with pytest.raises(Exception, match="aug_iou_iou_mode"):
+        service.resolve_config(
+            {
+                "yolo_task": "detect",
+                "model_source": "preset",
+                "aug_iou_iou_mode": "bad_mode",
+            },
+            strategy="aug_iou_disagreement",
+        )
+
+    cfg = service.resolve_config(
+        {
+            "yolo_task": "detect",
+            "model_source": "preset",
+            "aug_iou_iou_mode": "boundary",
+            "aug_iou_boundary_d": 999,
+        },
+        strategy="aug_iou_disagreement",
+    )
+    assert str(getattr(cfg, "aug_iou_iou_mode", "")) == "boundary"
+    assert int(getattr(cfg, "aug_iou_boundary_d", 0)) == 128
 
 
 def test_config_service_init_fails_when_task_has_no_preset(monkeypatch):

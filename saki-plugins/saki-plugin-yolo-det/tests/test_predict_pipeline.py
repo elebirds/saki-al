@@ -129,3 +129,37 @@ def test_aug_iou_strategy_forwards_enabled_aug_names(tmp_path: Path) -> None:
     )
     assert len(rows) == 1
     assert seen_enabled == [("identity", "rot90")]
+
+
+def test_aug_iou_strategy_forwards_iou_mode_and_boundary_d(tmp_path: Path) -> None:
+    sample = tmp_path / "a.jpg"
+    sample.write_bytes(b"\x00")
+    unlabeled_samples = [{"id": "sample-a", "local_path": str(sample)}]
+    captured: dict[str, object] = {}
+
+    def _score_by_strategy(_strategy, _sample_id, **kwargs):
+        captured["aug_iou_mode"] = kwargs.get("aug_iou_mode")
+        captured["aug_iou_boundary_d"] = kwargs.get("aug_iou_boundary_d")
+        return 0.3, {"score": 0.3}
+
+    rows = score_unlabeled_samples(
+        unlabeled_samples=unlabeled_samples,
+        strategy="aug_iou_disagreement",
+        conf=0.25,
+        imgsz=640,
+        device="cpu",
+        stop_flag=Event(),
+        get_model=lambda: object(),
+        predict_single_image=lambda **_kw: [],
+        predict_with_aug=lambda **_kw: [[], []],
+        extract_predictions=lambda _pred: [],
+        score_by_strategy=_score_by_strategy,
+        normalize_strategy_name=normalize_strategy_name,
+        random_seed=7,
+        round_index=1,
+        aug_iou_mode="boundary",
+        aug_iou_boundary_d=11,
+    )
+    assert len(rows) == 1
+    assert captured["aug_iou_mode"] == "boundary"
+    assert captured["aug_iou_boundary_d"] == 11

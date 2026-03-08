@@ -25,6 +25,8 @@ class OrientedRCNNConfig:
     predict_geometry_mode: str
     device: str
     aug_iou_enabled_augs: tuple[str, ...]
+    aug_iou_iou_mode: str
+    aug_iou_boundary_d: int
 
     # 由上游 runtime 注入，用于几何输出策略自动决策
     annotation_types: tuple[str, ...]

@@ -19,6 +19,7 @@ from saki_plugin_sdk.strategies.builtin import CANONICAL_AUG_IOU_STRATEGY, norma
 class YoloConfigService:
     _VALID_YOLO_TASKS = ("detect", "obb")
     _DEFAULT_AUG_NAMES = tuple(spec.name for spec in build_default_augmentation_specs())
+    _VALID_AUG_IOU_MODES = ("rect", "obb", "boundary")
 
     def __init__(self) -> None:
         self._manifest = PluginManifest.from_yaml(
@@ -154,6 +155,16 @@ class YoloConfigService:
                 raise ValueError("strategy=aug_iou_disagreement requires non-empty aug_iou_enabled_augs")
             if "identity" not in set(aug_enabled):
                 raise ValueError("aug_iou_enabled_augs must include 'identity' for aug_iou_disagreement")
+        aug_iou_mode = str(self._read_param(config, "aug_iou_iou_mode", "obb") or "obb").strip().lower()
+        if aug_iou_mode not in self._VALID_AUG_IOU_MODES:
+            raise ValueError(
+                f"unsupported aug_iou_iou_mode: {aug_iou_mode!r}, must be one of {self._VALID_AUG_IOU_MODES}"
+            )
+        try:
+            aug_iou_boundary_d = int(self._read_param(config, "aug_iou_boundary_d", 3))
+        except Exception:
+            aug_iou_boundary_d = 3
+        aug_iou_boundary_d = max(1, min(128, aug_iou_boundary_d))
 
         return config.model_copy(
             update={
@@ -162,6 +173,8 @@ class YoloConfigService:
                 "model_preset": preset,
                 "model_custom_ref": "" if source == "preset" else custom_ref,
                 "aug_iou_enabled_augs": list(aug_enabled),
+                "aug_iou_iou_mode": aug_iou_mode,
+                "aug_iou_boundary_d": aug_iou_boundary_d,
             }
         )
 

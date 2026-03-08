@@ -201,9 +201,79 @@ def test_oriented_config_service_aug_iou_requires_identity() -> None:
     service = OrientedRCNNConfigService()
     cfg = service.resolve_config({}, strategy="aug_iou_disagreement")
     assert "identity" in set(cfg.aug_iou_enabled_augs)
+    assert cfg.aug_iou_iou_mode == "obb"
+    assert cfg.aug_iou_boundary_d == 3
 
     with pytest.raises(ValueError, match="must include 'identity'"):
         service.resolve_config(
             {"aug_iou_enabled_augs": ["hflip", "rot90"]},
             strategy="aug_iou_disagreement",
         )
+
+
+def test_oriented_config_service_validates_aug_iou_mode_and_boundary_d() -> None:
+    service = OrientedRCNNConfigService()
+    with pytest.raises(Exception, match="aug_iou_iou_mode"):
+        service.resolve_config(
+            {"aug_iou_iou_mode": "bad_mode"},
+            strategy="aug_iou_disagreement",
+        )
+
+    cfg = service.resolve_config(
+        {
+            "aug_iou_iou_mode": "boundary",
+            "aug_iou_boundary_d": 999,
+        },
+        strategy="aug_iou_disagreement",
+    )
+    assert cfg.aug_iou_iou_mode == "boundary"
+    assert cfg.aug_iou_boundary_d == 128
+
+
+def test_score_samples_sync_forwards_aug_iou_mode_and_boundary_d(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    sample = tmp_path / "sample.png"
+    Image.fromarray(np.zeros((8, 10, 3), dtype=np.uint8)).save(sample)
+    service = OrientedRCNNPredictService(
+        stop_flag=threading.Event(),
+        config_service=object(),  # type: ignore[arg-type]
+    )
+    captured: dict[str, Any] = {}
+
+    monkeypatch.setattr(predict_service_mod, "infer_single_image", lambda **_kwargs: {})
+    monkeypatch.setattr(
+        service,
+        "_build_entries",
+        lambda **_kwargs: [],
+    )
+    monkeypatch.setattr(
+        service,
+        "_predict_with_augmentations",
+        lambda **_kwargs: [[{"class_index": 0, "confidence": 0.9, "geometry": {"rect": {}}}]],
+    )
+
+    def _fake_score_by_strategy(_strategy, _sample_id, **kwargs):
+        captured["aug_iou_mode"] = kwargs.get("aug_iou_mode")
+        captured["aug_iou_boundary_d"] = kwargs.get("aug_iou_boundary_d")
+        return 0.6, {"score": 0.6}
+
+    monkeypatch.setattr(predict_service_mod, "score_by_strategy", _fake_score_by_strategy)
+    rows = service._score_samples_sync(
+        model=object(),
+        unlabeled_samples=[{"id": "sample-a", "local_path": str(sample)}],
+        strategy="aug_iou_disagreement",
+        classes=("ship",),
+        geometry_mode="obb",
+        score_thr=0.1,
+        max_per_img=100,
+        random_seed=7,
+        round_index=1,
+        aug_enabled_names=("identity",),
+        aug_iou_mode="boundary",
+        aug_iou_boundary_d=9,
+    )
+    assert len(rows) == 1
+    assert captured["aug_iou_mode"] == "boundary"
+    assert captured["aug_iou_boundary_d"] == 9

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from typing import Any
 
 import pytest
 
@@ -88,3 +89,30 @@ def test_score_by_strategy_strict_mode_and_unknown_strategy() -> None:
     )
     assert math.isclose(score_u, 0.4, rel_tol=1e-6, abs_tol=1e-6)
     assert reason_u["strategy"] == CANONICAL_UNCERTAINTY_STRATEGY
+
+
+def test_score_by_strategy_forwards_aug_iou_mode_and_boundary_d(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    def _fake_route(rows_by_aug, *, iou_mode: str, boundary_d: float):
+        captured["rows"] = rows_by_aug
+        captured["iou_mode"] = iou_mode
+        captured["boundary_d"] = boundary_d
+        return 0.5, {"score": 0.5}
+
+    from saki_plugin_sdk.strategies import builtin as builtin_mod
+
+    monkeypatch.setattr(builtin_mod, "score_aug_iou_disagreement_from_rows", _fake_route)
+    score, reason = score_by_strategy(
+        CANONICAL_AUG_IOU_STRATEGY,
+        "sample-z",
+        predictions_by_aug=[[{"confidence": 0.5}], [{"confidence": 0.8}]],
+        aug_iou_mode="boundary",
+        aug_iou_boundary_d=7.0,
+    )
+    assert math.isclose(score, 0.5, rel_tol=1e-6, abs_tol=1e-6)
+    assert math.isclose(float(reason["score"]), 0.5, rel_tol=1e-6, abs_tol=1e-6)
+    assert captured["iou_mode"] == "boundary"
+    assert captured["boundary_d"] == pytest.approx(7.0)

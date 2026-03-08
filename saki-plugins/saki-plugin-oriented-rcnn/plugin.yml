@@ -157,6 +157,33 @@ config_schema:
           value: affine_rot_m12
       visible: "ctx.sampling_strategy === 'aug_iou_disagreement'"
 
+    - key: aug_iou_iou_mode
+      label: aug_iou IoU 计算方式
+      type: select
+      required: true
+      default: "obb"
+      description: rect=标准AABB，obb=旋转框IoU，boundary=边界带IoU
+      options:
+        - label: rect (AABB)
+          value: rect
+        - label: obb (polygon)
+          value: obb
+        - label: boundary (needs d)
+          value: boundary
+      visible: "ctx.sampling_strategy === 'aug_iou_disagreement'"
+
+    - key: aug_iou_boundary_d
+      label: boundary IoU 边界厚度 d
+      type: integer
+      required: true
+      default: 3
+      description: 仅在 aug_iou_iou_mode=boundary 时生效，单位像素
+      props:
+        min: 1
+        max: 128
+        step: 1
+      visible: "ctx.sampling_strategy === 'aug_iou_disagreement' && form.aug_iou_iou_mode === 'boundary'"
+
     - key: val_split_ratio
       label: 验证集比例
       type: number

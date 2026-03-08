@@ -50,9 +50,16 @@ def score_uncertainty_1_minus_max_conf(
 
 def score_aug_iou_disagreement_from_rows(
     predictions_by_aug: Sequence[Sequence[Mapping[str, Any]]],
+    *,
+    iou_mode: str = "obb",
+    boundary_d: float = 3.0,
 ) -> tuple[float, dict[str, Any]]:
     boxes_by_aug = [build_detection_boxes(rows) for rows in predictions_by_aug]
-    score, reason = score_aug_iou_disagreement(boxes_by_aug)
+    score, reason = score_aug_iou_disagreement(
+        boxes_by_aug,
+        iou_mode=iou_mode,
+        boundary_d=boundary_d,
+    )
     merged = {
         "strategy": CANONICAL_AUG_IOU_STRATEGY,
         **dict(reason or {}),
@@ -72,6 +79,8 @@ def score_by_strategy(
     round_index: int = 1,
     predictions: Sequence[Mapping[str, Any]] | None = None,
     predictions_by_aug: Sequence[Sequence[Mapping[str, Any]]] | None = None,
+    aug_iou_mode: str = "obb",
+    aug_iou_boundary_d: float = 3.0,
 ) -> tuple[float, dict[str, Any]]:
     del round_index
     key = normalize_strategy_name(strategy)
@@ -82,7 +91,11 @@ def score_by_strategy(
     if key == CANONICAL_AUG_IOU_STRATEGY:
         if predictions_by_aug is None:
             raise ValueError("strategy=aug_iou_disagreement requires predictions_by_aug")
-        return score_aug_iou_disagreement_from_rows(predictions_by_aug)
+        return score_aug_iou_disagreement_from_rows(
+            predictions_by_aug,
+            iou_mode=aug_iou_mode,
+            boundary_d=aug_iou_boundary_d,
+        )
     if key == CANONICAL_RANDOM_STRATEGY:
         return score_random_baseline(sample_id, random_seed=random_seed)
     raise ValueError(f"unsupported strategy: {strategy}")

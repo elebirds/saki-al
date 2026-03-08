@@ -109,6 +109,8 @@ class OrientedRCNNPredictService:
             random_seed=random_seed,
             round_index=round_index,
             aug_enabled_names=tuple(cfg.aug_iou_enabled_augs),
+            aug_iou_mode=str(cfg.aug_iou_iou_mode or "obb"),
+            aug_iou_boundary_d=int(cfg.aug_iou_boundary_d or 3),
         )
 
         candidates.sort(key=lambda row: float(row.get("score") or 0.0), reverse=True)
@@ -291,6 +293,8 @@ class OrientedRCNNPredictService:
         random_seed: int,
         round_index: int,
         aug_enabled_names: tuple[str, ...] | None = None,
+        aug_iou_mode: str = "obb",
+        aug_iou_boundary_d: int = 3,
     ) -> list[dict[str, Any]]:
         strategy_key = normalize_strategy_name(strategy)
         rows: list[dict[str, Any]] = []
@@ -354,6 +358,8 @@ class OrientedRCNNPredictService:
                     random_seed=random_seed,
                     round_index=round_index,
                     predictions_by_aug=preds_by_aug,
+                    aug_iou_mode=aug_iou_mode,
+                    aug_iou_boundary_d=aug_iou_boundary_d,
                 )
                 rows.append(
                     {

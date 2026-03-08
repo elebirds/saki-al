@@ -26,6 +26,7 @@ class OrientedRCNNConfigService:
     _VALID_MODEL_SOURCES = ("preset", "custom_local", "custom_url")
     _VALID_GEOMETRY_MODES = ("auto", "obb", "rect")
     _DEFAULT_AUG_NAMES = tuple(spec.name for spec in build_default_augmentation_specs())
+    _VALID_AUG_IOU_MODES = ("rect", "obb", "boundary")
 
     def __init__(self) -> None:
         self._manifest = PluginManifest.from_yaml(
@@ -103,6 +104,16 @@ class OrientedRCNNConfigService:
                 raise ValueError("strategy=aug_iou_disagreement requires non-empty aug_iou_enabled_augs")
             if "identity" not in set(aug_enabled):
                 raise ValueError("aug_iou_enabled_augs must include 'identity' for aug_iou_disagreement")
+        aug_iou_mode = str(getattr(config, "aug_iou_iou_mode", "obb") or "obb").strip().lower()
+        if aug_iou_mode not in self._VALID_AUG_IOU_MODES:
+            raise ValueError(
+                f"unsupported aug_iou_iou_mode: {aug_iou_mode!r}, must be one of {self._VALID_AUG_IOU_MODES}"
+            )
+        try:
+            aug_iou_boundary_d = int(getattr(config, "aug_iou_boundary_d", 3))
+        except Exception:
+            aug_iou_boundary_d = 3
+        aug_iou_boundary_d = max(1, min(128, aug_iou_boundary_d))
 
         return OrientedRCNNConfig(
             epochs=max(1, to_int(getattr(config, "epochs", 12), 12)),
@@ -119,6 +130,8 @@ class OrientedRCNNConfigService:
             predict_geometry_mode=geometry_mode,
             device=str(getattr(config, "device", "auto") or "auto").strip().lower(),
             aug_iou_enabled_augs=aug_enabled,
+            aug_iou_iou_mode=aug_iou_mode,
+            aug_iou_boundary_d=aug_iou_boundary_d,
             annotation_types=annotation_types,
             split_seed=max(0, to_int(getattr(config, "split_seed", 0), 0)),
             train_seed=max(0, to_int(getattr(config, "train_seed", 0), 0)),

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 import math
 from typing import Any, Iterable, Sequence
 
@@ -8,6 +9,14 @@ try:
     from shapely.geometry import Polygon  # type: ignore
 except Exception:  # pragma: no cover - optional dependency
     Polygon = None  # type: ignore[assignment]
+
+_LOGGER = logging.getLogger(__name__)
+_SHAPELY_FALLBACK_WARNED = False
+DEFAULT_IOU_MODE = "obb"
+VALID_IOU_MODES = ("rect", "obb", "boundary")
+DEFAULT_BOUNDARY_D = 3.0
+MIN_BOUNDARY_D = 1.0
+MAX_BOUNDARY_D = 128.0
 
 
 @dataclass(frozen=True)
@@ -32,6 +41,35 @@ def _clamp01(value: float) -> float:
     return value
 
 
+def _warn_shapely_fallback_once(message: str) -> None:
+    global _SHAPELY_FALLBACK_WARNED
+    if _SHAPELY_FALLBACK_WARNED:
+        return
+    _SHAPELY_FALLBACK_WARNED = True
+    _LOGGER.warning(message)
+
+
+def _normalize_iou_mode(mode: str | None) -> str:
+    key = str(mode or "").strip().lower()
+    if key in VALID_IOU_MODES:
+        return key
+    return DEFAULT_IOU_MODE
+
+
+def _normalize_boundary_d(value: float | int | None) -> float:
+    try:
+        d = float(value if value is not None else DEFAULT_BOUNDARY_D)
+    except Exception:
+        d = DEFAULT_BOUNDARY_D
+    if not math.isfinite(d):
+        d = DEFAULT_BOUNDARY_D
+    if d < MIN_BOUNDARY_D:
+        return MIN_BOUNDARY_D
+    if d > MAX_BOUNDARY_D:
+        return MAX_BOUNDARY_D
+    return d
+
+
 def _axis_aligned_iou(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> float:
     ax1, ay1, ax2, ay2 = a
     bx1, by1, bx2, by2 = b
@@ -50,6 +88,78 @@ def _axis_aligned_iou(a: tuple[float, float, float, float], b: tuple[float, floa
     area_b = max(0.0, bx2 - bx1) * max(0.0, by2 - by1)
     union = area_a + area_b - inter_area
     return _clamp01(_safe_div(inter_area, union))
+
+
+def _rect_area(a: tuple[float, float, float, float] | None) -> float:
+    if a is None:
+        return 0.0
+    x1, y1, x2, y2 = a
+    return max(0.0, x2 - x1) * max(0.0, y2 - y1)
+
+
+def _rect_intersection_area(
+    a: tuple[float, float, float, float] | None,
+    b: tuple[float, float, float, float] | None,
+) -> float:
+    if a is None or b is None:
+        return 0.0
+    ax1, ay1, ax2, ay2 = a
+    bx1, by1, bx2, by2 = b
+    inter_x1 = max(ax1, bx1)
+    inter_y1 = max(ay1, by1)
+    inter_x2 = min(ax2, bx2)
+    inter_y2 = min(ay2, by2)
+    iw = max(0.0, inter_x2 - inter_x1)
+    ih = max(0.0, inter_y2 - inter_y1)
+    return iw * ih
+
+
+def _expand_bounds(a: tuple[float, float, float, float], d: float) -> tuple[float, float, float, float]:
+    x1, y1, x2, y2 = a
+    return x1 - d, y1 - d, x2 + d, y2 + d
+
+
+def _inner_bounds_or_none(
+    a: tuple[float, float, float, float],
+    d: float,
+) -> tuple[float, float, float, float] | None:
+    x1, y1, x2, y2 = a
+    nx1 = x1 + d
+    ny1 = y1 + d
+    nx2 = x2 - d
+    ny2 = y2 - d
+    if nx2 <= nx1 or ny2 <= ny1:
+        return None
+    return nx1, ny1, nx2, ny2
+
+
+def _boundary_iou_from_bounds(
+    left: tuple[float, float, float, float],
+    right: tuple[float, float, float, float],
+    *,
+    boundary_d: float,
+) -> float:
+    d = _normalize_boundary_d(boundary_d)
+    outer_left = _expand_bounds(left, d)
+    outer_right = _expand_bounds(right, d)
+    inner_left = _inner_bounds_or_none(left, d)
+    inner_right = _inner_bounds_or_none(right, d)
+
+    area_left = _rect_area(outer_left) - _rect_area(inner_left)
+    area_right = _rect_area(outer_right) - _rect_area(inner_right)
+
+    inter = (
+        _rect_intersection_area(outer_left, outer_right)
+        - _rect_intersection_area(inner_left, outer_right)
+        - _rect_intersection_area(outer_left, inner_right)
+        + _rect_intersection_area(inner_left, inner_right)
+    )
+    inter = max(0.0, inter)
+
+    union = area_left + area_right - inter
+    if union <= 0.0:
+        return 0.0
+    return _clamp01(inter / union)
 
 
 def _flatten_to_8_floats(value: Any) -> tuple[float, ...] | None:
@@ -116,6 +226,9 @@ def _polygon_iou_from_qbox(left_qbox: tuple[float, ...], right_qbox: tuple[float
     left_bounds = _qbox_to_bounds(left_qbox)
     right_bounds = _qbox_to_bounds(right_qbox)
     if Polygon is None:
+        _warn_shapely_fallback_once(
+            "aug_iou: shapely 不可用，OBB/Boundary IoU 已退化为 AABB 近似计算。"
+        )
         return _axis_aligned_iou(left_bounds, right_bounds)
 
     left_pts = [(float(left_qbox[i]), float(left_qbox[i + 1])) for i in (0, 2, 4, 6)]
@@ -135,10 +248,74 @@ def _polygon_iou_from_qbox(left_qbox: tuple[float, ...], right_qbox: tuple[float
             return 0.0
         return _clamp01(inter_area / union_area)
     except Exception:
+        _warn_shapely_fallback_once(
+            "aug_iou: shapely 几何计算失败，OBB/Boundary IoU 已退化为 AABB 近似计算。"
+        )
         return _axis_aligned_iou(left_bounds, right_bounds)
 
 
-def box_iou(a: DetectionBox, b: DetectionBox) -> float:
+def _boundary_iou_from_qbox(
+    left_qbox: tuple[float, ...],
+    right_qbox: tuple[float, ...],
+    *,
+    boundary_d: float,
+) -> float:
+    left_bounds = _qbox_to_bounds(left_qbox)
+    right_bounds = _qbox_to_bounds(right_qbox)
+    if Polygon is None:
+        _warn_shapely_fallback_once(
+            "aug_iou: shapely 不可用，OBB/Boundary IoU 已退化为 AABB 近似计算。"
+        )
+        return _boundary_iou_from_bounds(left_bounds, right_bounds, boundary_d=boundary_d)
+
+    left_pts = [(float(left_qbox[i]), float(left_qbox[i + 1])) for i in (0, 2, 4, 6)]
+    right_pts = [(float(right_qbox[i]), float(right_qbox[i + 1])) for i in (0, 2, 4, 6)]
+    try:
+        d = _normalize_boundary_d(boundary_d)
+        poly_left = Polygon(left_pts)
+        poly_right = Polygon(right_pts)
+        if not poly_left.is_valid:
+            poly_left = poly_left.buffer(0)
+        if not poly_right.is_valid:
+            poly_right = poly_right.buffer(0)
+        if poly_left.is_empty or poly_right.is_empty:
+            return 0.0
+
+        outer_left = poly_left.buffer(d)
+        outer_right = poly_right.buffer(d)
+        inner_left = poly_left.buffer(-d)
+        inner_right = poly_right.buffer(-d)
+        ring_left = outer_left.difference(inner_left) if not inner_left.is_empty else outer_left
+        ring_right = outer_right.difference(inner_right) if not inner_right.is_empty else outer_right
+        if ring_left.is_empty or ring_right.is_empty:
+            return 0.0
+        inter_area = float(ring_left.intersection(ring_right).area)
+        union_area = float(ring_left.union(ring_right).area)
+        if union_area <= 0.0:
+            return 0.0
+        return _clamp01(inter_area / union_area)
+    except Exception:
+        _warn_shapely_fallback_once(
+            "aug_iou: shapely 几何计算失败，OBB/Boundary IoU 已退化为 AABB 近似计算。"
+        )
+        return _boundary_iou_from_bounds(left_bounds, right_bounds, boundary_d=boundary_d)
+
+
+def box_iou(
+    a: DetectionBox,
+    b: DetectionBox,
+    *,
+    iou_mode: str = DEFAULT_IOU_MODE,
+    boundary_d: float = DEFAULT_BOUNDARY_D,
+) -> float:
+    mode = _normalize_iou_mode(iou_mode)
+    if mode == "rect":
+        return _axis_aligned_iou(a.bounds, b.bounds)
+    if mode == "boundary":
+        if a.qbox is not None and b.qbox is not None:
+            return _boundary_iou_from_qbox(a.qbox, b.qbox, boundary_d=boundary_d)
+        return _boundary_iou_from_bounds(a.bounds, b.bounds, boundary_d=boundary_d)
+
     if a.qbox is not None and b.qbox is not None:
         return _polygon_iou_from_qbox(a.qbox, b.qbox)
     return _axis_aligned_iou(a.bounds, b.bounds)
@@ -233,7 +410,13 @@ def _class_hist_gap(anchor: Sequence[DetectionBox], other: Sequence[DetectionBox
     return _clamp01(gap * 0.5)
 
 
-def _pair_mean_iou_by_class(anchor: Sequence[DetectionBox], other: Sequence[DetectionBox]) -> float:
+def _pair_mean_iou_by_class(
+    anchor: Sequence[DetectionBox],
+    other: Sequence[DetectionBox],
+    *,
+    iou_mode: str,
+    boundary_d: float,
+) -> float:
     classes = {item.class_index for item in anchor} | {item.class_index for item in other}
     if not classes:
         return 1.0
@@ -247,7 +430,7 @@ def _pair_mean_iou_by_class(anchor: Sequence[DetectionBox], other: Sequence[Dete
         if not a_cls or not b_cls:
             matched_ious.append(0.0)
             continue
-        matrix = [[box_iou(a, b) for b in b_cls] for a in a_cls]
+        matrix = [[box_iou(a, b, iou_mode=iou_mode, boundary_d=boundary_d) for b in b_cls] for a in a_cls]
         pairs = _hungarian_maximize(matrix)
         if not pairs:
             matched_ious.append(0.0)
@@ -261,6 +444,9 @@ def _pair_mean_iou_by_class(anchor: Sequence[DetectionBox], other: Sequence[Dete
 
 def score_aug_iou_disagreement(
     predictions_by_aug: Sequence[Sequence[DetectionBox]],
+    *,
+    iou_mode: str = DEFAULT_IOU_MODE,
+    boundary_d: float = DEFAULT_BOUNDARY_D,
 ) -> tuple[float, dict[str, float]]:
     """
     Augmentation IoU disagreement scoring (fixed formula):
@@ -286,6 +472,8 @@ def score_aug_iou_disagreement(
             "score": _clamp01(score),
         }
 
+    mode = _normalize_iou_mode(iou_mode)
+    norm_boundary_d = _normalize_boundary_d(boundary_d)
     anchor = list(predictions_by_aug[0])
     others = [list(item) for item in predictions_by_aug[1:]]
 
@@ -294,7 +482,14 @@ def score_aug_iou_disagreement(
     class_gap_items: list[float] = []
 
     for other in others:
-        mean_iou_items.append(_pair_mean_iou_by_class(anchor, other))
+        mean_iou_items.append(
+            _pair_mean_iou_by_class(
+                anchor,
+                other,
+                iou_mode=mode,
+                boundary_d=norm_boundary_d,
+            )
+        )
         count_gap_items.append(
             _safe_div(abs(len(anchor) - len(other)), max(1, max(len(anchor), len(other))))
         )
@@ -369,3 +564,9 @@ def build_detection_boxes(rows: Iterable[dict]) -> list[DetectionBox]:
             )
         )
     return boxes
+
+
+if Polygon is None:  # pragma: no cover - depends on optional dependency
+    _warn_shapely_fallback_once(
+        "aug_iou: shapely 不可用，OBB/Boundary IoU 已退化为 AABB 近似计算。"
+    )

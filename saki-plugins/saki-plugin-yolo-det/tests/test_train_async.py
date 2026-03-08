@@ -96,8 +96,10 @@ async def test_run_train_with_epoch_stream_uses_train_output_best_metrics_as_fin
     (workspace.data_dir / "dataset.yaml").write_text("path: .\ntrain: images\nval: images\n", encoding="utf-8")
     config = _make_train_config()
 
-    async def _emit(_event_type: str, _payload: dict[str, Any]) -> None:
-        return None
+    emitted: list[tuple[str, dict[str, Any]]] = []
+
+    async def _emit(event_type: str, payload: dict[str, Any]) -> None:
+        emitted.append((event_type, payload))
 
     def _run_train_sync(**kwargs):
         callback = kwargs["epoch_callback"]
@@ -138,7 +140,14 @@ async def test_run_train_with_epoch_stream_uses_train_output_best_metrics_as_fin
     assert output["metrics"]["precision"] == pytest.approx(0.5)
     assert output["metrics"]["recall"] == pytest.approx(0.6)
     assert output["metrics_source"] == "train_output_best"
-    assert output["last_epoch_metrics"]["loss"] == pytest.approx(0.45)
+    assert output["last_epoch_metrics"]["loss"] == pytest.approx(0.4)
+
+    # 同一 step/epoch 的重复回调应被去重，只保留首条 progress+metric
+    epoch_rows = emitted[1:]
+    assert [item[0] for item in epoch_rows] == ["progress", "metric"]
+    assert epoch_rows[1][1]["step"] == 2
+    assert epoch_rows[1][1]["epoch"] == 2
+    assert epoch_rows[1][1]["metrics"]["loss"] == pytest.approx(0.4)
 
 
 def test_format_epoch_metric_summary_prioritizes_common_keys():

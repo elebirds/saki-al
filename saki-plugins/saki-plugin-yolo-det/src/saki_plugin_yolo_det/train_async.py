@@ -114,6 +114,7 @@ async def run_train_with_epoch_stream(
     train_result: dict[str, Any] | None = None
     train_error: BaseException | None = None
     latest_epoch_metrics: dict[str, Any] = {}
+    seen_epoch_keys: set[tuple[int, int]] = set()
 
     def _run_train() -> None:
         nonlocal train_result, train_error
@@ -155,6 +156,10 @@ async def run_train_with_epoch_stream(
             continue
         step = max(1, to_int(epoch_payload.get("step"), 0))
         epoch = max(1, to_int(epoch_payload.get("epoch"), step))
+        epoch_key = (step, epoch)
+        if epoch_key in seen_epoch_keys:
+            continue
+        seen_epoch_keys.add(epoch_key)
         total_steps = max(1, to_int(epoch_payload.get("total_steps"), config.epochs))
         eta_sec = max(0, to_int(epoch_payload.get("eta_sec"), 0))
         metrics_payload = epoch_payload.get("metrics")

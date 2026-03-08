@@ -17,6 +17,13 @@ from saki_ir.api.prediction import (
     normalize_prediction_entry,
     normalize_prediction_snapshot,
 )
+from saki_ir.quad8 import (
+    flip_quad8,
+    geometry_to_quad8_local,
+    normalize_quad8,
+    quad8_to_aabb_rect,
+    quad8_to_obb_payload,
+)
 
 __all__ = [
     "IRValidationIssue",
@@ -31,6 +38,11 @@ __all__ = [
     "validate_geometry_payload",
     "geometry_proto_to_payload",
     "infer_shape",
+    "normalize_quad8",
+    "geometry_to_quad8_local",
+    "quad8_to_aabb_rect",
+    "flip_quad8",
+    "quad8_to_obb_payload",
     "normalize_prediction_entry",
     "normalize_prediction_snapshot",
     "normalize_prediction_candidate",

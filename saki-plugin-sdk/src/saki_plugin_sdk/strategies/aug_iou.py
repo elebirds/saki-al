@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
-from typing import Iterable, Sequence
+from typing import Any, Iterable, Sequence
+
+try:
+    from shapely.geometry import Polygon  # type: ignore
+except Exception:  # pragma: no cover - optional dependency
+    Polygon = None  # type: ignore[assignment]
 
 
 @dataclass(frozen=True)
@@ -10,6 +15,7 @@ class DetectionBox:
     class_index: int
     confidence: float
     bounds: tuple[float, float, float, float]
+    qbox: tuple[float, ...] | None = None
 
 
 def _safe_div(num: float, den: float) -> float:
@@ -26,10 +32,9 @@ def _clamp01(value: float) -> float:
     return value
 
 
-def box_iou(a: DetectionBox, b: DetectionBox) -> float:
-    ax1, ay1, ax2, ay2 = a.bounds
-    bx1, by1, bx2, by2 = b.bounds
-
+def _axis_aligned_iou(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> float:
+    ax1, ay1, ax2, ay2 = a
+    bx1, by1, bx2, by2 = b
     inter_x1 = max(ax1, bx1)
     inter_y1 = max(ay1, by1)
     inter_x2 = min(ax2, bx2)
@@ -45,6 +50,98 @@ def box_iou(a: DetectionBox, b: DetectionBox) -> float:
     area_b = max(0.0, bx2 - bx1) * max(0.0, by2 - by1)
     union = area_a + area_b - inter_area
     return _clamp01(_safe_div(inter_area, union))
+
+
+def _flatten_to_8_floats(value: Any) -> tuple[float, ...] | None:
+    flat: list[float] = []
+
+    def _walk(item: Any) -> None:
+        if isinstance(item, (list, tuple)):
+            for child in item:
+                _walk(child)
+            return
+        flat.append(float(item))
+
+    try:
+        _walk(value)
+    except Exception:
+        return None
+    if len(flat) != 8:
+        return None
+    if any(not math.isfinite(v) for v in flat):
+        return None
+    return tuple(flat)
+
+
+def _qbox_to_bounds(qbox: tuple[float, ...]) -> tuple[float, float, float, float]:
+    xs = [qbox[0], qbox[2], qbox[4], qbox[6]]
+    ys = [qbox[1], qbox[3], qbox[5], qbox[7]]
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def _obb_to_qbox(obb: dict[str, Any]) -> tuple[float, ...] | None:
+    try:
+        cx = float(obb.get("cx", 0.0))
+        cy = float(obb.get("cy", 0.0))
+        width = float(obb.get("width", 0.0))
+        height = float(obb.get("height", 0.0))
+        angle_deg_ccw = float(obb.get("angle_deg_ccw", 0.0))
+    except Exception:
+        return None
+    if width <= 0.0 or height <= 0.0:
+        return None
+    if not all(math.isfinite(v) for v in (cx, cy, width, height, angle_deg_ccw)):
+        return None
+
+    theta = math.radians(angle_deg_ccw)
+    cos_t = math.cos(theta)
+    sin_t = math.sin(theta)
+    half_w = width / 2.0
+    half_h = height / 2.0
+    corners = [
+        (-half_w, -half_h),
+        (half_w, -half_h),
+        (half_w, half_h),
+        (-half_w, half_h),
+    ]
+    points: list[float] = []
+    for dx, dy in corners:
+        rx = dx * cos_t - dy * sin_t
+        ry = dx * sin_t + dy * cos_t
+        points.extend([cx + rx, cy + ry])
+    return tuple(points)
+
+
+def _polygon_iou_from_qbox(left_qbox: tuple[float, ...], right_qbox: tuple[float, ...]) -> float:
+    left_bounds = _qbox_to_bounds(left_qbox)
+    right_bounds = _qbox_to_bounds(right_qbox)
+    if Polygon is None:
+        return _axis_aligned_iou(left_bounds, right_bounds)
+
+    left_pts = [(float(left_qbox[i]), float(left_qbox[i + 1])) for i in (0, 2, 4, 6)]
+    right_pts = [(float(right_qbox[i]), float(right_qbox[i + 1])) for i in (0, 2, 4, 6)]
+    try:
+        poly_left = Polygon(left_pts)
+        poly_right = Polygon(right_pts)
+        if not poly_left.is_valid:
+            poly_left = poly_left.buffer(0)
+        if not poly_right.is_valid:
+            poly_right = poly_right.buffer(0)
+        if poly_left.is_empty or poly_right.is_empty:
+            return 0.0
+        inter_area = float(poly_left.intersection(poly_right).area)
+        union_area = float(poly_left.union(poly_right).area)
+        if union_area <= 0.0:
+            return 0.0
+        return _clamp01(inter_area / union_area)
+    except Exception:
+        return _axis_aligned_iou(left_bounds, right_bounds)
+
+
+def box_iou(a: DetectionBox, b: DetectionBox) -> float:
+    if a.qbox is not None and b.qbox is not None:
+        return _polygon_iou_from_qbox(a.qbox, b.qbox)
+    return _axis_aligned_iou(a.bounds, b.bounds)
 
 
 def _hungarian_maximize(weights: list[list[float]]) -> list[tuple[int, int]]:
@@ -237,15 +334,26 @@ def build_detection_boxes(rows: Iterable[dict]) -> list[DetectionBox]:
     for row in rows:
         try:
             geometry = row.get("geometry")
-            rect = geometry.get("rect") if isinstance(geometry, dict) else None
-            if not isinstance(rect, dict):
-                continue
-            x1 = float(rect.get("x", 0.0))
-            y1 = float(rect.get("y", 0.0))
-            width = float(rect.get("width", 0.0))
-            height = float(rect.get("height", 0.0))
-            x2 = x1 + max(0.0, width)
-            y2 = y1 + max(0.0, height)
+            qbox = _flatten_to_8_floats(row.get("qbox"))
+            if qbox is None and isinstance(geometry, dict):
+                qbox = _flatten_to_8_floats(geometry.get("qbox"))
+            if qbox is None and isinstance(geometry, dict):
+                obb = geometry.get("obb")
+                if isinstance(obb, dict):
+                    qbox = _obb_to_qbox(obb)
+
+            if qbox is not None:
+                x1, y1, x2, y2 = _qbox_to_bounds(qbox)
+            else:
+                rect = geometry.get("rect") if isinstance(geometry, dict) else None
+                if not isinstance(rect, dict):
+                    continue
+                x1 = float(rect.get("x", 0.0))
+                y1 = float(rect.get("y", 0.0))
+                width = float(rect.get("width", 0.0))
+                height = float(rect.get("height", 0.0))
+                x2 = x1 + max(0.0, width)
+                y2 = y1 + max(0.0, height)
             class_index = int(row.get("class_index", 0))
             confidence = float(row.get("confidence", 0.0))
         except Exception:
@@ -257,6 +365,7 @@ def build_detection_boxes(rows: Iterable[dict]) -> list[DetectionBox]:
                 class_index=class_index,
                 confidence=_clamp01(confidence),
                 bounds=(x1, y1, x2, y2),
+                qbox=qbox,
             )
         )
     return boxes

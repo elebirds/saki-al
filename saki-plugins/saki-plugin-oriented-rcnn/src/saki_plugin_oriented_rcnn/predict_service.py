@@ -12,6 +12,7 @@ from PIL import Image
 
 from saki_plugin_sdk import ExecutionBindingContext, WorkspaceProtocol
 from saki_plugin_sdk.strategies.builtin import normalize_strategy_name, score_by_strategy
+from saki_ir import flip_quad8, normalize_quad8, quad8_to_aabb_rect
 
 from saki_plugin_oriented_rcnn.common import normalize_device, to_int
 from saki_plugin_oriented_rcnn.config_builder import build_mmrotate_runtime_cfg, resolve_preset_checkpoint
@@ -499,8 +500,13 @@ class OrientedRCNNPredictService:
             )
             restored: list[dict[str, Any]] = []
             for item in rows:
-                qbox = tuple(float(v) for v in item.get("qbox", ()))
-                qbox_inv = _inverse_qbox(name=name, qbox=qbox, width=w, height=h)
+                qbox = normalize_quad8(item.get("qbox"))
+                if qbox is None:
+                    qbox = tuple(float(v) for v in item.get("qbox", ()))
+                try:
+                    qbox_inv = flip_quad8(qbox, op=name, width=w, height=h)
+                except Exception:
+                    qbox_inv = qbox
                 restored.append(
                     {
                         **item,
@@ -676,7 +682,10 @@ def _rbox_to_geometry(
             }
         }
 
-    x, y, rw, rh = _rect_from_qbox(qbox)
+    try:
+        x, y, rw, rh = quad8_to_aabb_rect(qbox)
+    except Exception:
+        x = y = rw = rh = 0.0
     return {
         "rect": {
             "x": float(x),
@@ -699,7 +708,10 @@ def _geometry_from_qbox_or_keep(
             qbox=qbox,
             geometry_mode=geometry_mode,
         )
-    x, y, w, h = _rect_from_qbox(qbox)
+    try:
+        x, y, w, h = quad8_to_aabb_rect(qbox)
+    except Exception:
+        x = y = w = h = 0.0
     return {
         "rect": {
             "x": float(x),
@@ -708,30 +720,6 @@ def _geometry_from_qbox_or_keep(
             "height": float(h),
         }
     }
-
-
-def _inverse_qbox(*, name: str, qbox: tuple[float, ...], width: int, height: int) -> tuple[float, ...]:
-    """把增强分支预测框逆变换回原图坐标。"""
-    if len(qbox) != 8:
-        return qbox
-    pts = np.asarray(qbox, dtype=np.float32).reshape(4, 2)
-    if name == "hflip":
-        pts[:, 0] = float(width) - pts[:, 0]
-    elif name == "vflip":
-        pts[:, 1] = float(height) - pts[:, 1]
-    return tuple(float(v) for v in pts.reshape(-1).tolist())
-
-
-def _rect_from_qbox(qbox: tuple[float, ...]) -> tuple[float, float, float, float]:
-    if len(qbox) != 8:
-        return 0.0, 0.0, 0.0, 0.0
-    pts = np.asarray(qbox, dtype=np.float32).reshape(4, 2)
-    x0 = float(np.min(pts[:, 0]))
-    y0 = float(np.min(pts[:, 1]))
-    x1 = float(np.max(pts[:, 0]))
-    y1 = float(np.max(pts[:, 1]))
-    return x0, y0, max(0.0, x1 - x0), max(0.0, y1 - y0)
-
 
 def _safe_div(num: float, den: float) -> float:
     if den <= 0:

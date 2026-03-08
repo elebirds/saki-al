@@ -17,6 +17,7 @@ except Exception:  # pragma: no cover - optional dependency
 from saki_plugin_sdk import ExecutionBindingContext, WorkspaceProtocol
 from saki_plugin_sdk.strategies.aug_iou import build_detection_boxes, score_aug_iou_disagreement
 from saki_plugin_sdk.strategies.builtin import normalize_strategy_name, score_by_strategy
+from saki_ir import flip_quad8, geometry_to_quad8_local, normalize_quad8, quad8_to_aabb_rect
 from saki_plugin_yolo_det.common import clamp, to_float, to_int, to_yolo_device
 from saki_plugin_yolo_det.config_service import YoloConfigService
 from saki_plugin_yolo_det.predict_pipeline import predict_with_augmentations, score_unlabeled_samples
@@ -287,33 +288,60 @@ class YoloPredictService:
 
         rows: list[dict[str, Any]] = []
         obb = getattr(result, "obb", None)
-        if obb is not None and len(obb) > 0 and hasattr(obb, "xyxy"):
+        if obb is not None and len(obb) > 0:
             cls_values = obb.cls.cpu().tolist()
             conf_values = obb.conf.cpu().tolist()
-            xyxy_values = obb.xyxy.cpu().tolist()
-            for cls_id, conf, xyxy in zip(cls_values, conf_values, xyxy_values):
-                cls_idx = int(cls_id)
-                x1, y1, x2, y2 = [float(v) for v in xyxy[:4]]
-                x = min(x1, x2)
-                y = min(y1, y2)
-                width = abs(x2 - x1)
-                height = abs(y2 - y1)
-                rows.append(
-                    {
-                        "class_index": cls_idx,
-                        "class_name": _class_name_for(cls_idx),
-                        "confidence": float(conf),
-                        "geometry": {
-                            "rect": {
-                                "x": x,
-                                "y": y,
-                                "width": width,
-                                "height": height,
-                            }
-                        },
-                    }
-                )
-            return rows
+            if hasattr(obb, "xyxyxyxy"):
+                qbox_values = obb.xyxyxyxy.cpu().tolist()
+                for cls_id, conf, raw_qbox in zip(cls_values, conf_values, qbox_values):
+                    qbox = normalize_quad8(raw_qbox)
+                    if qbox is None:
+                        continue
+                    cls_idx = int(cls_id)
+                    x, y, width, height = quad8_to_aabb_rect(qbox)
+                    rows.append(
+                        {
+                            "class_index": cls_idx,
+                            "class_name": _class_name_for(cls_idx),
+                            "confidence": float(conf),
+                            "qbox": qbox,
+                            "geometry": {
+                                "rect": {
+                                    "x": x,
+                                    "y": y,
+                                    "width": width,
+                                    "height": height,
+                                }
+                            },
+                        }
+                    )
+                return rows
+
+            if hasattr(obb, "xyxy"):
+                xyxy_values = obb.xyxy.cpu().tolist()
+                for cls_id, conf, xyxy in zip(cls_values, conf_values, xyxy_values):
+                    cls_idx = int(cls_id)
+                    x1, y1, x2, y2 = [float(v) for v in xyxy[:4]]
+                    x = min(x1, x2)
+                    y = min(y1, y2)
+                    width = abs(x2 - x1)
+                    height = abs(y2 - y1)
+                    rows.append(
+                        {
+                            "class_index": cls_idx,
+                            "class_name": _class_name_for(cls_idx),
+                            "confidence": float(conf),
+                            "geometry": {
+                                "rect": {
+                                    "x": x,
+                                    "y": y,
+                                    "width": width,
+                                    "height": height,
+                                }
+                            },
+                        }
+                    )
+                return rows
 
         boxes = getattr(result, "boxes", None)
         if boxes is not None and len(boxes) > 0:
@@ -353,6 +381,36 @@ class YoloPredictService:
         height: int,
     ) -> dict[str, Any]:
         geometry = row.get("geometry")
+        has_explicit_qbox = normalize_quad8(row.get("qbox")) is not None
+        qbox = normalize_quad8(row.get("qbox"))
+        if qbox is None and isinstance(geometry, dict):
+            try:
+                qbox = geometry_to_quad8_local(geometry)
+            except Exception:
+                qbox = None
+        if qbox is not None:
+            try:
+                qbox_inv = flip_quad8(qbox, op=name, width=width, height=height)
+                x, y, w, h = quad8_to_aabb_rect(qbox_inv)
+                out: dict[str, Any] = {
+                    "class_index": int(row.get("class_index", 0)),
+                    "class_name": str(row.get("class_name") or ""),
+                    "confidence": to_float(row.get("confidence", 0.0), 0.0),
+                    "geometry": {
+                        "rect": {
+                            "x": x,
+                            "y": y,
+                            "width": w,
+                            "height": h,
+                        }
+                    },
+                }
+                if has_explicit_qbox:
+                    out["qbox"] = qbox_inv
+                return out
+            except Exception:
+                pass
+
         rect = geometry.get("rect") if isinstance(geometry, dict) else {}
         if isinstance(rect, dict):
             x = to_float(rect.get("x", 0.0), 0.0)
@@ -375,7 +433,7 @@ class YoloPredictService:
             x1, x2 = x2, x1
         if y2 < y1:
             y1, y2 = y2, y1
-        return {
+        out: dict[str, Any] = {
             "class_index": int(row.get("class_index", 0)),
             "class_name": str(row.get("class_name") or ""),
             "confidence": to_float(row.get("confidence", 0.0), 0.0),
@@ -388,3 +446,4 @@ class YoloPredictService:
                 }
             },
         }
+        return out

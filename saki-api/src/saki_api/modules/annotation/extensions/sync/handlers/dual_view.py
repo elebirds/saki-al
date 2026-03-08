@@ -7,15 +7,13 @@ to the corresponding region in the other view via lookup tables.
 
 from __future__ import annotations
 
-import math
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-import cv2
 import numpy as np
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from saki_ir.geom import obb_to_vertices_local, rect_center_to_tl, rect_to_vertices_screen
+from saki_ir import geometry_to_quad8_local, quad8_to_aabb_rect, quad8_to_obb_payload
 
 from saki_api.modules.annotation.domain.ir_geometry_codec import normalize_geometry_payload, parse_geometry_dict
 from saki_api.modules.annotation.extensions.data_formats.fedo.config import (
@@ -146,13 +144,8 @@ class DualViewSyncHandler(BaseAnnotationSyncHandler):
     @staticmethod
     def _geometry_to_vertices(geometry: Dict[str, Any]) -> np.ndarray:
         """Convert Geometry ProtoJSON (rect/obb) into 4 OBB-like vertices."""
-        geometry_msg = parse_geometry_dict(geometry)
-        shape = geometry_msg.WhichOneof("shape")
-        if shape == "rect":
-            return np.asarray(rect_to_vertices_screen(geometry_msg.rect), dtype=np.float32)
-        if shape == "obb":
-            return np.asarray(obb_to_vertices_local(geometry_msg.obb), dtype=np.float32)
-        raise ValueError("geometry must include rect or obb")
+        quad8 = geometry_to_quad8_local(parse_geometry_dict(geometry))
+        return np.asarray(quad8, dtype=np.float32).reshape(4, 2)
 
     @staticmethod
     def _obb_vertices_to_geometry(vertices: np.ndarray) -> Dict[str, Any]:
@@ -162,28 +155,20 @@ class DualViewSyncHandler(BaseAnnotationSyncHandler):
         if points.shape != (4, 2):
             raise ValueError("mapped vertices must contain exactly 4 points")
 
-        rect = cv2.minAreaRect(points.reshape(-1, 1, 2))
-        box = cv2.boxPoints(rect)
-        edges = np.roll(box, -1, axis=0) - box
-        edge_lengths = np.linalg.norm(edges, axis=1)
-        edge_index = int(np.argmax(edge_lengths))
-        width_vec = edges[edge_index]
-        height_vec = edges[(edge_index + 1) % 4]
+        payload = quad8_to_obb_payload(points.reshape(-1).tolist(), fit_mode="strict_then_min_area")
+        obb = payload.get("obb") if isinstance(payload, dict) else None
+        if not isinstance(obb, dict):
+            raise ValueError("mapped vertices cannot be fitted into OBB")
 
-        width = float(np.linalg.norm(width_vec))
-        height = float(np.linalg.norm(height_vec))
-        angle_deg_ccw = math.degrees(math.atan2(float(width_vec[1]), float(width_vec[0])))
-
-        center = rect[0]
         _, normalized_geometry = normalize_geometry_payload(
             annotation_type=AnnotationType.OBB,
             geometry_payload={
                 "obb": {
-                    "cx": float(center[0]),
-                    "cy": float(center[1]),
-                    "width": width,
-                    "height": height,
-                    "angle_deg_ccw": float(angle_deg_ccw),
+                    "cx": float(obb.get("cx", 0.0)),
+                    "cy": float(obb.get("cy", 0.0)),
+                    "width": float(obb.get("width", 0.0)),
+                    "height": float(obb.get("height", 0.0)),
+                    "angle_deg_ccw": float(obb.get("angle_deg_ccw", 0.0)),
                 }
             },
             confidence=1.0,
@@ -199,16 +184,12 @@ class DualViewSyncHandler(BaseAnnotationSyncHandler):
         if not isinstance(obb, dict):
             return AnnotationType.RECT, geometry
 
-        angle = DualViewSyncHandler._obb_angle_deg_ccw(obb)
+        angle = float(obb.get("angle_deg_ccw", obb.get("angleDegCcw", 0.0)))
         if abs(angle) > 1e-6:
             return AnnotationType.OBB, geometry
 
-        x, y, w, h = rect_center_to_tl(
-            cx=float(obb.get("cx", 0.0)),
-            cy=float(obb.get("cy", 0.0)),
-            width=float(obb.get("width", 0.0)),
-            height=float(obb.get("height", 0.0)),
-        )
+        qbox = geometry_to_quad8_local(geometry)
+        x, y, w, h = quad8_to_aabb_rect(qbox)
         return AnnotationType.RECT, {
             "rect": {
                 "x": float(x),
@@ -217,10 +198,6 @@ class DualViewSyncHandler(BaseAnnotationSyncHandler):
                 "height": float(h),
             }
         }
-
-    @staticmethod
-    def _obb_angle_deg_ccw(obb: Dict[str, Any]) -> float:
-        return float(obb.get("angle_deg_ccw", obb.get("angleDegCcw", 0.0)))
 
     def _generate_mapped_annotations(
             self,

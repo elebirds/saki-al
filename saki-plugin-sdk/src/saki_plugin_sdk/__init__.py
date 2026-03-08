@@ -47,6 +47,13 @@ from saki_plugin_sdk.cond import (
     filter_options,
 )
 from saki_plugin_sdk.data_split import resolve_train_val_split
+from saki_plugin_sdk.augmentations import (
+    AugmentationSpec,
+    AugmentedView,
+    build_augmented_views,
+    build_default_augmentation_specs,
+    inverse_augmented_prediction_row,
+)
 from saki_ir import normalize_prediction_candidates
 
 __all__ = [
@@ -93,6 +100,11 @@ __all__ = [
     # Expression evaluation
     "evaluate_visible",
     "filter_options",
+    "AugmentationSpec",
+    "AugmentedView",
+    "build_default_augmentation_specs",
+    "build_augmented_views",
+    "inverse_augmented_prediction_row",
     # Shared runtime utilities
     "resolve_train_val_split",
     "normalize_prediction_candidates",

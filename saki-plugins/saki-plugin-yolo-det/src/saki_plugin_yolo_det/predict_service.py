@@ -15,9 +15,10 @@ except Exception:  # pragma: no cover - optional dependency
     Image = None  # type: ignore
 
 from saki_plugin_sdk import ExecutionBindingContext, WorkspaceProtocol
+from saki_plugin_sdk.augmentations import build_augmented_views, inverse_augmented_prediction_row
 from saki_plugin_sdk.strategies.builtin import normalize_strategy_name, score_by_strategy
-from saki_ir import flip_quad8, geometry_to_quad8_local, normalize_quad8, quad8_to_aabb_rect
-from saki_plugin_yolo_det.common import clamp, to_float, to_int, to_yolo_device
+from saki_ir import normalize_quad8, quad8_to_aabb_rect
+from saki_plugin_yolo_det.common import to_float, to_int, to_yolo_device
 from saki_plugin_yolo_det.config_service import YoloConfigService
 from saki_plugin_yolo_det.predict_pipeline import predict_with_augmentations, score_unlabeled_samples
 
@@ -267,7 +268,6 @@ class YoloPredictService:
             image_cls=Image,
             np_mod=np,
             extract_predictions=self._extract_predictions,
-            inverse_aug_box=self._inverse_aug_box,
         )
 
     def _extract_predictions(self, result) -> list[dict[str, Any]]:
@@ -377,70 +377,14 @@ class YoloPredictService:
         width: int,
         height: int,
     ) -> dict[str, Any]:
-        geometry = row.get("geometry")
-        has_explicit_qbox = normalize_quad8(row.get("qbox")) is not None
-        qbox = normalize_quad8(row.get("qbox"))
-        if qbox is None and isinstance(geometry, dict):
-            try:
-                qbox = geometry_to_quad8_local(geometry)
-            except Exception:
-                qbox = None
-        if qbox is not None:
-            try:
-                qbox_inv = flip_quad8(qbox, op=name, width=width, height=height)
-                x, y, w, h = quad8_to_aabb_rect(qbox_inv)
-                out: dict[str, Any] = {
-                    "class_index": int(row.get("class_index", 0)),
-                    "class_name": str(row.get("class_name") or ""),
-                    "confidence": to_float(row.get("confidence", 0.0), 0.0),
-                    "geometry": {
-                        "rect": {
-                            "x": x,
-                            "y": y,
-                            "width": w,
-                            "height": h,
-                        }
-                    },
-                }
-                if has_explicit_qbox:
-                    out["qbox"] = qbox_inv
-                return out
-            except Exception:
-                pass
-
-        rect = geometry.get("rect") if isinstance(geometry, dict) else {}
-        if isinstance(rect, dict):
-            x = to_float(rect.get("x", 0.0), 0.0)
-            y = to_float(rect.get("y", 0.0), 0.0)
-            w = max(0.0, to_float(rect.get("width", 0.0), 0.0))
-            h = max(0.0, to_float(rect.get("height", 0.0), 0.0))
-            x1, y1, x2, y2 = x, y, x + w, y + h
-        else:
-            x1 = y1 = x2 = y2 = 0.0
-        if name == "hflip":
-            x1, x2 = float(width) - x2, float(width) - x1
-        elif name == "vflip":
-            y1, y2 = float(height) - y2, float(height) - y1
-
-        x1 = clamp(x1, 0.0, float(width))
-        x2 = clamp(x2, 0.0, float(width))
-        y1 = clamp(y1, 0.0, float(height))
-        y2 = clamp(y2, 0.0, float(height))
-        if x2 < x1:
-            x1, x2 = x2, x1
-        if y2 < y1:
-            y1, y2 = y2, y1
-        out: dict[str, Any] = {
-            "class_index": int(row.get("class_index", 0)),
-            "class_name": str(row.get("class_name") or ""),
-            "confidence": to_float(row.get("confidence", 0.0), 0.0),
-            "geometry": {
-                "rect": {
-                    "x": x1,
-                    "y": y1,
-                    "width": max(0.0, x2 - x1),
-                    "height": max(0.0, y2 - y1),
-                }
-            },
-        }
+        if Image is None or np is None:
+            raise RuntimeError("numpy and pillow are required for yolo_det_v1 plugin")
+        h = max(1, to_int(height, 1))
+        w = max(1, to_int(width, 1))
+        dummy = np.zeros((h, w, 3), dtype=np.uint8)
+        views = build_augmented_views(dummy, np_mod=np, image_cls=Image)
+        key = str(name or "").strip().lower()
+        view = next((item for item in views if item.name == key), views[0])
+        out = inverse_augmented_prediction_row(row, view=view)
+        out["confidence"] = to_float(out.get("confidence", 0.0), 0.0)
         return out

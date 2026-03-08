@@ -1,9 +1,17 @@
 from __future__ import annotations
 
 import math
+import threading
+from pathlib import Path
+from types import SimpleNamespace
+
+import numpy as np
 
 import pytest
+from PIL import Image
 
+import saki_plugin_oriented_rcnn.predict_service as predict_service_mod
+from saki_plugin_oriented_rcnn.predict_service import OrientedRCNNPredictService
 from saki_plugin_sdk.strategies.builtin import (
     CANONICAL_AUG_IOU_STRATEGY,
     CANONICAL_RANDOM_STRATEGY,
@@ -84,3 +92,73 @@ def test_score_by_strategy_routes_three_canonical_strategies() -> None:
     )
     assert 0.0 <= aug_score <= 1.0
     assert aug_reason["strategy"] == CANONICAL_AUG_IOU_STRATEGY
+
+
+def test_predict_with_augmentations_rebuilds_geometry_from_restored_qbox(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    image_path = tmp_path / "sample.png"
+    Image.fromarray(np.zeros((8, 10, 3), dtype=np.uint8)).save(image_path)
+
+    service = OrientedRCNNPredictService(
+        stop_flag=threading.Event(),
+        config_service=object(),  # type: ignore[arg-type]
+    )
+
+    views = [
+        SimpleNamespace(
+            name="identity",
+            image=np.zeros((8, 10, 3), dtype=np.uint8),
+            orig_width=10,
+            orig_height=8,
+            width=10,
+            height=8,
+            spec=None,
+            inverse_point=lambda x, y, _view: (x, y),
+        )
+    ]
+    monkeypatch.setattr(predict_service_mod, "build_augmented_views", lambda *_args, **_kwargs: views)
+    monkeypatch.setattr(predict_service_mod, "infer_source", lambda **_kwargs: {"ok": True})
+    monkeypatch.setattr(
+        service,
+        "_build_entries",
+        lambda **_kwargs: [
+            {
+                "class_index": 0,
+                "class_name": "ship",
+                "confidence": 0.9,
+                "qbox": (0.0, 0.0, 4.0, 0.0, 4.0, 2.0, 0.0, 2.0),
+                "rbox": (100.0, 100.0, 50.0, 10.0, 1.2),
+                "geometry": {"rect": {"x": 0.0, "y": 0.0, "width": 4.0, "height": 2.0}},
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        predict_service_mod,
+        "inverse_augmented_prediction_row",
+        lambda row, *, view: {
+            **row,
+            "qbox": (2.0, 2.0, 6.0, 2.0, 6.0, 4.0, 2.0, 4.0),
+            "geometry": {"rect": {"x": 2.0, "y": 2.0, "width": 4.0, "height": 2.0}},
+        },
+    )
+
+    outputs = service._predict_with_augmentations(
+        model=object(),
+        image_path=image_path,
+        classes=("ship",),
+        geometry_mode="obb",
+        score_thr=0.1,
+        max_per_img=100,
+    )
+    assert len(outputs) == 1
+    assert len(outputs[0]) == 1
+    row = outputs[0][0]
+    assert row["qbox"] == pytest.approx((2.0, 2.0, 6.0, 2.0, 6.0, 4.0, 2.0, 4.0), abs=1e-6)
+    geometry = dict(row.get("geometry") or {})
+    obb = dict(geometry.get("obb") or {})
+    assert obb.get("cx") == pytest.approx(4.0, abs=1e-6)
+    assert obb.get("cy") == pytest.approx(3.0, abs=1e-6)
+    assert obb.get("width") == pytest.approx(4.0, abs=1e-6)
+    assert obb.get("height") == pytest.approx(2.0, abs=1e-6)

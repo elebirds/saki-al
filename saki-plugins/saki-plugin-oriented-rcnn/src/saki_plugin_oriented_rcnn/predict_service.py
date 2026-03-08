@@ -10,8 +10,9 @@ import numpy as np
 from PIL import Image
 
 from saki_plugin_sdk import ExecutionBindingContext, WorkspaceProtocol
+from saki_plugin_sdk.augmentations import build_augmented_views, inverse_augmented_prediction_row
 from saki_plugin_sdk.strategies.builtin import normalize_strategy_name, score_by_strategy
-from saki_ir import flip_quad8, normalize_quad8, quad8_to_aabb_rect
+from saki_ir import normalize_quad8, quad8_to_aabb_rect, quad8_to_obb_payload
 
 from saki_plugin_oriented_rcnn.common import normalize_device, to_int
 from saki_plugin_oriented_rcnn.config_builder import build_mmrotate_runtime_cfg, resolve_preset_checkpoint
@@ -463,29 +464,17 @@ class OrientedRCNNPredictService:
         设计意图：
         1. 主动学习里关注的是“同一张图在不同扰动下是否稳定”，
            所以所有增强分支都必须回到原图坐标，才能做可比的 IoU 计算。
-        2. 亮度增强只改变像素，不改变几何；翻转增强需要做逆变换。
+        2. 增强集合由 SDK 统一管理，插件仅负责推理编排。
         """
         with Image.open(image_path) as img:
             rgb = img.convert("RGB")
             base_img = np.array(rgb)
 
-        h, w = base_img.shape[:2]
-
-        # 增强集合保持“轻量且可解释”：
-        # - identity 作为锚点分支
-        # - hflip / vflip 检验几何鲁棒性
-        # - bright 检验外观扰动鲁棒性
-        transforms: list[tuple[str, Any]] = [
-            ("identity", lambda arr: arr),
-            ("hflip", lambda arr: np.ascontiguousarray(arr[:, ::-1, :])),
-            ("vflip", lambda arr: np.ascontiguousarray(arr[::-1, :, :])),
-            ("bright", lambda arr: np.clip(arr.astype(np.float32) * 1.2, 0, 255).astype(np.uint8)),
-        ]
+        views = build_augmented_views(base_img, np_mod=np, image_cls=Image)
 
         outputs: list[list[dict[str, Any]]] = []
-        for name, fn in transforms:
-            aug = fn(base_img)
-            pred = infer_source(model=model, source=aug)
+        for view in views:
+            pred = infer_source(model=model, source=view.image)
             rows = self._build_entries(
                 pred=pred,
                 classes=classes,
@@ -495,25 +484,15 @@ class OrientedRCNNPredictService:
             )
             restored: list[dict[str, Any]] = []
             for item in rows:
-                qbox = normalize_quad8(item.get("qbox"))
-                if qbox is None:
-                    qbox = tuple(float(v) for v in item.get("qbox", ()))
-                try:
-                    qbox_inv = flip_quad8(qbox, op=name, width=w, height=h)
-                except Exception:
-                    qbox_inv = qbox
-                restored.append(
-                    {
-                        **item,
-                        "qbox": qbox_inv,
-                        # 几何输出保持原模式，但 aug_iou 打分统一基于 qbox。
-                        "geometry": _geometry_from_qbox_or_keep(
-                            qbox=qbox_inv,
-                            rbox=item.get("rbox"),
-                            geometry_mode=geometry_mode,
-                        ),
-                    }
-                )
+                restored_item = inverse_augmented_prediction_row(item, view=view)
+                qbox_inv = normalize_quad8(restored_item.get("qbox"))
+                if qbox_inv is not None:
+                    restored_item["qbox"] = qbox_inv
+                    restored_item["geometry"] = _geometry_from_qbox(
+                        qbox=qbox_inv,
+                        geometry_mode=geometry_mode,
+                    )
+                restored.append(restored_item)
             outputs.append(restored)
 
         return outputs
@@ -569,18 +548,16 @@ def _rbox_to_geometry(
     }
 
 
-def _geometry_from_qbox_or_keep(
+def _geometry_from_qbox(
     *,
     qbox: tuple[float, ...],
-    rbox: Any,
     geometry_mode: str,
 ) -> dict[str, Any]:
-    if isinstance(rbox, (list, tuple)) and len(rbox) >= 5:
-        return _rbox_to_geometry(
-            rbox=(float(rbox[0]), float(rbox[1]), float(rbox[2]), float(rbox[3]), float(rbox[4])),
-            qbox=qbox,
-            geometry_mode=geometry_mode,
-        )
+    if geometry_mode == "obb":
+        try:
+            return quad8_to_obb_payload(qbox, fit_mode="strict_then_min_area")
+        except Exception:
+            pass
     try:
         x, y, w, h = quad8_to_aabb_rect(qbox)
     except Exception:

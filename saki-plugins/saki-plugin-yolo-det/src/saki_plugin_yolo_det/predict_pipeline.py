@@ -4,6 +4,12 @@ from pathlib import Path
 from threading import Event
 from typing import Any, Callable
 
+from saki_plugin_sdk.augmentations import (
+    AugmentationSpec,
+    build_augmented_views,
+    inverse_augmented_prediction_row,
+)
+
 
 def score_unlabeled_samples(
     *,
@@ -135,26 +141,24 @@ def predict_with_augmentations(
     image_cls: Any,
     np_mod: Any,
     extract_predictions: Callable[[Any], list[dict[str, Any]]],
-    inverse_aug_box: Callable[..., dict[str, Any]],
+    extra_aug_specs: tuple[AugmentationSpec, ...] | list[AugmentationSpec] = (),
 ) -> list[list[dict[str, Any]]]:
     ensure_image_deps()
     with image_cls.open(image_path) as img:
         rgb = img.convert("RGB")
         image = np_mod.array(rgb)
 
-    h, w = image.shape[:2]
-    transforms: list[tuple[str, Callable[[Any], Any]]] = [
-        ("identity", lambda arr: arr),
-        ("hflip", lambda arr: np_mod.ascontiguousarray(arr[:, ::-1, :])),
-        ("vflip", lambda arr: np_mod.ascontiguousarray(arr[::-1, :, :])),
-        ("bright", lambda arr: np_mod.clip(arr.astype(np_mod.float32) * 1.2, 0, 255).astype(np_mod.uint8)),
-    ]
+    views = build_augmented_views(
+        image,
+        np_mod=np_mod,
+        image_cls=image_cls,
+        extra_specs=extra_aug_specs,
+    )
 
     results_by_aug: list[list[dict[str, Any]]] = []
-    for name, transform in transforms:
-        aug_img = transform(image)
+    for view in views:
         predicts = model.predict(
-            source=aug_img,
+            source=view.image,
             conf=conf,
             imgsz=imgsz,
             device=device,
@@ -162,6 +166,6 @@ def predict_with_augmentations(
         )
         first = predicts[0] if predicts else None
         rows = extract_predictions(first)
-        rows = [inverse_aug_box(name=name, row=item, width=w, height=h) for item in rows]
+        rows = [inverse_augmented_prediction_row(item, view=view) for item in rows]
         results_by_aug.append(rows)
     return results_by_aug

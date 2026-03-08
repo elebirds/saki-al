@@ -22,6 +22,7 @@ import {
     ProjectBranch,
     ProjectCreate,
     ProjectForkCreate,
+    ProjectLabelCountItem,
     ProjectLabel,
     ProjectLabelCreate,
     ProjectLabelUpdate,
@@ -392,6 +393,14 @@ export interface ApiService {
             limit?: number;
         }
     ): Promise<PaginationResponse<ProjectSample>>;
+
+    getProjectDatasetLabelCounts(
+        projectId: string,
+        datasetId: string,
+        params?: {
+            branchName?: string;
+        }
+    ): Promise<ProjectLabelCountItem[]>;
 
     getAnnotationsAtCommit(projectId: string, commitId: string, sampleId?: string): Promise<AnnotationRead[]>;
 

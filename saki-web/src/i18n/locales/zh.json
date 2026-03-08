@@ -799,6 +799,10 @@
         "unlabeled": "未标注",
         "skipped": "已跳过",
         "empty": "暂无数据"
+      },
+      "labelCount": {
+        "title": "Label 数量",
+        "empty": "暂无 Label 统计"
       }
     },
     "insights": {

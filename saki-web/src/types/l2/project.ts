@@ -58,6 +58,13 @@ export interface ProjectBranch {
     updatedAt?: string;
 }
 
+export interface ProjectLabelCountItem {
+    labelId: string;
+    labelName: string;
+    labelColor: string;
+    annotationCount: number;
+}
+
 export type AuthorType = 'user' | 'model' | 'system';
 
 export interface CommitHistoryItem {

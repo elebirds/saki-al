@@ -23,6 +23,7 @@ import {
     ProjectBranch,
     ProjectCreate,
     ProjectForkCreate,
+    ProjectLabelCountItem,
     ProjectLabel,
     ProjectLabelCreate,
     ProjectLabelUpdate,
@@ -1462,6 +1463,24 @@ export class RealApiService implements ApiService {
                     sort_order: params.sortOrder,
                     page: params.page,
                     limit: params.limit,
+                },
+            }
+        );
+        return response.data;
+    }
+
+    async getProjectDatasetLabelCounts(
+        projectId: string,
+        datasetId: string,
+        params?: {
+            branchName?: string;
+        }
+    ): Promise<ProjectLabelCountItem[]> {
+        const response = await this.client.get<ProjectLabelCountItem[]>(
+            `/projects/${projectId}/datasets/${datasetId}/label-counts`,
+            {
+                params: {
+                    branch_name: params?.branchName,
                 },
             }
         );

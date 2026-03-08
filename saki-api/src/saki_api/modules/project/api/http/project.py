@@ -22,6 +22,7 @@ from saki_api.modules.project.api import (
     ProjectCreate,
     ProjectDatasetLink,
     ProjectForkCreate,
+    ProjectLabelCountItem,
     ProjectRead,
     ProjectReadMinimal,
     ProjectUpdate,
@@ -415,6 +416,31 @@ async def list_project_samples(
         offset=page_data.offset,
         limit=page_data.limit,
     )
+
+
+@router.get(
+    "/{project_id}/datasets/{dataset_id}/label-counts",
+    response_model=List[ProjectLabelCountItem],
+    dependencies=[
+        Depends(require_permission(Permissions.PROJECT_READ, ResourceType.PROJECT, "project_id"))
+    ]
+)
+async def list_project_dataset_label_counts(
+        *,
+        project_id: uuid.UUID,
+        dataset_id: uuid.UUID,
+        project_service: ProjectServiceDep,
+        branch_name: str = Query("master"),
+):
+    """
+    List label annotation counts in a project dataset scoped by branch head commit.
+    """
+    rows = await project_service.list_project_dataset_label_counts(
+        project_id=project_id,
+        dataset_id=dataset_id,
+        branch_name=branch_name,
+    )
+    return [ProjectLabelCountItem.model_validate(item) for item in rows]
 
 
 # =============================================================================

@@ -9,8 +9,11 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 import saki_api.modules.shared.modeling  # noqa: F401
 from saki_api.modules.annotation.api.http.annotation import sync_working_to_draft
+from saki_api.modules.annotation.domain.annotation import Annotation
+from saki_api.modules.annotation.domain.camap import CommitAnnotationMap
 from saki_api.infra.db.session import _session_ctx
-from saki_api.modules.shared.modeling.enums import AuthorType, CommitSampleReviewState, TaskType
+from saki_api.modules.shared.modeling.enums import AnnotationSource, AnnotationType, AuthorType, CommitSampleReviewState, TaskType
+from saki_api.modules.project.domain.label import Label
 from saki_api.modules.storage.domain.dataset import Dataset
 from saki_api.modules.storage.domain.sample import Sample
 from saki_api.modules.project.domain.branch import Branch
@@ -247,3 +250,181 @@ async def test_sync_working_to_draft_review_empty_promotes_non_dirty_snapshot(co
             branch_name="master",
         )
         assert snapshot is None
+
+
+@pytest.mark.anyio
+async def test_list_project_dataset_label_counts_changes_with_branch(commit_sample_state_env):
+    session_local = commit_sample_state_env
+    async with session_local() as session:
+        user = User(email="label-count@example.com", hashed_password="hashed", full_name="Counter")
+        session.add(user)
+        await session.flush()
+
+        dataset = Dataset(name="dataset-label-count", description="dataset", owner_id=user.id)
+        session.add(dataset)
+        await session.flush()
+
+        project = Project(name="label-project", task_type=TaskType.DETECTION, config={})
+        session.add(project)
+        await session.flush()
+        session.add(ProjectDataset(project_id=project.id, dataset_id=dataset.id))
+
+        label_ship = Label(project_id=project.id, name="Ship", color="#ff0000", sort_order=1)
+        label_plane = Label(project_id=project.id, name="Plane", color="#00ff00", sort_order=2)
+        label_vehicle = Label(project_id=project.id, name="Vehicle", color="#0000ff", sort_order=3)
+        session.add(label_ship)
+        session.add(label_plane)
+        session.add(label_vehicle)
+
+        sample_a = Sample(dataset_id=dataset.id, name="a.jpg", asset_group={})
+        sample_b = Sample(dataset_id=dataset.id, name="b.jpg", asset_group={})
+        session.add(sample_a)
+        session.add(sample_b)
+        await session.flush()
+
+        commit_master = Commit(
+            project_id=project.id,
+            parent_id=None,
+            message="master",
+            author_type=AuthorType.SYSTEM,
+            author_id=None,
+            stats={},
+            commit_hash="master",
+        )
+        session.add(commit_master)
+        await session.flush()
+        commit_dev = Commit(
+            project_id=project.id,
+            parent_id=commit_master.id,
+            message="dev",
+            author_type=AuthorType.SYSTEM,
+            author_id=None,
+            stats={},
+            commit_hash="dev",
+        )
+        session.add(commit_dev)
+        await session.flush()
+
+        session.add(Branch(project_id=project.id, name="master", head_commit_id=commit_master.id, is_protected=True))
+        session.add(Branch(project_id=project.id, name="dev", head_commit_id=commit_dev.id, is_protected=False))
+        await session.flush()
+
+        def _ann(sample_id: uuid.UUID, label_id: uuid.UUID) -> Annotation:
+            return Annotation(
+                sample_id=sample_id,
+                label_id=label_id,
+                project_id=project.id,
+                group_id=uuid.uuid4(),
+                lineage_id=uuid.uuid4(),
+                view_role="main",
+                parent_id=None,
+                type=AnnotationType.RECT,
+                source=AnnotationSource.MANUAL,
+                geometry={"rect": {"x": 1, "y": 1, "width": 10, "height": 10}},
+                attrs={},
+                confidence=1.0,
+                annotator_id=user.id,
+            )
+
+        ann_m1 = _ann(sample_a.id, label_ship.id)
+        ann_m2 = _ann(sample_b.id, label_ship.id)
+        ann_m3 = _ann(sample_b.id, label_plane.id)
+        ann_d1 = _ann(sample_a.id, label_ship.id)
+        ann_d2 = _ann(sample_a.id, label_plane.id)
+        ann_d3 = _ann(sample_b.id, label_plane.id)
+        ann_d4 = _ann(sample_b.id, label_vehicle.id)
+        session.add(ann_m1)
+        session.add(ann_m2)
+        session.add(ann_m3)
+        session.add(ann_d1)
+        session.add(ann_d2)
+        session.add(ann_d3)
+        session.add(ann_d4)
+        await session.flush()
+
+        session.add(CommitAnnotationMap(
+            commit_id=commit_master.id, sample_id=sample_a.id, annotation_id=ann_m1.id, project_id=project.id
+        ))
+        session.add(CommitAnnotationMap(
+            commit_id=commit_master.id, sample_id=sample_b.id, annotation_id=ann_m2.id, project_id=project.id
+        ))
+        session.add(CommitAnnotationMap(
+            commit_id=commit_master.id, sample_id=sample_b.id, annotation_id=ann_m3.id, project_id=project.id
+        ))
+        session.add(CommitAnnotationMap(
+            commit_id=commit_dev.id, sample_id=sample_a.id, annotation_id=ann_d1.id, project_id=project.id
+        ))
+        session.add(CommitAnnotationMap(
+            commit_id=commit_dev.id, sample_id=sample_a.id, annotation_id=ann_d2.id, project_id=project.id
+        ))
+        session.add(CommitAnnotationMap(
+            commit_id=commit_dev.id, sample_id=sample_b.id, annotation_id=ann_d3.id, project_id=project.id
+        ))
+        session.add(CommitAnnotationMap(
+            commit_id=commit_dev.id, sample_id=sample_b.id, annotation_id=ann_d4.id, project_id=project.id
+        ))
+        await session.commit()
+
+        service = ProjectService(session)
+
+        rows_master = await service.list_project_dataset_label_counts(
+            project_id=project.id,
+            dataset_id=dataset.id,
+            branch_name="master",
+        )
+        rows_dev = await service.list_project_dataset_label_counts(
+            project_id=project.id,
+            dataset_id=dataset.id,
+            branch_name="dev",
+        )
+
+        assert [row["label_name"] for row in rows_master] == ["Ship", "Plane", "Vehicle"]
+        assert [row["annotation_count"] for row in rows_master] == [2, 1, 0]
+        assert [row["annotation_count"] for row in rows_dev] == [1, 2, 1]
+
+
+@pytest.mark.anyio
+async def test_list_project_dataset_label_counts_returns_zero_for_labels_without_annotations(commit_sample_state_env):
+    session_local = commit_sample_state_env
+    async with session_local() as session:
+        user = User(email="label-zero@example.com", hashed_password="hashed", full_name="Zero")
+        session.add(user)
+        await session.flush()
+
+        dataset = Dataset(name="dataset-zero", description="dataset", owner_id=user.id)
+        session.add(dataset)
+        await session.flush()
+
+        project = Project(name="zero-project", task_type=TaskType.DETECTION, config={})
+        session.add(project)
+        await session.flush()
+        session.add(ProjectDataset(project_id=project.id, dataset_id=dataset.id))
+
+        label_a = Label(project_id=project.id, name="A", color="#111111", sort_order=1)
+        label_b = Label(project_id=project.id, name="B", color="#222222", sort_order=2)
+        session.add(label_a)
+        session.add(label_b)
+
+        commit_master = Commit(
+            project_id=project.id,
+            parent_id=None,
+            message="master",
+            author_type=AuthorType.SYSTEM,
+            author_id=None,
+            stats={},
+            commit_hash="master",
+        )
+        session.add(commit_master)
+        await session.flush()
+        session.add(Branch(project_id=project.id, name="master", head_commit_id=commit_master.id, is_protected=True))
+        await session.commit()
+
+        service = ProjectService(session)
+        rows = await service.list_project_dataset_label_counts(
+            project_id=project.id,
+            dataset_id=dataset.id,
+            branch_name="master",
+        )
+
+        assert [row["label_name"] for row in rows] == ["A", "B"]
+        assert [row["annotation_count"] for row in rows] == [0, 0]

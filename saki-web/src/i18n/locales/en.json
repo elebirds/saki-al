@@ -799,6 +799,10 @@
         "unlabeled": "Unlabeled",
         "skipped": "Skipped",
         "empty": "Not available yet"
+      },
+      "labelCount": {
+        "title": "Label Counts",
+        "empty": "No label stats yet"
       }
     },
     "loopOverview": {

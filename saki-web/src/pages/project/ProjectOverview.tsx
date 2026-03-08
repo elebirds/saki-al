@@ -7,7 +7,7 @@ import {RepoActionBar} from '../../layouts/github/RepoActionBar'
 import {RepoHeader} from '../../layouts/github/RepoHeader'
 import {FileTable} from '../../layouts/github/FileTable'
 import {api} from '../../services/api'
-import {CommitHistoryItem, Dataset, Loop, Project, ProjectBranch, ProjectModel, ResourceMember} from '../../types'
+import {CommitHistoryItem, Dataset, Loop, Project, ProjectBranch, ProjectLabelCountItem, ProjectModel, ResourceMember} from '../../types'
 import {usePermission, useResourcePermission} from '../../hooks'
 import ProjectSidebar from './ProjectSidebar'
 
@@ -26,6 +26,7 @@ const ProjectOverview: React.FC = () => {
     const [loading, setLoading] = useState(true)
     const [selectedDatasetId, setSelectedDatasetId] = useState<string | null>(null)
     const [sampleStats, setSampleStats] = useState({labeled: 0, unlabeled: 0, skipped: 0, total: 0})
+    const [labelCounts, setLabelCounts] = useState<ProjectLabelCountItem[]>([])
     const [selectedBranchName, setSelectedBranchName] = useState('master')
     const [forkOpen, setForkOpen] = useState(false)
     const [forking, setForking] = useState(false)
@@ -118,16 +119,18 @@ const ProjectOverview: React.FC = () => {
         const loadSampleStats = async () => {
             if (!projectId || !canViewSamples) {
                 setSampleStats({labeled: 0, unlabeled: 0, skipped: 0, total: 0})
+                setLabelCounts([])
                 return
             }
             const targetDatasetId = selectedDatasetId || datasets[0]?.id
             if (!targetDatasetId) {
                 setSampleStats({labeled: 0, unlabeled: 0, skipped: 0, total: 0})
+                setLabelCounts([])
                 return
             }
             const branchName = selectedBranchName || branches[0]?.name || 'master'
             try {
-                const [allPage, labeledPage, unlabeledPage] = await Promise.all([
+                const [allPage, labeledPage, unlabeledPage, labelCountRows] = await Promise.all([
                     api.getProjectSamples(projectId, targetDatasetId, {
                         status: 'all',
                         branchName,
@@ -146,6 +149,7 @@ const ProjectOverview: React.FC = () => {
                         page: 1,
                         limit: 1,
                     }),
+                    api.getProjectDatasetLabelCounts(projectId, targetDatasetId, {branchName}),
                 ])
                 if (cancelled) return
                 const total = Number(allPage.total || 0)
@@ -157,9 +161,11 @@ const ProjectOverview: React.FC = () => {
                     skipped: Math.max(total - labeled - unlabeled, 0),
                     total,
                 })
+                setLabelCounts(labelCountRows || [])
             } catch {
                 if (cancelled) return
                 setSampleStats({labeled: 0, unlabeled: 0, skipped: 0, total: 0})
+                setLabelCounts([])
             }
         }
         void loadSampleStats()
@@ -426,6 +432,7 @@ const ProjectOverview: React.FC = () => {
                     }}
                     members={members}
                     sampleStatus={sampleStats}
+                    labelCounts={labelCounts}
                     models={models}
                     canViewModels={canViewModels}
                     loops={loops}

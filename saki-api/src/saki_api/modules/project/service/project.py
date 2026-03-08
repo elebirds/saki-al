@@ -736,6 +736,60 @@ class ProjectService(CrudServiceBase[Project, ProjectRepository, ProjectCreate, 
         await self.get_by_id_or_raise(project_id)
         return await self.repository.get_linked_datasets(project_id)
 
+    async def list_project_dataset_label_counts(
+            self,
+            *,
+            project_id: uuid.UUID,
+            dataset_id: uuid.UUID,
+            branch_name: str,
+    ) -> list[dict[str, Any]]:
+        """
+        Count annotations by label under the selected branch head and dataset scope.
+        """
+        await self.get_by_id_or_raise(project_id)
+
+        dataset_ids = await self.get_linked_datasets(project_id)
+        if dataset_id not in dataset_ids:
+            return []
+
+        labels = await self.label_repo.get_by_project(project_id)
+        if not labels:
+            return []
+
+        branch_repo = BranchRepository(self.session)
+        branch = await branch_repo.get_by_name(project_id, branch_name)
+        head_commit_id = branch.head_commit_id if branch else None
+
+        counts_by_label: dict[uuid.UUID, int] = {}
+        if head_commit_id is not None:
+            statement = (
+                select(
+                    Annotation.label_id,
+                    func.count(CommitAnnotationMap.annotation_id),
+                )
+                .join(CommitAnnotationMap, CommitAnnotationMap.annotation_id == Annotation.id)
+                .join(Sample, Sample.id == CommitAnnotationMap.sample_id)
+                .where(
+                    CommitAnnotationMap.commit_id == head_commit_id,
+                    CommitAnnotationMap.project_id == project_id,
+                    Annotation.project_id == project_id,
+                    Sample.dataset_id == dataset_id,
+                )
+                .group_by(Annotation.label_id)
+            )
+            rows = await self.session.exec(statement)
+            counts_by_label = {label_id: int(count or 0) for label_id, count in rows.all()}
+
+        return [
+            {
+                "label_id": label.id,
+                "label_name": label.name,
+                "label_color": label.color,
+                "annotation_count": int(counts_by_label.get(label.id, 0)),
+            }
+            for label in labels
+        ]
+
     @staticmethod
     def _empty_project_sample_page(limit: int) -> ProjectSamplePage:
         return ProjectSamplePage(

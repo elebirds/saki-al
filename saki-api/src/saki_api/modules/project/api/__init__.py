@@ -6,6 +6,7 @@ from saki_api.modules.project.api.project import (
     ProjectRead,
     ProjectDatasetLink,
     ProjectReadMinimal,
+    ProjectLabelCountItem,
 )
 
 __all__ = [
@@ -16,4 +17,5 @@ __all__ = [
     "ProjectRead",
     "ProjectDatasetLink",
     "ProjectReadMinimal",
+    "ProjectLabelCountItem",
 ]

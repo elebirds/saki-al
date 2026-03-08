@@ -2,7 +2,7 @@ import React from 'react'
 import {Avatar, Button, Tag, Tooltip} from 'antd'
 import {DatabaseOutlined, ForkOutlined, NodeIndexOutlined} from '@ant-design/icons'
 import {useNavigate} from 'react-router-dom'
-import {Loop, ProjectModel, ResourceMember} from '../../types'
+import {Loop, ProjectLabelCountItem, ProjectModel, ResourceMember} from '../../types'
 import {useTranslation} from 'react-i18next'
 
 export interface ProjectSidebarProps {
@@ -29,6 +29,7 @@ export interface ProjectSidebarProps {
         skipped: number
         total: number
     }
+    labelCounts?: ProjectLabelCountItem[]
 }
 
 const statusColors: Record<string, string> = {
@@ -65,6 +66,7 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
                                                            models,
                                                            canViewModels = true,
                                                            sampleStatus,
+                                                           labelCounts,
                                                        }) => {
     const {t} = useTranslation()
     const navigate = useNavigate()
@@ -82,6 +84,10 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
         : []
     const recentLoops = (loops || []).slice(0, 3)
     const recentModels = (models || []).slice(0, 3)
+    const maxLabelCount = (labelCounts || []).reduce(
+        (max, item) => Math.max(max, Number(item.annotationCount || 0)),
+        0,
+    )
 
     return (
         <aside className="w-[296px] shrink-0 hidden lg:block">
@@ -267,6 +273,37 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
                 ) : (
                     <div className="text-sm text-github-muted">{t('project.sidebar.sampleStatus.empty')}</div>
                 )}
+
+                <div className="mt-4 border-t border-github-border pt-4">
+                    <h3 className="font-semibold text-github-text mb-3">{t('project.sidebar.labelCount.title')}</h3>
+                    {(labelCounts || []).length > 0 ? (
+                        <div className="space-y-2">
+                            {(labelCounts || []).map((item) => {
+                                const count = Number(item.annotationCount || 0)
+                                const width = maxLabelCount > 0 ? (count / maxLabelCount) * 100 : 0
+                                return (
+                                    <div key={item.labelId} className="space-y-1">
+                                        <div className="flex items-center justify-between gap-2 text-xs">
+                                            <span className="truncate text-github-text">{item.labelName}</span>
+                                            <span className="text-github-muted shrink-0">{count}</span>
+                                        </div>
+                                        <div className="h-1.5 rounded-full bg-github-base overflow-hidden">
+                                            <div
+                                                className="h-full rounded-full"
+                                                style={{
+                                                    width: `${width}%`,
+                                                    backgroundColor: item.labelColor || '#2f81f7',
+                                                }}
+                                            />
+                                        </div>
+                                    </div>
+                                )
+                            })}
+                        </div>
+                    ) : (
+                        <div className="text-sm text-github-muted">{t('project.sidebar.labelCount.empty')}</div>
+                    )}
+                </div>
             </div>
         </aside>
     )

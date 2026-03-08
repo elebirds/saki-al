@@ -91,3 +91,13 @@ class ProjectReadMinimal(SQLModel):
     task_type: TaskType
     dataset_type: DatasetType
     status: ProjectStatus
+
+
+class ProjectLabelCountItem(SQLModel):
+    """
+    Label annotation count in a project dataset under a branch head commit.
+    """
+    label_id: uuid.UUID
+    label_name: str
+    label_color: str
+    annotation_count: int = 0

@@ -147,7 +147,7 @@ const ProjectLoopCreate: React.FC = () => {
                     },
                 },
                 trainingLabelIds: [],
-                negativeSampleRatio: 0,
+                negativeSampleRatio: null,
             });
         } catch (error: any) {
             message.error(error?.message || t('project.loopCreate.messages.loadFailed'));

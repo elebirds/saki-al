@@ -129,13 +129,60 @@ class TrainingDataService:
             split_seed = max(0, int(runtime_context.split_seed))
         except Exception:
             split_seed = 0
+        training_cfg = (
+            request.resolved_params.get("training")
+            if isinstance(request.resolved_params, dict)
+            else {}
+        )
+        training_cfg = training_cfg if isinstance(training_cfg, dict) else {}
+        has_negative_ratio_config = "negative_sample_ratio" in training_cfg
+        negative_ratio_raw = training_cfg.get("negative_sample_ratio")
+        raw_ratio_text = (
+            "未配置"
+            if not has_negative_ratio_config
+            else ("null" if negative_ratio_raw is None else str(negative_ratio_raw))
+        )
+        ratio_source_text = "显式配置" if has_negative_ratio_config else "默认值"
         negative_sample_ratio = self._extract_training_negative_sample_ratio(request.resolved_params)
+        effective_ratio_text = (
+            "inf"
+            if negative_sample_ratio is None
+            else f"{max(0.0, float(negative_sample_ratio)):g}"
+        )
         negative_kept: list[dict[str, Any]] = list(negative_candidates)
         if task_type == "train":
+            ratio_value = None if negative_sample_ratio is None else max(0.0, float(negative_sample_ratio))
+            negative_adjust_enabled = negative_sample_ratio is None or (ratio_value is not None and ratio_value > 0.0)
+            strategy_text = (
+                "无限保留"
+                if negative_sample_ratio is None
+                else ("按比例采样" if ratio_value is not None and ratio_value > 0.0 else "关闭")
+            )
+            keep_limit = (
+                len(negative_candidates)
+                if negative_sample_ratio is None
+                else max(0, int(len(positive_samples) * (ratio_value or 0.0)))
+            )
+            await emit(
+                "log",
+                {
+                    "level": "INFO",
+                    "message": (
+                        "插件启动-训练负采样策略检查 "
+                        f"启动={'是' if negative_adjust_enabled else '否'} "
+                        f"策略={strategy_text} "
+                        f"配置来源={ratio_source_text} "
+                        f"negative_sample_ratio原值={raw_ratio_text} "
+                        f"negative_sample_ratio生效值={effective_ratio_text} "
+                        f"正样本数={len(positive_samples)} "
+                        f"负样本候选数={len(negative_candidates)} "
+                        f"预计保留上限={keep_limit}"
+                    ),
+                },
+            )
             if negative_sample_ratio is None:
                 negative_kept = list(negative_candidates)
             else:
-                keep_limit = max(0, int(len(positive_samples) * max(0.0, float(negative_sample_ratio))))
                 if keep_limit >= len(negative_candidates):
                     negative_kept = list(negative_candidates)
                 elif keep_limit <= 0:
@@ -151,10 +198,31 @@ class TrainingDataService:
                     "level": "INFO",
                     "message": (
                         "训练负样本采样完成 "
-                        f"positive_samples={len(positive_samples)} "
-                        f"negative_candidates={len(negative_candidates)} "
-                        f"negative_kept={len(negative_kept)} "
+                        f"启动={'是' if negative_adjust_enabled else '否'} "
+                        f"策略={strategy_text} "
+                        f"配置来源={ratio_source_text} "
+                        f"正样本数={len(positive_samples)} "
+                        f"负样本候选数={len(negative_candidates)} "
+                        f"负样本保留数={len(negative_kept)} "
+                        f"负样本裁剪数={max(0, len(negative_candidates) - len(negative_kept))} "
+                        f"保留上限={keep_limit} "
                         f"negative_ratio={'inf' if negative_sample_ratio is None else f'{float(negative_sample_ratio):g}'}"
+                    ),
+                },
+            )
+        else:
+            await emit(
+                "log",
+                {
+                    "level": "INFO",
+                    "message": (
+                        "插件启动-训练负采样策略检查 "
+                        "启动=否 "
+                        "策略=关闭 "
+                        "配置来源=非TRAIN阶段 "
+                        f"task_type={task_type or 'unknown'} "
+                        f"negative_sample_ratio原值={raw_ratio_text} "
+                        f"negative_sample_ratio生效值={effective_ratio_text}"
                     ),
                 },
             )

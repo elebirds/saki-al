@@ -391,9 +391,14 @@ async def test_prepare_train_keeps_negative_samples_by_ratio(tmp_path):
     # 2 positive, ratio=1 -> keep 2 negatives
     assert len(sample_ids) == 4
     ratio_log = next((line for line in emitted_logs if "训练负样本采样完成" in line), "")
-    assert "positive_samples=2" in ratio_log
-    assert "negative_candidates=4" in ratio_log
-    assert "negative_kept=2" in ratio_log
+    startup_log = next((line for line in emitted_logs if "插件启动-训练负采样策略检查" in line), "")
+    assert "启动=是" in startup_log
+    assert "策略=按比例采样" in startup_log
+    assert "negative_sample_ratio原值=1" in startup_log
+    assert "negative_sample_ratio生效值=1" in startup_log
+    assert "正样本数=2" in ratio_log
+    assert "负样本候选数=4" in ratio_log
+    assert "负样本保留数=2" in ratio_log
     assert "negative_ratio=1" in ratio_log
 
 

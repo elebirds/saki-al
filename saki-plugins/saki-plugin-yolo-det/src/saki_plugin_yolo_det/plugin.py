@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from saki_plugin_sdk import (
@@ -71,6 +72,13 @@ class YoloDetectionPlugin(ExecutorPlugin):
             f"aug_iou_enabled_augs 默认项数={aug_default_count}。"
         )
 
+    @staticmethod
+    def _dump_frontend_params(params: dict[str, Any]) -> str:
+        try:
+            return json.dumps(dict(params or {}), ensure_ascii=False, sort_keys=True)
+        except Exception:
+            return str(params)
+
     async def on_start(self, task_id: str, workspace: WorkspaceProtocol) -> None:
         await super().on_start(task_id, workspace)
         workspace.ensure()
@@ -131,7 +139,10 @@ class YoloDetectionPlugin(ExecutorPlugin):
             *,
             context: ExecutionBindingContext,
     ) -> TrainOutput:
-        self.logger.info(f"开始训练，参数键：{list(params.keys())}")
+        self.logger.info(
+            "开始训练，前端参数快照："
+            f"{self._dump_frontend_params(params)}"
+        )
         return await self._runtime.train(
             workspace=workspace,
             params=params,

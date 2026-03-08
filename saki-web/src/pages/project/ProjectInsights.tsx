@@ -41,6 +41,18 @@ const ROUND_STATE_COLOR: Record<string, string> = {
     cancelled: 'warning',
 };
 
+const compareRoundAttemptAsc = (left: RuntimeRound, right: RuntimeRound): number => {
+    const leftRound = Number(left.roundIndex || 0);
+    const rightRound = Number(right.roundIndex || 0);
+    if (leftRound !== rightRound) return leftRound - rightRound;
+
+    const leftAttempt = Number(left.attemptIndex || 1);
+    const rightAttempt = Number(right.attemptIndex || 1);
+    if (leftAttempt !== rightAttempt) return leftAttempt - rightAttempt;
+
+    return String(left.id).localeCompare(String(right.id));
+};
+
 const ProjectInsights: React.FC = () => {
     const {t} = useTranslation();
     const {projectId} = useParams<{ projectId: string }>();
@@ -63,7 +75,7 @@ const ProjectInsights: React.FC = () => {
             api.getLoopRounds(loopId, 500),
             api.getLoopSummary(loopId),
         ]);
-        const sorted = [...roundRows].sort((a, b) => a.roundIndex - b.roundIndex);
+        const sorted = [...roundRows].sort(compareRoundAttemptAsc);
         setRounds(sorted);
         setSummary(summaryRow);
     }, []);
@@ -116,8 +128,12 @@ const ProjectInsights: React.FC = () => {
             const sourceMetrics = getMetricBySource(item, metricSource);
             const metricRaw = sourceMetrics[selectedMetricKey];
             const metricValue = Number(metricRaw);
+            const round = Number(item.roundIndex || 0);
+            const attempt = Number(item.attemptIndex || 1);
             return {
-                round: item.roundIndex,
+                round,
+                attempt,
+                roundAttempt: `R${round}·A${attempt}`,
                 metricValue: Number.isFinite(metricValue) ? metricValue : null,
                 succeededSteps: Number(item.stepCounts?.succeeded || 0),
             };
@@ -221,7 +237,7 @@ const ProjectInsights: React.FC = () => {
                                 <ResponsiveContainer width="100%" height="100%">
                                     <LineChart data={chartData}>
                                         <CartesianGrid strokeDasharray="3 3"/>
-                                        <XAxis dataKey="round"/>
+                                        <XAxis dataKey="roundAttempt"/>
                                         <YAxis yAxisId="left" domain={[0, 1]}/>
                                         <YAxis yAxisId="right" orientation="right"/>
                                         <Tooltip/>
@@ -267,6 +283,7 @@ const ProjectInsights: React.FC = () => {
                     pagination={{pageSize: 10}}
                     columns={[
                         {title: 'Round', dataIndex: 'roundIndex', width: 90},
+                        {title: 'Attempt', dataIndex: 'attemptIndex', width: 90},
                         {
                             title: t('project.insights.table.status'),
                             dataIndex: 'state',

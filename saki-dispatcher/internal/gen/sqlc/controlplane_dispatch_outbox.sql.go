@@ -74,6 +74,27 @@ func (q *Queries) ClaimDispatchOutboxDue(ctx context.Context, limitCount int32) 
 	return items, nil
 }
 
+const deleteDispatchOutboxForTerminalTasks = `-- name: DeleteDispatchOutboxForTerminalTasks :execrows
+DELETE FROM task_dispatch_outbox o
+USING task t
+WHERE o.task_id = t.id
+  AND o.status IN ('PENDING', 'SENDING')
+  AND t.status IN (
+    'SUCCEEDED'::runtimetaskstatus,
+    'FAILED'::runtimetaskstatus,
+    'CANCELLED'::runtimetaskstatus,
+    'SKIPPED'::runtimetaskstatus
+  )
+`
+
+func (q *Queries) DeleteDispatchOutboxForTerminalTasks(ctx context.Context) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteDispatchOutboxForTerminalTasks)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteSentDispatchOutboxBefore = `-- name: DeleteSentDispatchOutboxBefore :execrows
 DELETE FROM task_dispatch_outbox
 WHERE status = 'SENT'

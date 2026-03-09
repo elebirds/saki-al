@@ -1913,6 +1913,15 @@ func (s *Service) recoverDispatchOutbox(ctx context.Context, limit int) error {
 	if !s.dbEnabled() {
 		return nil
 	}
+	cleanedTerminal, err := s.queries.DeleteDispatchOutboxForTerminalTasks(ctx)
+	if err != nil {
+		return err
+	}
+	if cleanedTerminal > 0 {
+		s.logger.Info().
+			Int64("deleted_count", cleanedTerminal).
+			Msg("dispatch_trace 已清理终态任务遗留 outbox")
+	}
 	staleSendingCutoff := toPGTimestamp(time.Now().UTC().Add(-30 * time.Second))
 	if _, err := s.queries.ReleaseStaleSendingOutbox(ctx, staleSendingCutoff); err != nil {
 		return err

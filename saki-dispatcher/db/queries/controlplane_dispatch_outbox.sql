@@ -79,6 +79,18 @@ WHERE status = 'SENDING'
   AND locked_at IS NOT NULL
   AND locked_at < sqlc.arg(cutoff);
 
+-- name: DeleteDispatchOutboxForTerminalTasks :execrows
+DELETE FROM task_dispatch_outbox o
+USING task t
+WHERE o.task_id = t.id
+  AND o.status IN ('PENDING', 'SENDING')
+  AND t.status IN (
+    'SUCCEEDED'::runtimetaskstatus,
+    'FAILED'::runtimetaskstatus,
+    'CANCELLED'::runtimetaskstatus,
+    'SKIPPED'::runtimetaskstatus
+  );
+
 -- name: ListOrphanDispatchingTaskIDs :many
 SELECT t.id AS id
 FROM task t

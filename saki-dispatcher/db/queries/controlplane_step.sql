@@ -26,7 +26,17 @@ LIMIT sqlc.arg(limit_count)
 FOR UPDATE OF t SKIP LOCKED;
 
 -- name: ListDispatchLaneHeadCandidates :many
-WITH candidate_tasks AS (
+WITH latest_loop_round AS (
+  SELECT DISTINCT ON (r.loop_id)
+    r.id AS round_id,
+    r.loop_id,
+    COALESCE(r.resources, '{}'::jsonb) AS resources_raw
+  FROM round r
+  JOIN loop l ON l.id = r.loop_id
+  WHERE l.lifecycle = 'RUNNING'::looplifecycle
+  ORDER BY r.loop_id, r.round_index DESC, r.created_at DESC, r.id DESC
+),
+step_candidate_tasks AS (
   SELECT
     t.id AS task_id,
     t.kind,
@@ -35,31 +45,48 @@ WITH candidate_tasks AS (
     t.plugin_id,
     t.created_at,
     t.updated_at,
-    CASE
-      WHEN t.kind = 'STEP' THEN r.loop_id::text
-      ELSE t.id::text
-    END AS lane_id,
-    r.loop_id,
-    COALESCE(r.resources, '{}'::jsonb) AS resources_raw,
+    latest_round.loop_id::text AS lane_id,
+    latest_round.loop_id,
+    latest_round.resources_raw,
     ROW_NUMBER() OVER (
-      PARTITION BY CASE
-        WHEN t.kind = 'STEP' THEN r.loop_id::text
-        ELSE t.id::text
-      END
-      ORDER BY t.created_at ASC, t.id ASC
+      PARTITION BY latest_round.loop_id
+      ORDER BY
+        s.step_index ASC,
+        CASE t.status
+          WHEN 'READY'::runtimetaskstatus THEN 0
+          WHEN 'RETRYING'::runtimetaskstatus THEN 1
+          ELSE 2
+        END ASC,
+        t.created_at ASC,
+        t.id ASC
     ) AS lane_rank
   FROM task t
-  LEFT JOIN step s ON s.task_id = t.id
-  LEFT JOIN round r ON r.id = s.round_id
-  LEFT JOIN loop l ON l.id = r.loop_id
-  WHERE t.status IN ('PENDING', 'READY', 'RETRYING')
-    AND (
-      t.kind = 'PREDICTION'
-      OR (
-        t.kind = 'STEP'
-        AND l.lifecycle = 'RUNNING'::looplifecycle
-      )
-    )
+  JOIN step s ON s.task_id = t.id
+  JOIN latest_loop_round latest_round ON latest_round.round_id = s.round_id
+  WHERE t.kind = 'STEP'
+    AND t.status IN ('PENDING', 'READY', 'RETRYING')
+),
+prediction_candidate_tasks AS (
+  SELECT
+    t.id AS task_id,
+    t.kind,
+    t.task_type,
+    t.status,
+    t.plugin_id,
+    t.created_at,
+    t.updated_at,
+    t.id::text AS lane_id,
+    NULL::uuid AS loop_id,
+    '{}'::jsonb AS resources_raw,
+    1 AS lane_rank
+  FROM task t
+  WHERE t.kind = 'PREDICTION'
+    AND t.status IN ('PENDING', 'READY', 'RETRYING')
+),
+candidate_tasks AS (
+  SELECT * FROM step_candidate_tasks
+  UNION ALL
+  SELECT * FROM prediction_candidate_tasks
 )
 SELECT
   task_id,

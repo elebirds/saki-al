@@ -44,3 +44,28 @@ def test_build_runtime_cfg_uses_low_test_score_thr_and_dynamic_warmup(tmp_path: 
     assert "score_thr=0.001" in text
     # warmup 迭代应该来自自适应计算结果（14），不能回退成固定 500。
     assert 'type="LinearLR", begin=0, end=14' in text
+
+
+def test_build_runtime_cfg_renders_python_bool_literals(tmp_path: Path) -> None:
+    cfg_path = tmp_path / "runtime_cfg.py"
+    build_mmrotate_runtime_cfg(
+        output_path=cfg_path,
+        data_root=tmp_path / "data",
+        classes=("class_a",),
+        epochs=2,
+        batch=1,
+        workers=0,
+        imgsz=1024,
+        nms_iou_thr=0.1,
+        max_per_img=2000,
+        val_degraded=False,
+        work_dir=tmp_path / "work",
+        load_from="https://example.com/checkpoint.pth",
+        train_seed=7,
+        deterministic=False,
+        train_sample_count=2,
+    )
+
+    text = cfg_path.read_text(encoding="utf-8")
+    assert "persistent_workers=False" in text
+    assert "randomness = dict(seed=7, deterministic=False)" in text

@@ -37,6 +37,10 @@ PRESET_SPECS: dict[str, PresetSpec] = {
 _MODEL_TEST_SCORE_THR = 0.001
 
 
+def _python_bool_literal(value: bool) -> str:
+    return "True" if bool(value) else "False"
+
+
 def _resolve_warmup_iters(*, train_sample_count: int | None, batch: int, epochs: int) -> int:
     """根据训练规模自适应 warmup 迭代数。
 
@@ -103,6 +107,8 @@ def build_mmrotate_runtime_cfg(
 
     val_ann = "train/labelTxt" if val_degraded else "val/labelTxt"
     val_img = "train/images" if val_degraded else "val/images"
+    persistent_workers_text = _python_bool_literal(int(workers) > 0)
+    deterministic_text = _python_bool_literal(deterministic)
 
     cfg_text = f'''# -*- coding: utf-8 -*-
 # 该文件由 saki-plugin-oriented-rcnn 自动生成。
@@ -138,7 +144,7 @@ val_pipeline = [
 train_dataloader = dict(
     batch_size={int(batch)},
     num_workers={int(workers)},
-    persistent_workers={"True" if int(workers) > 0 else "False"},
+    persistent_workers={persistent_workers_text},
     sampler=dict(type="DefaultSampler", shuffle=True),
     batch_sampler=None,
     dataset=dict(
@@ -156,7 +162,7 @@ train_dataloader = dict(
 val_dataloader = dict(
     batch_size=1,
     num_workers={int(workers)},
-    persistent_workers={"True" if int(workers) > 0 else "False"},
+    persistent_workers={persistent_workers_text},
     drop_last=False,
     sampler=dict(type="DefaultSampler", shuffle=False),
     dataset=dict(
@@ -294,7 +300,7 @@ resume = False
 work_dir = r"{work_dir.as_posix()}"
 load_from = r"{load_from}"
 
-randomness = dict(seed={int(train_seed)}, deterministic={str(bool(deterministic)).lower()})
+randomness = dict(seed={int(train_seed)}, deterministic={deterministic_text})
 '''
     output_path.write_text(cfg_text, encoding="utf-8")
     return output_path

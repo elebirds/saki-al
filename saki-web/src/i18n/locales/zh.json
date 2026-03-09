@@ -1799,7 +1799,9 @@
       "realtimeSnapshotHint": "（当前使用实时快照）",
       "messages": {
         "loadDetailFailed": "加载执行器详情失败",
-        "loadStatusFailed": "加载执行器状态失败"
+        "loadStatusFailed": "加载执行器状态失败",
+        "idleRecoveredTitle": "执行器恢复空闲",
+        "idleRecoveredBody": "执行器 {{executorId}} 已连续 30 秒未分配新任务。"
       },
       "range": {
         "30m": "最近 30 分钟",
@@ -1854,7 +1856,13 @@
     "header": {
       "newProject": "新建项目",
       "newDataset": "新建数据集",
-      "user": "用户"
+      "user": "用户",
+      "executorIdleBellOn": "执行器空闲提醒：开",
+      "executorIdleBellOff": "执行器空闲提醒：关",
+      "executorIdleBellEnabledMessage": "已开启执行器空闲提醒",
+      "executorIdleBellDisabledMessage": "已关闭执行器空闲提醒",
+      "executorIdleBellUnsupported": "当前浏览器不支持系统通知，将使用站内提示。",
+      "executorIdleBellPermissionDenied": "未授予系统通知权限，将使用站内提示。"
     },
     "repoActionBar": {
       "branches": "分支",

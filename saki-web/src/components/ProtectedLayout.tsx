@@ -1,7 +1,8 @@
-import React, {useEffect, useMemo} from 'react'
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react'
 import {Navigate, Outlet, useLocation, useNavigate, useParams} from 'react-router-dom'
 import {Trans, useTranslation} from 'react-i18next'
 import type {MenuProps} from 'antd'
+import {message} from 'antd'
 import {
     AppstoreOutlined,
     BarChartOutlined,
@@ -23,6 +24,19 @@ import {api} from '../services/api'
 import {usePermission, useResourcePermission} from '../hooks'
 import {AppShell, type NavItem} from '../layouts'
 import {RepoTabs} from '../layouts/github/RepoTabs'
+
+const EXECUTOR_IDLE_BELL_STORAGE_PREFIX = 'saki.executorIdleBell.v1::'
+const EXECUTOR_IDLE_POLLING_INTERVAL_MS = 10_000
+const EXECUTOR_IDLE_NOTIFY_DELAY_MS = 30_000
+
+type ExecutorIdleWatchState = {
+    hasBusySinceLastNotify: boolean
+    idleSinceMs: number | null
+    notifiedInCurrentIdle: boolean
+}
+
+const buildExecutorIdleBellStorageKey = (apiBaseUrl: string): string =>
+    `${EXECUTOR_IDLE_BELL_STORAGE_PREFIX}${apiBaseUrl}`
 
 const ProtectedLayout: React.FC = () => {
     const {t, i18n} = useTranslation()
@@ -54,6 +68,12 @@ const ProtectedLayout: React.FC = () => {
         canProject('project:assign:assigned') ||
         canProject('project:archive:assigned')
     const currentYear = new Date().getFullYear()
+    const apiBaseUrl = useMemo(() => api.getApiBaseUrl(), [])
+    const bellStorageKey = useMemo(() => buildExecutorIdleBellStorageKey(apiBaseUrl), [apiBaseUrl])
+    const [executorIdleBellEnabled, setExecutorIdleBellEnabled] = useState(false)
+    const idleWatchStateRef = useRef<Map<string, ExecutorIdleWatchState>>(new Map())
+    const unsupportedHintShownRef = useRef(false)
+    const permissionHintShownRef = useRef(false)
 
     useEffect(() => {
         let interval: number
@@ -72,6 +92,184 @@ const ProtectedLayout: React.FC = () => {
             if (interval) window.clearInterval(interval)
         }
     }, [isAuthenticated])
+
+    useEffect(() => {
+        try {
+            const stored = window.localStorage.getItem(bellStorageKey)
+            setExecutorIdleBellEnabled(stored === '1')
+        } catch {
+            setExecutorIdleBellEnabled(false)
+        }
+    }, [bellStorageKey])
+
+    useEffect(() => {
+        try {
+            window.localStorage.setItem(bellStorageKey, executorIdleBellEnabled ? '1' : '0')
+        } catch {
+            // ignore storage failure
+        }
+    }, [bellStorageKey, executorIdleBellEnabled])
+
+    const notifyExecutorIdleRecovered = useCallback((executorId: string) => {
+        const title = t('runtime.executors.messages.idleRecoveredTitle')
+        const body = t('runtime.executors.messages.idleRecoveredBody', {executorId})
+
+        if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+            try {
+                new Notification(title, {
+                    body,
+                    tag: `saki-executor-idle::${apiBaseUrl}::${executorId}`,
+                })
+                return
+            } catch {
+                // ignore and fallback to in-app message
+            }
+        }
+
+        message.info(`${title}：${body}`)
+    }, [apiBaseUrl, t])
+
+    const handleExecutorIdleBellChange = useCallback(async (enabled: boolean) => {
+        setExecutorIdleBellEnabled(enabled)
+        message.success(
+            enabled
+                ? t('layout.header.executorIdleBellEnabledMessage')
+                : t('layout.header.executorIdleBellDisabledMessage'),
+        )
+
+        if (!enabled) {
+            idleWatchStateRef.current.clear()
+            return
+        }
+
+        if (typeof window === 'undefined' || !('Notification' in window)) {
+            if (!unsupportedHintShownRef.current) {
+                message.info(t('layout.header.executorIdleBellUnsupported'))
+                unsupportedHintShownRef.current = true
+            }
+            return
+        }
+
+        if (Notification.permission === 'default') {
+            try {
+                const permission = await Notification.requestPermission()
+                if (permission !== 'granted' && !permissionHintShownRef.current) {
+                    message.info(t('layout.header.executorIdleBellPermissionDenied'))
+                    permissionHintShownRef.current = true
+                }
+            } catch {
+                if (!permissionHintShownRef.current) {
+                    message.info(t('layout.header.executorIdleBellPermissionDenied'))
+                    permissionHintShownRef.current = true
+                }
+            }
+            return
+        }
+
+        if (Notification.permission !== 'granted' && !permissionHintShownRef.current) {
+            message.info(t('layout.header.executorIdleBellPermissionDenied'))
+            permissionHintShownRef.current = true
+        }
+    }, [t])
+
+    useEffect(() => {
+        if (!isAuthenticated || !canViewRuntime || !executorIdleBellEnabled) {
+            idleWatchStateRef.current.clear()
+            return
+        }
+
+        let cancelled = false
+        let timer: number | null = null
+
+        const pollExecutors = async () => {
+            try {
+                const response = await api.getRuntimeExecutors()
+                if (cancelled) return
+
+                const now = Date.now()
+                const previousStateMap = idleWatchStateRef.current
+                const nextStateMap = new Map<string, ExecutorIdleWatchState>()
+
+                for (const executor of response.items || []) {
+                    const executorId = String(executor.executorId || '').trim()
+                    if (!executorId) continue
+
+                    const prev = previousStateMap.get(executorId) || {
+                        hasBusySinceLastNotify: false,
+                        idleSinceMs: null,
+                        notifiedInCurrentIdle: false,
+                    }
+
+                    const status = String(executor.status || '').trim().toLowerCase()
+                    const currentTaskId = String(executor.currentTaskId || '').trim()
+                    const pendingAssignCount = Number(executor.pendingAssignCount || 0)
+
+                    const isBusyLike = (
+                        status === 'busy'
+                        || status === 'reserved'
+                        || Boolean(currentTaskId)
+                        || pendingAssignCount > 0
+                    )
+
+                    const isIdle = (
+                        Boolean(executor.isOnline)
+                        && status === 'idle'
+                        && !currentTaskId
+                        && pendingAssignCount <= 0
+                    )
+
+                    const nextState: ExecutorIdleWatchState = {...prev}
+
+                    if (isBusyLike) {
+                        nextState.hasBusySinceLastNotify = true
+                        nextState.idleSinceMs = null
+                        nextState.notifiedInCurrentIdle = false
+                        nextStateMap.set(executorId, nextState)
+                        continue
+                    }
+
+                    if (isIdle) {
+                        const idleSinceMs = prev.idleSinceMs ?? now
+                        nextState.idleSinceMs = idleSinceMs
+                        if (
+                            nextState.hasBusySinceLastNotify
+                            && !nextState.notifiedInCurrentIdle
+                            && now - idleSinceMs >= EXECUTOR_IDLE_NOTIFY_DELAY_MS
+                        ) {
+                            notifyExecutorIdleRecovered(executorId)
+                            nextState.notifiedInCurrentIdle = true
+                            nextState.hasBusySinceLastNotify = false
+                        }
+                        nextStateMap.set(executorId, nextState)
+                        continue
+                    }
+
+                    // offline/unknown 时结束当前空闲窗口，等待下一次 busy-like 后再重新计算
+                    nextState.idleSinceMs = null
+                    nextStateMap.set(executorId, nextState)
+                }
+
+                idleWatchStateRef.current = nextStateMap
+            } catch {
+                // keep silent to avoid noisy global errors
+            } finally {
+                if (!cancelled) {
+                    timer = window.setTimeout(() => {
+                        void pollExecutors()
+                    }, EXECUTOR_IDLE_POLLING_INTERVAL_MS)
+                }
+            }
+        }
+
+        void pollExecutors()
+
+        return () => {
+            cancelled = true
+            if (timer != null) {
+                window.clearTimeout(timer)
+            }
+        }
+    }, [canViewRuntime, executorIdleBellEnabled, isAuthenticated, notifyExecutorIdleRecovered])
 
     const changeLanguage = (lng: string) => {
         i18n.changeLanguage(lng)
@@ -296,6 +494,13 @@ const ProtectedLayout: React.FC = () => {
             userAvatarUrl={user?.avatarUrl}
             userMenuItems={userMenuItems}
             onUserMenuClick={handleUserMenuClick}
+            executorIdleBellEnabled={executorIdleBellEnabled}
+            onExecutorIdleBellChange={canViewRuntime
+                ? (enabled) => {
+                    void handleExecutorIdleBellChange(enabled)
+                }
+                : undefined
+            }
             footerText={
                 <Trans
                     i18nKey="app.footer"

@@ -1799,7 +1799,9 @@
       "realtimeSnapshotHint": " (using realtime snapshot)",
       "messages": {
         "loadDetailFailed": "Failed to load executor details",
-        "loadStatusFailed": "Failed to load executor status"
+        "loadStatusFailed": "Failed to load executor status",
+        "idleRecoveredTitle": "Executor Back to Idle",
+        "idleRecoveredBody": "Executor {{executorId}} has not received a new task for 30 seconds."
       },
       "range": {
         "30m": "Last 30 min",
@@ -1854,7 +1856,13 @@
     "header": {
       "newProject": "New project",
       "newDataset": "New dataset",
-      "user": "User"
+      "user": "User",
+      "executorIdleBellOn": "Executor idle alert: on",
+      "executorIdleBellOff": "Executor idle alert: off",
+      "executorIdleBellEnabledMessage": "Executor idle alerts enabled",
+      "executorIdleBellDisabledMessage": "Executor idle alerts disabled",
+      "executorIdleBellUnsupported": "System notifications are not supported in this browser; using in-app alerts instead.",
+      "executorIdleBellPermissionDenied": "System notification permission is not granted; using in-app alerts instead."
     },
     "repoActionBar": {
       "branches": "Branches",

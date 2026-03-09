@@ -21,6 +21,8 @@ export type AppShellProps = {
     userAvatarUrl?: string
     userMenuItems: MenuProps['items']
     onUserMenuClick: MenuProps['onClick']
+    executorIdleBellEnabled?: boolean
+    onExecutorIdleBellChange?: (enabled: boolean) => void
     footerText?: React.ReactNode
     showHeader?: boolean
     showHeaderBorder?: boolean
@@ -49,6 +51,8 @@ export const AppShell: React.FC<AppShellProps> = ({
                                                       userAvatarUrl,
                                                       userMenuItems,
                                                       onUserMenuClick,
+                                                      executorIdleBellEnabled = false,
+                                                      onExecutorIdleBellChange,
                                                       footerText,
                                                       showHeader = true,
                                                       showHeaderBorder = true,
@@ -87,6 +91,8 @@ export const AppShell: React.FC<AppShellProps> = ({
                     userAvatarUrl={userAvatarUrl}
                     userMenuItems={userMenuItems}
                     onUserMenuClick={onUserMenuClick}
+                    executorIdleBellEnabled={executorIdleBellEnabled}
+                    onExecutorIdleBellChange={onExecutorIdleBellChange}
                 />
             ) : null}
             {headerSubnav ? (

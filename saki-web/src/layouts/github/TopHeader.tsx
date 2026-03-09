@@ -1,7 +1,9 @@
 import React from 'react'
 import type {MenuProps} from 'antd'
-import {Avatar, Button, Dropdown, Switch} from 'antd'
+import {Avatar, Button, Dropdown, Switch, Tooltip} from 'antd'
 import {
+    BellFilled,
+    BellOutlined,
     DownOutlined,
     GlobalOutlined,
     MoonOutlined,
@@ -34,6 +36,8 @@ export type TopHeaderProps = {
     userAvatarUrl?: string
     userMenuItems: MenuProps['items']
     onUserMenuClick: MenuProps['onClick']
+    executorIdleBellEnabled?: boolean
+    onExecutorIdleBellChange?: (enabled: boolean) => void
 }
 
 export const TopHeader: React.FC<TopHeaderProps> = ({
@@ -58,6 +62,8 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
                                                         userAvatarUrl,
                                                         userMenuItems,
                                                         onUserMenuClick,
+                                                        executorIdleBellEnabled = false,
+                                                        onExecutorIdleBellChange,
                                                     }) => {
     const {t} = useTranslation()
     const languageMenuItems: MenuProps['items'] = languageOptions.map((option) => ({
@@ -147,6 +153,16 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
                         >
                             <Button type="text" icon={<GlobalOutlined/>} className="!text-github-muted"/>
                         </Dropdown>
+                        {onExecutorIdleBellChange ? (
+                            <Tooltip title={executorIdleBellEnabled ? t('layout.header.executorIdleBellOn') : t('layout.header.executorIdleBellOff')}>
+                                <Button
+                                    type="text"
+                                    icon={executorIdleBellEnabled ? <BellFilled/> : <BellOutlined/>}
+                                    className={executorIdleBellEnabled ? '!text-github-accent' : '!text-github-muted'}
+                                    onClick={() => onExecutorIdleBellChange(!executorIdleBellEnabled)}
+                                />
+                            </Tooltip>
+                        ) : null}
                         <Dropdown
                             menu={{
                                 items: plusMenuItems,

@@ -528,4 +528,6 @@ export interface ApiService {
         onProgress: (event: UploadProgressEvent) => void,
         signal?: AbortSignal
     ): Promise<void>;
+
+    getApiBaseUrl(): string;
 }

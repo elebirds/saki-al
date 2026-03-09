@@ -1,66 +1,67 @@
-# Oriented R-CNN 主动学习插件实施计划
+# Oriented R-CNN 插件实施说明（详细版）
 
-## 1. 目标与范围
-- 目标：在 Saki 执行器内交付可运行的 `Oriented R-CNN` 主动学习插件，支持 DOTA 数据格式、训练/评估/预测全链路。
-- 范围：
-  - 数据准备：项目数据 -> DOTA `images/` + `labelTxt/`。
-  - 训练：MMRotate 训练并产出 `artifacts/best.pth`。
-  - 评估：输出 `map50`、`map50_95`、`precision`、`recall`。
-  - 选样：支持 `aug_iou_disagreement`、`uncertainty_1_minus_max_conf`、`random_baseline`。
-  - 运行时：支持 `cuda/cpu` 绑定与降级。
+## 1. 实施目标
 
-## 2. 已实施内容（当前完成）
-- 插件骨架与契约：`plugin.yml`、worker 入口、runtime service 编排完成。
-- 配置服务：参数解析、模型来源校验（preset/local/url）、URL 缓存下载完成。
-- DOTA 数据准备：
-  - 使用 `saki-ir` 导出 DOTA，避免重复实现几何转换。
-  - 图像统一转 PNG，规避 MMRotate `img_suffix` 单值约束问题。
-  - 写出 `class_schema.json` 与 `dataset_manifest.json`，支持复现与排障。
-- 训练与评估：
-  - 训练后自动评估，输出 canonical metrics。
-  - `best.pth` 统一复制到 `artifacts/` 作为主模型制品。
-- 预测与主动学习：
-  - 支持模型缓存，减少重复加载开销。
-  - 实现增强一致性打分（含逆变换、匈牙利匹配、polygon IoU）。
-  - `shapely` 不可用时回退 AABB IoU，保证流程可运行。
-- 测试：配置与指标归一化单测已覆盖。
+交付可在 Saki 执行器中稳定运行的 OBB 插件，实现训练、评估、预测和主动学习选样完整链路，并保证可维护性。
 
-## 3. 关键设计与注释规范（已执行）
-- 关键设计点必须写中文注释，至少覆盖以下位置：
-  - 配置边界与参数校验策略。
-  - 数据格式转换与分割策略（尤其是 split 回捞与 val_degraded）。
-  - 主动学习打分公式、权重含义与归一化方式。
-  - 算法替代路径（如 shapely 缺失时的回退逻辑）。
-- 注释标准：
-  - 先写“为什么”，再写“怎么做”。
-  - 对影响指标或兼容性的分支必须写注释。
-  - 只在关键路径写注释，避免噪声注释。
+## 2. 目标范围
 
-## 4. 收尾实施步骤（下一阶段）
-1. 集成回归
-- 在执行器真实流程中串行验证 `prepare -> train -> eval -> score/predict`。
-- 验证 `task_runtime_requirements` 与 runtime profile 选择是否符合预期。
+包含：
 
-2. 测试补强
-- 增加 `predict_service` 关键算法单测：
-  - `_hungarian_maximize` 匹配正确性。
-  - `_polygon_iou` shapely/回退分支一致性。
-  - `aug_iou_disagreement` 在边界输入（空预测/单分支）下稳定性。
+1. 数据准备：项目样本导出为 DOTA 风格目录。
+2. 模型训练：输出可复用主模型制品。
+3. 评估：输出标准指标字段。
+4. 预测与选样：支持多策略。
 
-3. 文档与交付
-- 补充 README（安装、依赖 profile、运行示例、常见故障）。
-- 明确生产环境建议：
-  - CPU 仅用于开发调试；生产建议 CUDA。
-  - 无 shapely 时评分精度会下降但不会中断。
+不包含：
 
-## 5. 验收标准
-- 功能验收：
-  - 五类 step（`train/score/predict/eval/custom`）均可调用。
-  - 三类策略均能返回稳定候选样本列表。
-- 指标验收：
-  - `map50/map50_95/precision/recall` 字段完整且数值在 `[0,1]`。
-- 工程验收：
-  - `uv run python -m compileall src tests` 通过。
-  - `uv run --extra dev pytest -q` 通过。
-- 可维护性验收：
-  - 关键代码与设计处具备中文注释，能独立解释设计动机与边界条件。
+- 业务域模型改造。
+- dispatcher 编排逻辑改造。
+
+## 3. 当前完成项
+
+1. 插件契约对接完成（`plugin.yml` + worker 入口）。
+2. profile 能力声明完成（cpu/cuda）。
+3. 训练与评估流程打通并可回传指标。
+4. 预测与选样策略完成。
+5. 基础测试用例可运行。
+
+## 4. 关键设计决策
+
+1. 数据转换复用 `saki-ir`，避免重复几何转换实现。
+2. 参数入口统一使用 schema，避免前后端配置漂移。
+3. 依赖组合采用可验证版本窗口，降低安装不确定性。
+4. 对复杂几何运算提供降级路径，优先保证流程可用。
+
+## 5. 执行器接口边界
+
+- 执行器负责：
+  - 执行上下文注入
+  - worker 生命周期
+  - 事件/制品回传
+- 插件负责：
+  - 模型算法实现
+  - 配置解析与任务逻辑
+
+## 6. 验收标准
+
+1. `train/score/predict/eval/custom` 五类任务可调用。
+2. 指标字段齐全：`map50`、`map50_95`、`precision`、`recall`。
+3. 三种策略返回稳定候选列表。
+4. 编译与测试命令通过：
+
+```bash
+uv run python -m compileall src/saki_plugin_oriented_rcnn tests
+uv run --extra dev pytest -q
+```
+
+## 7. 风险与后续
+
+1. 风险
+- CUDA 生态版本波动导致依赖不稳定。
+- 小样本或不平衡数据导致指标波动大。
+
+2. 后续建议
+- 增加边界输入单测。
+- 建立固定数据集回归基线。
+- 增加执行性能分解埋点。

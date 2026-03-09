@@ -1,21 +1,28 @@
-# saki-plugin-sdk v3
+# saki-plugin-sdk
 
-`saki-plugin-sdk` 是 Saki 插件体系的唯一公共能力层（V3）。
+`saki-plugin-sdk` 是 Saki 插件体系的统一公共层，负责定义插件契约、IPC 协议和通用能力。
 
-## V3 核心约束
+## 1. 模块定位
 
-1. `ExecutorPlugin` 是唯一插件契约。
-2. 执行方法必须接收 `context: ExecutionBindingContext`。
-3. IPC 协议固定为 v3（`protocol_version=3`）。
-4. 共享能力统一由 SDK 提供：
-   - `TaskReporter`
-   - `ipc.protocol` / `ipc.worker`
-   - `strategies` / `aug_iou`
-   - `capability_types` / `profile_spec` / `binding_policy`（纯规则与类型）
-   - `data_split`（训练/验证划分）
-5. SDK 不承载宿主硬件探测副作用实现。
+SDK 提供：
 
-## 插件开发最小示例
+1. `ExecutorPlugin` 基类与类型定义。
+2. worker IPC 协议与消息结构。
+3. 任务上报能力（事件、指标、产物）。
+4. 通用策略与工具能力。
+
+SDK 不提供：
+
+- 具体模型训练逻辑。
+- dispatcher/api 业务域能力。
+
+## 2. 版本与兼容
+
+- 当前版本：`4.0.0`
+- Python：`>=3.11`
+- 下游插件需在 `plugin.yml` 声明：`sdk_version: ">=4.0.0"`
+
+## 3. 最小插件骨架
 
 ```python
 from __future__ import annotations
@@ -31,10 +38,6 @@ from saki_plugin_sdk import (
 
 
 class MyPlugin(ExecutorPlugin):
-    def __init__(self) -> None:
-        super().__init__()
-        self._manifest = self._load_manifest()
-
     async def train(
         self,
         workspace: Workspace,
@@ -45,33 +48,28 @@ class MyPlugin(ExecutorPlugin):
     ) -> TrainOutput:
         del workspace, params, emit, context
         return TrainOutput(metrics={}, artifacts=[])
-
-    async def predict_unlabeled(
-        self,
-        workspace: Workspace,
-        unlabeled_samples: list[dict[str, Any]],
-        strategy: str,
-        params: dict[str, Any],
-        *,
-        context: ExecutionBindingContext,
-    ) -> list[dict[str, Any]]:
-        del workspace, unlabeled_samples, strategy, params, context
-        return []
 ```
 
-## 配置与校验
+## 4. 开发命令
 
-`ExecutorPlugin` 默认提供：
+```bash
+cd saki-plugin-sdk
+uv sync --extra dev
+uv run pytest
+```
 
-1. `request_config_schema`
-2. `resolve_config(...)`
-3. `validate_params(...)`
+## 5. 契约要点
 
-默认实现基于 `plugin.yml` 的 `config_schema`，插件可按需覆写。
-配置模型仅保留 `PluginConfig.resolve(...)`、`PluginConfig.from_manifest(...)` 与 `PluginConfig.model_validate(...)` 三条入口。
+1. 插件入口由 `plugin.yml -> entrypoint` 声明。
+2. 运行能力由 `runtime_profiles` 声明。
+3. 参数 schema 由 `config_schema` 声明。
+4. 宿主注入执行上下文，插件只关心算法逻辑。
 
-## Worker 协议
+## 6. 与执行器关系
 
-1. Worker 入站命令统一走 `saki_plugin_sdk.ipc.protocol`。
-2. `prepare/train/eval/predict*` 需要 `payload.execution_binding_context`。
-3. Worker 遇到非 v3 协议直接返回错误，不提供兼容层。
+- 执行器负责插件发现、profile 选择、worker 生命周期。
+- SDK 负责插件接口标准化与 IPC 协议标准化。
+
+## 7. 文档
+
+- 配置 schema 细节：`PLUGIN_CONFIG_GUIDE.md`

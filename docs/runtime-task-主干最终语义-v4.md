@@ -2,7 +2,7 @@
 
 > 生效日期：2026-03-06  
 > 状态：当前唯一生效文档（Hard Cut）  
-> 废弃：`runtime-unified-semantics-hardcut-v3.md`、`runtime-loop-round-step-语义计划书-v2.md`
+> 历史方案文档已移除（不再保留仓库内副本）
 
 ## 1. 摘要
 

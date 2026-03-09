@@ -1,48 +1,124 @@
-# Saki API
+# saki-api
 
-This is the backend service for the Saki Active Learning Framework.
+`saki-api` 是 Saki 的后端事实源，承载业务域与 Runtime 域 API，并提供 Runtime Domain gRPC 服务给 dispatcher。
 
-## Development
+## 1. 模块定位
 
-Run the server:
+`saki-api` 负责：
+
+1. 项目、分支、提交、标注、权限、导入导出等业务域接口。
+2. Runtime 相关查询与操作接口（loop/round/step/task/prediction）。
+3. 与 dispatcher 的 runtime domain 内部桥接。
+
+`saki-api` 不负责：
+
+- 训练任务实际执行。
+- dispatcher 调度逻辑。
+
+## 2. 技术栈
+
+- FastAPI
+- SQLModel / SQLAlchemy Async
+- Pydantic v2
+- PostgreSQL
+- Redis
+- MinIO/S3 兼容对象存储
+
+## 3. 目录概览
+
+```text
+saki-api/src/saki_api/
+├── main.py
+├── app/
+├── core/
+├── infra/
+└── modules/
+    ├── system/
+    ├── access/
+    ├── storage/
+    ├── project/
+    ├── importing/
+    ├── annotation/
+    └── runtime/
+```
+
+## 4. 安装与启动
+
+安装依赖：
+
+```bash
+cd saki-api
+uv sync
+```
+
+启动服务：
+
+```bash
+make run
+```
+
+等价命令：
 
 ```bash
 uv run uvicorn saki_api.main:app --reload
 ```
 
-## Database
+测试：
 
-数据库结构以 SQLModel 为唯一标准，通过 Alembic 进行迁移管理。
+```bash
+uv run pytest
+```
+
+## 5. 数据库与 schema 管理
 
 在仓库根目录执行：
 
 ```bash
-./scripts/sync_schema.sh
+bash scripts/sync_schema.sh
 ```
 
-如需彻底重建（会清空 `public` schema）：
+强制重建（危险）：
 
 ```bash
-./scripts/sync_schema.sh --reset
+bash scripts/sync_schema.sh --reset
 ```
 
-如果 PostgreSQL 在 Docker 中运行：
+## 6. 关键环境变量
 
-```bash
-./scripts/sync_schema.sh --docker
-```
+### 6.1 必要项
 
-## Logging
+- `DATABASE_URL`
+- `SECRET_KEY`
+- `INTERNAL_TOKEN`
 
-`saki-api` 使用 `loguru` 统一日志输出，控制台与文件格式如下：
+### 6.2 常用项
 
-`{time:YYYY-MM-DD HH:mm:ss} | {level} | {name} | {message}`
+- API：`API_V1_STR`、`BACKEND_CORS_ORIGINS`
+- 对象存储：`MINIO_ENDPOINT`、`MINIO_ACCESS_KEY`、`MINIO_SECRET_KEY`、`MINIO_BUCKET_NAME`
+- 缓存：`REDIS_URL`、`REDIS_KEY_PREFIX`
+- Runtime Domain：`RUNTIME_DOMAIN_GRPC_BIND`、`RUNTIME_DOMAIN_GRPC_SERVER_ENABLED`
+- Dispatcher 桥接：`DISPATCHER_ADMIN_TARGET`、`DISPATCHER_ADMIN_TIMEOUT_SEC`
+- 日志：`LOG_LEVEL`、`LOG_DIR`、`LOG_FILE_NAME`
 
-可配置环境变量：
+## 7. 接口与装配方式
 
-- `LOG_LEVEL`：日志级别（默认 `INFO`）
-- `LOG_DIR`：日志目录（默认 `logs`）
-- `LOG_FILE_NAME`：日志文件名（默认 `api.log`）
-- `LOG_MAX_BYTES`：单文件轮转大小（默认 `20971520`）
-- `LOG_BACKUP_COUNT`：保留历史文件数量（默认 `5`）
-- `LOG_COLOR_MODE`：控制台颜色模式（`auto|on|off`，默认 `auto`）
+1. 所有 HTTP 路由统一挂载到 `API_V1_STR`（默认 `/api/v1`）。
+2. 路由通过模块注册器动态装配（`get_app_modules`）。
+3. 运行时 gRPC 服务在应用生命周期内启动与停止。
+
+## 8. 跨模块契约
+
+1. `saki-api` 是业务真相源。
+2. 执行器不直接写业务数据库。
+3. runtime 执行观测主键对齐 `task_id`。
+
+## 9. 排障建议
+
+1. 启动失败并报 DB 错误
+- 检查 `DATABASE_URL` 是否为 PostgreSQL URL。
+
+2. 上传失败
+- 检查 `MINIO_*` 配置与 bucket。
+
+3. runtime 桥接异常
+- 检查 dispatcher 的 `RUNTIME_DOMAIN_TARGET` 是否可达 API runtime-domain 端口。

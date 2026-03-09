@@ -48,8 +48,15 @@ class OrientedRCNNPlugin(ExecutorPlugin):
         )
         self.logger.info(self._build_init_config_log())
 
+    def _resolve_request_config_schema(self) -> dict[str, Any]:
+        schema_source = getattr(self, "request_config_schema", {})
+        schema = schema_source() if callable(schema_source) else schema_source
+        if isinstance(schema, dict):
+            return schema
+        return {}
+
     def _build_init_config_log(self) -> str:
-        schema = self.request_config_schema() or {}
+        schema = self._resolve_request_config_schema()
         fields = schema.get("fields") if isinstance(schema, dict) else None
         if not isinstance(fields, list):
             return "插件初始化配置摘要：未找到 config_schema.fields。"

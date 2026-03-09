@@ -118,7 +118,7 @@ export const useRoundArtifactsAndCandidates = ({
                     // latest round/phase constraints may reject history round, fallback below
                 }
             }
-            if (!selectionResolved && rows.length === 0 && selectTaskId) {
+            if (!selectionResolved && rows.length === 0 && selectTaskId && String(selectStep?.state || '').toLowerCase() === 'succeeded') {
                 try {
                     rows = await api.getTaskCandidates(selectTaskId, 500);
                     source = 'SELECT Step';
@@ -126,7 +126,7 @@ export const useRoundArtifactsAndCandidates = ({
                     // ignore
                 }
             }
-            if (!selectionResolved && rows.length === 0 && scoreTaskId) {
+            if (!selectionResolved && rows.length === 0 && scoreTaskId && String(scoreStep?.state || '').toLowerCase() === 'succeeded') {
                 try {
                     rows = await api.getTaskCandidates(scoreTaskId, 500);
                     source = 'SCORE Step';

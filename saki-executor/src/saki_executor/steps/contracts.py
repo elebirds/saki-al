@@ -169,6 +169,46 @@ class ArtifactUploadTicket:
 
 
 @dataclass(frozen=True)
+class ArtifactDownloadTicket:
+    request_id: str
+    reply_to: str
+    task_id: str
+    source_task_id: str
+    model_id: str
+    artifact_name: str
+    download_url: str
+    storage_uri: str
+    headers: dict[str, str]
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "ArtifactDownloadTicket":
+        return cls(
+            request_id=str(payload.get("request_id") or ""),
+            reply_to=str(payload.get("reply_to") or ""),
+            task_id=str(payload.get("task_id") or ""),
+            source_task_id=str(payload.get("source_task_id") or ""),
+            model_id=str(payload.get("model_id") or ""),
+            artifact_name=str(payload.get("artifact_name") or ""),
+            download_url=str(payload.get("download_url") or ""),
+            storage_uri=str(payload.get("storage_uri") or ""),
+            headers={str(k): str(v) for k, v in (payload.get("headers") or {}).items()},
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "request_id": self.request_id,
+            "reply_to": self.reply_to,
+            "task_id": self.task_id,
+            "source_task_id": self.source_task_id,
+            "model_id": self.model_id,
+            "artifact_name": self.artifact_name,
+            "download_url": self.download_url,
+            "storage_uri": self.storage_uri,
+            "headers": self.headers,
+        }
+
+
+@dataclass(frozen=True)
 class TaskFinalResult:
     task_id: str
     status: TaskStatus

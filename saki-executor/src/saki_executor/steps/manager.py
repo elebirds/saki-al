@@ -12,7 +12,12 @@ from saki_executor.cache.asset_cache import AssetCache
 from saki_executor.core.config import settings
 from saki_executor.grpc_gen import runtime_control_pb2 as pb
 from saki_executor.runtime.capability.host_capability_cache import HostCapabilityCache
-from saki_executor.steps.contracts import ArtifactUploadTicket, FetchedPage, TaskExecutionRequest
+from saki_executor.steps.contracts import (
+    ArtifactDownloadTicket,
+    ArtifactUploadTicket,
+    FetchedPage,
+    TaskExecutionRequest,
+)
 from saki_executor.steps.orchestration.error_codes import TaskErrorCode, TaskPipelineError, TaskStage
 from saki_executor.steps.orchestration.runner import TaskPipelineRunner
 from saki_executor.steps.services import ArtifactUploader, DataGateway, SamplingService
@@ -134,6 +139,21 @@ class TaskManager:
             task_id=task_id,
             artifact_name=artifact_name,
             content_type=content_type,
+        )
+
+    async def request_download_ticket(
+        self,
+        *,
+        task_id: str,
+        source_task_id: str | None,
+        model_id: str | None,
+        artifact_name: str,
+    ) -> ArtifactDownloadTicket:
+        return await self._request_download_ticket(
+            task_id=task_id,
+            source_task_id=source_task_id,
+            model_id=model_id,
+            artifact_name=artifact_name,
         )
 
     async def upload_artifact_with_retry(
@@ -388,6 +408,21 @@ class TaskManager:
             task_id=task_id,
             artifact_name=artifact_name,
             content_type=content_type,
+        )
+
+    async def _request_download_ticket(
+        self,
+        *,
+        task_id: str,
+        source_task_id: str | None,
+        model_id: str | None,
+        artifact_name: str,
+    ) -> ArtifactDownloadTicket:
+        return await self._data_gateway.request_download_ticket(
+            task_id=task_id,
+            source_task_id=source_task_id,
+            model_id=model_id,
+            artifact_name=artifact_name,
         )
 
     async def _upload_artifact_with_retry(

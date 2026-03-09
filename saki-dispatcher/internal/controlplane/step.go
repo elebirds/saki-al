@@ -15,7 +15,6 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	runtimecontrolv1 "github.com/elebirds/saki/saki-dispatcher/internal/gen/runtimecontrolv1"
-	runtimedomainv1 "github.com/elebirds/saki/saki-dispatcher/internal/gen/runtimedomainv1"
 	db "github.com/elebirds/saki/saki-dispatcher/internal/gen/sqlc"
 	"github.com/elebirds/saki/saki-dispatcher/internal/runtime_domain_client"
 )
@@ -67,31 +66,40 @@ func (s *Service) dispatchPending(ctx context.Context, limit int) (int, error) {
 	}
 
 	claimed := 0
-	for _, queuedTaskID := range s.dispatcher.DrainQueuedTaskIDs() {
-		taskID, err := parseUUID(queuedTaskID)
-		if err != nil {
-			continue
-		}
-		dispatched, err := s.dispatchTaskByID(ctx, taskID)
+	_ = s.dispatcher.DrainQueuedTaskIDs()
+	candidateLimit := max(512, limit*32)
+	for claimed < limit {
+		candidates, err := s.listDispatchLaneCandidates(ctx, candidateLimit)
 		if err != nil {
 			return claimed, err
 		}
-		if dispatched {
-			claimed++
+		pass := s.selectDispatchPass(candidates, limit-claimed)
+		if len(pass) == 0 {
+			break
 		}
-	}
-
-	taskIDs, err := s.listReadyTaskIDs(ctx, limit)
-	if err != nil {
-		return claimed, err
-	}
-	for _, taskID := range taskIDs {
-		dispatched, err := s.dispatchTaskByID(ctx, taskID)
-		if err != nil {
-			return claimed, err
+		dispatchedThisPass := 0
+		for _, candidate := range pass {
+			if _, available := s.dispatcher.PickExecutor(candidate.PluginID); !available {
+				continue
+			}
+			dispatched, err := s.dispatchTaskByID(ctx, candidate.TaskID)
+			if err != nil {
+				return claimed, err
+			}
+			if dispatched {
+				claimed++
+				dispatchedThisPass++
+				s.recordLaneDispatch(candidate.LaneID)
+				continue
+			}
+			if candidate.IsReady {
+				if _, stillAvailable := s.dispatcher.PickExecutor(candidate.PluginID); stillAvailable {
+					s.incrementLaneSkip(candidate.LaneID)
+				}
+			}
 		}
-		if dispatched {
-			claimed++
+		if dispatchedThisPass == 0 {
+			break
 		}
 	}
 
@@ -192,15 +200,7 @@ func (s *Service) dispatchStepTaskByID(ctx context.Context, taskID uuid.UUID) (b
 		dependencyPreferredExecutorID,
 		loopPreferredExecutorID,
 	)
-	if blockedByLoopBinding {
-		s.logger.Debug().
-			Str("task_id", taskID.String()).
-			Str("step_id", stepPayload.StepID.String()).
-			Str("preferred_executor_id", loopPreferredExecutorID).
-			Str("plugin_id", stepPayload.PluginID).
-			Msg("loop 指定 executor 不可用或不支持插件，保持 READY 等待")
-		return false, tx.Commit(ctx)
-	}
+	_ = blockedByLoopBinding
 	if deferredByAffinity || strings.TrimSpace(executorID) == "" {
 		return false, tx.Commit(ctx)
 	}
@@ -1294,10 +1294,12 @@ func (s *Service) pickExecutorForStepDispatch(
 ) (executorID string, deferredByAffinity bool, blockedByLoopBinding bool) {
 	loopPreferredExecutorID = strings.TrimSpace(loopPreferredExecutorID)
 	if loopPreferredExecutorID != "" {
-		if s.dispatcher.IsExecutorAvailable(loopPreferredExecutorID, pluginID) {
-			return loopPreferredExecutorID, false, false
-		}
-		return "", false, true
+		executorID, deferredByAffinity = s.pickExecutorWithRoundAffinity(
+			pluginID,
+			loopPreferredExecutorID,
+			readyAt,
+		)
+		return executorID, deferredByAffinity, false
 	}
 	executorID, deferredByAffinity = s.pickExecutorWithRoundAffinity(
 		pluginID,
@@ -1354,16 +1356,6 @@ func (s *Service) buildDispatchResolvedParamsTx(
 	}
 	artifactCandidates := resolveModelArtifactCandidates(requirements)
 
-	if s.domainClient == nil {
-		return nil, fmt.Errorf("runtime_domain 客户端未初始化")
-	}
-	if !s.domainClient.Configured() {
-		return nil, runtime_domain_client.ErrNotConfigured
-	}
-	if !s.domainClient.Enabled() {
-		return nil, runtime_domain_client.ErrDisabled
-	}
-
 	trainTaskID, err := s.qtx(tx).GetLatestSucceededTrainTaskIDByRound(ctx, stepPayload.RoundID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -1388,81 +1380,50 @@ func (s *Service) buildDispatchResolvedParamsTx(
 	} else if mapped {
 		trainStepID = mappedStepID
 	}
-
-	var (
-		downloadResp     *runtimedomainv1.DownloadTicketResponse
-		selectedArtifact string
-		lastNotFoundErr  error
-	)
-	// 关键设计：按候选制品名顺序尝试下载票据，兼容 best.pt / best.pth 双命名。
-	for _, artifactName := range artifactCandidates {
-		resp, ticketErr := s.domainClient.CreateDownloadTicket(ctx, &runtimedomainv1.DownloadTicketRequest{
-			RequestId:    uuid.NewString(),
-			TaskId:       trainTaskID.String(),
-			ArtifactName: artifactName,
-		})
-		if ticketErr == nil {
-			downloadResp = resp
-			selectedArtifact = artifactName
-			break
-		}
-		if runtime_domain_client.IsNotFoundError(ticketErr) {
-			lastNotFoundErr = ticketErr
-			continue
-		}
-		if runtime_domain_client.IsInvalidRequestError(ticketErr) {
-			return nil, fmt.Errorf(
-				"训练模型下载票据请求无效: train_task_id=%s train_step_id=%s artifact=%s",
-				trainTaskID,
-				trainStepID.String(),
-				artifactName,
-			)
-		}
-		return nil, fmt.Errorf(
-			"训练模型下载票据请求失败: train_task_id=%s train_step_id=%s artifact=%s err=%w",
-			trainTaskID,
-			trainStepID.String(),
-			artifactName,
-			ticketErr,
-		)
+	trainTaskRow, foundTrainTask, err := s.getTaskForUpdateTx(ctx, tx, trainTaskID)
+	if err != nil {
+		return nil, err
 	}
-	if downloadResp == nil {
-		if lastNotFoundErr != nil {
-			return nil, fmt.Errorf(
-				"训练模型制品不存在: train_task_id=%s train_step_id=%s tried=%s",
-				trainTaskID,
-				trainStepID.String(),
-				strings.Join(artifactCandidates, ","),
-			)
+	if !foundTrainTask {
+		return nil, fmt.Errorf("训练任务不存在: train_task_id=%s", trainTaskID)
+	}
+	trainParams, err := parseJSONObject(trainTaskRow.ResolvedParamsJSON)
+	if err != nil {
+		return nil, err
+	}
+	resultArtifacts, _ := trainParams["_result_artifacts"].(map[string]any)
+	selectedArtifact := ""
+	for _, artifactName := range artifactCandidates {
+		if rawArtifact, ok := resultArtifacts[artifactName]; ok {
+			if artifactMap, ok := rawArtifact.(map[string]any); ok {
+				if strings.TrimSpace(cast.ToString(artifactMap["uri"])) != "" {
+					selectedArtifact = artifactName
+					break
+				}
+			}
 		}
+	}
+	if selectedArtifact == "" {
 		return nil, fmt.Errorf(
-			"训练模型下载票据请求失败: train_task_id=%s train_step_id=%s tried=%s",
+			"训练模型制品不存在: train_task_id=%s train_step_id=%s tried=%s",
 			trainTaskID,
 			trainStepID.String(),
 			strings.Join(artifactCandidates, ","),
 		)
 	}
-	downloadURL := strings.TrimSpace(downloadResp.GetDownloadUrl())
-	if downloadURL == "" {
-		return nil, fmt.Errorf(
-			"训练模型下载地址为空: train_task_id=%s train_step_id=%s artifact=%s",
-			trainTaskID,
-			trainStepID.String(),
-			selectedArtifact,
-		)
-	}
 
 	paramsMap := cloneMap(structToMap(stepPayload.Params))
 	pluginParams := ensureMap(paramsMap["plugin"])
-	pluginParams["model_source"] = "custom_url"
-	pluginParams["model_custom_ref"] = downloadURL
+	pluginParams["model_source"] = "runtime_artifact"
+	delete(pluginParams, "model_custom_ref")
 	paramsMap["plugin"] = pluginParams
-	paramsMap["_runtime_model_handoff"] = map[string]any{
-		"from_step_id":  strings.TrimSpace(trainStepID.String()),
-		"from_task_id":  trainTaskID.String(),
-		"artifact_name": selectedArtifact,
-		"download_url":  downloadURL,
-		"injected_at":   time.Now().UTC().Format(time.RFC3339),
+	paramsMap["_runtime_artifact_refs"] = map[string]any{
+		"model": map[string]any{
+			"source_task_id": trainTaskID.String(),
+			"artifact_name":  selectedArtifact,
+			"from_step_id":   strings.TrimSpace(trainStepID.String()),
+			"injected_at":    time.Now().UTC().Format(time.RFC3339),
+		},
 	}
 
 	resolvedParams, err := structpb.NewStruct(paramsMap)
@@ -1939,6 +1900,10 @@ func (s *Service) OnExecutorRegister(ctx context.Context, register *runtimecontr
 	if err != nil {
 		return err
 	}
+	updateStateJSON, err := marshalJSON(runtimeUpdateStateToMap(register.GetUpdateState()))
+	if err != nil {
+		return err
+	}
 
 	return s.queries.UpsertRuntimeExecutorOnRegister(ctx, db.UpsertRuntimeExecutorOnRegisterParams{
 		ExecutorRowID: uuid.New(),
@@ -1946,6 +1911,7 @@ func (s *Service) OnExecutorRegister(ctx context.Context, register *runtimecontr
 		Version:       version,
 		PluginIds:     []byte(pluginPayloadJSON),
 		Resources:     []byte(resourcesJSON),
+		UpdateState:   []byte(updateStateJSON),
 	})
 }
 
@@ -1961,6 +1927,8 @@ func (s *Service) OnExecutorHeartbeat(ctx context.Context, heartbeat *runtimecon
 	status := "idle"
 	if heartbeat.GetBusy() {
 		status = "busy"
+	} else if phase := runtimeUpdatePhaseToText(heartbeat.GetUpdateState().GetPhase()); phase != "" && phase != "succeeded" && phase != "failed" && phase != "rolled_back" {
+		status = "updating"
 	}
 	currentTaskID := strings.TrimSpace(heartbeat.GetCurrentTaskId())
 	currentTaskUUID, err := parseNullableUUID(currentTaskID)
@@ -1971,6 +1939,10 @@ func (s *Service) OnExecutorHeartbeat(ctx context.Context, heartbeat *runtimecon
 	if err != nil {
 		return err
 	}
+	updateStateJSON, err := marshalJSON(runtimeUpdateStateToMap(heartbeat.GetUpdateState()))
+	if err != nil {
+		return err
+	}
 
 	return s.queries.UpsertRuntimeExecutorOnHeartbeat(ctx, db.UpsertRuntimeExecutorOnHeartbeatParams{
 		ExecutorRowID: uuid.New(),
@@ -1978,6 +1950,7 @@ func (s *Service) OnExecutorHeartbeat(ctx context.Context, heartbeat *runtimecon
 		Status:        status,
 		CurrentTaskID: currentTaskUUID,
 		Resources:     []byte(resourcesJSON),
+		UpdateState:   []byte(updateStateJSON),
 	})
 }
 

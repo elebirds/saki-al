@@ -86,6 +86,24 @@ enum AcceleratorType {
   MPS = 3;
 }
 
+enum RuntimeComponentType {
+  RUNTIME_COMPONENT_TYPE_UNSPECIFIED = 0;
+  EXECUTOR = 1;
+  PLUGIN = 2;
+}
+
+enum RuntimeUpdatePhase {
+  RUNTIME_UPDATE_PHASE_UNSPECIFIED = 0;
+  RUNTIME_UPDATE_PHASE_QUEUED = 1;
+  RUNTIME_UPDATE_PHASE_DOWNLOADING = 2;
+  RUNTIME_UPDATE_PHASE_VALIDATING = 3;
+  RUNTIME_UPDATE_PHASE_INSTALLING = 4;
+  RUNTIME_UPDATE_PHASE_ACTIVATING = 5;
+  RUNTIME_UPDATE_PHASE_SUCCEEDED = 6;
+  RUNTIME_UPDATE_PHASE_FAILED = 7;
+  RUNTIME_UPDATE_PHASE_ROLLED_BACK = 8;
+}
+
 message AcceleratorCapability {
   AcceleratorType type = 1;
   bool available = 2;
@@ -114,12 +132,51 @@ message ResourceSummary {
   google.protobuf.Struct host_capability = 6;
 }
 
+message RuntimeUpdateCommand {
+  string request_id = 1;
+  RuntimeComponentType component_type = 2;
+  string component_name = 3;
+  string from_version = 4;
+  string target_version = 5;
+  string release_id = 6;
+  string download_url = 7;
+  map<string, string> headers = 8;
+  string sha256 = 9;
+  uint64 size_bytes = 10;
+  string format = 11;
+  google.protobuf.Struct manifest = 12;
+}
+
+message RuntimeUpdateEvent {
+  string request_id = 1;
+  RuntimeComponentType component_type = 2;
+  string component_name = 3;
+  string from_version = 4;
+  string target_version = 5;
+  RuntimeUpdatePhase phase = 6;
+  string detail = 7;
+  bool rolled_back = 8;
+}
+
+message RuntimeUpdateStateSnapshot {
+  string request_id = 1;
+  RuntimeComponentType component_type = 2;
+  string component_name = 3;
+  string from_version = 4;
+  string target_version = 5;
+  RuntimeUpdatePhase phase = 6;
+  string detail = 7;
+  bool activation_pending = 8;
+  bool rollback_pending = 9;
+}
+
 message Register {
   string request_id = 1;
   string executor_id = 2;
   string version = 3;
   repeated PluginCapability plugins = 4;
   ResourceSummary resources = 5;
+  RuntimeUpdateStateSnapshot update_state = 6;
 }
 
 message Heartbeat {
@@ -128,6 +185,7 @@ message Heartbeat {
   bool busy = 3;
   string current_task_id = 4;
   ResourceSummary resources = 5;
+  RuntimeUpdateStateSnapshot update_state = 6;
 }
 
 message TaskPayload {
@@ -312,6 +370,27 @@ message UploadTicketResponse {
   map<string, string> headers = 6;
 }
 
+message DownloadTicketRequest {
+  string request_id = 1;
+  string task_id = 2;
+  string execution_id = 3;
+  string source_task_id = 4;
+  string model_id = 5;
+  string artifact_name = 6;
+}
+
+message DownloadTicketResponse {
+  string request_id = 1;
+  string reply_to = 2;
+  string task_id = 3;
+  string source_task_id = 4;
+  string model_id = 5;
+  string artifact_name = 6;
+  string download_url = 7;
+  string storage_uri = 8;
+  map<string, string> headers = 9;
+}
+
 message Ack {
   string request_id = 1;
   string ack_for = 2;
@@ -344,7 +423,11 @@ message RuntimeMessage {
     DataResponse data_response = 8;
     UploadTicketRequest upload_ticket_request = 9;
     UploadTicketResponse upload_ticket_response = 10;
-    Ack ack = 11;
-    Error error = 12;
+    DownloadTicketRequest download_ticket_request = 11;
+    DownloadTicketResponse download_ticket_response = 12;
+    Ack ack = 13;
+    Error error = 14;
+    RuntimeUpdateCommand update_command = 15;
+    RuntimeUpdateEvent update_event = 16;
   }
 }

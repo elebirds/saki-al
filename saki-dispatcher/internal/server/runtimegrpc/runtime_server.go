@@ -146,6 +146,7 @@ func (s *Server) handleIncoming(
 				s.logger.Warn().Err(err).Str("executor_id", session.ExecutorID).Msg("持久化 executor 注册信息失败")
 			}
 		}
+		s.syncRuntimeUpdatePlan(context.Background(), session.ExecutorID)
 		s.logger.Info().Str("executor_id", session.ExecutorID).Msg("runtime executor 已注册")
 		return singleMessage(buildAck(
 			register.GetRequestId(),
@@ -172,6 +173,7 @@ func (s *Server) handleIncoming(
 				s.logger.Warn().Err(err).Str("executor_id", executorID).Msg("持久化 executor 心跳失败")
 			}
 		}
+		s.syncRuntimeUpdatePlan(context.Background(), executorID)
 		return singleMessage(buildAck(
 			heartbeat.GetRequestId(),
 			runtimecontrolv1.AckStatus_OK,
@@ -223,6 +225,29 @@ func (s *Server) handleIncoming(
 			runtimecontrolv1.AckType_ACK_TYPE_REQUEST,
 			runtimecontrolv1.AckReason_ACK_REASON_ACCEPTED,
 			"task_result 已接收",
+		)), currentExecutorID, nil
+
+	case *runtimecontrolv1.RuntimeMessage_UpdateEvent:
+		event := payload.UpdateEvent
+		executorID := strings.TrimSpace(currentExecutorID)
+		if executorID != "" {
+			s.dispatcher.ApplyRuntimeUpdateEvent(executorID, event)
+			if s.controlPlane != nil {
+				if err := s.controlPlane.OnRuntimeUpdateEvent(context.Background(), executorID, event); err != nil {
+					s.logger.Warn().
+						Err(err).
+						Str("executor_id", executorID).
+						Str("request_id", strings.TrimSpace(event.GetRequestId())).
+						Msg("持久化 runtime update event 失败")
+				}
+			}
+		}
+		return singleMessage(buildAck(
+			event.GetRequestId(),
+			runtimecontrolv1.AckStatus_OK,
+			runtimecontrolv1.AckType_ACK_TYPE_REQUEST,
+			runtimecontrolv1.AckReason_ACK_REASON_ACCEPTED,
+			"runtime_update_event 已接收",
 		)), currentExecutorID, nil
 
 	case *runtimecontrolv1.RuntimeMessage_DataRequest:
@@ -362,6 +387,77 @@ func (s *Server) handleIncoming(
 			},
 		}), currentExecutorID, nil
 
+	case *runtimecontrolv1.RuntimeMessage_DownloadTicketRequest:
+		request := payload.DownloadTicketRequest
+		taskID := resolveTaskID(request.GetTaskId())
+		if s.controlPlane != nil {
+			allowed, validationErr := s.validateExecutionForTaskRequest(taskID, strings.TrimSpace(request.GetExecutionId()))
+			if validationErr != nil {
+				s.logger.Warn().Err(validationErr).Str("task_id", taskID).Msg("校验 download_ticket_request execution_id 失败")
+				return singleMessage(buildError(
+					"execution_validation_failed",
+					"execution_id 校验失败",
+					request.GetRequestId(),
+					taskID,
+					runtimecontrolv1.RuntimeQueryType_RUNTIME_QUERY_TYPE_UNSPECIFIED,
+				)), currentExecutorID, nil
+			}
+			if !allowed {
+				return singleMessage(buildError(
+					"stale_execution",
+					"download_ticket_request 来自过期 execution",
+					request.GetRequestId(),
+					taskID,
+					runtimecontrolv1.RuntimeQueryType_RUNTIME_QUERY_TYPE_UNSPECIFIED,
+				)), currentExecutorID, nil
+			}
+		}
+		if s.domainClient == nil || !s.domainClient.Enabled() {
+			return singleMessage(buildError(
+				"not_implemented",
+				"runtime_domain CreateDownloadTicket 未配置",
+				request.GetRequestId(),
+				taskID,
+				runtimecontrolv1.RuntimeQueryType_RUNTIME_QUERY_TYPE_UNSPECIFIED,
+			)), currentExecutorID, nil
+		}
+		response, err := s.domainClient.CreateDownloadTicket(context.Background(), &runtimedomainv1.DownloadTicketRequest{
+			RequestId:    request.GetRequestId(),
+			TaskId:       strings.TrimSpace(request.GetSourceTaskId()),
+			ModelId:      strings.TrimSpace(request.GetModelId()),
+			ArtifactName: request.GetArtifactName(),
+		})
+		if err != nil {
+			s.logger.Warn().
+				Err(err).
+				Str("task_id", taskID).
+				Str("request_id", request.GetRequestId()).
+				Msg("调用 runtime_domain CreateDownloadTicket 失败")
+			return singleMessage(buildError(
+				"download_ticket_failed",
+				"下载凭证创建失败",
+				request.GetRequestId(),
+				taskID,
+				runtimecontrolv1.RuntimeQueryType_RUNTIME_QUERY_TYPE_UNSPECIFIED,
+			)), currentExecutorID, nil
+		}
+		respTaskID := resolveTaskID(response.GetTaskId())
+		return singleMessage(&runtimecontrolv1.RuntimeMessage{
+			Payload: &runtimecontrolv1.RuntimeMessage_DownloadTicketResponse{
+				DownloadTicketResponse: &runtimecontrolv1.DownloadTicketResponse{
+					RequestId:    response.GetRequestId(),
+					ReplyTo:      response.GetReplyTo(),
+					TaskId:       taskID,
+					SourceTaskId: respTaskID,
+					ModelId:      strings.TrimSpace(response.GetModelId()),
+					ArtifactName: response.GetArtifactName(),
+					DownloadUrl:  response.GetDownloadUrl(),
+					StorageUri:   response.GetStorageUri(),
+					Headers:      response.GetHeaders(),
+				},
+			},
+		}), currentExecutorID, nil
+
 	case *runtimecontrolv1.RuntimeMessage_Error:
 		errPayload := payload.Error
 		s.logger.Warn().
@@ -379,6 +475,35 @@ func (s *Server) handleIncoming(
 			"",
 			runtimecontrolv1.RuntimeQueryType_RUNTIME_QUERY_TYPE_UNSPECIFIED,
 		)), currentExecutorID, nil
+	}
+}
+
+func (s *Server) syncRuntimeUpdatePlan(ctx context.Context, executorID string) {
+	if s.controlPlane == nil {
+		return
+	}
+	snapshot, ok := s.dispatcher.GetExecutorRuntimeSnapshot(executorID)
+	if !ok {
+		return
+	}
+	command, drifted, err := s.controlPlane.PlanNextRuntimeUpdate(ctx, snapshot)
+	if err != nil {
+		s.logger.Warn().Err(err).Str("executor_id", executorID).Msg("规划 runtime update 失败")
+		return
+	}
+	s.dispatcher.SetUpdatePending(executorID, drifted)
+	if command == nil {
+		return
+	}
+	if !s.dispatcher.DispatchRuntimeUpdate(executorID, command) {
+		return
+	}
+	if err := s.controlPlane.OnRuntimeUpdateQueued(ctx, executorID, command); err != nil {
+		s.logger.Warn().
+			Err(err).
+			Str("executor_id", executorID).
+			Str("request_id", strings.TrimSpace(command.GetRequestId())).
+			Msg("持久化 runtime update queued 失败")
 	}
 }
 

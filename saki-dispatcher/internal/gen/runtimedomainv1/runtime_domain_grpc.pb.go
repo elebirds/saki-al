@@ -19,14 +19,15 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	RuntimeDomain_GetBranchHead_FullMethodName             = "/saki.runtime.domain.v1.RuntimeDomain/GetBranchHead"
-	RuntimeDomain_CountNewLabelsSinceCommit_FullMethodName = "/saki.runtime.domain.v1.RuntimeDomain/CountNewLabelsSinceCommit"
-	RuntimeDomain_ResolveRoundReveal_FullMethodName        = "/saki.runtime.domain.v1.RuntimeDomain/ResolveRoundReveal"
-	RuntimeDomain_ActivateSamples_FullMethodName           = "/saki.runtime.domain.v1.RuntimeDomain/ActivateSamples"
-	RuntimeDomain_AdvanceBranchHead_FullMethodName         = "/saki.runtime.domain.v1.RuntimeDomain/AdvanceBranchHead"
-	RuntimeDomain_QueryData_FullMethodName                 = "/saki.runtime.domain.v1.RuntimeDomain/QueryData"
-	RuntimeDomain_CreateUploadTicket_FullMethodName        = "/saki.runtime.domain.v1.RuntimeDomain/CreateUploadTicket"
-	RuntimeDomain_CreateDownloadTicket_FullMethodName      = "/saki.runtime.domain.v1.RuntimeDomain/CreateDownloadTicket"
+	RuntimeDomain_GetBranchHead_FullMethodName                      = "/saki.runtime.domain.v1.RuntimeDomain/GetBranchHead"
+	RuntimeDomain_CountNewLabelsSinceCommit_FullMethodName          = "/saki.runtime.domain.v1.RuntimeDomain/CountNewLabelsSinceCommit"
+	RuntimeDomain_ResolveRoundReveal_FullMethodName                 = "/saki.runtime.domain.v1.RuntimeDomain/ResolveRoundReveal"
+	RuntimeDomain_ActivateSamples_FullMethodName                    = "/saki.runtime.domain.v1.RuntimeDomain/ActivateSamples"
+	RuntimeDomain_AdvanceBranchHead_FullMethodName                  = "/saki.runtime.domain.v1.RuntimeDomain/AdvanceBranchHead"
+	RuntimeDomain_QueryData_FullMethodName                          = "/saki.runtime.domain.v1.RuntimeDomain/QueryData"
+	RuntimeDomain_CreateUploadTicket_FullMethodName                 = "/saki.runtime.domain.v1.RuntimeDomain/CreateUploadTicket"
+	RuntimeDomain_CreateDownloadTicket_FullMethodName               = "/saki.runtime.domain.v1.RuntimeDomain/CreateDownloadTicket"
+	RuntimeDomain_CreateRuntimeReleaseDownloadTicket_FullMethodName = "/saki.runtime.domain.v1.RuntimeDomain/CreateRuntimeReleaseDownloadTicket"
 )
 
 // RuntimeDomainClient is the client API for RuntimeDomain service.
@@ -41,6 +42,7 @@ type RuntimeDomainClient interface {
 	QueryData(ctx context.Context, in *DataRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DataResponse], error)
 	CreateUploadTicket(ctx context.Context, in *UploadTicketRequest, opts ...grpc.CallOption) (*UploadTicketResponse, error)
 	CreateDownloadTicket(ctx context.Context, in *DownloadTicketRequest, opts ...grpc.CallOption) (*DownloadTicketResponse, error)
+	CreateRuntimeReleaseDownloadTicket(ctx context.Context, in *RuntimeReleaseDownloadTicketRequest, opts ...grpc.CallOption) (*RuntimeReleaseDownloadTicketResponse, error)
 }
 
 type runtimeDomainClient struct {
@@ -140,6 +142,16 @@ func (c *runtimeDomainClient) CreateDownloadTicket(ctx context.Context, in *Down
 	return out, nil
 }
 
+func (c *runtimeDomainClient) CreateRuntimeReleaseDownloadTicket(ctx context.Context, in *RuntimeReleaseDownloadTicketRequest, opts ...grpc.CallOption) (*RuntimeReleaseDownloadTicketResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RuntimeReleaseDownloadTicketResponse)
+	err := c.cc.Invoke(ctx, RuntimeDomain_CreateRuntimeReleaseDownloadTicket_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // RuntimeDomainServer is the server API for RuntimeDomain service.
 // All implementations must embed UnimplementedRuntimeDomainServer
 // for forward compatibility.
@@ -152,6 +164,7 @@ type RuntimeDomainServer interface {
 	QueryData(*DataRequest, grpc.ServerStreamingServer[DataResponse]) error
 	CreateUploadTicket(context.Context, *UploadTicketRequest) (*UploadTicketResponse, error)
 	CreateDownloadTicket(context.Context, *DownloadTicketRequest) (*DownloadTicketResponse, error)
+	CreateRuntimeReleaseDownloadTicket(context.Context, *RuntimeReleaseDownloadTicketRequest) (*RuntimeReleaseDownloadTicketResponse, error)
 	mustEmbedUnimplementedRuntimeDomainServer()
 }
 
@@ -185,6 +198,9 @@ func (UnimplementedRuntimeDomainServer) CreateUploadTicket(context.Context, *Upl
 }
 func (UnimplementedRuntimeDomainServer) CreateDownloadTicket(context.Context, *DownloadTicketRequest) (*DownloadTicketResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateDownloadTicket not implemented")
+}
+func (UnimplementedRuntimeDomainServer) CreateRuntimeReleaseDownloadTicket(context.Context, *RuntimeReleaseDownloadTicketRequest) (*RuntimeReleaseDownloadTicketResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateRuntimeReleaseDownloadTicket not implemented")
 }
 func (UnimplementedRuntimeDomainServer) mustEmbedUnimplementedRuntimeDomainServer() {}
 func (UnimplementedRuntimeDomainServer) testEmbeddedByValue()                       {}
@@ -344,6 +360,24 @@ func _RuntimeDomain_CreateDownloadTicket_Handler(srv interface{}, ctx context.Co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _RuntimeDomain_CreateRuntimeReleaseDownloadTicket_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RuntimeReleaseDownloadTicketRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RuntimeDomainServer).CreateRuntimeReleaseDownloadTicket(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RuntimeDomain_CreateRuntimeReleaseDownloadTicket_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RuntimeDomainServer).CreateRuntimeReleaseDownloadTicket(ctx, req.(*RuntimeReleaseDownloadTicketRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // RuntimeDomain_ServiceDesc is the grpc.ServiceDesc for RuntimeDomain service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -378,6 +412,10 @@ var RuntimeDomain_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CreateDownloadTicket",
 			Handler:    _RuntimeDomain_CreateDownloadTicket_Handler,
+		},
+		{
+			MethodName: "CreateRuntimeReleaseDownloadTicket",
+			Handler:    _RuntimeDomain_CreateRuntimeReleaseDownloadTicket_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

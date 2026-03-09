@@ -74,6 +74,27 @@ _ACCELERATOR_TYPE_TO_TEXT: dict[int, str] = {
 }
 _TEXT_TO_ACCELERATOR_TYPE: dict[str, int] = {value: key for key, value in _ACCELERATOR_TYPE_TO_TEXT.items()}
 
+_COMPONENT_TYPE_TO_TEXT: dict[int, str] = {
+    pb.EXECUTOR: "executor",
+    pb.PLUGIN: "plugin",
+}
+_TEXT_TO_COMPONENT_TYPE: dict[str, int] = {
+    "executor": pb.EXECUTOR,
+    "plugin": pb.PLUGIN,
+}
+
+_UPDATE_PHASE_TO_TEXT: dict[int, str] = {
+    pb.RUNTIME_UPDATE_PHASE_QUEUED: "queued",
+    pb.RUNTIME_UPDATE_PHASE_DOWNLOADING: "downloading",
+    pb.RUNTIME_UPDATE_PHASE_VALIDATING: "validating",
+    pb.RUNTIME_UPDATE_PHASE_INSTALLING: "installing",
+    pb.RUNTIME_UPDATE_PHASE_ACTIVATING: "activating",
+    pb.RUNTIME_UPDATE_PHASE_SUCCEEDED: "succeeded",
+    pb.RUNTIME_UPDATE_PHASE_FAILED: "failed",
+    pb.RUNTIME_UPDATE_PHASE_ROLLED_BACK: "rolled_back",
+}
+_TEXT_TO_UPDATE_PHASE: dict[str, int] = {value: key for key, value in _UPDATE_PHASE_TO_TEXT.items()}
+
 _ACK_TYPE_TO_TEXT: dict[int, str] = {
     pb.ACK_TYPE_REGISTER: "register",
     pb.ACK_TYPE_ASSIGN_TASK: "assign_task",
@@ -154,6 +175,22 @@ def accelerator_type_to_text(accelerator: int) -> str:
 
 def text_to_accelerator_type(accelerator: str | None) -> int:
     return _TEXT_TO_ACCELERATOR_TYPE.get((accelerator or "").strip().lower(), pb.ACCELERATOR_TYPE_UNSPECIFIED)
+
+
+def component_type_to_text(component_type: int) -> str:
+    return _COMPONENT_TYPE_TO_TEXT.get(int(component_type), "")
+
+
+def text_to_component_type(component_type: str | None) -> int:
+    return _TEXT_TO_COMPONENT_TYPE.get((component_type or "").strip().lower(), pb.RUNTIME_COMPONENT_TYPE_UNSPECIFIED)
+
+
+def runtime_update_phase_to_text(phase: int) -> str:
+    return _UPDATE_PHASE_TO_TEXT.get(int(phase), "")
+
+
+def text_to_runtime_update_phase(phase: str | None) -> int:
+    return _TEXT_TO_UPDATE_PHASE.get((phase or "").strip().lower(), pb.RUNTIME_UPDATE_PHASE_UNSPECIFIED)
 
 
 def ack_type_to_text(ack_type: int) -> str:
@@ -285,6 +322,7 @@ def build_register_message(
     version: str,
     plugins: list[dict[str, Any]],
     resources: Mapping[str, Any],
+    update_state: Mapping[str, Any] | None = None,
 ) -> pb.RuntimeMessage:
     plugin_caps: list[pb.PluginCapability] = []
     for item in plugins:
@@ -312,6 +350,7 @@ def build_register_message(
             version=version,
             plugins=plugin_caps,
             resources=_dict_to_resource_summary(resources),
+            update_state=build_runtime_update_state_snapshot(update_state),
         )
     )
 
@@ -323,6 +362,7 @@ def build_heartbeat_message(
     busy: bool,
     current_task_id: str | None = None,
     resources: Mapping[str, Any],
+    update_state: Mapping[str, Any] | None = None,
 ) -> pb.RuntimeMessage:
     task_id = str(current_task_id or "")
     return pb.RuntimeMessage(
@@ -332,6 +372,47 @@ def build_heartbeat_message(
             busy=busy,
             current_task_id=task_id,
             resources=_dict_to_resource_summary(resources),
+            update_state=build_runtime_update_state_snapshot(update_state),
+        )
+    )
+
+
+def build_runtime_update_state_snapshot(payload: Mapping[str, Any] | None) -> pb.RuntimeUpdateStateSnapshot:
+    payload = payload or {}
+    return pb.RuntimeUpdateStateSnapshot(
+        request_id=str(payload.get("request_id") or ""),
+        component_type=text_to_component_type(str(payload.get("component_type") or "")),
+        component_name=str(payload.get("component_name") or ""),
+        from_version=str(payload.get("from_version") or ""),
+        target_version=str(payload.get("target_version") or ""),
+        phase=text_to_runtime_update_phase(str(payload.get("phase") or "")),
+        detail=str(payload.get("detail") or ""),
+        activation_pending=bool(payload.get("activation_pending", False)),
+        rollback_pending=bool(payload.get("rollback_pending", False)),
+    )
+ 
+
+def build_runtime_update_event_message(
+    *,
+    request_id: str,
+    component_type: str,
+    component_name: str,
+    from_version: str,
+    target_version: str,
+    phase: str,
+    detail: str,
+    rolled_back: bool,
+) -> pb.RuntimeMessage:
+    return pb.RuntimeMessage(
+        update_event=pb.RuntimeUpdateEvent(
+            request_id=request_id,
+            component_type=text_to_component_type(component_type),
+            component_name=component_name,
+            from_version=from_version,
+            target_version=target_version,
+            phase=text_to_runtime_update_phase(phase),
+            detail=detail,
+            rolled_back=rolled_back,
         )
     )
 
@@ -403,6 +484,27 @@ def build_upload_ticket_request_message(
             execution_id=str(execution_id or ""),
             artifact_name=artifact_name,
             content_type=content_type,
+        )
+    )
+
+
+def build_download_ticket_request_message(
+    *,
+    request_id: str,
+    task_id: str | None = None,
+    execution_id: str | None = None,
+    source_task_id: str | None = None,
+    model_id: str | None = None,
+    artifact_name: str,
+) -> pb.RuntimeMessage:
+    return pb.RuntimeMessage(
+        download_ticket_request=pb.DownloadTicketRequest(
+            request_id=request_id,
+            task_id=str(task_id or ""),
+            execution_id=str(execution_id or ""),
+            source_task_id=str(source_task_id or ""),
+            model_id=str(model_id or ""),
+            artifact_name=artifact_name,
         )
     )
 
@@ -540,6 +642,23 @@ def set_message_request_id(message: pb.RuntimeMessage, request_id: str) -> None:
         setattr(payload, "request_id", request_id)
 
 
+def parse_runtime_update_command(command: pb.RuntimeUpdateCommand) -> dict[str, Any]:
+    return {
+        "request_id": str(command.request_id or ""),
+        "component_type": component_type_to_text(command.component_type),
+        "component_name": str(command.component_name or ""),
+        "from_version": str(command.from_version or ""),
+        "target_version": str(command.target_version or ""),
+        "release_id": str(command.release_id or ""),
+        "download_url": str(command.download_url or ""),
+        "headers": dict(command.headers),
+        "sha256": str(command.sha256 or ""),
+        "size_bytes": int(command.size_bytes or 0),
+        "format": str(command.format or ""),
+        "manifest": struct_to_dict(command.manifest),
+    }
+
+
 def parse_assign_task(assign_task: pb.AssignTask) -> dict[str, Any]:
     task_payload = assign_task.task
     task_id = _resolve_task_id(task_payload.task_id)
@@ -595,6 +714,22 @@ def parse_upload_ticket_response(upload_ticket: pb.UploadTicketResponse) -> dict
         "upload_url": upload_ticket.upload_url,
         "storage_uri": upload_ticket.storage_uri,
         "headers": dict(upload_ticket.headers),
+    }
+
+
+def parse_download_ticket_response(download_ticket: pb.DownloadTicketResponse) -> dict[str, Any]:
+    task_id = _resolve_task_id(download_ticket.task_id)
+    source_task_id = _resolve_task_id(download_ticket.source_task_id)
+    return {
+        "request_id": download_ticket.request_id,
+        "reply_to": download_ticket.reply_to,
+        "task_id": task_id,
+        "source_task_id": source_task_id,
+        "model_id": str(download_ticket.model_id or ""),
+        "artifact_name": str(download_ticket.artifact_name or ""),
+        "download_url": str(download_ticket.download_url or ""),
+        "storage_uri": str(download_ticket.storage_uri or ""),
+        "headers": dict(download_ticket.headers),
     }
 
 

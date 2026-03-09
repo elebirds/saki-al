@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
-from datetime import timedelta
 from typing import Any
 
 from sqlalchemy import func
@@ -98,24 +97,6 @@ class PredictionTaskMixin:
             raise BadRequestAppException("scope_payload.status must be one of all/unlabeled/labeled/draft")
         return status
 
-    async def _resolve_artifact_download_url(self, *, uri: str, expires_in_hours: int = 6) -> str:
-        normalized = str(uri or "").strip()
-        if not normalized:
-            raise BadRequestAppException("artifact uri is empty")
-        if normalized.startswith("http://") or normalized.startswith("https://"):
-            return normalized
-        if normalized.startswith("s3://"):
-            _, _, bucket_and_path = normalized.partition("s3://")
-            _, _, object_path = bucket_and_path.partition("/")
-            if not object_path:
-                raise BadRequestAppException(f"invalid s3 uri: {normalized}")
-            return self.storage.get_presigned_url(
-                object_name=object_path,
-                expires_delta=timedelta(hours=max(1, expires_in_hours)),
-            )
-        raise BadRequestAppException(f"unsupported artifact uri: {normalized}")
-
-
     @staticmethod
     def _match_artifact_payload(
         *,
@@ -153,7 +134,7 @@ class PredictionTaskMixin:
         plugin_id: str,
         model_id: uuid.UUID,
         artifact_name: str,
-    ) -> tuple[uuid.UUID, str, str]:
+    ) -> tuple[uuid.UUID, dict[str, str], str]:
         resolved_artifact_name = str(artifact_name or "best.pt").strip() or "best.pt"
         model = await self.model_repo.get_by_id_or_raise(model_id)
         if model.project_id != project_id:
@@ -167,8 +148,12 @@ class PredictionTaskMixin:
         if artifact_match is None:
             raise BadRequestAppException(f"model artifact '{resolved_artifact_name}' not found")
         matched_artifact_name, artifact = artifact_match
-        uri = str(artifact.get("uri") or "")
-        return model.id, await self._resolve_artifact_download_url(uri=uri), matched_artifact_name
+        model_ref = {
+            "artifact_name": matched_artifact_name,
+            "model_id": str(model.id),
+            "source_task_id": str(model.source_task_id or ""),
+        }
+        return model.id, model_ref, matched_artifact_name
 
     @staticmethod
     def _normalize_class_name(raw: Any) -> str:
@@ -457,7 +442,7 @@ class PredictionTaskMixin:
         plugin_id = str(model_probe.plugin_id or "").strip()
         if not plugin_id:
             raise BadRequestAppException("model.plugin_id is required")
-        model_id, model_download_url, artifact_name = await self._resolve_prediction_model_artifact(
+        model_id, model_ref, artifact_name = await self._resolve_prediction_model_artifact(
             project_id=project_id,
             plugin_id=plugin_id,
             model_id=model_probe.id,
@@ -489,10 +474,13 @@ class PredictionTaskMixin:
         step_params = dict(params)
         plugin_params = step_params.get("plugin")
         plugin_params = dict(plugin_params) if isinstance(plugin_params, dict) else {}
-        plugin_params["model_source"] = "custom_url"
-        plugin_params["model_custom_ref"] = model_download_url
+        plugin_params["model_source"] = "runtime_artifact"
+        plugin_params.pop("model_custom_ref", None)
         plugin_params["artifact_name"] = artifact_name
         step_params["plugin"] = plugin_params
+        step_params["_runtime_artifact_refs"] = {
+            "model": dict(model_ref),
+        }
 
         predict_params = step_params.get("predict")
         predict_params = dict(predict_params) if isinstance(predict_params, dict) else {}

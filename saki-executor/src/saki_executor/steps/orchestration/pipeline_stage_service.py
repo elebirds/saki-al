@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+import httpx
+
 from saki_ir import normalize_prediction_candidates
 from saki_executor.steps.orchestration.error_codes import TaskErrorCode, TaskStage, wrap_task_error
 from saki_executor.steps.orchestration.models import BoundExecutionPlan
@@ -44,6 +46,30 @@ class PipelineStageService:
             )
             return
 
+        runtime_model_ref = self._extract_runtime_model_ref(
+            bound_plan=bound_plan,
+            default_artifact_name=artifact_name,
+        )
+        if runtime_model_ref is not None:
+            local_model_path = await self._materialize_runtime_model_ref(
+                workspace=workspace,
+                emitter=emitter,
+                runtime_model_ref=runtime_model_ref,
+            )
+            bound_plan.effective_plugin_params["model_source"] = "custom_local"
+            bound_plan.effective_plugin_params["model_custom_ref"] = str(local_model_path)
+            await emitter.emit(
+                "log",
+                {
+                    "level": "INFO",
+                    "message": (
+                        "训练模型已就绪 "
+                        f"source=runtime_ref artifact={runtime_model_ref['artifact_name']} path={local_model_path}"
+                    ),
+                },
+            )
+            return
+
         model_source = str(bound_plan.effective_plugin_params.get("model_source") or "").strip().lower()
         model_ref = str(bound_plan.effective_plugin_params.get("model_custom_ref") or "").strip()
         if model_source in {"custom_url", "custom_local"} and model_ref:
@@ -76,6 +102,93 @@ class PipelineStageService:
                 "message": f"{message}; STRICT_TRAIN_MODEL_HANDOFF=false，启用回退",
             },
         )
+
+    @staticmethod
+    def _extract_runtime_model_ref(
+        *,
+        bound_plan: BoundExecutionPlan,
+        default_artifact_name: str,
+    ) -> dict[str, str] | None:
+        request_params = (
+            bound_plan.plan.request.resolved_params
+            if isinstance(bound_plan.plan.request.resolved_params, dict)
+            else {}
+        )
+        runtime_refs_raw = request_params.get("_runtime_artifact_refs")
+        runtime_refs = runtime_refs_raw if isinstance(runtime_refs_raw, dict) else {}
+        model_raw = runtime_refs.get("model")
+        model_ref = model_raw if isinstance(model_raw, dict) else {}
+        if not model_ref:
+            return None
+        artifact_name = str(
+            model_ref.get("artifact_name")
+            or model_ref.get("artifactName")
+            or default_artifact_name
+            or "best.pt"
+        ).strip() or "best.pt"
+        source_task_id = str(model_ref.get("source_task_id") or model_ref.get("sourceTaskId") or "").strip()
+        model_id = str(model_ref.get("model_id") or model_ref.get("modelId") or "").strip()
+        if not source_task_id and not model_id:
+            return None
+        return {
+            "artifact_name": artifact_name,
+            "source_task_id": source_task_id,
+            "model_id": model_id,
+        }
+
+    async def _materialize_runtime_model_ref(
+        self,
+        *,
+        workspace: WorkspaceProtocol,
+        emitter: Any,
+        runtime_model_ref: dict[str, str],
+    ) -> Path:
+        artifact_name = str(runtime_model_ref.get("artifact_name") or "best.pt").strip() or "best.pt"
+        source_task_id = str(runtime_model_ref.get("source_task_id") or "").strip()
+        model_id = str(runtime_model_ref.get("model_id") or "").strip()
+        ticket = await self._manager.request_download_ticket(
+            task_id=self._request.task_id,
+            source_task_id=source_task_id or None,
+            model_id=model_id or None,
+            artifact_name=artifact_name,
+        )
+        download_url = str(ticket.download_url or "").strip()
+        if not download_url:
+            raise RuntimeError(
+                f"download ticket missing download_url artifact={artifact_name} "
+                f"source_task_id={source_task_id or '-'} model_id={model_id or '-'}"
+            )
+
+        storage_uri = str(ticket.storage_uri or "").strip()
+        source_ref = source_task_id or model_id or "runtime-artifact"
+        cache_key = hashlib.sha256(
+            f"{source_ref}|{artifact_name}|{storage_uri or download_url}".encode("utf-8")
+        ).hexdigest()
+        suffix = Path(artifact_name).suffix or ".bin"
+        cache_path = workspace.cache_dir / f"runtime-model-{cache_key}{suffix}"
+        if not cache_path.exists():
+            await emitter.emit(
+                "log",
+                {
+                    "level": "INFO",
+                    "message": (
+                        "开始下载运行时模型制品 "
+                        f"artifact={artifact_name} source_task_id={source_task_id or '-'} model_id={model_id or '-'}"
+                    ),
+                },
+            )
+            tmp_path = cache_path.with_suffix(cache_path.suffix + ".tmp")
+            tmp_path.unlink(missing_ok=True)
+            async with httpx.AsyncClient(timeout=120) as client:
+                async with client.stream("GET", download_url, headers=dict(ticket.headers or {})) as response:
+                    response.raise_for_status()
+                    with tmp_path.open("wb") as file_obj:
+                        async for chunk in response.aiter_bytes(chunk_size=1024 * 1024):
+                            if not chunk:
+                                continue
+                            file_obj.write(chunk)
+            tmp_path.rename(cache_path)
+        return workspace.cache_model_artifact(artifact_name, cache_path, source_ref)
 
     async def execute(
         self,

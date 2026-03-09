@@ -177,28 +177,27 @@ class RuntimeQueryMixin:
         if not steps:
             return {}
         ordered_steps = sorted(steps, key=self._step_sort_key)
-
-        for require_succeeded in (True, False):
-            for step in reversed(ordered_steps):
-                if self._step_type_text(step) != step_type:
-                    continue
-                status_text = self._step_state_text(step)
-                if step.task_id is not None and task_status_by_task_id is not None:
-                    status_text = str(task_status_by_task_id.get(step.task_id) or "").strip().lower()
-                if require_succeeded and status_text != "succeeded":
-                    continue
-                metrics = self._pick_non_empty_step_metrics(
-                    step=step,
-                    task_metrics_by_task_id=task_metrics_by_task_id,
-                )
-                if metrics is not None:
-                    return metrics
+        for step in reversed(ordered_steps):
+            if self._step_type_text(step) != step_type:
+                continue
+            status_text = self._step_state_text(step)
+            if step.task_id is not None and task_status_by_task_id is not None:
+                status_text = str(task_status_by_task_id.get(step.task_id) or "").strip().lower()
+            if status_text != "succeeded":
+                continue
+            metrics = self._pick_non_empty_step_metrics(
+                step=step,
+                task_metrics_by_task_id=task_metrics_by_task_id,
+            )
+            if metrics is not None:
+                return metrics
         return {}
 
     def _pick_final_metrics_with_source(
         self,
         steps: list[Step],
         task_metrics_by_task_id: dict[uuid.UUID, dict[str, Any]] | None = None,
+        task_status_by_task_id: dict[uuid.UUID, str] | None = None,
     ) -> tuple[dict[str, Any], str]:
         if not steps:
             return {}, "none"
@@ -206,6 +205,11 @@ class RuntimeQueryMixin:
 
         for step in reversed(ordered_steps):
             if self._step_type_text(step) != "eval":
+                continue
+            status_text = self._step_state_text(step)
+            if step.task_id is not None and task_status_by_task_id is not None:
+                status_text = str(task_status_by_task_id.get(step.task_id) or "").strip().lower()
+            if status_text != "succeeded":
                 continue
             metrics = self._pick_non_empty_step_metrics(
                 step=step,
@@ -217,30 +221,29 @@ class RuntimeQueryMixin:
         for step in reversed(ordered_steps):
             if self._step_type_text(step) != "train":
                 continue
+            status_text = self._step_state_text(step)
+            if step.task_id is not None and task_status_by_task_id is not None:
+                status_text = str(task_status_by_task_id.get(step.task_id) or "").strip().lower()
+            if status_text != "succeeded":
+                continue
             metrics = self._pick_non_empty_step_metrics(
                 step=step,
                 task_metrics_by_task_id=task_metrics_by_task_id,
             )
             if metrics is not None:
                 return metrics, "train"
-
-        for step in reversed(ordered_steps):
-            metrics = self._pick_non_empty_step_metrics(
-                step=step,
-                task_metrics_by_task_id=task_metrics_by_task_id,
-            )
-            if metrics is not None:
-                return metrics, "other"
         return {}, "none"
 
     def _pick_final_metrics_from_steps(
         self,
         steps: list[Step],
         task_metrics_by_task_id: dict[uuid.UUID, dict[str, Any]] | None = None,
+        task_status_by_task_id: dict[uuid.UUID, str] | None = None,
     ) -> dict[str, Any]:
         metrics, _ = self._pick_final_metrics_with_source(
             steps,
             task_metrics_by_task_id=task_metrics_by_task_id,
+            task_status_by_task_id=task_status_by_task_id,
         )
         return metrics
 
@@ -253,10 +256,10 @@ class RuntimeQueryMixin:
         task_status_by_task_id: dict[uuid.UUID, str] | None = None,
     ) -> dict[str, Any]:
         del round_item
-        del task_status_by_task_id
         return self._pick_final_metrics_from_steps(
             steps,
             task_metrics_by_task_id=task_metrics_by_task_id,
+            task_status_by_task_id=task_status_by_task_id,
         )
 
     def derive_round_metric_view(
@@ -283,6 +286,7 @@ class RuntimeQueryMixin:
         final_metrics, final_metrics_source = self._pick_final_metrics_with_source(
             steps,
             task_metrics_by_task_id=task_metrics_by_task_id,
+            task_status_by_task_id=task_status_by_task_id,
         )
         return RoundMetricViewVO(
             train_final_metrics=train_final_metrics,

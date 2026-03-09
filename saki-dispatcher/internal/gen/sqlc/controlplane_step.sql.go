@@ -319,6 +319,103 @@ func (q *Queries) InsertTaskMetricPoint(ctx context.Context, arg InsertTaskMetri
 	return err
 }
 
+const listDispatchLaneHeadCandidates = `-- name: ListDispatchLaneHeadCandidates :many
+WITH candidate_tasks AS (
+  SELECT
+    t.id AS task_id,
+    t.kind,
+    t.task_type,
+    t.status,
+    t.plugin_id,
+    t.created_at,
+    t.updated_at,
+    CASE
+      WHEN t.kind = 'STEP' THEN r.loop_id::text
+      ELSE t.id::text
+    END AS lane_id,
+    r.loop_id,
+    COALESCE(r.resources, '{}'::jsonb) AS resources_raw,
+    ROW_NUMBER() OVER (
+      PARTITION BY CASE
+        WHEN t.kind = 'STEP' THEN r.loop_id::text
+        ELSE t.id::text
+      END
+      ORDER BY t.created_at ASC, t.id ASC
+    ) AS lane_rank
+  FROM task t
+  LEFT JOIN step s ON s.task_id = t.id
+  LEFT JOIN round r ON r.id = s.round_id
+  LEFT JOIN loop l ON l.id = r.loop_id
+  WHERE t.status IN ('PENDING', 'READY', 'RETRYING')
+    AND (
+      t.kind = 'PREDICTION'
+      OR (
+        t.kind = 'STEP'
+        AND l.lifecycle = 'RUNNING'::looplifecycle
+      )
+    )
+)
+SELECT
+  task_id,
+  kind,
+  task_type,
+  status,
+  plugin_id,
+  created_at,
+  updated_at,
+  lane_id,
+  loop_id,
+  resources_raw
+FROM candidate_tasks
+WHERE lane_rank = 1
+ORDER BY updated_at ASC, created_at ASC, task_id ASC
+LIMIT $1
+`
+
+type ListDispatchLaneHeadCandidatesRow struct {
+	TaskID       uuid.UUID
+	Kind         Runtimetaskkind
+	TaskType     Runtimetasktype
+	Status       Runtimetaskstatus
+	PluginID     string
+	CreatedAt    pgtype.Timestamptz
+	UpdatedAt    pgtype.Timestamptz
+	LaneID       string
+	LoopID       *uuid.UUID
+	ResourcesRaw []byte
+}
+
+func (q *Queries) ListDispatchLaneHeadCandidates(ctx context.Context, limitCount int32) ([]ListDispatchLaneHeadCandidatesRow, error) {
+	rows, err := q.db.Query(ctx, listDispatchLaneHeadCandidates, limitCount)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListDispatchLaneHeadCandidatesRow
+	for rows.Next() {
+		var i ListDispatchLaneHeadCandidatesRow
+		if err := rows.Scan(
+			&i.TaskID,
+			&i.Kind,
+			&i.TaskType,
+			&i.Status,
+			&i.PluginID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.LaneID,
+			&i.LoopID,
+			&i.ResourcesRaw,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listReadyTaskIDsForDispatch = `-- name: ListReadyTaskIDsForDispatch :many
 SELECT t.id AS id
 FROM task t

@@ -25,6 +25,58 @@ ORDER BY t.created_at ASC
 LIMIT sqlc.arg(limit_count)
 FOR UPDATE OF t SKIP LOCKED;
 
+-- name: ListDispatchLaneHeadCandidates :many
+WITH candidate_tasks AS (
+  SELECT
+    t.id AS task_id,
+    t.kind,
+    t.task_type,
+    t.status,
+    t.plugin_id,
+    t.created_at,
+    t.updated_at,
+    CASE
+      WHEN t.kind = 'STEP' THEN r.loop_id::text
+      ELSE t.id::text
+    END AS lane_id,
+    r.loop_id,
+    COALESCE(r.resources, '{}'::jsonb) AS resources_raw,
+    ROW_NUMBER() OVER (
+      PARTITION BY CASE
+        WHEN t.kind = 'STEP' THEN r.loop_id::text
+        ELSE t.id::text
+      END
+      ORDER BY t.created_at ASC, t.id ASC
+    ) AS lane_rank
+  FROM task t
+  LEFT JOIN step s ON s.task_id = t.id
+  LEFT JOIN round r ON r.id = s.round_id
+  LEFT JOIN loop l ON l.id = r.loop_id
+  WHERE t.status IN ('PENDING', 'READY', 'RETRYING')
+    AND (
+      t.kind = 'PREDICTION'
+      OR (
+        t.kind = 'STEP'
+        AND l.lifecycle = 'RUNNING'::looplifecycle
+      )
+    )
+)
+SELECT
+  task_id,
+  kind,
+  task_type,
+  status,
+  plugin_id,
+  created_at,
+  updated_at,
+  lane_id,
+  loop_id,
+  resources_raw
+FROM candidate_tasks
+WHERE lane_rank = 1
+ORDER BY updated_at ASC, created_at ASC, task_id ASC
+LIMIT sqlc.arg(limit_count);
+
 -- name: GetStepPayloadByTaskIDForUpdate :one
 SELECT
   t.id AS step_id,

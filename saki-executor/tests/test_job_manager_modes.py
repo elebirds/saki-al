@@ -1226,7 +1226,7 @@ async def test_score_step_strict_model_handoff_fails_without_model_ref(tmp_path:
     assert len(result_messages) == 1
     result = result_messages[0].task_result
     assert result.status == pb.FAILED
-    assert "trained model is required" in str(result.error_message or "")
+    assert "训练模型必需但不可用" in str(result.error_message or "")
 
 
 @pytest.mark.anyio
@@ -1714,7 +1714,7 @@ async def test_predict_step_rejects_legacy_sampling_params(tmp_path: Path):
     assert len(result_messages) == 1
     result = result_messages[0].task_result
     assert result.status == pb.FAILED
-    assert "deprecated params.sampling" in str(result.error_message or "")
+    assert "已废弃的 params.sampling" in str(result.error_message or "")
 
 
 @pytest.mark.anyio
@@ -1758,7 +1758,7 @@ async def test_orchestrator_dispatch_kind_is_rejected(tmp_path: Path):
     assert len(result_messages) == 1
     result = result_messages[0].task_result
     assert result.status == pb.FAILED
-    assert "orchestrator task should not be dispatched" in result.error_message
+    assert "orchestrator 任务不应派发到 executor" in result.error_message
     assert request_calls == 0
 
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -26,6 +27,7 @@ type CommandResult struct {
 
 type ControlplaneQuerier interface {
 	db.Querier
+	ListDispatchLaneHeadCandidates(ctx context.Context, limitCount int32) ([]db.ListDispatchLaneHeadCandidatesRow, error)
 	WithTx(tx pgx.Tx) *db.Queries
 }
 
@@ -47,6 +49,14 @@ type Service struct {
 	lastTTLCleanupAt        time.Time
 	ttlCleanupInterval      time.Duration
 	logger                  zerolog.Logger
+	laneStateMu             sync.Mutex
+	laneState               map[string]dispatchLaneState
+}
+
+type dispatchLaneState struct {
+	SkipRounds     int
+	LastDispatchAt time.Time
+	LastSeenAt     time.Time
 }
 
 func NewService(
@@ -115,6 +125,7 @@ func NewService(
 		strictModelHandoff:      strictTrainModelHandoff,
 		ttlCleanupInterval:      time.Hour,
 		logger:                  logger,
+		laneState:               map[string]dispatchLaneState{},
 	}
 }
 

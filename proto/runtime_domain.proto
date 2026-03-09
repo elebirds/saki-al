@@ -168,17 +168,33 @@ message UploadTicketResponse {
 message DownloadTicketRequest {
   string request_id = 1;
   string task_id = 2;
-  string artifact_name = 3;
+  string model_id = 3;
+  string artifact_name = 4;
 }
 
 message DownloadTicketResponse {
   string request_id = 1;
   string reply_to = 2;
   string task_id = 3;
-  string artifact_name = 4;
-  string download_url = 5;
-  string storage_uri = 6;
-  map<string, string> headers = 7;
+  string model_id = 4;
+  string artifact_name = 5;
+  string download_url = 6;
+  string storage_uri = 7;
+  map<string, string> headers = 8;
+}
+
+message RuntimeReleaseDownloadTicketRequest {
+  string request_id = 1;
+  string release_id = 2;
+}
+
+message RuntimeReleaseDownloadTicketResponse {
+  string request_id = 1;
+  string reply_to = 2;
+  string release_id = 3;
+  string download_url = 4;
+  string storage_uri = 5;
+  map<string, string> headers = 6;
 }
 
 service RuntimeDomain {
@@ -190,4 +206,5 @@ service RuntimeDomain {
   rpc QueryData(DataRequest) returns (stream DataResponse);
   rpc CreateUploadTicket(UploadTicketRequest) returns (UploadTicketResponse);
   rpc CreateDownloadTicket(DownloadTicketRequest) returns (DownloadTicketResponse);
+  rpc CreateRuntimeReleaseDownloadTicket(RuntimeReleaseDownloadTicketRequest) returns (RuntimeReleaseDownloadTicketResponse);
 }

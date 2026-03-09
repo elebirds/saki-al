@@ -64,6 +64,14 @@ class RoundSelectionMixin:
         select_step = sorted(select_steps, key=lambda item: int(item.step_index), reverse=True)[0]
         if score_step.task_id is None:
             raise BadRequestAppException("score step missing task binding")
+        task_ids = [task_id for task_id in (score_step.task_id, select_step.task_id) if task_id is not None]
+        tasks = await self.task_repo.get_by_ids(task_ids) if task_ids else []
+        task_status_by_id = {
+            task.id: str(task.status.value if hasattr(task.status, "value") else task.status).strip().lower()
+            for task in tasks
+        }
+        if str(task_status_by_id.get(score_step.task_id) or "").strip().lower() != "succeeded":
+            raise BadRequestAppException("round score pool is unavailable because score step is not succeeded")
 
         topk, review_pool_size = self._sampling_limits_from_round(round_row=round_row, fallback_topk=loop.query_batch_size)
         score_pool = await self.task_candidate_repo.list_by_task(score_step.task_id)

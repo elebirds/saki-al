@@ -23,12 +23,15 @@ from saki_api.modules.project.repo.branch import BranchRepository
 from saki_api.modules.project.repo.commit import CommitRepository
 from saki_api.modules.project.repo.commit_sample_state import CommitSampleStateRepository
 from saki_api.modules.project.service.commit_hash import refresh_commit_hash
+from saki_api.modules.runtime.domain.model import Model
 from saki_api.modules.runtime.domain.round import Round
 from saki_api.modules.runtime.domain.step import Step
 from saki_api.modules.runtime.domain.task import Task
 from saki_api.modules.runtime.domain.task_candidate_item import TaskCandidateItem
+from saki_api.modules.runtime.repo.runtime_release import RuntimeReleaseRepository
 from saki_api.modules.runtime.service.runtime_service import RuntimeService
 from saki_api.modules.runtime.service.ingress.control_ingress_service import RuntimeControlIngressService
+from saki_api.modules.storage.service.asset import AssetService
 from saki_api.modules.shared.modeling.enums import AuthorType, CommitSampleReviewState, StepType
 
 
@@ -98,6 +101,15 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
             )
         ).first()
 
+    async def _resolve_model_by_id(self, *, session, model_id: uuid.UUID) -> Model | None:
+        return (
+            await session.exec(
+                select(Model)
+                .where(Model.id == model_id)
+                .limit(1)
+            )
+        ).first()
+
     @staticmethod
     def _resolve_result_artifact_uri_from_task(*, task: Task, artifact_name: str) -> tuple[bool, str]:
         params = task.resolved_params if isinstance(task.resolved_params, dict) else {}
@@ -106,6 +118,20 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
         if not isinstance(artifact, dict):
             return False, ""
         return True, str(artifact.get("uri") or "").strip()
+
+    @staticmethod
+    def _resolve_result_artifact_uri_from_model(*, model: Model, artifact_name: str) -> tuple[bool, str]:
+        artifacts = model.artifacts if isinstance(model.artifacts, dict) else {}
+        artifact = artifacts.get(artifact_name)
+        if isinstance(artifact, dict):
+            uri = str(artifact.get("uri") or "").strip()
+            if uri:
+                return True, uri
+        if str(model.primary_artifact_name or "").strip() == str(artifact_name or "").strip():
+            uri = str(model.weights_path or "").strip()
+            if uri:
+                return True, uri
+        return False, ""
 
     async def GetBranchHead(self, request, context):  # noqa: N802
         branch_id = _parse_uuid(request.branch_id)
@@ -574,14 +600,16 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
     async def CreateDownloadTicket(self, request, context):  # noqa: N802
         request_id = str(request.request_id or "") or str(uuid.uuid4())
         task_id = _parse_uuid(request.task_id)
+        model_id = _parse_uuid(getattr(request, "model_id", ""))
         artifact_name = str(request.artifact_name or "").strip()
-        if task_id is None or not artifact_name:
+        if (task_id is None and model_id is None) or not artifact_name:
             context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
-            context.set_details("task_id/artifact_name are required")
+            context.set_details("task_id or model_id and artifact_name are required")
             return domain_pb.DownloadTicketResponse(
                 request_id=request_id,
                 reply_to=request_id,
-                task_id=str(request.task_id or ""),
+                task_id=str(task_id or ""),
+                model_id=str(model_id or ""),
                 artifact_name=artifact_name,
                 download_url="",
                 storage_uri="",
@@ -589,28 +617,61 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
             )
 
         async with SessionLocal() as session:
-            task = await self._resolve_task_by_id(session=session, task_id=task_id)
-            if task is None:
-                context.set_code(grpc.StatusCode.NOT_FOUND)
-                context.set_details("task not found")
+            found = False
+            uri = ""
+            if task_id is not None and model_id is not None:
+                context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
+                context.set_details("task_id and model_id are mutually exclusive")
                 return domain_pb.DownloadTicketResponse(
                     request_id=request_id,
                     reply_to=request_id,
                     task_id=str(task_id),
+                    model_id=str(model_id),
                     artifact_name=artifact_name,
                     download_url="",
                     storage_uri="",
                     headers={},
                 )
-
-            found, uri = self._resolve_result_artifact_uri_from_task(task=task, artifact_name=artifact_name)
+            if task_id is not None:
+                task = await self._resolve_task_by_id(session=session, task_id=task_id)
+                if task is None:
+                    context.set_code(grpc.StatusCode.NOT_FOUND)
+                    context.set_details("task not found")
+                    return domain_pb.DownloadTicketResponse(
+                        request_id=request_id,
+                        reply_to=request_id,
+                        task_id=str(task_id),
+                        model_id="",
+                        artifact_name=artifact_name,
+                        download_url="",
+                        storage_uri="",
+                        headers={},
+                    )
+                found, uri = self._resolve_result_artifact_uri_from_task(task=task, artifact_name=artifact_name)
+            elif model_id is not None:
+                model = await self._resolve_model_by_id(session=session, model_id=model_id)
+                if model is None:
+                    context.set_code(grpc.StatusCode.NOT_FOUND)
+                    context.set_details("model not found")
+                    return domain_pb.DownloadTicketResponse(
+                        request_id=request_id,
+                        reply_to=request_id,
+                        task_id="",
+                        model_id=str(model_id),
+                        artifact_name=artifact_name,
+                        download_url="",
+                        storage_uri="",
+                        headers={},
+                    )
+                found, uri = self._resolve_result_artifact_uri_from_model(model=model, artifact_name=artifact_name)
             if not found:
                 context.set_code(grpc.StatusCode.NOT_FOUND)
                 context.set_details("artifact not found")
                 return domain_pb.DownloadTicketResponse(
                     request_id=request_id,
                     reply_to=request_id,
-                    task_id=str(task_id),
+                    task_id=str(task_id or ""),
+                    model_id=str(model_id or ""),
                     artifact_name=artifact_name,
                     download_url="",
                     storage_uri="",
@@ -622,7 +683,8 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
                 return domain_pb.DownloadTicketResponse(
                     request_id=request_id,
                     reply_to=request_id,
-                    task_id=str(task_id),
+                    task_id=str(task_id or ""),
+                    model_id=str(model_id or ""),
                     artifact_name=artifact_name,
                     download_url="",
                     storage_uri="",
@@ -633,7 +695,8 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
                 return domain_pb.DownloadTicketResponse(
                     request_id=request_id,
                     reply_to=request_id,
-                    task_id=str(task_id),
+                    task_id=str(task_id or ""),
+                    model_id=str(model_id or ""),
                     artifact_name=artifact_name,
                     download_url=uri,
                     storage_uri=uri,
@@ -646,7 +709,8 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
                 return domain_pb.DownloadTicketResponse(
                     request_id=request_id,
                     reply_to=request_id,
-                    task_id=str(task_id),
+                    task_id=str(task_id or ""),
+                    model_id=str(model_id or ""),
                     artifact_name=artifact_name,
                     download_url="",
                     storage_uri=uri,
@@ -662,7 +726,8 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
                 return domain_pb.DownloadTicketResponse(
                     request_id=request_id,
                     reply_to=request_id,
-                    task_id=str(task_id),
+                    task_id=str(task_id or ""),
+                    model_id=str(model_id or ""),
                     artifact_name=artifact_name,
                     download_url="",
                     storage_uri=uri,
@@ -686,7 +751,8 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
                 return domain_pb.DownloadTicketResponse(
                     request_id=request_id,
                     reply_to=request_id,
-                    task_id=str(task_id),
+                    task_id=str(task_id or ""),
+                    model_id=str(model_id or ""),
                     artifact_name=artifact_name,
                     download_url="",
                     storage_uri=uri,
@@ -696,10 +762,69 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
             return domain_pb.DownloadTicketResponse(
                 request_id=request_id,
                 reply_to=request_id,
-                task_id=str(task_id),
+                task_id=str(task_id or ""),
+                model_id=str(model_id or ""),
                 artifact_name=artifact_name,
                 download_url=download_url,
                 storage_uri=uri,
+                headers={},
+            )
+
+    async def CreateRuntimeReleaseDownloadTicket(self, request, context):  # noqa: N802
+        request_id = str(request.request_id or "") or str(uuid.uuid4())
+        release_id = _parse_uuid(request.release_id)
+        if release_id is None:
+            context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
+            context.set_details("release_id is required")
+            return domain_pb.RuntimeReleaseDownloadTicketResponse(
+                request_id=request_id,
+                reply_to=request_id,
+                release_id=str(request.release_id or ""),
+                download_url="",
+                storage_uri="",
+                headers={},
+            )
+
+        async with SessionLocal() as session:
+            release = await RuntimeReleaseRepository(session).get_by_id(release_id)
+            if release is None:
+                context.set_code(grpc.StatusCode.NOT_FOUND)
+                context.set_details("runtime release not found")
+                return domain_pb.RuntimeReleaseDownloadTicketResponse(
+                    request_id=request_id,
+                    reply_to=request_id,
+                    release_id=str(release_id),
+                    download_url="",
+                    storage_uri="",
+                    headers={},
+                )
+
+            asset = await AssetService(session).get_by_id_or_raise(release.asset_id)
+            storage_uri = f"s3://{asset.bucket}/{asset.path}" if asset.bucket else asset.path
+            try:
+                download_url = self.storage.get_presigned_url(
+                    object_name=asset.path,
+                    expires_delta=timedelta(hours=settings.RUNTIME_DOWNLOAD_URL_EXPIRE_HOURS),
+                )
+            except Exception as exc:
+                logger.exception("生成 runtime release 下载凭证失败 release_id={} error={}", release_id, exc)
+                context.set_code(grpc.StatusCode.INTERNAL)
+                context.set_details("生成 runtime release 下载凭证失败")
+                return domain_pb.RuntimeReleaseDownloadTicketResponse(
+                    request_id=request_id,
+                    reply_to=request_id,
+                    release_id=str(release_id),
+                    download_url="",
+                    storage_uri=storage_uri,
+                    headers={},
+                )
+
+            return domain_pb.RuntimeReleaseDownloadTicketResponse(
+                request_id=request_id,
+                reply_to=request_id,
+                release_id=str(release_id),
+                download_url=download_url,
+                storage_uri=storage_uri,
                 headers={},
             )
 

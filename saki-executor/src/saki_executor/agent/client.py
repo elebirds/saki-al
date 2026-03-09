@@ -18,15 +18,22 @@ from saki_executor.agent import codec as runtime_codec
 from saki_executor.core.config import settings
 from saki_executor.grpc_gen import runtime_control_pb2 as pb
 from saki_executor.grpc_gen import runtime_control_pb2_grpc as pb_grpc
-from saki_executor.steps.manager import TaskManager
 from saki_executor.steps.state import ExecutorState
+from saki_executor.steps.manager import TaskManager
 from saki_executor.plugins.registry import PluginRegistry
+from saki_executor.updater import RuntimeUpdater
 
 
 class AgentClient:
-    def __init__(self, plugin_registry: PluginRegistry, task_manager: TaskManager):
+    def __init__(
+        self,
+        plugin_registry: PluginRegistry,
+        task_manager: TaskManager,
+        runtime_updater: RuntimeUpdater | None = None,
+    ):
         self.plugin_registry = plugin_registry
         self.task_manager = task_manager
+        self.runtime_updater = runtime_updater
 
         self._outbox: asyncio.Queue[pb.RuntimeMessage] = asyncio.Queue()
         self._pending: dict[str, asyncio.Future[pb.RuntimeMessage | list[pb.RuntimeMessage]]] = {}
@@ -158,6 +165,7 @@ class AgentClient:
             version=settings.EXECUTOR_VERSION,
             plugins=plugins,
             resources=self._resource_payload(),
+            update_state=self.runtime_updater.build_update_state_snapshot() if self.runtime_updater else None,
         )
 
     def _heartbeat_message(self) -> pb.RuntimeMessage:
@@ -167,6 +175,7 @@ class AgentClient:
             busy=self.task_manager.busy,
             current_task_id=self.task_manager.current_task_id,
             resources=self._resource_payload(),
+            update_state=self.runtime_updater.build_update_state_snapshot() if self.runtime_updater else None,
         )
 
     async def _heartbeat_loop(self) -> None:
@@ -243,6 +252,14 @@ class AgentClient:
             logger.debug("收到响应 type=upload_ticket_response reply_to={}", reply_to)
             return
 
+        if payload_type == "download_ticket_response":
+            reply_to = str(message.download_ticket_response.reply_to or "")
+            future = self._pending.get(reply_to)
+            if future and not future.done():
+                future.set_result(message)
+            logger.debug("收到响应 type=download_ticket_response reply_to={}", reply_to)
+            return
+
         if payload_type == "error":
             parsed = runtime_codec.parse_error(message.error)
             logger.error(
@@ -275,6 +292,8 @@ class AgentClient:
                     settings.EXECUTOR_ID,
                     settings.API_GRPC_TARGET,
                 )
+                if self.runtime_updater is not None:
+                    await self.runtime_updater.emit_startup_runtime_events(self.send_message)
             return
 
         if payload_type == "assign_task":
@@ -334,6 +353,24 @@ class AgentClient:
             )
             await self.send_message(ack_message)
             self._cache_control_ack(request_id, ack_message)
+            return
+
+        if payload_type == "update_command":
+            if self.runtime_updater is None:
+                await self.send_message(
+                    runtime_codec.build_runtime_update_event_message(
+                        request_id=str(message.update_command.request_id or ""),
+                        component_type=runtime_codec.component_type_to_text(message.update_command.component_type),
+                        component_name=str(message.update_command.component_name or ""),
+                        from_version=str(message.update_command.from_version or ""),
+                        target_version=str(message.update_command.target_version or ""),
+                        phase="failed",
+                        detail="runtime updater is not initialized",
+                        rolled_back=False,
+                    )
+                )
+                return
+            await self.runtime_updater.process_command(message.update_command, self.send_message)
             return
 
         logger.warning("收到未知消息类型: {}", payload_type)

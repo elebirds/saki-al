@@ -13,16 +13,21 @@ import (
 )
 
 type ExecutorSession struct {
-	ExecutorID string
-	Version    string
-	PluginIDs  []string
+	ExecutorID     string
+	Version        string
+	PluginIDs      []string
+	PluginVersions map[string]string
 
-	Busy          bool
-	CurrentTaskID string
-	Status        string
-	IsOnline      bool
-	LastSeen      time.Time
-	LastError     string
+	Busy                  bool
+	CurrentTaskID         string
+	Status                string
+	IsOnline              bool
+	LastSeen              time.Time
+	LastAssignedAt        time.Time
+	LastError             string
+	UpdatePending         bool
+	ActiveUpdateRequestID string
+	UpdateState           *runtimecontrolv1.RuntimeUpdateStateSnapshot
 
 	Queue chan *runtimecontrolv1.RuntimeMessage
 }
@@ -76,6 +81,15 @@ type ExecutorSnapshot struct {
 	PendingStop   int64
 }
 
+type ExecutorRuntimeSnapshot struct {
+	ExecutorID            string
+	Version               string
+	PluginVersions        map[string]string
+	Busy                  bool
+	UpdatePending         bool
+	ActiveUpdateRequestID string
+}
+
 func NewDispatcher() *Dispatcher {
 	return &Dispatcher{
 		sessions:      map[string]*ExecutorSession{},
@@ -92,12 +106,14 @@ func (d *Dispatcher) RegisterExecutor(register *runtimecontrolv1.Register) (*Exe
 	}
 
 	pluginIDs := make([]string, 0, len(register.GetPlugins()))
+	pluginVersions := make(map[string]string, len(register.GetPlugins()))
 	for _, item := range register.GetPlugins() {
 		pluginID := strings.TrimSpace(item.GetPluginId())
 		if pluginID == "" {
 			continue
 		}
 		pluginIDs = append(pluginIDs, pluginID)
+		pluginVersions[pluginID] = strings.TrimSpace(item.GetVersion())
 	}
 	sort.Strings(pluginIDs)
 
@@ -115,11 +131,16 @@ func (d *Dispatcher) RegisterExecutor(register *runtimecontrolv1.Register) (*Exe
 	}
 	existing.Version = register.GetVersion()
 	existing.PluginIDs = pluginIDs
+	existing.PluginVersions = pluginVersions
 	existing.Busy = false
 	existing.CurrentTaskID = ""
-	existing.Status = "idle"
 	existing.IsOnline = true
 	existing.LastSeen = now
+	existing.UpdateState = register.GetUpdateState()
+	if isRuntimeUpdateActive(existing.UpdateState) {
+		existing.ActiveUpdateRequestID = strings.TrimSpace(existing.UpdateState.GetRequestId())
+	}
+	existing.Status = deriveExecutorStatus(existing)
 	return existing, nil
 }
 
@@ -162,12 +183,15 @@ func (d *Dispatcher) HandleHeartbeat(heartbeat *runtimecontrolv1.Heartbeat) erro
 	session.Busy = heartbeat.GetBusy()
 	currentTaskID := strings.TrimSpace(heartbeat.GetCurrentTaskId())
 	session.CurrentTaskID = currentTaskID
-	session.Status = "idle"
-	if session.Busy {
-		session.Status = "busy"
+	session.UpdateState = heartbeat.GetUpdateState()
+	if isRuntimeUpdateActive(session.UpdateState) {
+		session.ActiveUpdateRequestID = strings.TrimSpace(session.UpdateState.GetRequestId())
+	} else if session.UpdateState != nil {
+		session.ActiveUpdateRequestID = ""
 	}
 	session.IsOnline = true
 	session.LastSeen = time.Now().UTC()
+	session.Status = deriveExecutorStatus(session)
 	return nil
 }
 
@@ -187,7 +211,7 @@ func (d *Dispatcher) HandleAck(ack *runtimecontrolv1.Ack) *AssignTaskAckContext 
 				if session := d.sessions[pending.ExecutorID]; session != nil && session.CurrentTaskID == pending.TaskID {
 					session.Busy = false
 					session.CurrentTaskID = ""
-					session.Status = "idle"
+					session.Status = deriveExecutorStatus(session)
 				}
 			}
 			return &AssignTaskAckContext{
@@ -228,7 +252,7 @@ func (d *Dispatcher) PickExecutor(pluginID string) (string, bool) {
 
 	candidates := make([]*ExecutorSession, 0, len(d.sessions))
 	for _, session := range d.sessions {
-		if !session.IsOnline || session.Busy {
+		if !session.IsOnline || session.Busy || session.UpdatePending || strings.TrimSpace(session.ActiveUpdateRequestID) != "" {
 			continue
 		}
 		if !supportsPlugin(session, pluginID) {
@@ -240,7 +264,21 @@ func (d *Dispatcher) PickExecutor(pluginID string) (string, bool) {
 		return "", false
 	}
 	sort.Slice(candidates, func(i, j int) bool {
-		return candidates[i].LastSeen.After(candidates[j].LastSeen)
+		left := candidates[i]
+		right := candidates[j]
+		if !left.LastAssignedAt.Equal(right.LastAssignedAt) {
+			if left.LastAssignedAt.IsZero() {
+				return true
+			}
+			if right.LastAssignedAt.IsZero() {
+				return false
+			}
+			return left.LastAssignedAt.Before(right.LastAssignedAt)
+		}
+		if !left.LastSeen.Equal(right.LastSeen) {
+			return left.LastSeen.After(right.LastSeen)
+		}
+		return left.ExecutorID < right.ExecutorID
 	})
 	return candidates[0].ExecutorID, true
 }
@@ -255,7 +293,7 @@ func (d *Dispatcher) IsExecutorAvailable(executorID string, pluginID string) boo
 	defer d.mu.RUnlock()
 
 	session := d.sessions[executorID]
-	if session == nil || !session.IsOnline || session.Busy {
+	if session == nil || !session.IsOnline || session.Busy || session.UpdatePending || strings.TrimSpace(session.ActiveUpdateRequestID) != "" {
 		return false
 	}
 	return supportsPlugin(session, pluginID)
@@ -292,7 +330,7 @@ func (d *Dispatcher) DispatchTask(executorID string, requestID string, task *run
 	defer d.mu.Unlock()
 
 	session := d.sessions[executorID]
-	if session == nil || !session.IsOnline || session.Busy {
+	if session == nil || !session.IsOnline || session.Busy || session.UpdatePending || strings.TrimSpace(session.ActiveUpdateRequestID) != "" {
 		return false
 	}
 
@@ -306,19 +344,129 @@ func (d *Dispatcher) DispatchTask(executorID string, requestID string, task *run
 	}
 	select {
 	case session.Queue <- message:
+		now := time.Now().UTC()
 		d.pendingAssign[requestID] = PendingAssign{
 			RequestID:  requestID,
 			TaskID:     taskID,
 			ExecutorID: executorID,
-			CreatedAt:  time.Now().UTC(),
+			CreatedAt:  now,
 		}
 		session.Busy = true
 		session.CurrentTaskID = taskID
-		session.Status = "busy"
+		session.LastAssignedAt = now
+		session.Status = deriveExecutorStatus(session)
 		return true
 	default:
 		return false
 	}
+}
+
+func (d *Dispatcher) SetUpdatePending(executorID string, pending bool) {
+	executorID = strings.TrimSpace(executorID)
+	if executorID == "" {
+		return
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	session := d.sessions[executorID]
+	if session == nil {
+		return
+	}
+	session.UpdatePending = pending || strings.TrimSpace(session.ActiveUpdateRequestID) != ""
+	session.Status = deriveExecutorStatus(session)
+}
+
+func (d *Dispatcher) DispatchRuntimeUpdate(executorID string, command *runtimecontrolv1.RuntimeUpdateCommand) bool {
+	executorID = strings.TrimSpace(executorID)
+	if executorID == "" || command == nil {
+		return false
+	}
+	requestID := strings.TrimSpace(command.GetRequestId())
+	if requestID == "" {
+		return false
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	session := d.sessions[executorID]
+	if session == nil || !session.IsOnline || session.Busy || strings.TrimSpace(session.ActiveUpdateRequestID) != "" {
+		return false
+	}
+	message := &runtimecontrolv1.RuntimeMessage{
+		Payload: &runtimecontrolv1.RuntimeMessage_UpdateCommand{
+			UpdateCommand: command,
+		},
+	}
+	select {
+	case session.Queue <- message:
+		session.ActiveUpdateRequestID = requestID
+		session.UpdatePending = true
+		session.UpdateState = &runtimecontrolv1.RuntimeUpdateStateSnapshot{
+			RequestId:         requestID,
+			ComponentType:     command.GetComponentType(),
+			ComponentName:     command.GetComponentName(),
+			FromVersion:       command.GetFromVersion(),
+			TargetVersion:     command.GetTargetVersion(),
+			Phase:             runtimecontrolv1.RuntimeUpdatePhase_RUNTIME_UPDATE_PHASE_QUEUED,
+			Detail:            "update queued",
+			ActivationPending: false,
+			RollbackPending:   false,
+		}
+		session.Status = deriveExecutorStatus(session)
+		return true
+	default:
+		return false
+	}
+}
+
+func (d *Dispatcher) ApplyRuntimeUpdateEvent(executorID string, event *runtimecontrolv1.RuntimeUpdateEvent) {
+	executorID = strings.TrimSpace(executorID)
+	if executorID == "" || event == nil {
+		return
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	session := d.sessions[executorID]
+	if session == nil {
+		return
+	}
+	session.UpdateState = &runtimecontrolv1.RuntimeUpdateStateSnapshot{
+		RequestId:         strings.TrimSpace(event.GetRequestId()),
+		ComponentType:     event.GetComponentType(),
+		ComponentName:     event.GetComponentName(),
+		FromVersion:       event.GetFromVersion(),
+		TargetVersion:     event.GetTargetVersion(),
+		Phase:             event.GetPhase(),
+		Detail:            strings.TrimSpace(event.GetDetail()),
+		ActivationPending: event.GetPhase() == runtimecontrolv1.RuntimeUpdatePhase_RUNTIME_UPDATE_PHASE_ACTIVATING,
+		RollbackPending:   event.GetRolledBack(),
+	}
+	if isRuntimeUpdateTerminal(event.GetPhase()) && strings.TrimSpace(session.ActiveUpdateRequestID) == strings.TrimSpace(event.GetRequestId()) {
+		session.ActiveUpdateRequestID = ""
+	}
+	session.UpdatePending = session.UpdatePending || strings.TrimSpace(session.ActiveUpdateRequestID) != ""
+	session.Status = deriveExecutorStatus(session)
+}
+
+func (d *Dispatcher) GetExecutorRuntimeSnapshot(executorID string) (ExecutorRuntimeSnapshot, bool) {
+	executorID = strings.TrimSpace(executorID)
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	session := d.sessions[executorID]
+	if session == nil {
+		return ExecutorRuntimeSnapshot{}, false
+	}
+	pluginVersions := make(map[string]string, len(session.PluginVersions))
+	for key, value := range session.PluginVersions {
+		pluginVersions[key] = value
+	}
+	return ExecutorRuntimeSnapshot{
+		ExecutorID:            session.ExecutorID,
+		Version:               session.Version,
+		PluginVersions:        pluginVersions,
+		Busy:                  session.Busy,
+		UpdatePending:         session.UpdatePending,
+		ActiveUpdateRequestID: session.ActiveUpdateRequestID,
+	}, true
 }
 
 func (d *Dispatcher) StopTask(taskID string, executionID string, reason string) (string, bool) {
@@ -441,6 +589,46 @@ func (d *Dispatcher) ListExecutors() []ExecutorSnapshot {
 		return items[i].LastSeen.After(items[j].LastSeen)
 	})
 	return items
+}
+
+func deriveExecutorStatus(session *ExecutorSession) string {
+	if session == nil {
+		return "offline"
+	}
+	if !session.IsOnline {
+		return "offline"
+	}
+	if session.Busy {
+		return "busy"
+	}
+	if isRuntimeUpdateActive(session.UpdateState) || strings.TrimSpace(session.ActiveUpdateRequestID) != "" {
+		return "updating"
+	}
+	if session.UpdatePending {
+		return "update_pending"
+	}
+	return "idle"
+}
+
+func isRuntimeUpdateActive(snapshot *runtimecontrolv1.RuntimeUpdateStateSnapshot) bool {
+	if snapshot == nil {
+		return false
+	}
+	if strings.TrimSpace(snapshot.GetRequestId()) == "" {
+		return false
+	}
+	return !isRuntimeUpdateTerminal(snapshot.GetPhase())
+}
+
+func isRuntimeUpdateTerminal(phase runtimecontrolv1.RuntimeUpdatePhase) bool {
+	switch phase {
+	case runtimecontrolv1.RuntimeUpdatePhase_RUNTIME_UPDATE_PHASE_SUCCEEDED,
+		runtimecontrolv1.RuntimeUpdatePhase_RUNTIME_UPDATE_PHASE_FAILED,
+		runtimecontrolv1.RuntimeUpdatePhase_RUNTIME_UPDATE_PHASE_ROLLED_BACK:
+		return true
+	default:
+		return false
+	}
 }
 
 func (d *Dispatcher) GetExecutor(executorID string) (ExecutorSnapshot, bool) {

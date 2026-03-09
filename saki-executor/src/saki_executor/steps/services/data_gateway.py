@@ -6,7 +6,7 @@ from typing import Awaitable, Callable
 
 from saki_executor.agent import codec as runtime_codec
 from saki_executor.grpc_gen import runtime_control_pb2 as pb
-from saki_executor.steps.contracts import ArtifactUploadTicket, FetchedPage
+from saki_executor.steps.contracts import ArtifactDownloadTicket, ArtifactUploadTicket, FetchedPage
 from saki_ir.codec import decode_payload
 from saki_ir.errors import IRError
 from saki_ir.geom import obb_to_vertices_local
@@ -55,6 +55,39 @@ class DataGateway:
             raise RuntimeError(f"unexpected upload ticket response payload: {payload_type}")
         return ArtifactUploadTicket.from_dict(
             runtime_codec.parse_upload_ticket_response(ticket_response.upload_ticket_response)
+        )
+
+    async def request_download_ticket(
+        self,
+        *,
+        task_id: str,
+        source_task_id: str | None,
+        model_id: str | None,
+        artifact_name: str,
+    ) -> ArtifactDownloadTicket:
+        request_message = self._required_request_message()
+        ticket_response = await request_message(
+            runtime_codec.build_download_ticket_request_message(
+                request_id=str(uuid.uuid4()),
+                task_id=task_id,
+                execution_id=self._current_execution_id(),
+                source_task_id=source_task_id,
+                model_id=model_id,
+                artifact_name=artifact_name,
+            )
+        )
+        if isinstance(ticket_response, list):
+            if not ticket_response:
+                raise RuntimeError("download ticket 请求返回空响应")
+            ticket_response = ticket_response[0]
+        payload_type = ticket_response.WhichOneof("payload")
+        if payload_type == "error":
+            error_payload = runtime_codec.parse_error(ticket_response.error)
+            raise RuntimeError(str(error_payload.get("error") or "download ticket request failed"))
+        if payload_type != "download_ticket_response":
+            raise RuntimeError(f"unexpected download ticket response payload: {payload_type}")
+        return ArtifactDownloadTicket.from_dict(
+            runtime_codec.parse_download_ticket_response(ticket_response.download_ticket_response)
         )
 
     async def fetch_all(

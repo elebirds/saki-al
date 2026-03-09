@@ -75,7 +75,7 @@ func TestPickExecutorForStepDispatchWithLoopPreferredExecutorAvailable(t *testin
 	}
 }
 
-func TestPickExecutorForStepDispatchWithLoopPreferredExecutorUnavailableNoFallback(t *testing.T) {
+func TestPickExecutorForStepDispatchWithLoopPreferredExecutorUnavailableFallsBack(t *testing.T) {
 	dispatcher := dispatch.NewDispatcher()
 	registerExecutorForTest(t, dispatcher, "executor-a", "demo_det_v1")
 	registerExecutorForTest(t, dispatcher, "executor-b", "demo_det_v1")
@@ -88,18 +88,18 @@ func TestPickExecutorForStepDispatchWithLoopPreferredExecutorUnavailableNoFallba
 		"",
 		"executor-a",
 	)
-	if !blockedByLoopBinding {
-		t.Fatal("preferred executor should be blocked when unavailable")
-	}
 	if deferredByAffinity {
-		t.Fatal("strict preferred dispatch should not use affinity defer path")
+		t.Fatal("preferred executor should fallback immediately when wait window is 0")
 	}
-	if executorID != "" {
-		t.Fatalf("strict preferred dispatch should not fallback, got=%q", executorID)
+	if blockedByLoopBinding {
+		t.Fatal("loop preferred executor is now a soft hint, should not hard block")
+	}
+	if executorID != "executor-b" {
+		t.Fatalf("soft preferred dispatch should fallback to available executor, got=%q", executorID)
 	}
 }
 
-func TestPickExecutorForStepDispatchWithLoopPreferredExecutorUnsupportedPluginNoFallback(t *testing.T) {
+func TestPickExecutorForStepDispatchWithLoopPreferredExecutorUnsupportedPluginFallsBack(t *testing.T) {
 	dispatcher := dispatch.NewDispatcher()
 	registerExecutorForTest(t, dispatcher, "executor-a", "other_plugin")
 	registerExecutorForTest(t, dispatcher, "executor-b", "demo_det_v1")
@@ -111,14 +111,14 @@ func TestPickExecutorForStepDispatchWithLoopPreferredExecutorUnsupportedPluginNo
 		"",
 		"executor-a",
 	)
-	if !blockedByLoopBinding {
-		t.Fatal("preferred executor should be blocked when plugin unsupported")
-	}
 	if deferredByAffinity {
-		t.Fatal("strict preferred dispatch should not use affinity defer path")
+		t.Fatal("preferred executor should fallback immediately when wait window is 0")
 	}
-	if executorID != "" {
-		t.Fatalf("strict preferred dispatch should not fallback, got=%q", executorID)
+	if blockedByLoopBinding {
+		t.Fatal("loop preferred executor is now a soft hint, should not hard block")
+	}
+	if executorID != "executor-b" {
+		t.Fatalf("soft preferred dispatch should fallback to available executor, got=%q", executorID)
 	}
 }
 

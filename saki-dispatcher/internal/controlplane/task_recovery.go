@@ -35,6 +35,21 @@ type inFlightRecoveryCandidate struct {
 	ExecutorCurrentTaskID string
 }
 
+type terminalTaskResultRecoveryCandidate struct {
+	LoopID                uuid.UUID
+	RoundID               uuid.UUID
+	LoopLifecycle         db.Looplifecycle
+	LoopPhase             db.Loopphase
+	LastConfirmedCommitID *uuid.UUID
+	StepID                uuid.UUID
+	StepType              db.Steptype
+	TaskID                uuid.UUID
+	CurrentExecutionID    uuid.UUID
+	TaskStatus            db.Runtimetaskstatus
+	TaskUpdatedAt         time.Time
+	TaskEndedAt           *time.Time
+}
+
 func assignAckActionForReason(reason runtimecontrolv1.AckReason) assignAckAction {
 	switch reason {
 	case runtimecontrolv1.AckReason_ACK_REASON_EXECUTOR_BUSY, runtimecontrolv1.AckReason_ACK_REASON_STOPPING:
@@ -194,6 +209,42 @@ func (s *Service) recoverStaleInFlightTasks(ctx context.Context, limit int) erro
 	return nil
 }
 
+func (s *Service) recoverTerminalTasksWithoutMaterializedResult(ctx context.Context, limit int) error {
+	if !s.dbEnabled() {
+		return nil
+	}
+	rows, err := s.queries.ListLatestRoundTerminalTaskResultRecoveryCandidates(ctx, int32(max(1, limit)))
+	if err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	byRound := make(map[uuid.UUID][]terminalTaskResultRecoveryCandidate, len(rows))
+	roundOrder := make([]uuid.UUID, 0, len(rows))
+	for _, row := range rows {
+		item := mapTerminalTaskResultRecoveryCandidate(row, now)
+		if !s.shouldRecoverTerminalTaskResultCandidate(now, item) {
+			continue
+		}
+		if _, exists := byRound[item.RoundID]; !exists {
+			roundOrder = append(roundOrder, item.RoundID)
+		}
+		byRound[item.RoundID] = append(byRound[item.RoundID], item)
+	}
+	for _, roundID := range roundOrder {
+		items := byRound[roundID]
+		if len(items) == 0 {
+			continue
+		}
+		if err := s.recoverLatestRoundTerminalTasksWithoutResult(ctx, items); err != nil {
+			s.logger.Warn().
+				Err(err).
+				Str("round_id", roundID.String()).
+				Msg("终态无结果任务自动收敛失败")
+		}
+	}
+	return nil
+}
+
 func (s *Service) recoverInFlightTasksByExecutor(ctx context.Context, executorID string, reason string) error {
 	if !s.dbEnabled() {
 		return nil
@@ -296,6 +347,102 @@ func (s *Service) recoverInFlightTaskByID(
 			Msg("写入 in-flight recovery 系统状态事件失败")
 	}
 	s.projectAndRefreshRoundBestEffortTx(ctx, tx, taskID)
+	return tx.Commit(ctx)
+}
+
+func (s *Service) recoverLatestRoundTerminalTasksWithoutResult(
+	ctx context.Context,
+	items []terminalTaskResultRecoveryCandidate,
+) error {
+	if len(items) == 0 {
+		return nil
+	}
+	loopID := items[0].LoopID
+	roundID := items[0].RoundID
+	tx, err := s.beginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	loop, found, err := s.lockLoop(ctx, tx, loopID)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return tx.Commit(ctx)
+	}
+	if loop.Lifecycle != lifecycleRunning && loop.Lifecycle != lifecycleFailed {
+		return tx.Commit(ctx)
+	}
+	latestRound, hasRound, err := s.getLatestRoundByLoopTx(ctx, tx, loop.ID)
+	if err != nil {
+		return err
+	}
+	if !hasRound || latestRound.ID != roundID {
+		return tx.Commit(ctx)
+	}
+	stateRows, err := s.qtx(tx).CountTaskStatesByRound(ctx, roundID)
+	if err != nil {
+		return err
+	}
+	if roundCountsHaveInFlight(stateRows) {
+		return tx.Commit(ctx)
+	}
+
+	reasonText := terminalReasonTaskResultNotMaterialized
+	changedTaskIDs := make([]uuid.UUID, 0, len(items))
+	for _, item := range items {
+		affected, err := s.qtx(tx).RecoverTerminalTaskWithoutResultToFailed(ctx, db.RecoverTerminalTaskWithoutResultToFailedParams{
+			RecoveryReason:     reasonText,
+			LastError:          toPGText(reasonText),
+			TaskID:             item.TaskID,
+			CurrentExecutionID: item.CurrentExecutionID,
+			FromStatus:         item.TaskStatus,
+		})
+		if err != nil {
+			return err
+		}
+		if affected == 0 {
+			continue
+		}
+		changedTaskIDs = append(changedTaskIDs, item.TaskID)
+		if err := s.insertSystemTaskStatusEventTx(ctx, tx, item.TaskID, taskFailed, reasonText); err != nil {
+			s.logger.Warn().
+				Err(err).
+				Str("task_id", item.TaskID.String()).
+				Msg("写入终态无结果恢复系统事件失败")
+		}
+	}
+	if len(changedTaskIDs) == 0 {
+		return tx.Commit(ctx)
+	}
+	for _, taskID := range changedTaskIDs {
+		if err := s.projectTaskToStepTx(ctx, tx, taskID); err != nil {
+			return err
+		}
+	}
+	roundStatus, err := s.refreshRoundAggregateTx(ctx, tx, roundID)
+	if err != nil {
+		return err
+	}
+	if roundStatus == roundFailed {
+		if err := s.qtx(tx).UpdateRoundStateWithReason(ctx, db.UpdateRoundStateWithReasonParams{
+			State:          roundFailed,
+			TerminalReason: toPGText(reasonText),
+			RoundID:        roundID,
+		}); err != nil {
+			return err
+		}
+		if err := s.updateLoopRuntime(ctx, tx, loop.ID, lifecycleFailed, loop.Phase, reasonText, loop.LastConfirmedCommitID, nil); err != nil {
+			return err
+		}
+	}
+	s.logger.Warn().
+		Str("loop_id", loop.ID.String()).
+		Str("round_id", roundID.String()).
+		Int("recovered_task_count", len(changedTaskIDs)).
+		Msg("检测到终态无结果任务，已收敛为 FAILED")
 	return tx.Commit(ctx)
 }
 
@@ -465,6 +612,24 @@ func (s *Service) projectAndRefreshRoundBestEffortTx(ctx context.Context, tx pgx
 	}
 }
 
+func (s *Service) shouldRecoverTerminalTaskResultCandidate(
+	now time.Time,
+	item terminalTaskResultRecoveryCandidate,
+) bool {
+	if item.TaskStatus == "" || !isTerminalTaskLifecycle(item.TaskStatus) {
+		return false
+	}
+	refTime := item.TaskUpdatedAt.UTC()
+	if item.TaskEndedAt != nil && !item.TaskEndedAt.IsZero() {
+		refTime = item.TaskEndedAt.UTC()
+	}
+	grace := s.terminalResultRecoveryGrace
+	if grace <= 0 {
+		grace = 2 * time.Minute
+	}
+	return now.Sub(refTime) >= grace
+}
+
 func mapInFlightRecoveryCandidate(row db.ListInFlightTaskRecoveryCandidatesRow, now time.Time) inFlightRecoveryCandidate {
 	item := inFlightRecoveryCandidate{
 		TaskID:                row.TaskID,
@@ -481,6 +646,40 @@ func mapInFlightRecoveryCandidate(row db.ListInFlightTaskRecoveryCandidatesRow, 
 		item.TaskUpdatedAt = updatedAt.UTC()
 	}
 	return item
+}
+
+func mapTerminalTaskResultRecoveryCandidate(
+	row db.ListLatestRoundTerminalTaskResultRecoveryCandidatesRow,
+	now time.Time,
+) terminalTaskResultRecoveryCandidate {
+	item := terminalTaskResultRecoveryCandidate{
+		LoopID:                row.LoopID,
+		RoundID:               row.RoundID,
+		LoopLifecycle:         row.LoopLifecycle,
+		LoopPhase:             row.LoopPhase,
+		LastConfirmedCommitID: row.LastConfirmedCommitID,
+		StepID:                row.StepID,
+		StepType:              row.StepType,
+		TaskID:                row.TaskID,
+		CurrentExecutionID:    row.CurrentExecutionID,
+		TaskStatus:            row.TaskStatus,
+		TaskUpdatedAt:         now,
+		TaskEndedAt:           timestampPtr(row.TaskEndedAt),
+	}
+	if updatedAt := timestampPtr(row.TaskUpdatedAt); updatedAt != nil {
+		item.TaskUpdatedAt = updatedAt.UTC()
+	}
+	return item
+}
+
+func roundCountsHaveInFlight(rows []db.CountTaskStatesByRoundRow) bool {
+	for _, row := range rows {
+		switch row.TaskStatus {
+		case taskDispatching, taskSyncingEnv, taskProbingRt, taskBindingDev, taskRunning, taskRetrying:
+			return true
+		}
+	}
+	return false
 }
 
 func isPreRunTaskStatus(status db.Runtimetaskstatus) bool {

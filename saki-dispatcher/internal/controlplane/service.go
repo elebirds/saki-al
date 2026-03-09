@@ -32,25 +32,26 @@ type ControlplaneQuerier interface {
 }
 
 type Service struct {
-	pool                    *pgxpool.Pool
-	queries                 ControlplaneQuerier
-	dispatcher              *dispatch.Dispatcher
-	domainClient            *runtime_domain_client.Client
-	dispatchLockKey         int64
-	simCooldown             time.Duration
-	stopForceCancelAfter    time.Duration
-	heartbeatTimeout        time.Duration
-	inFlightPreRunTimeout   time.Duration
-	inFlightRunningTimeout  time.Duration
-	predictionTTLDays       int
-	predictionTTLKeepRounds int
-	roundAffinityWait       time.Duration
-	strictModelHandoff      bool
-	lastTTLCleanupAt        time.Time
-	ttlCleanupInterval      time.Duration
-	logger                  zerolog.Logger
-	laneStateMu             sync.Mutex
-	laneState               map[string]dispatchLaneState
+	pool                        *pgxpool.Pool
+	queries                     ControlplaneQuerier
+	dispatcher                  *dispatch.Dispatcher
+	domainClient                *runtime_domain_client.Client
+	dispatchLockKey             int64
+	simCooldown                 time.Duration
+	stopForceCancelAfter        time.Duration
+	heartbeatTimeout            time.Duration
+	inFlightPreRunTimeout       time.Duration
+	inFlightRunningTimeout      time.Duration
+	terminalResultRecoveryGrace time.Duration
+	predictionTTLDays           int
+	predictionTTLKeepRounds     int
+	roundAffinityWait           time.Duration
+	strictModelHandoff          bool
+	lastTTLCleanupAt            time.Time
+	ttlCleanupInterval          time.Duration
+	logger                      zerolog.Logger
+	laneStateMu                 sync.Mutex
+	laneState                   map[string]dispatchLaneState
 }
 
 type dispatchLaneState struct {
@@ -109,23 +110,24 @@ func NewService(
 	}
 
 	return &Service{
-		pool:                    pool,
-		queries:                 queries,
-		dispatcher:              dispatcher,
-		domainClient:            domainClient,
-		dispatchLockKey:         dispatchLockKey,
-		simCooldown:             time.Duration(simulationCooldownSec) * time.Second,
-		stopForceCancelAfter:    time.Duration(stoppingForceCancelSec) * time.Second,
-		heartbeatTimeout:        time.Duration(heartbeatTimeoutSec) * time.Second,
-		inFlightPreRunTimeout:   time.Duration(inFlightPreRunTimeoutSec) * time.Second,
-		inFlightRunningTimeout:  time.Duration(inFlightRunningTimeoutSec) * time.Second,
-		predictionTTLDays:       predictionTTLDays,
-		predictionTTLKeepRounds: predictionTTLKeepRounds,
-		roundAffinityWait:       time.Duration(roundAffinityWaitSec) * time.Second,
-		strictModelHandoff:      strictTrainModelHandoff,
-		ttlCleanupInterval:      time.Hour,
-		logger:                  logger,
-		laneState:               map[string]dispatchLaneState{},
+		pool:                        pool,
+		queries:                     queries,
+		dispatcher:                  dispatcher,
+		domainClient:                domainClient,
+		dispatchLockKey:             dispatchLockKey,
+		simCooldown:                 time.Duration(simulationCooldownSec) * time.Second,
+		stopForceCancelAfter:        time.Duration(stoppingForceCancelSec) * time.Second,
+		heartbeatTimeout:            time.Duration(heartbeatTimeoutSec) * time.Second,
+		inFlightPreRunTimeout:       time.Duration(inFlightPreRunTimeoutSec) * time.Second,
+		inFlightRunningTimeout:      time.Duration(inFlightRunningTimeoutSec) * time.Second,
+		terminalResultRecoveryGrace: 2 * time.Minute,
+		predictionTTLDays:           predictionTTLDays,
+		predictionTTLKeepRounds:     predictionTTLKeepRounds,
+		roundAffinityWait:           time.Duration(roundAffinityWaitSec) * time.Second,
+		strictModelHandoff:          strictTrainModelHandoff,
+		ttlCleanupInterval:          time.Hour,
+		logger:                      logger,
+		laneState:                   map[string]dispatchLaneState{},
 	}
 }
 

@@ -78,3 +78,22 @@ func canApplyTaskStatusTransition(from db.Runtimetaskstatus, to db.Runtimetaskst
 	}
 	return taskStatusRank(to) >= taskStatusRank(from)
 }
+
+func canHydrateTaskResult(from db.Runtimetaskstatus, to db.Runtimetaskstatus) (allowed bool, conflict bool) {
+	if to == "" {
+		return false, false
+	}
+	if from == "" {
+		return true, false
+	}
+	if !isTerminalTaskLifecycle(to) {
+		return false, false
+	}
+	if !isTerminalTaskLifecycle(from) {
+		return true, false
+	}
+	if from == to {
+		return true, false
+	}
+	return false, true
+}

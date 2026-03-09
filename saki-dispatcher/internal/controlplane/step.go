@@ -57,6 +57,9 @@ func (s *Service) dispatchPending(ctx context.Context, limit int) (int, error) {
 	if err := s.recoverStaleInFlightTasks(ctx, max(64, limit*2)); err != nil {
 		return 0, err
 	}
+	if err := s.recoverTerminalTasksWithoutMaterializedResult(ctx, max(64, limit*2)); err != nil {
+		return 0, err
+	}
 	maintenanceMode, err := s.getRuntimeMaintenanceMode(ctx)
 	if err != nil {
 		return 0, err
@@ -1107,8 +1110,24 @@ func (s *Service) persistTaskResultTx(
 	if !ok {
 		return false, nil
 	}
-	if !canApplyTaskStatusTransition(currentStatus, targetTaskStatus) {
+	allowed, conflict := canHydrateTaskResult(currentStatus, targetTaskStatus)
+	if !allowed {
+		if conflict {
+			s.logger.Warn().
+				Str("task_id", taskID.String()).
+				Str("execution_id", executionID.String()).
+				Str("current_status", string(currentStatus)).
+				Str("result_status", string(targetTaskStatus)).
+				Msg("conflicting_terminal_task_result_rejected")
+		}
 		return false, nil
+	}
+	if isTerminalTaskLifecycle(currentStatus) && currentStatus == targetTaskStatus {
+		s.logger.Info().
+			Str("task_id", taskID.String()).
+			Str("execution_id", executionID.String()).
+			Str("status", string(targetTaskStatus)).
+			Msg("task_result_hydrated_after_terminal_event")
 	}
 	paramsMap, err := parseJSONObject(taskRow.ResolvedParamsJSON)
 	if err != nil {

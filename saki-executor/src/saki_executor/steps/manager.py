@@ -349,10 +349,7 @@ class TaskManager:
             raise RuntimeError("任务管理器发送通道未配置")
         self.executor_state = ExecutorState.FINALIZING
         reporter = self._ensure_reporter(request)
-        await self._push_event(
-            request.task_id,
-            reporter.status(TaskStatus.CANCELLED.value, "任务已取消"),
-        )
+        reporter.status(TaskStatus.CANCELLED.value, "任务已取消")
         await self._send_message(
             runtime_codec.build_task_result_message(
                 request_id=str(uuid.uuid4()),
@@ -380,10 +377,7 @@ class TaskManager:
                 f"(stage={TaskStage.EXECUTE.value})"
             )
         reporter = self._ensure_reporter(request)
-        await self._push_event(
-            request.task_id,
-            reporter.status(TaskStatus.FAILED.value, error_message),
-        )
+        reporter.status(TaskStatus.FAILED.value, error_message)
         await self._send_message(
             runtime_codec.build_task_result_message(
                 request_id=str(uuid.uuid4()),

@@ -63,9 +63,10 @@ const (
 	stepCancelled   db.Stepstatus = db.StepstatusCANCELLED
 	stepSkipped     db.Stepstatus = db.StepstatusSKIPPED
 
-	terminalReasonSuccess     = "SUCCESS"
-	terminalReasonSystemError = "SYSTEM_ERROR"
-	terminalReasonUserStop    = "USER_STOP"
+	terminalReasonSuccess                   = "SUCCESS"
+	terminalReasonSystemError               = "SYSTEM_ERROR"
+	terminalReasonTaskResultNotMaterialized = "TASK_RESULT_NOT_MATERIALIZED"
+	terminalReasonUserStop                  = "USER_STOP"
 
 	pauseReasonUser        db.Looppausereason = db.LooppausereasonUSER
 	pauseReasonMaintenance db.Looppausereason = db.LooppausereasonMAINTENANCE

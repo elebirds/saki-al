@@ -350,7 +350,7 @@ class TaskPipelineRunner:
         warnings: list[str] = []
         if optional_upload_failures:
             warnings.append("可选制品上传失败: " + "; ".join(optional_upload_failures))
-        await self._manager.push_task_event(self._task_id, reporter.status(TaskStatus.SUCCEEDED.value, "任务成功"))
+        reporter.status(TaskStatus.SUCCEEDED.value, "任务成功")
         await self._send_result(
             status=TaskStatus.SUCCEEDED,
             metrics=metrics,

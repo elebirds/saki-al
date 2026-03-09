@@ -571,6 +571,120 @@ func (q *Queries) InsertStep(ctx context.Context, arg InsertStepParams) error {
 	return err
 }
 
+const listLatestRoundTerminalTaskResultRecoveryCandidates = `-- name: ListLatestRoundTerminalTaskResultRecoveryCandidates :many
+WITH latest_rounds AS (
+  SELECT DISTINCT ON (r.loop_id)
+    r.loop_id,
+    r.id AS round_id
+  FROM round r
+  ORDER BY r.loop_id, r.round_index DESC, r.attempt_index DESC, r.created_at DESC
+)
+SELECT
+  lr.loop_id,
+  lr.round_id,
+  l.lifecycle AS loop_lifecycle,
+  l.phase AS loop_phase,
+  l.last_confirmed_commit_id,
+  s.id AS step_id,
+  s.step_type,
+  t.id AS task_id,
+  t.current_execution_id,
+  t.status AS task_status,
+  t.updated_at AS task_updated_at,
+  t.ended_at AS task_ended_at
+FROM latest_rounds lr
+JOIN loop l ON l.id = lr.loop_id
+JOIN step s ON s.round_id = lr.round_id
+JOIN task t ON t.id = s.task_id
+WHERE l.lifecycle IN (
+    'RUNNING'::looplifecycle,
+    'FAILED'::looplifecycle
+  )
+  AND t.task_type IN (
+    'TRAIN'::runtimetasktype,
+    'EVAL'::runtimetasktype,
+    'SCORE'::runtimetasktype,
+    'PREDICT'::runtimetasktype,
+    'CUSTOM'::runtimetasktype
+  )
+  AND t.status IN (
+    'SUCCEEDED'::runtimetaskstatus,
+    'FAILED'::runtimetaskstatus,
+    'CANCELLED'::runtimetaskstatus,
+    'SKIPPED'::runtimetaskstatus
+  )
+  AND NOT (COALESCE(t.resolved_params, '{}'::jsonb) ? '_result_completed_at')
+  AND NOT (COALESCE(t.resolved_params, '{}'::jsonb) ? '_result_recovery_reason')
+  AND (
+    t.status <> 'SUCCEEDED'::runtimetaskstatus
+    OR t.result_ready_at IS NULL
+  )
+  AND NOT EXISTS (
+    SELECT 1
+    FROM step s2
+    JOIN task t2 ON t2.id = s2.task_id
+    WHERE s2.round_id = lr.round_id
+      AND t2.status IN (
+        'DISPATCHING'::runtimetaskstatus,
+        'SYNCING_ENV'::runtimetaskstatus,
+        'PROBING_RUNTIME'::runtimetaskstatus,
+        'BINDING_DEVICE'::runtimetaskstatus,
+        'RUNNING'::runtimetaskstatus,
+        'RETRYING'::runtimetaskstatus
+      )
+  )
+ORDER BY COALESCE(t.ended_at, t.updated_at) ASC, t.id ASC
+LIMIT $1
+`
+
+type ListLatestRoundTerminalTaskResultRecoveryCandidatesRow struct {
+	LoopID                uuid.UUID
+	RoundID               uuid.UUID
+	LoopLifecycle         Looplifecycle
+	LoopPhase             Loopphase
+	LastConfirmedCommitID *uuid.UUID
+	StepID                uuid.UUID
+	StepType              Steptype
+	TaskID                uuid.UUID
+	CurrentExecutionID    uuid.UUID
+	TaskStatus            Runtimetaskstatus
+	TaskUpdatedAt         pgtype.Timestamptz
+	TaskEndedAt           pgtype.Timestamptz
+}
+
+func (q *Queries) ListLatestRoundTerminalTaskResultRecoveryCandidates(ctx context.Context, limitCount int32) ([]ListLatestRoundTerminalTaskResultRecoveryCandidatesRow, error) {
+	rows, err := q.db.Query(ctx, listLatestRoundTerminalTaskResultRecoveryCandidates, limitCount)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListLatestRoundTerminalTaskResultRecoveryCandidatesRow
+	for rows.Next() {
+		var i ListLatestRoundTerminalTaskResultRecoveryCandidatesRow
+		if err := rows.Scan(
+			&i.LoopID,
+			&i.RoundID,
+			&i.LoopLifecycle,
+			&i.LoopPhase,
+			&i.LastConfirmedCommitID,
+			&i.StepID,
+			&i.StepType,
+			&i.TaskID,
+			&i.CurrentExecutionID,
+			&i.TaskStatus,
+			&i.TaskUpdatedAt,
+			&i.TaskEndedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listLoopStoppableSteps = `-- name: ListLoopStoppableSteps :many
 SELECT
   s.id AS id,

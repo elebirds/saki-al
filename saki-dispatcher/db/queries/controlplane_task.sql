@@ -251,6 +251,27 @@ SET status = sqlc.arg(status)::runtimetaskstatus,
     updated_at = now()
 WHERE id = sqlc.arg(task_id)::uuid;
 
+-- name: RecoverTerminalTaskWithoutResultToFailed :execrows
+UPDATE task
+SET status = 'FAILED'::runtimetaskstatus,
+    resolved_params = jsonb_set(
+      COALESCE(resolved_params, '{}'::jsonb),
+      '{_result_recovery_reason}',
+      to_jsonb(sqlc.arg(recovery_reason)::text),
+      true
+    ),
+    started_at = COALESCE(started_at, now()),
+    ended_at = COALESCE(ended_at, now()),
+    assigned_executor_id = NULL,
+    last_error = sqlc.arg(last_error),
+    result_ready_at = NULL,
+    updated_at = now()
+WHERE id = sqlc.arg(task_id)::uuid
+  AND current_execution_id = sqlc.arg(current_execution_id)::uuid
+  AND status = sqlc.arg(from_status)::runtimetaskstatus
+  AND NOT (COALESCE(resolved_params, '{}'::jsonb) ? '_result_completed_at')
+  AND NOT (COALESCE(resolved_params, '{}'::jsonb) ? '_result_recovery_reason');
+
 -- name: CancelTaskByID :execrows
 UPDATE task
 SET status = 'CANCELLED'::runtimetaskstatus,

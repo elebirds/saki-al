@@ -675,6 +675,50 @@ func (q *Queries) RecoverStaleDispatchingTaskToReady(ctx context.Context, arg Re
 	return result.RowsAffected(), nil
 }
 
+const recoverTerminalTaskWithoutResultToFailed = `-- name: RecoverTerminalTaskWithoutResultToFailed :execrows
+UPDATE task
+SET status = 'FAILED'::runtimetaskstatus,
+    resolved_params = jsonb_set(
+      COALESCE(resolved_params, '{}'::jsonb),
+      '{_result_recovery_reason}',
+      to_jsonb($1::text),
+      true
+    ),
+    started_at = COALESCE(started_at, now()),
+    ended_at = COALESCE(ended_at, now()),
+    assigned_executor_id = NULL,
+    last_error = $2,
+    result_ready_at = NULL,
+    updated_at = now()
+WHERE id = $3::uuid
+  AND current_execution_id = $4::uuid
+  AND status = $5::runtimetaskstatus
+  AND NOT (COALESCE(resolved_params, '{}'::jsonb) ? '_result_completed_at')
+  AND NOT (COALESCE(resolved_params, '{}'::jsonb) ? '_result_recovery_reason')
+`
+
+type RecoverTerminalTaskWithoutResultToFailedParams struct {
+	RecoveryReason     string
+	LastError          pgtype.Text
+	TaskID             uuid.UUID
+	CurrentExecutionID uuid.UUID
+	FromStatus         Runtimetaskstatus
+}
+
+func (q *Queries) RecoverTerminalTaskWithoutResultToFailed(ctx context.Context, arg RecoverTerminalTaskWithoutResultToFailedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, recoverTerminalTaskWithoutResultToFailed,
+		arg.RecoveryReason,
+		arg.LastError,
+		arg.TaskID,
+		arg.CurrentExecutionID,
+		arg.FromStatus,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const resetDispatchingTaskToReadyByAck = `-- name: ResetDispatchingTaskToReadyByAck :execrows
 UPDATE task
 SET status = 'READY'::runtimetaskstatus,

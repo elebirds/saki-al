@@ -1022,6 +1022,7 @@ async def test_startup_status_events_skip_pending(tmp_path: Path):
         pb.RUNNING,
     ]
     assert pb.PENDING not in status_codes
+    assert pb.SUCCEEDED not in status_codes
 
 
 @pytest.mark.anyio
@@ -1081,6 +1082,7 @@ async def test_syncing_env_failure_stops_before_runtime_probe(tmp_path: Path, mo
     ]
     assert status_codes[:2] == [pb.DISPATCHING, pb.SYNCING_ENV]
     assert pb.PROBING_RUNTIME not in status_codes
+    assert pb.FAILED not in status_codes
     result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
     assert len(result_messages) == 1
     assert result_messages[0].task_result.status == pb.FAILED
@@ -1140,6 +1142,7 @@ async def test_runtime_probe_failure_stops_before_binding(tmp_path: Path, monkey
     ]
     assert status_codes[:3] == [pb.DISPATCHING, pb.SYNCING_ENV, pb.PROBING_RUNTIME]
     assert pb.BINDING_DEVICE not in status_codes
+    assert pb.FAILED not in status_codes
     result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
     assert len(result_messages) == 1
     assert result_messages[0].task_result.status == pb.FAILED
@@ -2196,3 +2199,10 @@ async def test_stop_task_forces_cancelled_result(tmp_path: Path):
     result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
     assert len(result_messages) == 1
     assert result_messages[0].task_result.status == pb.CANCELLED
+    status_codes = [
+        message.task_event.status_event.status
+        for message in sent_messages
+        if message.WhichOneof("payload") == "task_event"
+        and message.task_event.WhichOneof("event_payload") == "status_event"
+    ]
+    assert pb.CANCELLED not in status_codes

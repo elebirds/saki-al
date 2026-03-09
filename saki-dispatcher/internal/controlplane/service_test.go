@@ -787,6 +787,71 @@ func TestDependencyRowsReadyRequiresSucceededAndMaterialized(t *testing.T) {
 	}
 }
 
+func TestCanHydrateTaskResult(t *testing.T) {
+	allowed, conflict := canHydrateTaskResult(taskRunning, taskSucceeded)
+	if !allowed || conflict {
+		t.Fatalf("running -> succeeded result should be allowed, got allowed=%v conflict=%v", allowed, conflict)
+	}
+
+	allowed, conflict = canHydrateTaskResult(taskSucceeded, taskSucceeded)
+	if !allowed || conflict {
+		t.Fatalf("same terminal result should hydrate idempotently, got allowed=%v conflict=%v", allowed, conflict)
+	}
+
+	allowed, conflict = canHydrateTaskResult(taskFailed, taskSucceeded)
+	if allowed || !conflict {
+		t.Fatalf("conflicting terminal result should be rejected, got allowed=%v conflict=%v", allowed, conflict)
+	}
+
+	allowed, conflict = canHydrateTaskResult(taskSucceeded, taskRunning)
+	if allowed || conflict {
+		t.Fatalf("non-terminal task result should be rejected, got allowed=%v conflict=%v", allowed, conflict)
+	}
+}
+
+func TestShouldRecoverTerminalTaskResultCandidate(t *testing.T) {
+	service := &Service{terminalResultRecoveryGrace: 2 * time.Minute}
+	now := time.Now().UTC()
+
+	if !service.shouldRecoverTerminalTaskResultCandidate(now, terminalTaskResultRecoveryCandidate{
+		TaskStatus:    taskSucceeded,
+		TaskUpdatedAt: now.Add(-3 * time.Minute),
+	}) {
+		t.Fatal("stale terminal task without result should be recoverable")
+	}
+
+	if service.shouldRecoverTerminalTaskResultCandidate(now, terminalTaskResultRecoveryCandidate{
+		TaskStatus:    taskSucceeded,
+		TaskUpdatedAt: now.Add(-30 * time.Second),
+	}) {
+		t.Fatal("fresh terminal task should not be recovered before grace window")
+	}
+
+	endedAt := now.Add(-5 * time.Minute)
+	if !service.shouldRecoverTerminalTaskResultCandidate(now, terminalTaskResultRecoveryCandidate{
+		TaskStatus:    taskFailed,
+		TaskUpdatedAt: now.Add(-30 * time.Second),
+		TaskEndedAt:   &endedAt,
+	}) {
+		t.Fatal("ended_at should participate in stale recovery decision")
+	}
+}
+
+func TestRoundCountsHaveInFlight(t *testing.T) {
+	rows := []db.CountTaskStatesByRoundRow{
+		{TaskStatus: taskSucceeded, Count: 1},
+		{TaskStatus: taskPending, Count: 2},
+	}
+	if roundCountsHaveInFlight(rows) {
+		t.Fatal("pending tasks should not be treated as in-flight")
+	}
+
+	rows = append(rows, db.CountTaskStatesByRoundRow{TaskStatus: taskRunning, Count: 1})
+	if !roundCountsHaveInFlight(rows) {
+		t.Fatal("running tasks should be treated as in-flight")
+	}
+}
+
 func TestIsOrchestratorRetryableErrorIncludesSelectCandidatesNotReady(t *testing.T) {
 	wrapped := fmt.Errorf("wrapped: %w", errSelectCandidatesNotReady)
 	if !isOrchestratorRetryableError(wrapped) {

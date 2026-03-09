@@ -361,6 +361,7 @@ def build_data_request_message(
     *,
     request_id: str,
     task_id: str | None = None,
+    execution_id: str | None = None,
     query_type: str,
     project_id: str,
     commit_id: str,
@@ -374,6 +375,7 @@ def build_data_request_message(
         data_request=pb.DataRequest(
             request_id=request_id,
             task_id=task_id_value,
+            execution_id=str(execution_id or ""),
             query_type=text_to_query_type(query_type),
             project_id=project_id,
             commit_id=commit_id,
@@ -389,6 +391,7 @@ def build_upload_ticket_request_message(
     *,
     request_id: str,
     task_id: str | None = None,
+    execution_id: str | None = None,
     artifact_name: str,
     content_type: str,
 ) -> pb.RuntimeMessage:
@@ -397,6 +400,7 @@ def build_upload_ticket_request_message(
         upload_ticket_request=pb.UploadTicketRequest(
             request_id=request_id,
             task_id=task_id_value,
+            execution_id=str(execution_id or ""),
             artifact_name=artifact_name,
             content_type=content_type,
         )
@@ -407,6 +411,7 @@ def build_task_event_message(
     *,
     request_id: str,
     task_id: str,
+    execution_id: str | None = None,
     seq: int,
     ts: int,
     event_type: str,
@@ -416,6 +421,7 @@ def build_task_event_message(
     task_event = pb.TaskEvent(
         request_id=request_id,
         task_id=task_id,
+        execution_id=str(execution_id or ""),
         seq=int(seq),
         ts=int(ts),
     )
@@ -470,19 +476,23 @@ def build_task_result_message(
     *,
     request_id: str,
     task_id: str,
+    execution_id: str | None = None,
     status: str | TaskStatus,
     metrics: Mapping[str, Any],
     artifacts: Mapping[str, Any],
     candidates: list[dict[str, Any]],
     error_message: str = "",
+    warnings: list[str] | None = None,
 ) -> pb.RuntimeMessage:
     task_id = str(task_id)
     task_result = pb.TaskResult(
         request_id=request_id,
         task_id=task_id,
+        execution_id=str(execution_id or ""),
         status=task_status_to_enum(status),
         error_message=str(error_message or ""),
     )
+    task_result.warnings.extend(str(item) for item in (warnings or []) if str(item or "").strip())
     for metric_name, metric_value in (metrics or {}).items():
         try:
             task_result.metrics[str(metric_name)] = float(metric_value)
@@ -538,6 +548,7 @@ def parse_assign_task(assign_task: pb.AssignTask) -> dict[str, Any]:
     task_type = _TASK_TYPE_TO_TEXT.get(int(task_payload.task_type), "")
     return {
         "task_id": task_id,
+        "execution_id": str(task_payload.execution_id or ""),
         "round_id": round_id,
         "loop_id": task_payload.loop_id,
         "project_id": task_payload.project_id,

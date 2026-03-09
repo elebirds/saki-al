@@ -953,6 +953,7 @@ type TaskPayload struct {
 	Attempt          int32                   `protobuf:"varint,13,opt,name=attempt,proto3" json:"attempt,omitempty"`
 	DependsOnTaskIds []string                `protobuf:"bytes,14,rep,name=depends_on_task_ids,json=dependsOnTaskIds,proto3" json:"depends_on_task_ids,omitempty"`
 	DispatchKind     RuntimeTaskDispatchKind `protobuf:"varint,15,opt,name=dispatch_kind,json=dispatchKind,proto3,enum=saki.runtime.v1.RuntimeTaskDispatchKind" json:"dispatch_kind,omitempty"`
+	ExecutionId      string                  `protobuf:"bytes,16,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -1092,6 +1093,13 @@ func (x *TaskPayload) GetDispatchKind() RuntimeTaskDispatchKind {
 	return RuntimeTaskDispatchKind_RUNTIME_TASK_DISPATCH_KIND_UNSPECIFIED
 }
 
+func (x *TaskPayload) GetExecutionId() string {
+	if x != nil {
+		return x.ExecutionId
+	}
+	return ""
+}
+
 type AssignTask struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
@@ -1149,6 +1157,7 @@ type StopTask struct {
 	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
 	TaskId        string                 `protobuf:"bytes,2,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
 	Reason        string                 `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
+	ExecutionId   string                 `protobuf:"bytes,4,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1200,6 +1209,13 @@ func (x *StopTask) GetTaskId() string {
 func (x *StopTask) GetReason() string {
 	if x != nil {
 		return x.Reason
+	}
+	return ""
+}
+
+func (x *StopTask) GetExecutionId() string {
+	if x != nil {
+		return x.ExecutionId
 	}
 	return ""
 }
@@ -1594,6 +1610,7 @@ type TaskEvent struct {
 	//	*TaskEvent_MetricEvent
 	//	*TaskEvent_ArtifactEvent
 	EventPayload  isTaskEvent_EventPayload `protobuf_oneof:"event_payload"`
+	ExecutionId   string                   `protobuf:"bytes,10,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1708,6 +1725,13 @@ func (x *TaskEvent) GetArtifactEvent() *ArtifactEvent {
 	return nil
 }
 
+func (x *TaskEvent) GetExecutionId() string {
+	if x != nil {
+		return x.ExecutionId
+	}
+	return ""
+}
+
 type isTaskEvent_EventPayload interface {
 	isTaskEvent_EventPayload()
 }
@@ -1811,6 +1835,8 @@ type TaskResult struct {
 	Artifacts     []*ArtifactItem        `protobuf:"bytes,5,rep,name=artifacts,proto3" json:"artifacts,omitempty"`
 	Candidates    []*QueryCandidate      `protobuf:"bytes,6,rep,name=candidates,proto3" json:"candidates,omitempty"`
 	ErrorMessage  string                 `protobuf:"bytes,7,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
+	ExecutionId   string                 `protobuf:"bytes,8,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
+	Warnings      []string               `protobuf:"bytes,9,rep,name=warnings,proto3" json:"warnings,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1894,6 +1920,20 @@ func (x *TaskResult) GetErrorMessage() string {
 	return ""
 }
 
+func (x *TaskResult) GetExecutionId() string {
+	if x != nil {
+		return x.ExecutionId
+	}
+	return ""
+}
+
+func (x *TaskResult) GetWarnings() []string {
+	if x != nil {
+		return x.Warnings
+	}
+	return nil
+}
+
 type DataRequest struct {
 	state                protoimpl.MessageState `protogen:"open.v1"`
 	RequestId            string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
@@ -1905,6 +1945,7 @@ type DataRequest struct {
 	Limit                int32                  `protobuf:"varint,7,opt,name=limit,proto3" json:"limit,omitempty"`
 	PreferredChunkBytes  int32                  `protobuf:"varint,8,opt,name=preferred_chunk_bytes,json=preferredChunkBytes,proto3" json:"preferred_chunk_bytes,omitempty"`
 	MaxUncompressedBytes uint64                 `protobuf:"varint,9,opt,name=max_uncompressed_bytes,json=maxUncompressedBytes,proto3" json:"max_uncompressed_bytes,omitempty"`
+	ExecutionId          string                 `protobuf:"bytes,10,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
@@ -2000,6 +2041,13 @@ func (x *DataRequest) GetMaxUncompressedBytes() uint64 {
 		return x.MaxUncompressedBytes
 	}
 	return 0
+}
+
+func (x *DataRequest) GetExecutionId() string {
+	if x != nil {
+		return x.ExecutionId
+	}
+	return ""
 }
 
 type LabelItem struct {
@@ -2490,6 +2538,7 @@ type UploadTicketRequest struct {
 	TaskId        string                 `protobuf:"bytes,2,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
 	ArtifactName  string                 `protobuf:"bytes,3,opt,name=artifact_name,json=artifactName,proto3" json:"artifact_name,omitempty"`
 	ContentType   string                 `protobuf:"bytes,4,opt,name=content_type,json=contentType,proto3" json:"content_type,omitempty"`
+	ExecutionId   string                 `protobuf:"bytes,5,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2548,6 +2597,13 @@ func (x *UploadTicketRequest) GetArtifactName() string {
 func (x *UploadTicketRequest) GetContentType() string {
 	if x != nil {
 		return x.ContentType
+	}
+	return ""
+}
+
+func (x *UploadTicketRequest) GetExecutionId() string {
+	if x != nil {
+		return x.ExecutionId
 	}
 	return ""
 }
@@ -3105,7 +3161,7 @@ const file_runtime_control_proto_rawDesc = "" +
 	"executorId\x12\x12\n" +
 	"\x04busy\x18\x03 \x01(\bR\x04busy\x12&\n" +
 	"\x0fcurrent_task_id\x18\x04 \x01(\tR\rcurrentTaskId\x12>\n" +
-	"\tresources\x18\x05 \x01(\v2 .saki.runtime.v1.ResourceSummaryR\tresources\"\x95\x05\n" +
+	"\tresources\x18\x05 \x01(\v2 .saki.runtime.v1.ResourceSummaryR\tresources\"\xb8\x05\n" +
 	"\vTaskPayload\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x19\n" +
 	"\bround_id\x18\x02 \x01(\tR\aroundId\x12\x17\n" +
@@ -3124,17 +3180,19 @@ const file_runtime_control_proto_rawDesc = "" +
 	"roundIndex\x12\x18\n" +
 	"\aattempt\x18\r \x01(\x05R\aattempt\x12-\n" +
 	"\x13depends_on_task_ids\x18\x0e \x03(\tR\x10dependsOnTaskIds\x12M\n" +
-	"\rdispatch_kind\x18\x0f \x01(\x0e2(.saki.runtime.v1.RuntimeTaskDispatchKindR\fdispatchKind\"]\n" +
+	"\rdispatch_kind\x18\x0f \x01(\x0e2(.saki.runtime.v1.RuntimeTaskDispatchKindR\fdispatchKind\x12!\n" +
+	"\fexecution_id\x18\x10 \x01(\tR\vexecutionId\"]\n" +
 	"\n" +
 	"AssignTask\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x120\n" +
-	"\x04task\x18\x02 \x01(\v2\x1c.saki.runtime.v1.TaskPayloadR\x04task\"Z\n" +
+	"\x04task\x18\x02 \x01(\v2\x1c.saki.runtime.v1.TaskPayloadR\x04task\"}\n" +
 	"\bStopTask\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x17\n" +
 	"\atask_id\x18\x02 \x01(\tR\x06taskId\x12\x16\n" +
-	"\x06reason\x18\x03 \x01(\tR\x06reason\"a\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason\x12!\n" +
+	"\fexecution_id\x18\x04 \x01(\tR\vexecutionId\"a\n" +
 	"\vStatusEvent\x12:\n" +
 	"\x06status\x18\x01 \x01(\x0e2\".saki.runtime.v1.RuntimeTaskStatusR\x06status\x12\x16\n" +
 	"\x06reason\x18\x02 \x01(\tR\x06reason\"\xe5\x01\n" +
@@ -3166,7 +3224,7 @@ const file_runtime_control_proto_rawDesc = "" +
 	"\x03uri\x18\x03 \x01(\tR\x03uri\x12+\n" +
 	"\x04meta\x18\x04 \x01(\v2\x17.google.protobuf.StructR\x04meta\"J\n" +
 	"\rArtifactEvent\x129\n" +
-	"\bartifact\x18\x01 \x01(\v2\x1d.saki.runtime.v1.ArtifactItemR\bartifact\"\xc8\x03\n" +
+	"\bartifact\x18\x01 \x01(\v2\x1d.saki.runtime.v1.ArtifactItemR\bartifact\"\xeb\x03\n" +
 	"\tTaskEvent\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x17\n" +
@@ -3177,12 +3235,14 @@ const file_runtime_control_proto_rawDesc = "" +
 	"\tlog_event\x18\x06 \x01(\v2\x19.saki.runtime.v1.LogEventH\x00R\blogEvent\x12G\n" +
 	"\x0eprogress_event\x18\a \x01(\v2\x1e.saki.runtime.v1.ProgressEventH\x00R\rprogressEvent\x12A\n" +
 	"\fmetric_event\x18\b \x01(\v2\x1c.saki.runtime.v1.MetricEventH\x00R\vmetricEvent\x12G\n" +
-	"\x0eartifact_event\x18\t \x01(\v2\x1e.saki.runtime.v1.ArtifactEventH\x00R\rartifactEventB\x0f\n" +
+	"\x0eartifact_event\x18\t \x01(\v2\x1e.saki.runtime.v1.ArtifactEventH\x00R\rartifactEvent\x12!\n" +
+	"\fexecution_id\x18\n" +
+	" \x01(\tR\vexecutionIdB\x0f\n" +
 	"\revent_payload\"t\n" +
 	"\x0eQueryCandidate\x12\x1b\n" +
 	"\tsample_id\x18\x01 \x01(\tR\bsampleId\x12\x14\n" +
 	"\x05score\x18\x02 \x01(\x01R\x05score\x12/\n" +
-	"\x06reason\x18\x03 \x01(\v2\x17.google.protobuf.StructR\x06reason\"\xa3\x03\n" +
+	"\x06reason\x18\x03 \x01(\v2\x17.google.protobuf.StructR\x06reason\"\xe2\x03\n" +
 	"\n" +
 	"TaskResult\x12\x1d\n" +
 	"\n" +
@@ -3194,10 +3254,12 @@ const file_runtime_control_proto_rawDesc = "" +
 	"\n" +
 	"candidates\x18\x06 \x03(\v2\x1f.saki.runtime.v1.QueryCandidateR\n" +
 	"candidates\x12#\n" +
-	"\rerror_message\x18\a \x01(\tR\ferrorMessage\x1a:\n" +
+	"\rerror_message\x18\a \x01(\tR\ferrorMessage\x12!\n" +
+	"\fexecution_id\x18\b \x01(\tR\vexecutionId\x12\x1a\n" +
+	"\bwarnings\x18\t \x03(\tR\bwarnings\x1a:\n" +
 	"\fMetricsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\x01R\x05value:\x028\x01\"\xdb\x02\n" +
+	"\x05value\x18\x02 \x01(\x01R\x05value:\x028\x01\"\xfe\x02\n" +
 	"\vDataRequest\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x17\n" +
@@ -3210,7 +3272,9 @@ const file_runtime_control_proto_rawDesc = "" +
 	"\x06cursor\x18\x06 \x01(\tR\x06cursor\x12\x14\n" +
 	"\x05limit\x18\a \x01(\x05R\x05limit\x122\n" +
 	"\x15preferred_chunk_bytes\x18\b \x01(\x05R\x13preferredChunkBytes\x124\n" +
-	"\x16max_uncompressed_bytes\x18\t \x01(\x04R\x14maxUncompressedBytes\"E\n" +
+	"\x16max_uncompressed_bytes\x18\t \x01(\x04R\x14maxUncompressedBytes\x12!\n" +
+	"\fexecution_id\x18\n" +
+	" \x01(\tR\vexecutionId\"E\n" +
 	"\tLabelItem\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x14\n" +
@@ -3263,13 +3327,14 @@ const file_runtime_control_proto_rawDesc = "" +
 	"\x15chunk_checksum_crc32c\x18\f \x01(\rR\x13chunkChecksumCrc32c\x12\x1f\n" +
 	"\vnext_cursor\x18\r \x01(\tR\n" +
 	"nextCursor\x12\"\n" +
-	"\ris_last_chunk\x18\x0e \x01(\bR\visLastChunk\"\x95\x01\n" +
+	"\ris_last_chunk\x18\x0e \x01(\bR\visLastChunk\"\xb8\x01\n" +
 	"\x13UploadTicketRequest\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x17\n" +
 	"\atask_id\x18\x02 \x01(\tR\x06taskId\x12#\n" +
 	"\rartifact_name\x18\x03 \x01(\tR\fartifactName\x12!\n" +
-	"\fcontent_type\x18\x04 \x01(\tR\vcontentType\"\xb3\x02\n" +
+	"\fcontent_type\x18\x04 \x01(\tR\vcontentType\x12!\n" +
+	"\fexecution_id\x18\x05 \x01(\tR\vexecutionId\"\xb3\x02\n" +
 	"\x14UploadTicketResponse\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x19\n" +

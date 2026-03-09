@@ -11,6 +11,7 @@ from typing import Any
 class RuntimeDataRequestDTO:
     request_id: str
     task_id: str
+    execution_id: str
     query_type: int
     project_id: uuid.UUID
     commit_id: uuid.UUID
@@ -24,6 +25,7 @@ class RuntimeDataRequestDTO:
 class RuntimeUploadTicketRequestDTO:
     request_id: str
     task_id: str
+    execution_id: str
     artifact_name: str
     content_type: str
 

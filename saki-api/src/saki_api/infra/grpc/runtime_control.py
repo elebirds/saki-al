@@ -502,6 +502,7 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
             pb.DataRequest(
                 request_id=str(request.request_id or ""),
                 task_id=task_id,
+                execution_id="",
                 query_type=int(request.query_type),
                 project_id=str(request.project_id or ""),
                 commit_id=str(request.commit_id or ""),
@@ -530,6 +531,7 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
             pb.UploadTicketRequest(
                 request_id=str(request.request_id or ""),
                 task_id=task_id,
+                execution_id="",
                 artifact_name=str(request.artifact_name or ""),
                 content_type=str(request.content_type or "application/octet-stream"),
             )

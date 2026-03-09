@@ -228,6 +228,28 @@ func (s *Server) handleIncoming(
 	case *runtimecontrolv1.RuntimeMessage_DataRequest:
 		request := payload.DataRequest
 		taskID := resolveTaskID(request.GetTaskId())
+		if s.controlPlane != nil {
+			allowed, validationErr := s.validateExecutionForTaskRequest(taskID, strings.TrimSpace(request.GetExecutionId()))
+			if validationErr != nil {
+				s.logger.Warn().Err(validationErr).Str("task_id", taskID).Msg("校验 data_request execution_id 失败")
+				return singleMessage(buildError(
+					"execution_validation_failed",
+					"execution_id 校验失败",
+					request.GetRequestId(),
+					taskID,
+					request.GetQueryType(),
+				)), currentExecutorID, nil
+			}
+			if !allowed {
+				return singleMessage(buildError(
+					"stale_execution",
+					"data_request 来自过期 execution",
+					request.GetRequestId(),
+					taskID,
+					request.GetQueryType(),
+				)), currentExecutorID, nil
+			}
+		}
 		if s.domainClient == nil || !s.domainClient.Enabled() {
 			return singleMessage(buildError(
 				"not_implemented",
@@ -275,6 +297,28 @@ func (s *Server) handleIncoming(
 	case *runtimecontrolv1.RuntimeMessage_UploadTicketRequest:
 		request := payload.UploadTicketRequest
 		taskID := resolveTaskID(request.GetTaskId())
+		if s.controlPlane != nil {
+			allowed, validationErr := s.validateExecutionForTaskRequest(taskID, strings.TrimSpace(request.GetExecutionId()))
+			if validationErr != nil {
+				s.logger.Warn().Err(validationErr).Str("task_id", taskID).Msg("校验 upload_ticket_request execution_id 失败")
+				return singleMessage(buildError(
+					"execution_validation_failed",
+					"execution_id 校验失败",
+					request.GetRequestId(),
+					taskID,
+					runtimecontrolv1.RuntimeQueryType_RUNTIME_QUERY_TYPE_UNSPECIFIED,
+				)), currentExecutorID, nil
+			}
+			if !allowed {
+				return singleMessage(buildError(
+					"stale_execution",
+					"upload_ticket_request 来自过期 execution",
+					request.GetRequestId(),
+					taskID,
+					runtimecontrolv1.RuntimeQueryType_RUNTIME_QUERY_TYPE_UNSPECIFIED,
+				)), currentExecutorID, nil
+			}
+		}
 		if s.domainClient == nil || !s.domainClient.Enabled() {
 			return singleMessage(buildError(
 				"not_implemented",
@@ -336,6 +380,21 @@ func (s *Server) handleIncoming(
 			runtimecontrolv1.RuntimeQueryType_RUNTIME_QUERY_TYPE_UNSPECIFIED,
 		)), currentExecutorID, nil
 	}
+}
+
+func (s *Server) validateExecutionForTaskRequest(taskID string, executionID string) (bool, error) {
+	if s.controlPlane == nil {
+		return true, nil
+	}
+	taskUUID, err := uuid.Parse(strings.TrimSpace(taskID))
+	if err != nil {
+		return false, nil
+	}
+	executionUUID, err := uuid.Parse(strings.TrimSpace(executionID))
+	if err != nil {
+		return false, nil
+	}
+	return s.controlPlane.ValidateCurrentExecutionID(context.Background(), taskUUID, executionUUID)
 }
 
 func buildAck(

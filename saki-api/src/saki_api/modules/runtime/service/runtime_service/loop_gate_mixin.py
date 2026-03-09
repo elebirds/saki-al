@@ -98,6 +98,8 @@ class LoopGateMixin:
 
         if loop.lifecycle == LoopLifecycle.PAUSED:
             return LoopGate.PAUSED, {"phase": phase_text}, None, [observe_action]
+        if loop.lifecycle == LoopLifecycle.PAUSING:
+            return LoopGate.PAUSING, {"phase": phase_text}, None, [observe_action]
         if loop.lifecycle == LoopLifecycle.STOPPING:
             return LoopGate.STOPPING, {"phase": phase_text}, None, [observe_action]
 

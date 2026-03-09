@@ -204,7 +204,8 @@ SELECT
   min_new_labels_per_round,
   model_arch,
   config,
-  last_confirmed_commit_id
+  last_confirmed_commit_id,
+  pause_reason
 FROM loop
 WHERE id = $1::uuid
 `
@@ -223,6 +224,7 @@ type GetLoopByIDRow struct {
 	ModelArch             string
 	Config                []byte
 	LastConfirmedCommitID *uuid.UUID
+	PauseReason           NullLooppausereason
 }
 
 func (q *Queries) GetLoopByID(ctx context.Context, loopID uuid.UUID) (GetLoopByIDRow, error) {
@@ -242,6 +244,7 @@ func (q *Queries) GetLoopByID(ctx context.Context, loopID uuid.UUID) (GetLoopByI
 		&i.ModelArch,
 		&i.Config,
 		&i.LastConfirmedCommitID,
+		&i.PauseReason,
 	)
 	return i, err
 }
@@ -260,7 +263,8 @@ SELECT
   min_new_labels_per_round,
   model_arch,
   config,
-  last_confirmed_commit_id
+  last_confirmed_commit_id,
+  pause_reason
 FROM loop
 WHERE id = $1::uuid
 FOR UPDATE
@@ -280,6 +284,7 @@ type GetLoopForUpdateRow struct {
 	ModelArch             string
 	Config                []byte
 	LastConfirmedCommitID *uuid.UUID
+	PauseReason           NullLooppausereason
 }
 
 func (q *Queries) GetLoopForUpdate(ctx context.Context, loopID uuid.UUID) (GetLoopForUpdateRow, error) {
@@ -299,6 +304,7 @@ func (q *Queries) GetLoopForUpdate(ctx context.Context, loopID uuid.UUID) (GetLo
 		&i.ModelArch,
 		&i.Config,
 		&i.LastConfirmedCommitID,
+		&i.PauseReason,
 	)
 	return i, err
 }
@@ -392,6 +398,25 @@ func (q *Queries) GetRoundState(ctx context.Context, roundID uuid.UUID) (Roundst
 	var state Roundstatus
 	err := row.Scan(&state)
 	return state, err
+}
+
+const getRuntimeMaintenanceMode = `-- name: GetRuntimeMaintenanceMode :one
+SELECT COALESCE(
+  (
+    SELECT value_json ->> 'value'
+    FROM system_setting
+    WHERE key = 'maintenance.runtime_mode'
+    LIMIT 1
+  ),
+  'normal'
+) AS runtime_mode
+`
+
+func (q *Queries) GetRuntimeMaintenanceMode(ctx context.Context) (interface{}, error) {
+	row := q.db.QueryRow(ctx, getRuntimeMaintenanceMode)
+	var runtime_mode interface{}
+	err := row.Scan(&runtime_mode)
+	return runtime_mode, err
 }
 
 const insertCommandLog = `-- name: InsertCommandLog :execrows
@@ -549,6 +574,9 @@ func (q *Queries) InsertStep(ctx context.Context, arg InsertStepParams) error {
 const listLoopStoppableSteps = `-- name: ListLoopStoppableSteps :many
 SELECT
   s.id AS id,
+  t.id AS task_id,
+  t.current_execution_id AS current_execution_id,
+  COALESCE(t.assigned_executor_id, '') AS assigned_executor_id,
   t.status AS task_status,
   t.attempt AS attempt,
   t.updated_at AS updated_at
@@ -570,10 +598,13 @@ ORDER BY s.created_at ASC
 `
 
 type ListLoopStoppableStepsRow struct {
-	ID         uuid.UUID
-	TaskStatus Runtimetaskstatus
-	Attempt    int32
-	UpdatedAt  pgtype.Timestamptz
+	ID                 uuid.UUID
+	TaskID             uuid.UUID
+	CurrentExecutionID uuid.UUID
+	AssignedExecutorID string
+	TaskStatus         Runtimetaskstatus
+	Attempt            int32
+	UpdatedAt          pgtype.Timestamptz
 }
 
 func (q *Queries) ListLoopStoppableSteps(ctx context.Context, loopID uuid.UUID) ([]ListLoopStoppableStepsRow, error) {
@@ -587,6 +618,9 @@ func (q *Queries) ListLoopStoppableSteps(ctx context.Context, loopID uuid.UUID) 
 		var i ListLoopStoppableStepsRow
 		if err := rows.Scan(
 			&i.ID,
+			&i.TaskID,
+			&i.CurrentExecutionID,
+			&i.AssignedExecutorID,
 			&i.TaskStatus,
 			&i.Attempt,
 			&i.UpdatedAt,
@@ -641,7 +675,12 @@ func (q *Queries) ListRoundActiveStepIDs(ctx context.Context, roundID uuid.UUID)
 const listTickLoopIDs = `-- name: ListTickLoopIDs :many
 SELECT id
 FROM loop
-WHERE lifecycle IN ('RUNNING'::looplifecycle, 'STOPPING'::looplifecycle)
+WHERE lifecycle IN (
+  'RUNNING'::looplifecycle,
+  'PAUSING'::looplifecycle,
+  'STOPPING'::looplifecycle,
+  'FAILED'::looplifecycle
+)
 ORDER BY updated_at ASC
 LIMIT $1
 `
@@ -867,6 +906,36 @@ func (q *Queries) UpdateLoopLifecycleGuarded(ctx context.Context, arg UpdateLoop
 	return result.RowsAffected(), nil
 }
 
+const updateLoopPauseStateGuarded = `-- name: UpdateLoopPauseStateGuarded :execrows
+UPDATE loop
+SET lifecycle = $1::looplifecycle,
+    pause_reason = $2::looppausereason,
+    terminal_reason = NULL,
+    updated_at = now()
+WHERE id = $3::uuid
+  AND lifecycle = $4::looplifecycle
+`
+
+type UpdateLoopPauseStateGuardedParams struct {
+	Lifecycle     Looplifecycle
+	PauseReason   NullLooppausereason
+	LoopID        uuid.UUID
+	FromLifecycle Looplifecycle
+}
+
+func (q *Queries) UpdateLoopPauseStateGuarded(ctx context.Context, arg UpdateLoopPauseStateGuardedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateLoopPauseStateGuarded,
+		arg.Lifecycle,
+		arg.PauseReason,
+		arg.LoopID,
+		arg.FromLifecycle,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const updateLoopPhaseIfRunning = `-- name: UpdateLoopPhaseIfRunning :execrows
 UPDATE loop
 SET phase = $1::loopphase,
@@ -892,15 +961,17 @@ const updateLoopRuntime = `-- name: UpdateLoopRuntime :exec
 UPDATE loop
 SET lifecycle = $1::looplifecycle,
     phase = $2::loopphase,
-    terminal_reason = $3::text,
-    last_confirmed_commit_id = $4::uuid,
+    pause_reason = $3::looppausereason,
+    terminal_reason = $4::text,
+    last_confirmed_commit_id = $5::uuid,
     updated_at = now()
-WHERE id = $5::uuid
+WHERE id = $6::uuid
 `
 
 type UpdateLoopRuntimeParams struct {
 	Lifecycle             Looplifecycle
 	Phase                 Loopphase
+	PauseReason           NullLooppausereason
 	TerminalReason        pgtype.Text
 	LastConfirmedCommitID *uuid.UUID
 	LoopID                uuid.UUID
@@ -910,6 +981,7 @@ func (q *Queries) UpdateLoopRuntime(ctx context.Context, arg UpdateLoopRuntimePa
 	_, err := q.db.Exec(ctx, updateLoopRuntime,
 		arg.Lifecycle,
 		arg.Phase,
+		arg.PauseReason,
 		arg.TerminalReason,
 		arg.LastConfirmedCommitID,
 		arg.LoopID,
@@ -921,16 +993,18 @@ const updateLoopRuntimeGuarded = `-- name: UpdateLoopRuntimeGuarded :execrows
 UPDATE loop
 SET lifecycle = $1::looplifecycle,
     phase = $2::loopphase,
-    terminal_reason = $3::text,
-    last_confirmed_commit_id = $4::uuid,
+    pause_reason = $3::looppausereason,
+    terminal_reason = $4::text,
+    last_confirmed_commit_id = $5::uuid,
     updated_at = now()
-WHERE id = $5::uuid
-  AND lifecycle = $6::looplifecycle
+WHERE id = $6::uuid
+  AND lifecycle = $7::looplifecycle
 `
 
 type UpdateLoopRuntimeGuardedParams struct {
 	Lifecycle             Looplifecycle
 	Phase                 Loopphase
+	PauseReason           NullLooppausereason
 	TerminalReason        pgtype.Text
 	LastConfirmedCommitID *uuid.UUID
 	LoopID                uuid.UUID
@@ -941,6 +1015,7 @@ func (q *Queries) UpdateLoopRuntimeGuarded(ctx context.Context, arg UpdateLoopRu
 	result, err := q.db.Exec(ctx, updateLoopRuntimeGuarded,
 		arg.Lifecycle,
 		arg.Phase,
+		arg.PauseReason,
 		arg.TerminalReason,
 		arg.LastConfirmedCommitID,
 		arg.LoopID,

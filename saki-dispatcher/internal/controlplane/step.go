@@ -58,6 +58,13 @@ func (s *Service) dispatchPending(ctx context.Context, limit int) (int, error) {
 	if err := s.recoverStaleInFlightTasks(ctx, max(64, limit*2)); err != nil {
 		return 0, err
 	}
+	maintenanceMode, err := s.getRuntimeMaintenanceMode(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if maintenanceMode != maintenanceModeNormal {
+		return 0, nil
+	}
 
 	claimed := 0
 	for _, queuedTaskID := range s.dispatcher.DrainQueuedTaskIDs() {
@@ -257,6 +264,7 @@ func (s *Service) dispatchStepTaskByID(ctx context.Context, taskID uuid.UUID) (b
 		RoundIndex:       int32(stepPayload.RoundIndex),
 		Attempt:          int32(stepPayload.Attempt),
 		DependsOnTaskIds: stringifyUUIDs(stepPayload.DependsOnTaskIDs),
+		ExecutionId:      stepPayload.CurrentExecutionID.String(),
 	}
 	payloadRaw, err := protojson.Marshal(message)
 	if err != nil {
@@ -392,6 +400,7 @@ func (s *Service) dispatchPredictionTaskByID(ctx context.Context, taskID uuid.UU
 		RoundIndex:       0,
 		Attempt:          int32(attempt),
 		DependsOnTaskIds: []string{},
+		ExecutionId:      taskRow.CurrentExecutionID.String(),
 	}
 	if !s.dispatcher.DispatchTask(executorID, requestID, payload) {
 		_, _ = s.qtx(tx).ResetTaskToReadyQueueFull(ctx, taskRow.ID)
@@ -603,6 +612,13 @@ func (s *Service) OnTaskEvent(ctx context.Context, event *runtimecontrolv1.TaskE
 	if err != nil {
 		return nil
 	}
+	executionID, ok := parseExecutionID(event.GetExecutionId())
+	if !ok {
+		s.logger.Warn().
+			Str("task_id", taskID.String()).
+			Msg("task_event 缺少 execution_id，已忽略")
+		return nil
+	}
 
 	eventType, eventPayload, statusValue := decodeTaskEvent(event)
 	if eventType == "" {
@@ -620,6 +636,18 @@ func (s *Service) OnTaskEvent(ctx context.Context, event *runtimecontrolv1.TaskE
 	}
 	defer tx.Rollback(ctx)
 
+	taskRow, foundTask, err := s.getTaskForUpdateTx(ctx, tx, taskID)
+	if err != nil {
+		return err
+	}
+	if !foundTask {
+		return tx.Commit(ctx)
+	}
+	if taskRow.CurrentExecutionID != executionID {
+		s.logStaleExecutionMessage("task_event", taskID, executionID, taskRow.CurrentExecutionID)
+		return tx.Commit(ctx)
+	}
+
 	stepID, found, err := s.resolveStepIDForTaskTx(ctx, tx, taskID)
 	if err != nil {
 		return err
@@ -633,20 +661,22 @@ func (s *Service) OnTaskEvent(ctx context.Context, event *runtimecontrolv1.TaskE
 		eventType,
 		payloadJSON,
 		strings.TrimSpace(event.GetRequestId()),
+		executionID,
 	); err != nil {
 		return err
 	} else if !inserted {
-		// Duplicate event by (task_id, seq), skip side effects.
+		// Duplicate event by (task_id, execution_id, seq), skip side effects.
 		return tx.Commit(ctx)
 	}
 	statusReason := strings.TrimSpace(event.GetStatusEvent().GetReason())
 	if eventType == "status" {
 		targetTaskStatus := normalizeTaskEnumText(string(statusValue))
 		if targetTaskStatus != "" && targetTaskStatus != "PENDING" {
-			if err := s.updateTaskStatusTx(ctx, tx, taskID, targetTaskStatus, statusReason); err != nil {
+			applied, err := s.applyRuntimeTaskStatusEventTx(ctx, tx, taskRow, targetTaskStatus, statusReason)
+			if err != nil {
 				return err
 			}
-			if found && shouldApplyRuntimeTaskStatus(statusValue) {
+			if applied && found && shouldApplyRuntimeTaskStatus(statusValue) {
 				if err := s.projectTaskToStepTx(ctx, tx, taskID); err != nil {
 					return err
 				}
@@ -707,6 +737,13 @@ func (s *Service) OnTaskResult(ctx context.Context, result *runtimecontrolv1.Tas
 	if err != nil {
 		return nil
 	}
+	executionID, ok := parseExecutionID(result.GetExecutionId())
+	if !ok {
+		s.logger.Warn().
+			Str("task_id", taskID.String()).
+			Msg("task_result 缺少 execution_id，已忽略")
+		return nil
+	}
 	targetTaskStatus, ok := runtimeStatusToTaskStatus(result.GetStatus())
 	if !ok {
 		targetTaskStatus = taskFailed
@@ -727,21 +764,39 @@ func (s *Service) OnTaskResult(ctx context.Context, result *runtimecontrolv1.Tas
 	}
 	defer tx.Rollback(ctx)
 
+	taskRow, foundTask, err := s.getTaskForUpdateTx(ctx, tx, taskID)
+	if err != nil {
+		return err
+	}
+	if !foundTask {
+		return tx.Commit(ctx)
+	}
+	if taskRow.CurrentExecutionID != executionID {
+		s.logStaleExecutionMessage("task_result", taskID, executionID, taskRow.CurrentExecutionID)
+		return tx.Commit(ctx)
+	}
+
 	stepID, found, err := s.resolveStepIDForTaskTx(ctx, tx, taskID)
 	if err != nil {
 		return err
 	}
-	if err := s.persistTaskResultTx(
+	applied, err := s.persistTaskResultTx(
 		ctx,
 		tx,
 		taskID,
+		executionID,
 		targetTaskStatus,
 		result.GetMetrics(),
 		result.GetArtifacts(),
 		result.GetCandidates(),
 		strings.TrimSpace(result.GetErrorMessage()),
-	); err != nil {
+		result.GetWarnings(),
+	)
+	if err != nil {
 		return err
+	}
+	if !applied {
+		return tx.Commit(ctx)
 	}
 	if !found {
 		return tx.Commit(ctx)
@@ -841,8 +896,73 @@ func (s *Service) updateTaskStatusTx(
 	return nil
 }
 
+func (s *Service) applyRuntimeTaskStatusEventTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	taskRow runtimeTaskRow,
+	targetStatus string,
+	reason string,
+) (bool, error) {
+	currentStatus, ok := runtimeTaskStatusFromText(taskRow.Status)
+	if !ok {
+		return false, nil
+	}
+	targetTaskStatus, ok := runtimeTaskStatusFromText(targetStatus)
+	if !ok {
+		return false, nil
+	}
+	if !canApplyTaskStatusTransition(currentStatus, targetTaskStatus) {
+		return false, nil
+	}
+	if err := s.updateTaskStatusTx(ctx, tx, taskRow.ID, targetStatus, reason); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func shouldApplyRuntimeTaskStatus(target db.Runtimetaskstatus) bool {
 	return normalizeTaskEnumText(string(target)) != "" && target != taskPending
+}
+
+func parseExecutionID(raw string) (uuid.UUID, bool) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return uuid.Nil, false
+	}
+	parsed, err := uuid.Parse(value)
+	if err != nil {
+		return uuid.Nil, false
+	}
+	return parsed, true
+}
+
+func normalizeWarningList(warnings []string) []string {
+	if len(warnings) == 0 {
+		return []string{}
+	}
+	items := make([]string, 0, len(warnings))
+	for _, item := range warnings {
+		text := strings.TrimSpace(item)
+		if text == "" {
+			continue
+		}
+		items = append(items, text)
+	}
+	return items
+}
+
+func (s *Service) logStaleExecutionMessage(
+	messageType string,
+	taskID uuid.UUID,
+	received uuid.UUID,
+	current uuid.UUID,
+) {
+	s.logger.Warn().
+		Str("message_type", strings.TrimSpace(messageType)).
+		Str("task_id", taskID.String()).
+		Str("received_execution_id", received.String()).
+		Str("current_execution_id", current.String()).
+		Msg("已丢弃过期 execution 消息")
 }
 
 func buildTaskResultCandidateRows(candidates []*runtimecontrolv1.QueryCandidate) []map[string]any {
@@ -869,35 +989,48 @@ func (s *Service) persistTaskResultTx(
 	ctx context.Context,
 	tx pgx.Tx,
 	taskID uuid.UUID,
+	executionID uuid.UUID,
 	targetTaskStatus db.Runtimetaskstatus,
 	metrics map[string]float64,
 	artifacts []*runtimecontrolv1.ArtifactItem,
 	candidates []*runtimecontrolv1.QueryCandidate,
 	errorMessage string,
-) error {
+	warnings []string,
+) (bool, error) {
 	taskRow, found, err := s.getTaskForUpdateTx(ctx, tx, taskID)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if !found {
-		return nil
+		return false, nil
+	}
+	if taskRow.CurrentExecutionID != executionID {
+		s.logStaleExecutionMessage("task_result", taskID, executionID, taskRow.CurrentExecutionID)
+		return false, nil
+	}
+	currentStatus, ok := runtimeTaskStatusFromText(taskRow.Status)
+	if !ok {
+		return false, nil
+	}
+	if !canApplyTaskStatusTransition(currentStatus, targetTaskStatus) {
+		return false, nil
 	}
 	paramsMap, err := parseJSONObject(taskRow.ResolvedParamsJSON)
 	if err != nil {
-		return err
+		return false, err
 	}
 	paramsMap["_result_metrics"] = metrics
 	artifactJSON, err := marshalArtifacts(artifacts)
 	if err != nil {
-		return err
+		return false, err
 	}
 	artifactPayload, err := parseJSONObject([]byte(artifactJSON))
 	if err != nil {
-		return err
+		return false, err
 	}
 	paramsMap["_result_artifacts"] = artifactPayload
 	if err := s.replaceTaskCandidatesTx(ctx, tx, taskID, candidates); err != nil {
-		return err
+		return false, err
 	}
 	delete(paramsMap, "_result_candidates")
 	errorMessage = strings.TrimSpace(errorMessage)
@@ -909,10 +1042,14 @@ func (s *Service) persistTaskResultTx(
 	paramsMap["_result_completed_at"] = time.Now().UTC().Format(time.RFC3339)
 	resolvedParamsJSON, err := marshalJSON(paramsMap)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if normalizeTaskEnumText(string(targetTaskStatus)) == "" {
 		targetTaskStatus = db.RuntimetaskstatusFAILED
+	}
+	warningsJSON, err := marshalJSON(normalizeWarningList(warnings))
+	if err != nil {
+		return false, err
 	}
 	lastError := toNullablePGText("")
 	if targetTaskStatus == db.RuntimetaskstatusFAILED ||
@@ -923,13 +1060,14 @@ func (s *Service) persistTaskResultTx(
 	_, err = s.qtx(tx).UpdateTaskResult(ctx, db.UpdateTaskResultParams{
 		Status:         targetTaskStatus,
 		ResolvedParams: []byte(resolvedParamsJSON),
+		Warnings:       []byte(warningsJSON),
 		LastError:      lastError,
 		TaskID:         taskID,
 	})
 	if err != nil {
-		return err
+		return false, err
 	}
-	return nil
+	return true, nil
 }
 
 func (s *Service) listReadyTaskIDs(ctx context.Context, limit int) ([]uuid.UUID, error) {
@@ -1449,15 +1587,17 @@ func (s *Service) insertTaskEventTx(
 	eventType string,
 	payloadJSON string,
 	requestID string,
+	executionID uuid.UUID,
 ) (bool, error) {
 	_ = requestID
 	affected, err := s.qtx(tx).InsertTaskEvent(ctx, db.InsertTaskEventParams{
-		EventID:   uuid.New(),
-		TaskID:    taskID,
-		Seq:       int32(seq),
-		Ts:        toPGTimestamp(ts),
-		EventType: eventType,
-		Payload:   []byte(payloadJSON),
+		EventID:     uuid.New(),
+		TaskID:      taskID,
+		ExecutionID: executionID,
+		Seq:         int32(seq),
+		Ts:          toPGTimestamp(ts),
+		EventType:   eventType,
+		Payload:     []byte(payloadJSON),
 	})
 	if err != nil {
 		return false, err
@@ -1469,6 +1609,8 @@ func (s *Service) issueCancelAttemptTx(
 	ctx context.Context,
 	tx pgx.Tx,
 	stepID uuid.UUID,
+	taskID uuid.UUID,
+	executionID uuid.UUID,
 	attempt int,
 	reason string,
 ) (bool, error) {
@@ -1482,13 +1624,8 @@ func (s *Service) issueCancelAttemptTx(
 		return false, nil
 	}
 
-	dispatchTaskID := stepID
-	if mappedTaskID, mapped, mapErr := s.resolveTaskIDForStepTx(ctx, tx, stepID); mapErr != nil {
-		return false, mapErr
-	} else if mapped {
-		dispatchTaskID = mappedTaskID
-	}
-	stopRequestID, accepted := s.dispatcher.StopTask(dispatchTaskID.String(), reason)
+	dispatchTaskID := taskID
+	stopRequestID, accepted := s.dispatcher.StopTask(dispatchTaskID.String(), executionID.String(), reason)
 	detail := fmt.Sprintf(
 		"已发起取消尝试 accepted=%t stop_request_id=%s task_id=%s",
 		accepted,

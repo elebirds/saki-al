@@ -24,6 +24,7 @@ type loopRow struct {
 	ModelArch             string
 	Config                []byte
 	LastConfirmedCommitID *uuid.UUID
+	PauseReason           *db.Looppausereason
 }
 
 type roundRow struct {
@@ -45,23 +46,24 @@ type commandLogEntry struct {
 }
 
 type stepDispatchPayload struct {
-	StepID           uuid.UUID
-	TaskID           *uuid.UUID
-	RoundID          uuid.UUID
-	LoopID           uuid.UUID
-	ProjectID        uuid.UUID
-	InputCommitID    *uuid.UUID
-	StepType         db.Steptype
-	DispatchKind     db.Stepdispatchkind
-	PluginID         string
-	Mode             db.Loopmode
-	RoundIndex       int
-	Attempt          int
-	TaskStatus       db.Runtimetaskstatus
-	UpdatedAt        *time.Time
-	DependsOnTaskIDs []uuid.UUID
-	Params           *structpb.Struct
-	Resources        *runtimecontrolv1.ResourceSummary
+	StepID             uuid.UUID
+	TaskID             *uuid.UUID
+	RoundID            uuid.UUID
+	LoopID             uuid.UUID
+	ProjectID          uuid.UUID
+	InputCommitID      *uuid.UUID
+	StepType           db.Steptype
+	DispatchKind       db.Stepdispatchkind
+	PluginID           string
+	Mode               db.Loopmode
+	RoundIndex         int
+	Attempt            int
+	TaskStatus         db.Runtimetaskstatus
+	UpdatedAt          *time.Time
+	CurrentExecutionID uuid.UUID
+	DependsOnTaskIDs   []uuid.UUID
+	Params             *structpb.Struct
+	Resources          *runtimecontrolv1.ResourceSummary
 
 	dependsOnTaskRaw   []byte
 	paramsRaw          []byte
@@ -102,10 +104,13 @@ var simulationFinalizeTrainStepPlan = []loopModeStepSpec{
 
 // stoppingStep is used by STOPPING drain logic.
 type stoppingStep struct {
-	ID         uuid.UUID
-	TaskStatus db.Runtimetaskstatus
-	Attempt    int
-	UpdatedAt  time.Time
+	ID                 uuid.UUID
+	TaskID             uuid.UUID
+	CurrentExecutionID uuid.UUID
+	AssignedExecutorID string
+	TaskStatus         db.Runtimetaskstatus
+	Attempt            int
+	UpdatedAt          time.Time
 }
 
 func mapLoopForUpdate(record db.GetLoopForUpdateRow) loopRow {
@@ -123,6 +128,7 @@ func mapLoopForUpdate(record db.GetLoopForUpdateRow) loopRow {
 		ModelArch:             record.ModelArch,
 		Config:                record.Config,
 		LastConfirmedCommitID: record.LastConfirmedCommitID,
+		PauseReason:           loopPauseReasonPtr(record.PauseReason),
 	}
 }
 
@@ -141,7 +147,16 @@ func mapLoopByID(record db.GetLoopByIDRow) loopRow {
 		ModelArch:             record.ModelArch,
 		Config:                record.Config,
 		LastConfirmedCommitID: record.LastConfirmedCommitID,
+		PauseReason:           loopPauseReasonPtr(record.PauseReason),
 	}
+}
+
+func loopPauseReasonPtr(value db.NullLooppausereason) *db.Looppausereason {
+	if !value.Valid {
+		return nil
+	}
+	reason := value.Looppausereason
+	return &reason
 }
 
 func mapLatestRound(record db.GetLatestRoundByLoopRow) roundRow {
@@ -162,9 +177,12 @@ func mapLoopStoppableSteps(rows []db.ListLoopStoppableStepsRow) []stoppingStep {
 	items := make([]stoppingStep, 0, len(rows))
 	for _, row := range rows {
 		item := stoppingStep{
-			ID:         row.ID,
-			TaskStatus: row.TaskStatus,
-			Attempt:    int(row.Attempt),
+			ID:                 row.ID,
+			TaskID:             row.TaskID,
+			CurrentExecutionID: row.CurrentExecutionID,
+			AssignedExecutorID: row.AssignedExecutorID,
+			TaskStatus:         row.TaskStatus,
+			Attempt:            int(row.Attempt),
 		}
 		if row.UpdatedAt.Valid {
 			item.UpdatedAt = row.UpdatedAt.Time
@@ -183,6 +201,7 @@ func mapStepPayload(record db.GetStepPayloadByTaskIDForUpdateRow) (stepDispatchP
 		DispatchKind:       record.DispatchKind,
 		RoundIndex:         int(record.RoundIndex),
 		Attempt:            int(record.Attempt),
+		CurrentExecutionID: record.CurrentExecutionID,
 		UpdatedAt:          timestampPtr(record.UpdatedAt),
 		dependsOnTaskRaw:   record.DependsOnTaskRaw,
 		paramsRaw:          record.ParamsRaw,

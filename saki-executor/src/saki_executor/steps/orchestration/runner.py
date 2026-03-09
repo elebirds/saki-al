@@ -304,33 +304,21 @@ class TaskPipelineRunner:
         optional_upload_failures: list[str],
     ) -> TaskFinalResult:
         self._manager.executor_state = ExecutorState.FINALIZING
+        warnings: list[str] = []
         if optional_upload_failures:
-            reason = "可选制品上传失败: " + "; ".join(optional_upload_failures)
-            await self._manager.push_task_event(self._task_id, reporter.status(TaskStatus.FAILED.value, reason))
-            await self._send_result(
-                status=TaskStatus.FAILED,
-                metrics=metrics,
-                artifacts=artifacts,
-                candidates=candidates,
-                error_message=reason,
-            )
-            logger.warning("任务部分成功（制品上传失败） task_id={} reason={}", self._task_id, reason)
-            return TaskFinalResult(
-                task_id=self._task_id,
-                status=TaskStatus.FAILED,
-                metrics=metrics,
-                artifacts=artifacts,
-                candidates=candidates,
-                error_message=reason,
-            )
+            warnings.append("可选制品上传失败: " + "; ".join(optional_upload_failures))
         await self._manager.push_task_event(self._task_id, reporter.status(TaskStatus.SUCCEEDED.value, "任务成功"))
         await self._send_result(
             status=TaskStatus.SUCCEEDED,
             metrics=metrics,
             artifacts=artifacts,
             candidates=candidates,
+            warnings=warnings,
         )
-        logger.info("任务执行成功 task_id={}", self._task_id)
+        if warnings:
+            logger.warning("任务成功但存在 warning task_id={} warnings={}", self._task_id, warnings)
+        else:
+            logger.info("任务执行成功 task_id={}", self._task_id)
         return TaskFinalResult(
             task_id=self._task_id,
             status=TaskStatus.SUCCEEDED,
@@ -338,6 +326,7 @@ class TaskPipelineRunner:
             artifacts=artifacts,
             candidates=candidates,
             error_message="",
+            warnings=warnings,
         )
 
     async def _send_result(
@@ -348,15 +337,18 @@ class TaskPipelineRunner:
         artifacts: dict[str, Any],
         candidates: list[dict[str, Any]],
         error_message: str = "",
+        warnings: list[str] | None = None,
     ) -> None:
         await self._manager.send_runtime_message(
             runtime_codec.build_task_result_message(
                 request_id=str(uuid.uuid4()),
                 task_id=self._task_id,
+                execution_id=self._request.execution_id,
                 status=status.value,
                 metrics=metrics,
                 artifacts=artifacts,
                 candidates=candidates,
                 error_message=error_message,
+                warnings=warnings,
             )
         )

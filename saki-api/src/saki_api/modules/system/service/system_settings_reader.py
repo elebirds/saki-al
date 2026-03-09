@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import Any
 
 from saki_api.infra.db.session import SessionLocal
+from saki_api.modules.shared.modeling.enums import RuntimeMaintenanceMode
 from saki_api.modules.system.service.system_setting_keys import SystemSettingKeys
 from saki_api.modules.system.service.system_settings import SystemSettingsService
 
@@ -38,6 +39,16 @@ class SystemSettingsReader:
             "step_ratio": float(values.get(SystemSettingKeys.SIMULATION_STEP_RATIO, 0.05)),
             "max_rounds": int(values.get(SystemSettingKeys.SIMULATION_MAX_ROUNDS, 20)),
         }
+
+    async def get_runtime_maintenance_mode(self) -> RuntimeMaintenanceMode:
+        value = await self.get_value(
+            SystemSettingKeys.MAINTENANCE_RUNTIME_MODE,
+            default=RuntimeMaintenanceMode.NORMAL.value,
+        )
+        try:
+            return RuntimeMaintenanceMode(str(value or RuntimeMaintenanceMode.NORMAL.value))
+        except ValueError:
+            return RuntimeMaintenanceMode.NORMAL
 
 
 system_settings_reader = SystemSettingsReader()

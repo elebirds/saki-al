@@ -189,6 +189,7 @@ class SnapshotPolicyMixin:
         lifecycle_stage_allowlist = {
             LoopGate.CAN_START,
             LoopGate.RUNNING,
+            LoopGate.PAUSING,
             LoopGate.PAUSED,
             LoopGate.STOPPING,
             LoopGate.NEED_ROUND_LABELS,
@@ -206,6 +207,8 @@ class SnapshotPolicyMixin:
             elif lifecycle_text == LoopLifecycle.PAUSED.value:
                 _append(self._action("resume", label="Resume"))
                 _append(self._action("stop", label="Stop"))
+            elif lifecycle_text == LoopLifecycle.PAUSING.value:
+                _append(self._action("observe", label="Observe", runnable=False))
             elif lifecycle_text == LoopLifecycle.STOPPING.value:
                 _append(self._action("observe", label="Observe", runnable=False))
 
@@ -216,6 +219,7 @@ class SnapshotPolicyMixin:
             in {
                 LoopGate.CAN_START,
                 LoopGate.RUNNING,
+                LoopGate.PAUSING,
                 LoopGate.PAUSED,
                 LoopGate.STOPPING,
                 LoopGate.NEED_ROUND_LABELS,

@@ -119,6 +119,7 @@ func (s *Service) applyAssignAckFailureTx(
 			LastError:          toPGText(reasonText),
 			TaskID:             taskID,
 			AssignedExecutorID: toPGText(executorID),
+			NewExecutionID:     uuid.New(),
 		})
 		if err != nil {
 			return "", false, "", err
@@ -139,6 +140,7 @@ func (s *Service) applyAssignAckFailureTx(
 			LastError:          toPGText(reasonText),
 			TaskID:             taskID,
 			AssignedExecutorID: toPGText(executorID),
+			NewExecutionID:     uuid.New(),
 		})
 		if err != nil {
 			return "", false, "", err
@@ -302,6 +304,7 @@ func (s *Service) applyInFlightRecoveryTx(
 			LastError:          toPGText(reason),
 			TaskID:             taskID,
 			AssignedExecutorID: assignedExecutorID,
+			NewExecutionID:     uuid.New(),
 		})
 		if err != nil {
 			return "", false, err
@@ -316,6 +319,7 @@ func (s *Service) applyInFlightRecoveryTx(
 		LastError:          toPGText(reason),
 		TaskID:             taskID,
 		AssignedExecutorID: assignedExecutorID,
+		NewExecutionID:     uuid.New(),
 	})
 	if err != nil {
 		return "", false, err

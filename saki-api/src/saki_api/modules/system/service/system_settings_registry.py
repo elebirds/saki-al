@@ -148,6 +148,22 @@ _DEFS: list[SystemSettingDef] = [
         group_order=40,
     ),
     SystemSettingDef(
+        key=SystemSettingKeys.MAINTENANCE_RUNTIME_MODE,
+        group="maintenance",
+        title="运行时维护模式",
+        description="控制运行时是否正常派发、排空或强制进入可恢复暂停。",
+        type="enum",
+        default="normal",
+        options=[
+            {"value": "normal", "label": "Normal"},
+            {"value": "drain", "label": "Drain"},
+            {"value": "pause_now", "label": "Pause Now"},
+        ],
+        ui={"component": "select"},
+        order=5,
+        group_order=50,
+    ),
+    SystemSettingDef(
         key=SystemSettingKeys.MAINTENANCE_ASSET_GC_ENABLED,
         group="maintenance",
         title="启用无用 Asset 定时清理",

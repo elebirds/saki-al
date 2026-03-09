@@ -241,6 +241,7 @@ async def list_loop_rounds(
     steps = await runtime_service.step_repo.list_by_round_ids(round_ids) if round_ids else []
     task_metrics_by_task_id = await runtime_service._build_task_result_metrics_map(steps, strict=True)
     task_status_by_task_id = await runtime_service._build_task_status_map(steps, strict=True)
+    task_warnings_by_task_id = await runtime_service._build_task_warnings_map(steps, strict=True)
     steps_by_round = runtime_service._group_steps_by_round(steps)
     latest_round = rounds[0] if rounds else None
     loop_phase_text = loop.phase.value
@@ -267,6 +268,14 @@ async def list_loop_rounds(
         payload["train_final_metrics"] = metric_view.train_final_metrics
         payload["eval_final_metrics"] = metric_view.eval_final_metrics
         payload["final_metrics_source"] = metric_view.final_metrics_source
+        payload["warnings"] = sorted(
+            {
+                warning
+                for step in steps_by_round.get(row.id, [])
+                if step.task_id is not None
+                for warning in task_warnings_by_task_id.get(step.task_id, [])
+            }
+        )
         items.append(RoundRead(**payload))
     return items
 

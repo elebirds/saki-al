@@ -54,13 +54,18 @@ class TaskManager:
 
         self.executor_state = ExecutorState.IDLE
         self.current_task_id: str | None = None
+        self.current_execution_id: str | None = None
         self.last_task_id: str | None = None
+        self.last_execution_id: str | None = None
         self.last_task_status: TaskStatus | None = None
         self._active_plugin: ExecutorPlugin | None = None
         self._task: asyncio.Task | None = None
         self._stop_event = asyncio.Event()
         self._lock = asyncio.Lock()
-        self._data_gateway = DataGateway(request_message_getter=lambda: self._request_message)
+        self._data_gateway = DataGateway(
+            request_message_getter=lambda: self._request_message,
+            execution_id_getter=lambda: self.current_execution_id,
+        )
         self._sampling_service = SamplingService(
             fetch_page=self._fetch_page,
             cache=self.cache,
@@ -81,7 +86,9 @@ class TaskManager:
             "executor_state": self.executor_state.value,
             "busy": self.busy,
             "current_task_id": self.current_task_id,
+            "current_execution_id": self.current_execution_id,
             "last_task_id": self.last_task_id,
+            "last_execution_id": self.last_execution_id,
             "last_task_status": self.last_task_status.value if self.last_task_status else None,
             "host_capability_last_probe_ts": self._host_capability_cache.last_probe_ts if self._host_capability_cache else None,
         }
@@ -219,6 +226,7 @@ class TaskManager:
                 logger.warning("拒绝任务分配：执行器忙碌，request_id={}", request_id)
                 return False
             self.current_task_id = request.task_id
+            self.current_execution_id = request.execution_id
             self.executor_state = ExecutorState.RESERVED
             self._stop_event.clear()
             self._task = asyncio.create_task(self._run_task(request))
@@ -230,20 +238,24 @@ class TaskManager:
             )
             return True
 
-    async def stop_task(self, task_id: str) -> bool:
+    async def stop_task(self, task_id: str, execution_id: str | None = None) -> bool:
+        execution_id = str(execution_id or "").strip()
         async with self._lock:
+            current_execution_id = str(self.current_execution_id or "")
             if not self.busy or self.current_task_id != task_id:
                 if self.last_task_id == task_id and self.last_task_status in {
                     TaskStatus.SUCCEEDED,
                     TaskStatus.FAILED,
                     TaskStatus.CANCELLED,
                     TaskStatus.SKIPPED,
-                }:
+                } and (not execution_id or self.last_execution_id == execution_id):
                     return True
+                return False
+            if execution_id and current_execution_id and current_execution_id != execution_id:
                 return False
             self._stop_event.set()
             plugin = self._active_plugin
-            logger.info("收到停止任务请求 task_id={}", task_id)
+            logger.info("收到停止任务请求 task_id={} execution_id={}", task_id, current_execution_id)
         if plugin:
             try:
                 await plugin.stop(task_id)
@@ -283,7 +295,7 @@ class TaskManager:
             else:
                 final_status = await self._publish_failed_result(request, exc)
         finally:
-            await self._reset_after_task(request.task_id, final_status)
+            await self._reset_after_task(request.task_id, request.execution_id, final_status)
 
     def _ensure_reporter(self, request: TaskExecutionRequest) -> TaskReporter:
         workspace = Workspace(
@@ -310,6 +322,7 @@ class TaskManager:
             runtime_codec.build_task_result_message(
                 request_id=str(uuid.uuid4()),
                 task_id=request.task_id,
+                execution_id=request.execution_id,
                 status=TaskStatus.CANCELLED.value,
                 metrics={},
                 artifacts={},
@@ -340,6 +353,7 @@ class TaskManager:
             runtime_codec.build_task_result_message(
                 request_id=str(uuid.uuid4()),
                 task_id=request.task_id,
+                execution_id=request.execution_id,
                 status=TaskStatus.FAILED.value,
                 metrics={},
                 artifacts={},
@@ -350,12 +364,14 @@ class TaskManager:
         logger.exception("任务执行失败 task_id={} error={}", request.task_id, error_message)
         return TaskStatus.FAILED
 
-    async def _reset_after_task(self, task_id: str, final_status: TaskStatus) -> None:
+    async def _reset_after_task(self, task_id: str, execution_id: str, final_status: TaskStatus) -> None:
         async with self._lock:
             self.executor_state = ExecutorState.IDLE
             self.last_task_id = task_id
+            self.last_execution_id = execution_id
             self.last_task_status = final_status
             self.current_task_id = None
+            self.current_execution_id = None
             self._task = None
             self._stop_event.clear()
             self._active_plugin = None
@@ -394,6 +410,7 @@ class TaskManager:
             runtime_codec.build_task_event_message(
                 request_id=str(uuid.uuid4()),
                 task_id=task_id,
+                execution_id=self.current_execution_id,
                 seq=int(event["seq"]),
                 ts=int(event["ts"]),
                 event_type=str(event["event_type"]),

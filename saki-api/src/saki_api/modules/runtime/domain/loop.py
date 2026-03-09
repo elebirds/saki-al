@@ -5,7 +5,7 @@ from sqlalchemy import UniqueConstraint
 from sqlmodel import Column, Field, Relationship, SQLModel
 
 from saki_api.modules.shared.modeling.base import OPT_JSON, TimestampMixin, UUIDMixin
-from saki_api.modules.shared.modeling.enums import LoopMode, LoopPhase, LoopLifecycle
+from saki_api.modules.shared.modeling.enums import LoopLifecycle, LoopMode, LoopPauseReason, LoopPhase
 
 if TYPE_CHECKING:
     from saki_api.modules.project.domain.branch import Branch
@@ -42,6 +42,7 @@ class Loop(UUIDMixin, TimestampMixin, SQLModel, table=True):
         index=True,
     )
     last_confirmed_commit_id: Optional[uuid.UUID] = Field(default=None, foreign_key="commit.id", index=True)
+    pause_reason: Optional[LoopPauseReason] = Field(default=None, index=True)
     terminal_reason: str | None = Field(default=None, max_length=4000)
 
     project: "Project" = Relationship(back_populates="loops")

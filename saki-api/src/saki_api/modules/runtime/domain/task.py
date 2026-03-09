@@ -27,6 +27,8 @@ class Task(UUIDMixin, TimestampMixin, SQLModel, table=True):
     input_commit_id: uuid.UUID | None = Field(default=None, foreign_key="commit.id", index=True)
     resolved_params: dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
     assigned_executor_id: str | None = Field(default=None, index=True)
+    current_execution_id: uuid.UUID = Field(default_factory=uuid.uuid4, index=True)
+    warnings: list[str] = Field(default_factory=list, sa_column=Column(OPT_JSON))
 
     attempt: int = Field(default=1, ge=1)
     max_attempts: int = Field(default=2, ge=1)

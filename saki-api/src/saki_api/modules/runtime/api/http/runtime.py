@@ -3,15 +3,18 @@ Runtime executor observability endpoints.
 """
 
 import uuid
+import asyncio
+from sqlmodel import select
 
 from fastapi import APIRouter, Depends
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from saki_api.app.deps import get_runtime_observability_service
+from saki_api.app.deps import DispatcherAdminClientDep, get_runtime_observability_service
 from saki_api.core.exceptions import ForbiddenAppException, InternalServerErrorAppException
 from saki_api.infra.db.session import get_session
 from saki_api.modules.access.api.dependencies import get_current_user_id
 from saki_api.modules.access.service.permission_checker import PermissionChecker
+from saki_api.modules.runtime.domain.loop import Loop
 from saki_api.modules.runtime.api.runtime_executor import (
     RuntimeDomainCommandResponse,
     RuntimeDomainStatusResponse,
@@ -25,6 +28,7 @@ from saki_api.modules.runtime.service.observability.runtime_observability_servic
     RuntimeObservabilityService,
 )
 from saki_api.modules.access.domain.rbac import Permissions, ResourceType
+from saki_api.modules.shared.modeling.enums import LoopLifecycle, LoopPauseReason
 
 router = APIRouter()
 
@@ -205,3 +209,37 @@ async def reconnect_runtime_domain(
         return await service.reconnect_runtime_domain()
     except RuntimeError as exc:
         raise InternalServerErrorAppException(str(exc)) from exc
+
+
+@router.post("/runtime/loops:resume-maintenance-paused", response_model=RuntimeDomainCommandResponse)
+async def resume_maintenance_paused_loops(
+        dispatcher_admin_client: DispatcherAdminClientDep,
+        session: AsyncSession = Depends(get_session),
+        current_user_id=Depends(get_current_user_id),
+):
+    await _ensure_runtime_manage_permission(session, current_user_id)
+    if not dispatcher_admin_client.enabled:
+        raise InternalServerErrorAppException("dispatcher admin client is not enabled")
+
+    loop_ids = list(
+        (
+            await session.exec(
+                select(Loop.id).where(
+                    Loop.lifecycle == LoopLifecycle.PAUSED,
+                    Loop.pause_reason == LoopPauseReason.MAINTENANCE,
+                )
+            )
+        ).all()
+    )
+    responses = await asyncio.gather(
+        *(dispatcher_admin_client.resume_loop(str(loop_id)) for loop_id in loop_ids),
+        return_exceptions=True,
+    )
+    resumed = sum(1 for item in responses if not isinstance(item, Exception) and str(item.status or "") == "applied")
+    failed = sum(1 for item in responses if isinstance(item, Exception) or str(getattr(item, "status", "")) != "applied")
+    return RuntimeDomainCommandResponse(
+        command_id=str(uuid.uuid4()),
+        request_id=str(uuid.uuid4()),
+        status="ok" if failed == 0 else "partial",
+        message=f"resumed {resumed}/{len(loop_ids)} maintenance-paused loops",
+    )

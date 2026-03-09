@@ -57,6 +57,13 @@ class RuntimeQueryMixin:
             return None
         return dict(metrics)
 
+    @staticmethod
+    def _extract_task_warnings(task: Any) -> list[str]:
+        warnings = getattr(task, "warnings", None)
+        if not isinstance(warnings, list):
+            return []
+        return [str(item).strip() for item in warnings if str(item).strip()]
+
     async def _build_task_result_metrics_map(
         self,
         steps: list[Step],
@@ -122,6 +129,27 @@ class RuntimeQueryMixin:
                 if task_id not in found_task_ids:
                     raise NotFoundAppException(f"task {task_id} not found")
         return {task.id: self._task_state_text(task) for task in tasks}
+
+    async def _build_task_warnings_map(
+        self,
+        steps: list[Step],
+        *,
+        strict: bool = False,
+    ) -> dict[uuid.UUID, list[str]]:
+        if strict:
+            for step in steps:
+                if step.task_id is None:
+                    raise NotFoundAppException(f"step {step.id} has no task binding")
+        task_ids = [step.task_id for step in steps if step.task_id is not None]
+        if not task_ids:
+            return {}
+        tasks = await self.task_repo.get_by_ids(task_ids)
+        if strict:
+            found_task_ids = {task.id for task in tasks}
+            for task_id in task_ids:
+                if task_id not in found_task_ids:
+                    raise NotFoundAppException(f"task {task_id} not found")
+        return {task.id: self._extract_task_warnings(task) for task in tasks}
 
     @staticmethod
     def _pick_non_empty_step_metrics(
@@ -480,6 +508,7 @@ class RuntimeQueryMixin:
         return {
             "seq": int(event.seq),
             "ts": event.ts,
+            "execution_id": getattr(event, "execution_id", None),
             "event_type": event_type,
             "payload": payload,
             "level": level,

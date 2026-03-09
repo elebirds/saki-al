@@ -204,6 +204,7 @@ class RuntimeControlIngressService:
         return RuntimeDataRequestDTO(
             request_id=request_id,
             task_id=task_id,
+            execution_id=str(message.execution_id or ""),
             query_type=int(message.query_type),
             project_id=project_id,
             commit_id=commit_id,
@@ -226,6 +227,7 @@ class RuntimeControlIngressService:
         return RuntimeUploadTicketRequestDTO(
             request_id=request_id,
             task_id=task_id,
+            execution_id=str(message.execution_id or ""),
             artifact_name=artifact_name,
             content_type=str(message.content_type or "application/octet-stream"),
         )

@@ -23,6 +23,8 @@ INSERT INTO task(
   input_commit_id,
   resolved_params,
   assigned_executor_id,
+  current_execution_id,
+  warnings,
   attempt,
   max_attempts,
   started_at,
@@ -41,6 +43,8 @@ INSERT INTO task(
   sqlc.narg(input_commit_id)::uuid,
   sqlc.arg(resolved_params)::jsonb,
   NULL,
+  sqlc.arg(current_execution_id)::uuid,
+  '[]'::jsonb,
   1,
   sqlc.arg(max_attempts),
   NULL,
@@ -62,6 +66,8 @@ SELECT
   plugin_id,
   input_commit_id,
   COALESCE(resolved_params, '{}'::jsonb) AS resolved_params_json,
+  current_execution_id,
+  COALESCE(warnings, '[]'::jsonb) AS warnings_json,
   attempt,
   max_attempts,
   COALESCE(assigned_executor_id, '') AS assigned_executor_id,
@@ -69,6 +75,11 @@ SELECT
 FROM task
 WHERE id = sqlc.arg(task_id)::uuid
 FOR UPDATE;
+
+-- name: GetTaskCurrentExecutionID :one
+SELECT current_execution_id
+FROM task
+WHERE id = sqlc.arg(task_id)::uuid;
 
 -- name: MarkTaskDispatching :execrows
 UPDATE task
@@ -221,6 +232,7 @@ WHERE id = sqlc.arg(task_id)::uuid
 UPDATE task
 SET status = sqlc.arg(status)::runtimetaskstatus,
     resolved_params = sqlc.arg(resolved_params)::jsonb,
+    warnings = sqlc.arg(warnings)::jsonb,
     started_at = COALESCE(started_at, now()),
     ended_at = CASE
       WHEN sqlc.arg(status)::runtimetaskstatus IN (
@@ -270,6 +282,8 @@ SET status = 'READY'::runtimetaskstatus,
     assigned_executor_id = NULL,
     ended_at = NULL,
     last_error = sqlc.arg(last_error),
+    current_execution_id = sqlc.arg(new_execution_id)::uuid,
+    warnings = '[]'::jsonb,
     result_ready_at = NULL,
     updated_at = now()
 WHERE id = sqlc.arg(task_id)::uuid
@@ -283,6 +297,8 @@ SET status = 'RETRYING'::runtimetaskstatus,
     assigned_executor_id = NULL,
     ended_at = NULL,
     last_error = sqlc.arg(last_error),
+    current_execution_id = sqlc.arg(new_execution_id)::uuid,
+    warnings = '[]'::jsonb,
     result_ready_at = NULL,
     updated_at = now()
 WHERE id = sqlc.arg(task_id)::uuid
@@ -309,6 +325,8 @@ SET status = 'READY'::runtimetaskstatus,
     assigned_executor_id = NULL,
     ended_at = NULL,
     last_error = sqlc.arg(last_error),
+    current_execution_id = sqlc.arg(new_execution_id)::uuid,
+    warnings = '[]'::jsonb,
     result_ready_at = NULL,
     updated_at = now()
 WHERE id = sqlc.arg(task_id)::uuid
@@ -323,6 +341,30 @@ WHERE id = sqlc.arg(task_id)::uuid
     OR assigned_executor_id = sqlc.arg(assigned_executor_id)
   );
 
+-- name: ResetTaskExecutionForPause :execrows
+UPDATE task
+SET status = 'READY'::runtimetaskstatus,
+    attempt = attempt + 1,
+    max_attempts = max_attempts + 1,
+    assigned_executor_id = NULL,
+    current_execution_id = sqlc.arg(new_execution_id)::uuid,
+    started_at = NULL,
+    ended_at = NULL,
+    result_ready_at = NULL,
+    last_error = sqlc.arg(last_error),
+    warnings = '[]'::jsonb,
+    updated_at = now()
+WHERE id = sqlc.arg(task_id)::uuid
+  AND current_execution_id = sqlc.arg(old_execution_id)::uuid
+  AND status IN (
+    'DISPATCHING'::runtimetaskstatus,
+    'SYNCING_ENV'::runtimetaskstatus,
+    'PROBING_RUNTIME'::runtimetaskstatus,
+    'BINDING_DEVICE'::runtimetaskstatus,
+    'RUNNING'::runtimetaskstatus,
+    'RETRYING'::runtimetaskstatus
+  );
+
 -- name: RecoverRunningTaskToRetrying :execrows
 UPDATE task
 SET status = 'RETRYING'::runtimetaskstatus,
@@ -330,6 +372,8 @@ SET status = 'RETRYING'::runtimetaskstatus,
     assigned_executor_id = NULL,
     ended_at = NULL,
     last_error = sqlc.arg(last_error),
+    current_execution_id = sqlc.arg(new_execution_id)::uuid,
+    warnings = '[]'::jsonb,
     result_ready_at = NULL,
     updated_at = now()
 WHERE id = sqlc.arg(task_id)::uuid

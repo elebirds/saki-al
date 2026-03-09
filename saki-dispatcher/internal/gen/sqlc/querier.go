@@ -41,10 +41,12 @@ type Querier interface {
 	GetNextRoundIndex(ctx context.Context, loopID uuid.UUID) (int32, error)
 	GetRoundForRetry(ctx context.Context, roundID uuid.UUID) (GetRoundForRetryRow, error)
 	GetRoundState(ctx context.Context, roundID uuid.UUID) (Roundstatus, error)
+	GetRuntimeMaintenanceMode(ctx context.Context) (interface{}, error)
 	GetStepArtifactsForUpdate(ctx context.Context, stepID uuid.UUID) ([]byte, error)
 	GetStepIDByTaskID(ctx context.Context, taskID uuid.UUID) (uuid.UUID, error)
 	GetStepPayloadByTaskIDForUpdate(ctx context.Context, taskID uuid.UUID) (GetStepPayloadByTaskIDForUpdateRow, error)
 	GetSucceededScoreTaskIDByRound(ctx context.Context, roundID uuid.UUID) (uuid.UUID, error)
+	GetTaskCurrentExecutionID(ctx context.Context, taskID uuid.UUID) (uuid.UUID, error)
 	GetTaskForUpdate(ctx context.Context, taskID uuid.UUID) (GetTaskForUpdateRow, error)
 	GetTaskIDByStepID(ctx context.Context, stepID uuid.UUID) (uuid.UUID, error)
 	Healthcheck(ctx context.Context) (int32, error)
@@ -82,6 +84,7 @@ type Querier interface {
 	ReleaseDispatchAdvisoryLock(ctx context.Context, lockKey int64) (bool, error)
 	ReleaseStaleSendingOutbox(ctx context.Context, cutoff pgtype.Timestamptz) (int64, error)
 	ResetDispatchingTaskToReadyByAck(ctx context.Context, arg ResetDispatchingTaskToReadyByAckParams) (int64, error)
+	ResetTaskExecutionForPause(ctx context.Context, arg ResetTaskExecutionForPauseParams) (int64, error)
 	ResetTaskToReadyQueueFull(ctx context.Context, taskID uuid.UUID) (int64, error)
 	ResolveBranchHeadFromDB(ctx context.Context, branchID uuid.UUID) (ResolveBranchHeadFromDBRow, error)
 	RetryDispatchingTaskByAck(ctx context.Context, arg RetryDispatchingTaskByAckParams) (int64, error)
@@ -93,6 +96,7 @@ type Querier interface {
 	UpdateLoopLastConfirmedCommit(ctx context.Context, arg UpdateLoopLastConfirmedCommitParams) error
 	UpdateLoopLifecycle(ctx context.Context, arg UpdateLoopLifecycleParams) error
 	UpdateLoopLifecycleGuarded(ctx context.Context, arg UpdateLoopLifecycleGuardedParams) (int64, error)
+	UpdateLoopPauseStateGuarded(ctx context.Context, arg UpdateLoopPauseStateGuardedParams) (int64, error)
 	UpdateLoopPhaseIfRunning(ctx context.Context, arg UpdateLoopPhaseIfRunningParams) (int64, error)
 	UpdateLoopRuntime(ctx context.Context, arg UpdateLoopRuntimeParams) error
 	UpdateLoopRuntimeGuarded(ctx context.Context, arg UpdateLoopRuntimeGuardedParams) (int64, error)

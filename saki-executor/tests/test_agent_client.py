@@ -82,7 +82,8 @@ async def test_disconnect_force_waits_for_stop_before_disconnect(tmp_path, monke
     client.task_manager.current_task_id = "task-force-1"
     stop_called: list[str] = []
 
-    async def fake_stop(task_id: str) -> bool:
+    async def fake_stop(task_id: str, execution_id: str | None = None) -> bool:
+        del execution_id
         stop_called.append(task_id)
         client.task_manager._task = None  # noqa: SLF001
         client.task_manager.current_task_id = None
@@ -184,7 +185,8 @@ async def test_duplicate_stop_task_returns_cached_ack_without_restop(tmp_path):
     stop_calls: list[str] = []
     sent_messages: list[pb.RuntimeMessage] = []
 
-    async def fake_stop_task(task_id: str):
+    async def fake_stop_task(task_id: str, execution_id: str | None = None):
+        del execution_id
         stop_calls.append(task_id)
         return True
 

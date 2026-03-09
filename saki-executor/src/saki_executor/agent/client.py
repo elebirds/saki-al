@@ -107,7 +107,10 @@ class AgentClient:
         if self.task_manager.busy and force:
             if self.task_manager.current_task_id:
                 logger.warning("收到强制断连请求，先尝试停止任务 task_id={}。", self.task_manager.current_task_id)
-                await self.task_manager.stop_task(self.task_manager.current_task_id)
+                await self.task_manager.stop_task(
+                    self.task_manager.current_task_id,
+                    execution_id=self.task_manager.current_execution_id,
+                )
             wait_sec = max(0, int(settings.DISCONNECT_FORCE_WAIT_SEC))
             if wait_sec > 0:
                 deadline = time.monotonic() + wait_sec
@@ -320,7 +323,7 @@ class AgentClient:
 
             task_id = str(stop.task_id or "")
             logger.info("收到任务停止请求 request_id={} task_id={}", request_id, task_id)
-            stopped = await self.task_manager.stop_task(task_id)
+            stopped = await self.task_manager.stop_task(task_id, execution_id=str(stop.execution_id or ""))
             ack_message = runtime_codec.build_ack_message(
                 request_id=str(uuid.uuid4()),
                 ack_for=request_id,
@@ -418,6 +421,11 @@ class AgentClient:
                 self._active_call = None
                 if heartbeat_task:
                     heartbeat_task.cancel()
+                if self.task_manager.busy and self.task_manager.current_task_id:
+                    await self.task_manager.stop_task(
+                        self.task_manager.current_task_id,
+                        execution_id=self.task_manager.current_execution_id,
+                    )
                 self._fail_pending("gRPC 会话已结束")
                 self._drain_outbox()
                 if not self.task_manager.busy:

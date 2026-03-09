@@ -5,6 +5,7 @@ import db "github.com/elebirds/saki/saki-dispatcher/internal/gen/sqlc"
 const (
 	lifecycleDraft     db.Looplifecycle = db.LooplifecycleDRAFT
 	lifecycleRunning   db.Looplifecycle = db.LooplifecycleRUNNING
+	lifecyclePausing   db.Looplifecycle = db.LooplifecyclePAUSING
 	lifecyclePaused    db.Looplifecycle = db.LooplifecyclePAUSED
 	lifecycleStopping  db.Looplifecycle = db.LooplifecycleSTOPPING
 	lifecycleStopped   db.Looplifecycle = db.LooplifecycleSTOPPED
@@ -65,6 +66,13 @@ const (
 	terminalReasonSuccess     = "SUCCESS"
 	terminalReasonSystemError = "SYSTEM_ERROR"
 	terminalReasonUserStop    = "USER_STOP"
+
+	pauseReasonUser        db.Looppausereason = db.LooppausereasonUSER
+	pauseReasonMaintenance db.Looppausereason = db.LooppausereasonMAINTENANCE
+
+	maintenanceModeNormal   = "normal"
+	maintenanceModeDrain    = "drain"
+	maintenanceModePauseNow = "pause_now"
 )
 
 var terminalRoundStatuses = map[db.Roundstatus]struct{}{

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+import uuid as uuidlib
+from dataclasses import dataclass, field
 from typing import Any
 
 from saki_executor.steps.state import TaskStatus
@@ -12,6 +13,7 @@ SAMPLING_REQUIRED_TASK_TYPES = {"score", "custom"}
 @dataclass(frozen=True)
 class TaskExecutionRequest:
     task_id: str
+    execution_id: str
     round_id: str
     task_type: str
     dispatch_kind: str
@@ -87,6 +89,7 @@ class TaskExecutionRequest:
 
         return cls(
             task_id=task_id,
+            execution_id=str(payload.get("execution_id") or uuidlib.uuid4()),
             round_id=str(payload.get("round_id") or ""),
             task_type=task_type,
             dispatch_kind=dispatch_kind,
@@ -173,3 +176,4 @@ class TaskFinalResult:
     artifacts: dict[str, Any]
     candidates: list[dict[str, Any]]
     error_message: str = ""
+    warnings: list[str] = field(default_factory=list)

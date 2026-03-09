@@ -146,6 +146,7 @@ message TaskPayload {
   int32 attempt = 13;
   repeated string depends_on_task_ids = 14;
   RuntimeTaskDispatchKind dispatch_kind = 15;
+  string execution_id = 16;
 }
 
 message AssignTask {
@@ -157,6 +158,7 @@ message StopTask {
   string request_id = 1;
   string task_id = 2;
   string reason = 3;
+  string execution_id = 4;
 }
 
 message StatusEvent {
@@ -209,6 +211,7 @@ message TaskEvent {
     MetricEvent metric_event = 8;
     ArtifactEvent artifact_event = 9;
   }
+  string execution_id = 10;
 }
 
 message QueryCandidate {
@@ -225,6 +228,8 @@ message TaskResult {
   repeated ArtifactItem artifacts = 5;
   repeated QueryCandidate candidates = 6;
   string error_message = 7;
+  string execution_id = 8;
+  repeated string warnings = 9;
 }
 
 message DataRequest {
@@ -237,6 +242,7 @@ message DataRequest {
   int32 limit = 7;
   int32 preferred_chunk_bytes = 8;
   uint64 max_uncompressed_bytes = 9;
+  string execution_id = 10;
 }
 
 message LabelItem {
@@ -294,6 +300,7 @@ message UploadTicketRequest {
   string task_id = 2;
   string artifact_name = 3;
   string content_type = 4;
+  string execution_id = 5;
 }
 
 message UploadTicketResponse {

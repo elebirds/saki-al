@@ -114,11 +114,22 @@ CREATE TYPE public.datasettype AS ENUM (
 CREATE TYPE public.looplifecycle AS ENUM (
     'DRAFT',
     'RUNNING',
+    'PAUSING',
     'PAUSED',
     'STOPPING',
     'STOPPED',
     'COMPLETED',
     'FAILED'
+);
+
+
+--
+-- Name: looppausereason; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.looppausereason AS ENUM (
+    'USER',
+    'MAINTENANCE'
 );
 
 
@@ -650,6 +661,7 @@ CREATE TABLE public.loop (
     min_new_labels_per_round integer NOT NULL,
     active_snapshot_version_id uuid,
     last_confirmed_commit_id uuid,
+    pause_reason public.looppausereason,
     terminal_reason character varying(4000)
 );
 
@@ -1067,6 +1079,8 @@ CREATE TABLE public.task (
     input_commit_id uuid,
     resolved_params jsonb,
     assigned_executor_id character varying,
+    current_execution_id uuid NOT NULL,
+    warnings jsonb,
     attempt integer NOT NULL,
     max_attempts integer NOT NULL,
     started_at timestamp with time zone,
@@ -1123,6 +1137,7 @@ CREATE TABLE public.task_event (
     updated_at timestamp with time zone NOT NULL,
     id uuid NOT NULL,
     task_id uuid NOT NULL,
+    execution_id uuid NOT NULL,
     seq integer NOT NULL,
     ts timestamp with time zone NOT NULL,
     event_type character varying(64) NOT NULL,
@@ -1625,7 +1640,7 @@ ALTER TABLE ONLY public.task_candidate_item
 --
 
 ALTER TABLE ONLY public.task_event
-    ADD CONSTRAINT uq_task_event_seq UNIQUE (task_id, seq);
+    ADD CONSTRAINT uq_task_event_execution_seq UNIQUE (task_id, execution_id, seq);
 
 
 --
@@ -2625,6 +2640,13 @@ CREATE INDEX ix_task_assigned_executor_id ON public.task USING btree (assigned_e
 
 
 --
+-- Name: ix_task_current_execution_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_task_current_execution_id ON public.task USING btree (current_execution_id);
+
+
+--
 -- Name: ix_task_candidate_item_sample_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2671,6 +2693,13 @@ CREATE INDEX ix_task_event_event_type ON public.task_event USING btree (event_ty
 --
 
 CREATE INDEX ix_task_event_seq ON public.task_event USING btree (seq);
+
+
+--
+-- Name: ix_task_event_execution_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_task_event_execution_id ON public.task_event USING btree (execution_id);
 
 
 --

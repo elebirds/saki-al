@@ -15,14 +15,16 @@ from saki_ir.transport import ChunkAssembler, PayloadChunk
 
 RequestFn = Callable[[pb.RuntimeMessage], Awaitable[pb.RuntimeMessage | list[pb.RuntimeMessage]]]
 RequestGetterFn = Callable[[], RequestFn | None]
+ExecutionIDGetterFn = Callable[[], str | None]
 
 _DEFAULT_CHUNK_BYTES = 896 * 1024
 _DEFAULT_MAX_UNCOMPRESSED_BYTES = 64 * 1024 * 1024
 
 
 class DataGateway:
-    def __init__(self, request_message_getter: RequestGetterFn) -> None:
+    def __init__(self, request_message_getter: RequestGetterFn, execution_id_getter: ExecutionIDGetterFn) -> None:
         self._request_message_getter = request_message_getter
+        self._execution_id_getter = execution_id_getter
 
     async def request_upload_ticket(
         self,
@@ -36,6 +38,7 @@ class DataGateway:
             runtime_codec.build_upload_ticket_request_message(
                 request_id=str(uuid.uuid4()),
                 task_id=task_id,
+                execution_id=self._current_execution_id(),
                 artifact_name=artifact_name,
                 content_type=content_type,
             )
@@ -98,6 +101,7 @@ class DataGateway:
             runtime_codec.build_data_request_message(
                 request_id=str(uuid.uuid4()),
                 task_id=task_id,
+                execution_id=self._current_execution_id(),
                 query_type=query_type,
                 project_id=project_id,
                 commit_id=commit_id,
@@ -175,6 +179,9 @@ class DataGateway:
         if request_message is None:
             raise RuntimeError("task manager request transport is not configured")
         return request_message
+
+    def _current_execution_id(self) -> str:
+        return str(self._execution_id_getter() or "")
 
 
 def _to_payload_chunk(data_response: pb.DataResponse) -> PayloadChunk:

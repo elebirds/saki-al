@@ -121,6 +121,7 @@ class LoopLifecycle(str, Enum):
     """
     DRAFT = "draft"
     RUNNING = "running"
+    PAUSING = "pausing"
     PAUSED = "paused"
     STOPPING = "stopping"
     STOPPED = "stopped"
@@ -145,6 +146,7 @@ class LoopGate(str, Enum):
     NEED_LABELS = "need_labels"
     CAN_START = "can_start"
     RUNNING = "running"
+    PAUSING = "pausing"
     PAUSED = "paused"
     STOPPING = "stopping"
     NEED_ROUND_LABELS = "need_round_labels"
@@ -198,6 +200,23 @@ class LoopPhase(str, Enum):
     MANUAL_TRAIN = "manual_train"
     MANUAL_EVAL = "manual_eval"
     MANUAL_FINALIZE = "manual_finalize"
+
+
+class LoopPauseReason(str, Enum):
+    """
+    Enum for resumable loop pause reason.
+    """
+    USER = "user"
+    MAINTENANCE = "maintenance"
+
+
+class RuntimeMaintenanceMode(str, Enum):
+    """
+    Enum for runtime maintenance mode.
+    """
+    NORMAL = "normal"
+    DRAIN = "drain"
+    PAUSE_NOW = "pause_now"
 
 
 class SnapshotUpdateMode(str, Enum):

@@ -3,8 +3,10 @@ package controlplane
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
@@ -129,4 +131,65 @@ func (s *Service) beginTx(ctx context.Context) (pgx.Tx, error) {
 
 func (s *Service) qtx(tx pgx.Tx) *db.Queries {
 	return s.queries.WithTx(tx)
+}
+
+func normalizeMaintenanceMode(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case maintenanceModeDrain:
+		return maintenanceModeDrain
+	case maintenanceModePauseNow:
+		return maintenanceModePauseNow
+	default:
+		return maintenanceModeNormal
+	}
+}
+
+func normalizeMaintenanceModeValue(raw any) string {
+	switch value := raw.(type) {
+	case string:
+		return normalizeMaintenanceMode(value)
+	case []byte:
+		return normalizeMaintenanceMode(string(value))
+	default:
+		return maintenanceModeNormal
+	}
+}
+
+func (s *Service) getRuntimeMaintenanceMode(ctx context.Context) (string, error) {
+	if !s.dbEnabled() {
+		return maintenanceModeNormal, nil
+	}
+	value, err := s.queries.GetRuntimeMaintenanceMode(ctx)
+	if err != nil {
+		return "", err
+	}
+	return normalizeMaintenanceModeValue(value), nil
+}
+
+func (s *Service) getRuntimeMaintenanceModeTx(ctx context.Context, tx pgx.Tx) (string, error) {
+	if !s.dbEnabled() {
+		return maintenanceModeNormal, nil
+	}
+	value, err := s.qtx(tx).GetRuntimeMaintenanceMode(ctx)
+	if err != nil {
+		return "", err
+	}
+	return normalizeMaintenanceModeValue(value), nil
+}
+
+func (s *Service) ValidateCurrentExecutionID(ctx context.Context, taskID uuid.UUID, executionID uuid.UUID) (bool, error) {
+	if !s.dbEnabled() {
+		return true, nil
+	}
+	if taskID == uuid.Nil || executionID == uuid.Nil {
+		return false, nil
+	}
+	currentExecutionID, err := s.queries.GetTaskCurrentExecutionID(ctx, taskID)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return false, nil
+		}
+		return false, err
+	}
+	return currentExecutionID == executionID, nil
 }

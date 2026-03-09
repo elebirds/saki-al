@@ -41,8 +41,13 @@ class RoundSelectionMixin:
                 raise BadRequestAppException("round selection override only supports latest round attempt")
             if loop.phase != LoopPhase.AL_WAIT_USER:
                 raise BadRequestAppException("round selection override requires loop phase al_wait_user")
-            if loop.lifecycle not in {LoopLifecycle.RUNNING, LoopLifecycle.PAUSED, LoopLifecycle.STOPPING}:
-                raise BadRequestAppException("round selection override requires loop in running/paused/stopping lifecycle")
+            if loop.lifecycle not in {
+                LoopLifecycle.RUNNING,
+                LoopLifecycle.PAUSING,
+                LoopLifecycle.PAUSED,
+                LoopLifecycle.STOPPING,
+            }:
+                raise BadRequestAppException("round selection override requires loop in running/pausing/paused/stopping lifecycle")
             if round_row.state != RoundStatus.COMPLETED:
                 raise BadRequestAppException("round selection override requires round in completed state")
             if round_row.confirmed_at is not None:

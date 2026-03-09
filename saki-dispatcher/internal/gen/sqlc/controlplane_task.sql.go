@@ -90,6 +90,19 @@ func (q *Queries) GetStepIDByTaskID(ctx context.Context, taskID uuid.UUID) (uuid
 	return id, err
 }
 
+const getTaskCurrentExecutionID = `-- name: GetTaskCurrentExecutionID :one
+SELECT current_execution_id
+FROM task
+WHERE id = $1::uuid
+`
+
+func (q *Queries) GetTaskCurrentExecutionID(ctx context.Context, taskID uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, getTaskCurrentExecutionID, taskID)
+	var current_execution_id uuid.UUID
+	err := row.Scan(&current_execution_id)
+	return current_execution_id, err
+}
+
 const getTaskForUpdate = `-- name: GetTaskForUpdate :one
 SELECT
   id,
@@ -100,6 +113,8 @@ SELECT
   plugin_id,
   input_commit_id,
   COALESCE(resolved_params, '{}'::jsonb) AS resolved_params_json,
+  current_execution_id,
+  COALESCE(warnings, '[]'::jsonb) AS warnings_json,
   attempt,
   max_attempts,
   COALESCE(assigned_executor_id, '') AS assigned_executor_id,
@@ -118,6 +133,8 @@ type GetTaskForUpdateRow struct {
 	PluginID           string
 	InputCommitID      *uuid.UUID
 	ResolvedParamsJson []byte
+	CurrentExecutionID uuid.UUID
+	WarningsJson       []byte
 	Attempt            int32
 	MaxAttempts        int32
 	AssignedExecutorID string
@@ -136,6 +153,8 @@ func (q *Queries) GetTaskForUpdate(ctx context.Context, taskID uuid.UUID) (GetTa
 		&i.PluginID,
 		&i.InputCommitID,
 		&i.ResolvedParamsJson,
+		&i.CurrentExecutionID,
+		&i.WarningsJson,
 		&i.Attempt,
 		&i.MaxAttempts,
 		&i.AssignedExecutorID,
@@ -171,6 +190,8 @@ INSERT INTO task(
   input_commit_id,
   resolved_params,
   assigned_executor_id,
+  current_execution_id,
+  warnings,
   attempt,
   max_attempts,
   started_at,
@@ -189,8 +210,10 @@ INSERT INTO task(
   $6::uuid,
   $7::jsonb,
   NULL,
+  $8::uuid,
+  '[]'::jsonb,
   1,
-  $8,
+  $9,
   NULL,
   NULL,
   NULL
@@ -198,14 +221,15 @@ INSERT INTO task(
 `
 
 type InsertStepTaskParams struct {
-	TaskID           uuid.UUID
-	ProjectID        uuid.UUID
-	TaskType         Runtimetasktype
-	PluginID         string
-	DependsOnTaskIds []byte
-	InputCommitID    *uuid.UUID
-	ResolvedParams   []byte
-	MaxAttempts      int32
+	TaskID             uuid.UUID
+	ProjectID          uuid.UUID
+	TaskType           Runtimetasktype
+	PluginID           string
+	DependsOnTaskIds   []byte
+	InputCommitID      *uuid.UUID
+	ResolvedParams     []byte
+	CurrentExecutionID uuid.UUID
+	MaxAttempts        int32
 }
 
 func (q *Queries) InsertStepTask(ctx context.Context, arg InsertStepTaskParams) error {
@@ -217,6 +241,7 @@ func (q *Queries) InsertStepTask(ctx context.Context, arg InsertStepTaskParams) 
 		arg.DependsOnTaskIds,
 		arg.InputCommitID,
 		arg.ResolvedParams,
+		arg.CurrentExecutionID,
 		arg.MaxAttempts,
 	)
 	return err
@@ -512,9 +537,11 @@ SET status = 'READY'::runtimetaskstatus,
     assigned_executor_id = NULL,
     ended_at = NULL,
     last_error = $1,
+    current_execution_id = $2::uuid,
+    warnings = '[]'::jsonb,
     result_ready_at = NULL,
     updated_at = now()
-WHERE id = $2::uuid
+WHERE id = $3::uuid
   AND status IN (
     'DISPATCHING'::runtimetaskstatus,
     'SYNCING_ENV'::runtimetaskstatus,
@@ -522,19 +549,25 @@ WHERE id = $2::uuid
     'BINDING_DEVICE'::runtimetaskstatus
   )
   AND (
-    $3 = ''
-    OR assigned_executor_id = $3
+    $4 = ''
+    OR assigned_executor_id = $4
   )
 `
 
 type RecoverPreRunTaskToReadyParams struct {
 	LastError          pgtype.Text
+	NewExecutionID     uuid.UUID
 	TaskID             uuid.UUID
 	AssignedExecutorID interface{}
 }
 
 func (q *Queries) RecoverPreRunTaskToReady(ctx context.Context, arg RecoverPreRunTaskToReadyParams) (int64, error) {
-	result, err := q.db.Exec(ctx, recoverPreRunTaskToReady, arg.LastError, arg.TaskID, arg.AssignedExecutorID)
+	result, err := q.db.Exec(ctx, recoverPreRunTaskToReady,
+		arg.LastError,
+		arg.NewExecutionID,
+		arg.TaskID,
+		arg.AssignedExecutorID,
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -579,25 +612,33 @@ SET status = 'RETRYING'::runtimetaskstatus,
     assigned_executor_id = NULL,
     ended_at = NULL,
     last_error = $1,
+    current_execution_id = $2::uuid,
+    warnings = '[]'::jsonb,
     result_ready_at = NULL,
     updated_at = now()
-WHERE id = $2::uuid
+WHERE id = $3::uuid
   AND status = 'RUNNING'::runtimetaskstatus
   AND attempt < max_attempts
   AND (
-    $3 = ''
-    OR assigned_executor_id = $3
+    $4 = ''
+    OR assigned_executor_id = $4
   )
 `
 
 type RecoverRunningTaskToRetryingParams struct {
 	LastError          pgtype.Text
+	NewExecutionID     uuid.UUID
 	TaskID             uuid.UUID
 	AssignedExecutorID interface{}
 }
 
 func (q *Queries) RecoverRunningTaskToRetrying(ctx context.Context, arg RecoverRunningTaskToRetryingParams) (int64, error) {
-	result, err := q.db.Exec(ctx, recoverRunningTaskToRetrying, arg.LastError, arg.TaskID, arg.AssignedExecutorID)
+	result, err := q.db.Exec(ctx, recoverRunningTaskToRetrying,
+		arg.LastError,
+		arg.NewExecutionID,
+		arg.TaskID,
+		arg.AssignedExecutorID,
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -640,21 +681,74 @@ SET status = 'READY'::runtimetaskstatus,
     assigned_executor_id = NULL,
     ended_at = NULL,
     last_error = $1,
+    current_execution_id = $2::uuid,
+    warnings = '[]'::jsonb,
     result_ready_at = NULL,
     updated_at = now()
-WHERE id = $2::uuid
+WHERE id = $3::uuid
   AND status = 'DISPATCHING'::runtimetaskstatus
-  AND assigned_executor_id = $3
+  AND assigned_executor_id = $4
 `
 
 type ResetDispatchingTaskToReadyByAckParams struct {
 	LastError          pgtype.Text
+	NewExecutionID     uuid.UUID
 	TaskID             uuid.UUID
 	AssignedExecutorID pgtype.Text
 }
 
 func (q *Queries) ResetDispatchingTaskToReadyByAck(ctx context.Context, arg ResetDispatchingTaskToReadyByAckParams) (int64, error) {
-	result, err := q.db.Exec(ctx, resetDispatchingTaskToReadyByAck, arg.LastError, arg.TaskID, arg.AssignedExecutorID)
+	result, err := q.db.Exec(ctx, resetDispatchingTaskToReadyByAck,
+		arg.LastError,
+		arg.NewExecutionID,
+		arg.TaskID,
+		arg.AssignedExecutorID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const resetTaskExecutionForPause = `-- name: ResetTaskExecutionForPause :execrows
+UPDATE task
+SET status = 'READY'::runtimetaskstatus,
+    attempt = attempt + 1,
+    max_attempts = max_attempts + 1,
+    assigned_executor_id = NULL,
+    current_execution_id = $1::uuid,
+    started_at = NULL,
+    ended_at = NULL,
+    result_ready_at = NULL,
+    last_error = $2,
+    warnings = '[]'::jsonb,
+    updated_at = now()
+WHERE id = $3::uuid
+  AND current_execution_id = $4::uuid
+  AND status IN (
+    'DISPATCHING'::runtimetaskstatus,
+    'SYNCING_ENV'::runtimetaskstatus,
+    'PROBING_RUNTIME'::runtimetaskstatus,
+    'BINDING_DEVICE'::runtimetaskstatus,
+    'RUNNING'::runtimetaskstatus,
+    'RETRYING'::runtimetaskstatus
+  )
+`
+
+type ResetTaskExecutionForPauseParams struct {
+	NewExecutionID uuid.UUID
+	LastError      pgtype.Text
+	TaskID         uuid.UUID
+	OldExecutionID uuid.UUID
+}
+
+func (q *Queries) ResetTaskExecutionForPause(ctx context.Context, arg ResetTaskExecutionForPauseParams) (int64, error) {
+	result, err := q.db.Exec(ctx, resetTaskExecutionForPause,
+		arg.NewExecutionID,
+		arg.LastError,
+		arg.TaskID,
+		arg.OldExecutionID,
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -686,22 +780,30 @@ SET status = 'RETRYING'::runtimetaskstatus,
     assigned_executor_id = NULL,
     ended_at = NULL,
     last_error = $1,
+    current_execution_id = $2::uuid,
+    warnings = '[]'::jsonb,
     result_ready_at = NULL,
     updated_at = now()
-WHERE id = $2::uuid
+WHERE id = $3::uuid
   AND status = 'DISPATCHING'::runtimetaskstatus
-  AND assigned_executor_id = $3
+  AND assigned_executor_id = $4
   AND attempt < max_attempts
 `
 
 type RetryDispatchingTaskByAckParams struct {
 	LastError          pgtype.Text
+	NewExecutionID     uuid.UUID
 	TaskID             uuid.UUID
 	AssignedExecutorID pgtype.Text
 }
 
 func (q *Queries) RetryDispatchingTaskByAck(ctx context.Context, arg RetryDispatchingTaskByAckParams) (int64, error) {
-	result, err := q.db.Exec(ctx, retryDispatchingTaskByAck, arg.LastError, arg.TaskID, arg.AssignedExecutorID)
+	result, err := q.db.Exec(ctx, retryDispatchingTaskByAck,
+		arg.LastError,
+		arg.NewExecutionID,
+		arg.TaskID,
+		arg.AssignedExecutorID,
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -765,6 +867,7 @@ const updateTaskResult = `-- name: UpdateTaskResult :execrows
 UPDATE task
 SET status = $1::runtimetaskstatus,
     resolved_params = $2::jsonb,
+    warnings = $3::jsonb,
     started_at = COALESCE(started_at, now()),
     ended_at = CASE
       WHEN $1::runtimetaskstatus IN (
@@ -779,14 +882,15 @@ SET status = $1::runtimetaskstatus,
       WHEN $1::runtimetaskstatus = 'SUCCEEDED'::runtimetaskstatus THEN COALESCE(result_ready_at, now())
       ELSE NULL
     END,
-    last_error = $3::text,
+    last_error = $4::text,
     updated_at = now()
-WHERE id = $4::uuid
+WHERE id = $5::uuid
 `
 
 type UpdateTaskResultParams struct {
 	Status         Runtimetaskstatus
 	ResolvedParams []byte
+	Warnings       []byte
 	LastError      pgtype.Text
 	TaskID         uuid.UUID
 }
@@ -795,6 +899,7 @@ func (q *Queries) UpdateTaskResult(ctx context.Context, arg UpdateTaskResultPara
 	result, err := q.db.Exec(ctx, updateTaskResult,
 		arg.Status,
 		arg.ResolvedParams,
+		arg.Warnings,
 		arg.LastError,
 		arg.TaskID,
 	)

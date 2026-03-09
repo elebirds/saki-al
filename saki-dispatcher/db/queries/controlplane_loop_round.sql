@@ -21,7 +21,8 @@ SELECT
   min_new_labels_per_round,
   model_arch,
   config,
-  last_confirmed_commit_id
+  last_confirmed_commit_id,
+  pause_reason
 FROM loop
 WHERE id = sqlc.arg(loop_id)::uuid
 FOR UPDATE;
@@ -40,7 +41,8 @@ SELECT
   min_new_labels_per_round,
   model_arch,
   config,
-  last_confirmed_commit_id
+  last_confirmed_commit_id,
+  pause_reason
 FROM loop
 WHERE id = sqlc.arg(loop_id)::uuid;
 
@@ -171,6 +173,7 @@ WHERE id = sqlc.arg(loop_id)::uuid
 UPDATE loop
 SET lifecycle = sqlc.arg(lifecycle)::looplifecycle,
     phase = sqlc.arg(phase)::loopphase,
+    pause_reason = sqlc.narg(pause_reason)::looppausereason,
     terminal_reason = sqlc.narg(terminal_reason)::text,
     last_confirmed_commit_id = sqlc.narg(last_confirmed_commit_id)::uuid,
     updated_at = now()
@@ -180,8 +183,18 @@ WHERE id = sqlc.arg(loop_id)::uuid;
 UPDATE loop
 SET lifecycle = sqlc.arg(lifecycle)::looplifecycle,
     phase = sqlc.arg(phase)::loopphase,
+    pause_reason = sqlc.narg(pause_reason)::looppausereason,
     terminal_reason = sqlc.narg(terminal_reason)::text,
     last_confirmed_commit_id = sqlc.narg(last_confirmed_commit_id)::uuid,
+    updated_at = now()
+WHERE id = sqlc.arg(loop_id)::uuid
+  AND lifecycle = sqlc.arg(from_lifecycle)::looplifecycle;
+
+-- name: UpdateLoopPauseStateGuarded :execrows
+UPDATE loop
+SET lifecycle = sqlc.arg(lifecycle)::looplifecycle,
+    pause_reason = sqlc.narg(pause_reason)::looppausereason,
+    terminal_reason = NULL,
     updated_at = now()
 WHERE id = sqlc.arg(loop_id)::uuid
   AND lifecycle = sqlc.arg(from_lifecycle)::looplifecycle;
@@ -195,7 +208,12 @@ WHERE id = sqlc.arg(loop_id)::uuid;
 -- name: ListTickLoopIDs :many
 SELECT id
 FROM loop
-WHERE lifecycle IN ('RUNNING'::looplifecycle, 'STOPPING'::looplifecycle)
+WHERE lifecycle IN (
+  'RUNNING'::looplifecycle,
+  'PAUSING'::looplifecycle,
+  'STOPPING'::looplifecycle,
+  'FAILED'::looplifecycle
+)
 ORDER BY updated_at ASC
 LIMIT sqlc.arg(limit_count);
 
@@ -275,6 +293,9 @@ WHERE s.round_id = sqlc.arg(round_id)::uuid
 -- name: ListLoopStoppableSteps :many
 SELECT
   s.id AS id,
+  t.id AS task_id,
+  t.current_execution_id AS current_execution_id,
+  COALESCE(t.assigned_executor_id, '') AS assigned_executor_id,
   t.status AS task_status,
   t.attempt AS attempt,
   t.updated_at AS updated_at
@@ -293,6 +314,17 @@ WHERE j.loop_id = sqlc.arg(loop_id)::uuid
     'RETRYING'::runtimetaskstatus
   )
 ORDER BY s.created_at ASC;
+
+-- name: GetRuntimeMaintenanceMode :one
+SELECT COALESCE(
+  (
+    SELECT value_json ->> 'value'
+    FROM system_setting
+    WHERE key = 'maintenance.runtime_mode'
+    LIMIT 1
+  ),
+  'normal'
+) AS runtime_mode;
 
 -- name: CountLoopActiveSteps :one
 SELECT COUNT(*)::int AS count

@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from saki_api.modules.shared.modeling.enums import (
     LoopActionKey,
+    LoopPauseReason,
     LoopMode,
     LoopGate,
     LoopLifecycle,
@@ -70,6 +71,7 @@ class LoopCreateData(BaseModel):
     query_batch_size: int = Field(default=200, ge=1)
     min_new_labels_per_round: int = Field(default=120, ge=1)
     active_snapshot_version_id: Optional[uuid.UUID] = None
+    pause_reason: Optional[LoopPauseReason] = None
     terminal_reason: Optional[str] = None
 
 
@@ -85,6 +87,7 @@ class LoopPatch(BaseModel):
     query_batch_size: Optional[int] = Field(default=None, ge=1)
     min_new_labels_per_round: Optional[int] = Field(default=None, ge=1)
     active_snapshot_version_id: Optional[uuid.UUID] = None
+    pause_reason: Optional[LoopPauseReason] = None
     terminal_reason: Optional[str] = None
 
 
@@ -104,6 +107,7 @@ class LoopRead(BaseModel):
     active_snapshot_version_id: Optional[uuid.UUID] = None
     current_iteration: int
     lifecycle: LoopLifecycle
+    pause_reason: Optional[LoopPauseReason] = None
     max_rounds: int
     query_batch_size: int
     min_new_labels_per_round: int
@@ -151,6 +155,7 @@ class RoundRead(BaseModel):
     train_final_metrics: Dict[str, Any] = Field(default_factory=dict)
     eval_final_metrics: Dict[str, Any] = Field(default_factory=dict)
     final_metrics_source: Literal["eval", "train", "other", "none"] = "none"
+    warnings: List[str] = Field(default_factory=list)
     final_artifacts: Dict[str, Any]
     resolved_params: Dict[str, Any]
     resources: Dict[str, Any]
@@ -184,6 +189,7 @@ class StepRead(BaseModel):
     assigned_executor_id: Optional[str] = None
     attempt: int
     max_attempts: int
+    warnings: List[str] = Field(default_factory=list)
     started_at: Optional[datetime] = None
     ended_at: Optional[datetime] = None
     last_error: Optional[str] = None
@@ -214,6 +220,7 @@ class StepRead(BaseModel):
 
 class TaskEventRead(BaseModel):
     task_id: uuid.UUID
+    execution_id: Optional[uuid.UUID] = None
     seq: int
     ts: datetime
     event_type: str
@@ -245,6 +252,7 @@ class TaskEventQueryResponse(BaseModel):
 
 class RoundEventRead(BaseModel):
     task_id: uuid.UUID
+    execution_id: Optional[uuid.UUID] = None
     task_index: int
     task_type: RuntimeTaskType
     stage: str

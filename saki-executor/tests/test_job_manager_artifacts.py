@@ -443,8 +443,9 @@ async def test_optional_artifact_failure_marks_partial_failed(tmp_path: Path, mo
     result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
     assert len(result_messages) == 1
     result = result_messages[0].task_result
-    assert result.status == pb.FAILED
-    assert "confusion_matrix.png" in result.error_message
+    assert result.status == pb.SUCCEEDED
+    assert result.error_message == ""
+    assert any("confusion_matrix.png" in item for item in result.warnings)
     assert {item.name for item in result.artifacts} == {"best.pt", "report.json"}
 
 

@@ -20,3 +20,4 @@ class SystemSettingKeys:
     MAINTENANCE_ASSET_GC_ENABLED = "maintenance.asset_gc_enabled"
     MAINTENANCE_ASSET_GC_INTERVAL_HOURS = "maintenance.asset_gc_interval_hours"
     MAINTENANCE_ASSET_GC_ORPHAN_AGE_HOURS = "maintenance.asset_gc_orphan_age_hours"
+    MAINTENANCE_RUNTIME_MODE = "maintenance.runtime_mode"

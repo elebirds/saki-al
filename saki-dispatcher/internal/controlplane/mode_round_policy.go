@@ -69,7 +69,7 @@ func (alModeRoundPolicy) handleTerminalRoundTx(
 	if loop.Lifecycle == lifecycleRunning && loop.Phase == phaseALWaitAnnotation {
 		return nil
 	}
-	return service.updateLoopRuntime(ctx, tx, loop.ID, lifecycleRunning, phaseALWaitAnnotation, "", loop.LastConfirmedCommitID)
+	return service.updateLoopRuntime(ctx, tx, loop.ID, lifecycleRunning, phaseALWaitAnnotation, "", loop.LastConfirmedCommitID, nil)
 }
 
 type simModeRoundPolicy struct{}
@@ -132,10 +132,11 @@ func (manualModeRoundPolicy) handleTerminalRoundTx(
 			phaseManualFinalize,
 			terminalReasonSuccess,
 			loop.LastConfirmedCommitID,
+			nil,
 		)
 	}
 	if loop.Lifecycle == lifecycleRunning && loop.Phase == phaseManualEval {
 		return nil
 	}
-	return service.updateLoopRuntime(ctx, tx, loop.ID, lifecycleRunning, phaseManualEval, "", loop.LastConfirmedCommitID)
+	return service.updateLoopRuntime(ctx, tx, loop.ID, lifecycleRunning, phaseManualEval, "", loop.LastConfirmedCommitID, nil)
 }

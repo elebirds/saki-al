@@ -321,12 +321,13 @@ func (d *Dispatcher) DispatchTask(executorID string, requestID string, task *run
 	}
 }
 
-func (d *Dispatcher) StopTask(taskID string, reason string) (string, bool) {
+func (d *Dispatcher) StopTask(taskID string, executionID string, reason string) (string, bool) {
 	taskID = strings.TrimSpace(taskID)
 	if taskID == "" {
 		return "", false
 	}
 	requestID := uuid.NewString()
+	executionID = strings.TrimSpace(executionID)
 	reason = strings.TrimSpace(reason)
 	if reason == "" {
 		reason = "用户请求停止"
@@ -352,9 +353,10 @@ func (d *Dispatcher) StopTask(taskID string, reason string) (string, bool) {
 	message := &runtimecontrolv1.RuntimeMessage{
 		Payload: &runtimecontrolv1.RuntimeMessage_StopTask{
 			StopTask: &runtimecontrolv1.StopTask{
-				RequestId: requestID,
-				TaskId:    taskID,
-				Reason:    reason,
+				RequestId:   requestID,
+				TaskId:      taskID,
+				Reason:      reason,
+				ExecutionId: executionID,
 			},
 		},
 	}

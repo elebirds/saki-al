@@ -20,6 +20,8 @@ type runtimeTaskRow struct {
 	PluginID           string
 	InputCommitID      *uuid.UUID
 	ResolvedParamsJSON []byte
+	CurrentExecutionID uuid.UUID
+	WarningsJSON       []byte
 	Attempt            int
 	MaxAttempts        int
 	AssignedExecutorID string
@@ -83,14 +85,15 @@ func (s *Service) createStepTaskTx(
 		return uuid.Nil, err
 	}
 	err = s.qtx(tx).InsertStepTask(ctx, db.InsertStepTaskParams{
-		TaskID:           taskID,
-		ProjectID:        projectID,
-		TaskType:         db.Runtimetasktype(string(stepType)),
-		PluginID:         pluginID,
-		DependsOnTaskIds: []byte(dependencyTaskIDsJSON),
-		InputCommitID:    inputCommitID,
-		ResolvedParams:   resolvedParams,
-		MaxAttempts:      int32(maxAttempts),
+		TaskID:             taskID,
+		ProjectID:          projectID,
+		TaskType:           db.Runtimetasktype(string(stepType)),
+		PluginID:           pluginID,
+		DependsOnTaskIds:   []byte(dependencyTaskIDsJSON),
+		InputCommitID:      inputCommitID,
+		ResolvedParams:     resolvedParams,
+		CurrentExecutionID: uuid.New(),
+		MaxAttempts:        int32(maxAttempts),
 	})
 	if err != nil {
 		return uuid.Nil, err
@@ -127,6 +130,8 @@ func (s *Service) getTaskForUpdateTx(
 			PluginID:           record.PluginID,
 			InputCommitID:      record.InputCommitID,
 			ResolvedParamsJSON: record.ResolvedParamsJson,
+			CurrentExecutionID: record.CurrentExecutionID,
+			WarningsJSON:       record.WarningsJson,
 			Attempt:            int(record.Attempt),
 			MaxAttempts:        int(record.MaxAttempts),
 			AssignedExecutorID: record.AssignedExecutorID,

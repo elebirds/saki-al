@@ -285,6 +285,7 @@ type Looplifecycle string
 const (
 	LooplifecycleDRAFT     Looplifecycle = "DRAFT"
 	LooplifecycleRUNNING   Looplifecycle = "RUNNING"
+	LooplifecyclePAUSING   Looplifecycle = "PAUSING"
 	LooplifecyclePAUSED    Looplifecycle = "PAUSED"
 	LooplifecycleSTOPPING  Looplifecycle = "STOPPING"
 	LooplifecycleSTOPPED   Looplifecycle = "STOPPED"
@@ -368,6 +369,48 @@ func (ns NullLoopmode) Value() (driver.Value, error) {
 		return nil, nil
 	}
 	return string(ns.Loopmode), nil
+}
+
+type Looppausereason string
+
+const (
+	LooppausereasonUSER        Looppausereason = "USER"
+	LooppausereasonMAINTENANCE Looppausereason = "MAINTENANCE"
+)
+
+func (e *Looppausereason) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = Looppausereason(s)
+	case string:
+		*e = Looppausereason(s)
+	default:
+		return fmt.Errorf("unsupported scan type for Looppausereason: %T", src)
+	}
+	return nil
+}
+
+type NullLooppausereason struct {
+	Looppausereason Looppausereason
+	Valid           bool // Valid is true if Looppausereason is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullLooppausereason) Scan(value interface{}) error {
+	if value == nil {
+		ns.Looppausereason, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.Looppausereason.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullLooppausereason) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.Looppausereason), nil
 }
 
 type Loopphase string
@@ -1384,6 +1427,7 @@ type Loop struct {
 	MinNewLabelsPerRound    int32
 	ActiveSnapshotVersionID *uuid.UUID
 	LastConfirmedCommitID   *uuid.UUID
+	PauseReason             NullLooppausereason
 	TerminalReason          pgtype.Text
 }
 
@@ -1691,6 +1735,8 @@ type Task struct {
 	InputCommitID      *uuid.UUID
 	ResolvedParams     []byte
 	AssignedExecutorID pgtype.Text
+	CurrentExecutionID uuid.UUID
+	Warnings           []byte
 	Attempt            int32
 	MaxAttempts        int32
 	StartedAt          pgtype.Timestamptz
@@ -1728,14 +1774,15 @@ type TaskDispatchOutbox struct {
 }
 
 type TaskEvent struct {
-	CreatedAt pgtype.Timestamptz
-	UpdatedAt pgtype.Timestamptz
-	ID        uuid.UUID
-	TaskID    uuid.UUID
-	Seq       int32
-	Ts        pgtype.Timestamptz
-	EventType string
-	Payload   []byte
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
+	ID          uuid.UUID
+	TaskID      uuid.UUID
+	ExecutionID uuid.UUID
+	Seq         int32
+	Ts          pgtype.Timestamptz
+	EventType   string
+	Payload     []byte
 }
 
 type TaskMetricPoint struct {

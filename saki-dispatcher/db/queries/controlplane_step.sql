@@ -46,7 +46,8 @@ SELECT
   j.mode AS mode,
   j.resolved_params AS round_params_raw,
   j.resources AS resources_raw,
-  j.input_commit_id AS round_input_commit_id
+  j.input_commit_id AS round_input_commit_id,
+  k.current_execution_id AS current_execution_id
 FROM task k
 JOIN step t ON t.task_id = k.id
 JOIN round j ON j.id = t.round_id

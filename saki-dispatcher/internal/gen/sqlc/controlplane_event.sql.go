@@ -13,33 +13,36 @@ import (
 )
 
 const insertTaskEvent = `-- name: InsertTaskEvent :execrows
-INSERT INTO task_event(id, task_id, seq, ts, event_type, payload, created_at, updated_at)
+INSERT INTO task_event(id, task_id, execution_id, seq, ts, event_type, payload, created_at, updated_at)
 VALUES(
   $1::uuid,
   $2::uuid,
-  $3,
+  $3::uuid,
   $4,
   $5,
-  $6::jsonb,
+  $6,
+  $7::jsonb,
   now(),
   now()
 )
-ON CONFLICT (task_id, seq) DO NOTHING
+ON CONFLICT (task_id, execution_id, seq) DO NOTHING
 `
 
 type InsertTaskEventParams struct {
-	EventID   uuid.UUID
-	TaskID    uuid.UUID
-	Seq       int32
-	Ts        pgtype.Timestamptz
-	EventType string
-	Payload   []byte
+	EventID     uuid.UUID
+	TaskID      uuid.UUID
+	ExecutionID uuid.UUID
+	Seq         int32
+	Ts          pgtype.Timestamptz
+	EventType   string
+	Payload     []byte
 }
 
 func (q *Queries) InsertTaskEvent(ctx context.Context, arg InsertTaskEventParams) (int64, error) {
 	result, err := q.db.Exec(ctx, insertTaskEvent,
 		arg.EventID,
 		arg.TaskID,
+		arg.ExecutionID,
 		arg.Seq,
 		arg.Ts,
 		arg.EventType,
@@ -52,21 +55,25 @@ func (q *Queries) InsertTaskEvent(ctx context.Context, arg InsertTaskEventParams
 }
 
 const insertTaskStatusSystemEvent = `-- name: InsertTaskStatusSystemEvent :execrows
-INSERT INTO task_event(id, task_id, seq, ts, event_type, payload, created_at, updated_at)
+INSERT INTO task_event(id, task_id, execution_id, seq, ts, event_type, payload, created_at, updated_at)
 SELECT
   $1::uuid,
   $2::uuid,
+  t.current_execution_id,
   COALESCE((
     SELECT MAX(e.seq) + 1
     FROM task_event e
     WHERE e.task_id = $2::uuid
+      AND e.execution_id = t.current_execution_id
   ), 1),
   $3,
   'status',
   $4::jsonb,
   now(),
   now()
-ON CONFLICT (task_id, seq) DO NOTHING
+FROM task t
+WHERE t.id = $2::uuid
+ON CONFLICT (task_id, execution_id, seq) DO NOTHING
 `
 
 type InsertTaskStatusSystemEventParams struct {

@@ -68,6 +68,7 @@ async def get_round(
     steps = await runtime_service.list_steps(round_id, limit=5000)
     task_metrics_by_task_id = await runtime_service._build_task_result_metrics_map(steps, strict=True)
     task_status_by_task_id = await runtime_service._build_task_status_map(steps, strict=True)
+    task_warnings_by_task_id = await runtime_service._build_task_warnings_map(steps, strict=True)
     metric_view = runtime_service.derive_round_metric_view(
         round_item=round_item,
         steps=steps,
@@ -80,6 +81,14 @@ async def get_round(
     payload["train_final_metrics"] = metric_view.train_final_metrics
     payload["eval_final_metrics"] = metric_view.eval_final_metrics
     payload["final_metrics_source"] = metric_view.final_metrics_source
+    payload["warnings"] = sorted(
+        {
+            warning
+            for step in steps
+            if step.task_id is not None
+            for warning in task_warnings_by_task_id.get(step.task_id, [])
+        }
+    )
     return RoundRead(**payload)
 
 
@@ -106,6 +115,10 @@ async def list_round_steps(
     for task in tasks:
         values = [str(value).strip() for value in (task.depends_on_task_ids or []) if str(value).strip()]
         task_depends_map[task.id] = values
+    task_warnings_map = {
+        task.id: [str(item).strip() for item in (task.warnings or []) if str(item).strip()]
+        for task in tasks
+    }
 
     result: list[StepRead] = []
     for item in steps:
@@ -115,6 +128,7 @@ async def list_round_steps(
             raise NotFoundAppException(f"task {item.task_id} not found for step {item.id}")
         payload = StepRead.model_validate(item).model_dump()
         payload["depends_on_task_ids"] = task_depends_map[item.task_id]
+        payload["warnings"] = task_warnings_map.get(item.task_id, [])
         result.append(StepRead.model_validate(payload))
     return result
 

@@ -35,7 +35,9 @@ from saki_api.modules.shared.modeling.enums import (
     RuntimeTaskKind,
     RuntimeTaskStatus,
     RuntimeTaskType,
+    RuntimeMaintenanceMode,
 )
+from saki_api.modules.system.service.system_settings_reader import system_settings_reader
 
 
 class PredictionTaskMixin:
@@ -414,6 +416,9 @@ class PredictionTaskMixin:
         payload: dict[str, Any],
         actor_user_id: uuid.UUID | None,
     ) -> Prediction:
+        maintenance_mode = await system_settings_reader.get_runtime_maintenance_mode()
+        if maintenance_mode != RuntimeMaintenanceMode.NORMAL:
+            raise BadRequestAppException(f"runtime maintenance mode={maintenance_mode.value}")
         if actor_user_id is None:
             raise BadRequestAppException("actor user is required when creating prediction")
 

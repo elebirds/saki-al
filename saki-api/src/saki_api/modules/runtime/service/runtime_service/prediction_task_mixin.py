@@ -474,7 +474,7 @@ class PredictionTaskMixin:
         step_params = dict(params)
         plugin_params = step_params.get("plugin")
         plugin_params = dict(plugin_params) if isinstance(plugin_params, dict) else {}
-        plugin_params["model_source"] = "runtime_artifact"
+        plugin_params.pop("model_source", None)
         plugin_params.pop("model_custom_ref", None)
         plugin_params["artifact_name"] = artifact_name
         step_params["plugin"] = plugin_params

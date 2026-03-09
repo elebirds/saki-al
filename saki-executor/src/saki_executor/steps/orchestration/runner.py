@@ -42,7 +42,7 @@ class TaskPipelineRunner:
         workspace, reporter, emitter = self._prepare_workspace()
         await self._emit_dispatching_status(emitter)
 
-        plan = await self._resolve_execution_plan(emitter)
+        plan = await self._resolve_execution_plan(emitter, workspace)
         plan = await self._sync_profile_environment(plan=plan, emitter=emitter)
         plugin = self._build_execution_plugin(plan=plan, emitter=emitter)
 
@@ -98,12 +98,20 @@ class TaskPipelineRunner:
                 message=f"请求校验失败 task_id={self._request.task_id}: {exc}",
             ) from exc
 
-    async def _resolve_execution_plan(self, emitter: TaskEventEmitter) -> TaskExecutionPlan:
+    async def _resolve_execution_plan(
+        self,
+        emitter: TaskEventEmitter,
+        workspace: WorkspaceAdapter,
+    ) -> TaskExecutionPlan:
         await emitter.emit_stage_start(
             stage=TaskStage.PLUGIN_RESOLUTION.value,
             message=f"正在解析插件与运行计划 plugin_id={self._request.plugin_id}",
         )
         try:
+            await self._materialize_request_runtime_artifacts_if_needed(
+                workspace=workspace,
+                emitter=emitter,
+            )
             plan = self._plugin_resolution_service.resolve(manager=self._manager, request=self._request)
         except TaskPipelineError as exc:
             await emitter.emit_stage_fail(
@@ -134,6 +142,41 @@ class TaskPipelineRunner:
             ),
         )
         return plan
+
+    async def _materialize_request_runtime_artifacts_if_needed(
+        self,
+        *,
+        workspace: WorkspaceAdapter,
+        emitter: TaskEventEmitter,
+    ) -> None:
+        metadata_plugin = self._manager.plugin_registry.get(self._request.plugin_id)
+        if metadata_plugin is None:
+            return
+        get_runtime_requirements = getattr(metadata_plugin, "get_task_runtime_requirements", None)
+        if not callable(get_runtime_requirements):
+            return
+        try:
+            runtime_requirements = get_runtime_requirements(self._request.task_type)
+            updated_request = await self._pipeline_stage_service.materialize_request_runtime_model_if_needed(
+                workspace=workspace,
+                emitter=emitter,
+                runtime_requirements=runtime_requirements,
+                request=self._request,
+            )
+        except TaskPipelineError:
+            raise
+        except Exception as exc:
+            raise wrap_task_error(
+                stage=TaskStage.PLUGIN_RESOLUTION,
+                default_code=TaskErrorCode.EXECUTION_FAILED,
+                exc=exc,
+                message=f"运行时模型引用物化失败 task_id={self._request.task_id}: {exc}",
+            ) from exc
+        if updated_request is self._request:
+            return
+        self._request = updated_request
+        self._pipeline_stage_service = PipelineStageService(manager=self._manager, request=updated_request)
+        workspace.write_config(updated_request.raw_payload)
 
     async def _sync_profile_environment(
         self,

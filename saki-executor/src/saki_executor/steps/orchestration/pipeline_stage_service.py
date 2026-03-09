@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import httpx
 
 from saki_ir import normalize_prediction_candidates
+from saki_executor.steps.contracts import TaskExecutionRequest
 from saki_executor.steps.orchestration.error_codes import TaskErrorCode, TaskStage, wrap_task_error
 from saki_executor.steps.orchestration.models import BoundExecutionPlan
 from saki_executor.steps.orchestration.training_data_service import TrainingDataService
@@ -18,6 +20,83 @@ class PipelineStageService:
     def __init__(self, *, manager: Any, request: Any) -> None:
         self._manager = manager
         self._request = request
+
+    async def materialize_request_runtime_model_if_needed(
+        self,
+        *,
+        workspace: WorkspaceProtocol,
+        emitter: Any,
+        runtime_requirements: TaskRuntimeRequirements,
+        request: TaskExecutionRequest,
+    ) -> TaskExecutionRequest:
+        params = dict(request.resolved_params or {})
+        plugin_params_raw = params.get("plugin")
+        plugin_params = dict(plugin_params_raw) if isinstance(plugin_params_raw, dict) else {}
+        current_model_source = str(plugin_params.get("model_source") or "").strip().lower()
+        runtime_artifact_visible = current_model_source == "runtime_artifact"
+
+        if not runtime_requirements.requires_trained_model:
+            if not runtime_artifact_visible:
+                return request
+            plugin_params.pop("model_source", None)
+            plugin_params.pop("model_custom_ref", None)
+            params["plugin"] = plugin_params
+            raw_payload = dict(request.raw_payload)
+            raw_payload["resolved_params"] = params
+            return replace(request, resolved_params=params, raw_payload=raw_payload)
+
+        artifact_name = str(runtime_requirements.primary_model_artifact_name or "best.pt").strip() or "best.pt"
+        runtime_model_ref = self._extract_runtime_model_ref_from_params(
+            request_params=params,
+            default_artifact_name=artifact_name,
+        )
+        if runtime_model_ref is None:
+            if not runtime_artifact_visible:
+                return request
+            plugin_params.pop("model_source", None)
+            plugin_params.pop("model_custom_ref", None)
+            params["plugin"] = plugin_params
+            raw_payload = dict(request.raw_payload)
+            raw_payload["resolved_params"] = params
+            return replace(request, resolved_params=params, raw_payload=raw_payload)
+
+        local_model_path: Path | None = None
+        linked = workspace.link_shared_model_to_step(artifact_name)
+        if linked is not None and linked.exists():
+            local_model_path = linked
+            await emitter.emit(
+                "log",
+                {
+                    "level": "INFO",
+                    "message": (
+                        "训练模型已在插件解析前就绪 "
+                        f"source=shared artifact={artifact_name} path={linked}"
+                    ),
+                },
+            )
+        else:
+            local_model_path = await self._materialize_runtime_model_ref(
+                workspace=workspace,
+                emitter=emitter,
+                runtime_model_ref=runtime_model_ref,
+            )
+            await emitter.emit(
+                "log",
+                {
+                    "level": "INFO",
+                    "message": (
+                        "训练模型已在插件解析前就绪 "
+                        f"source=runtime_ref artifact={runtime_model_ref['artifact_name']} path={local_model_path}"
+                    ),
+                },
+            )
+
+        plugin_params["model_source"] = "custom_local"
+        plugin_params["model_custom_ref"] = str(local_model_path)
+        params["plugin"] = plugin_params
+        raw_payload = dict(request.raw_payload)
+        raw_payload["resolved_params"] = params
+        return replace(request, resolved_params=params, raw_payload=raw_payload)
 
     async def prepare_trained_model_if_needed(
         self,
@@ -114,6 +193,17 @@ class PipelineStageService:
             if isinstance(bound_plan.plan.request.resolved_params, dict)
             else {}
         )
+        return PipelineStageService._extract_runtime_model_ref_from_params(
+            request_params=request_params,
+            default_artifact_name=default_artifact_name,
+        )
+
+    @staticmethod
+    def _extract_runtime_model_ref_from_params(
+        *,
+        request_params: dict[str, Any],
+        default_artifact_name: str,
+    ) -> dict[str, str] | None:
         runtime_refs_raw = request_params.get("_runtime_artifact_refs")
         runtime_refs = runtime_refs_raw if isinstance(runtime_refs_raw, dict) else {}
         model_raw = runtime_refs.get("model")

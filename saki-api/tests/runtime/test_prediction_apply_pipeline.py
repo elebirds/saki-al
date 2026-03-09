@@ -376,6 +376,47 @@ async def test_generate_prediction_supports_model_id_payload(prediction_env):
 
 
 @pytest.mark.anyio
+async def test_generate_prediction_keeps_runtime_artifact_internal_only(prediction_env):
+    session_local = prediction_env
+    async with session_local() as session:
+        ctx = await _seed_prediction_context(session)
+        service = RuntimeService(session)
+
+        prediction = await service.create_prediction(
+            project_id=ctx.project.id,
+            payload={
+                "model_id": str(ctx.model.id),
+                "artifact_name": "best.pt",
+                "target_branch_id": str(ctx.branch.id),
+                "base_commit_id": str(ctx.init_commit.id),
+                "scope_type": "sample_status",
+                "scope_payload": {"status": "all"},
+                "params": {
+                    "plugin": {
+                        "model_source": "runtime_artifact",
+                        "model_custom_ref": "should-be-removed",
+                    }
+                },
+            },
+            actor_user_id=ctx.actor.id,
+        )
+
+        task_row = await session.get(Task, prediction.task_id)
+        assert task_row is not None
+        resolved_params = task_row.resolved_params if isinstance(task_row.resolved_params, dict) else {}
+        plugin_params = resolved_params.get("plugin")
+        assert isinstance(plugin_params, dict)
+        assert "model_source" not in plugin_params
+        assert "model_custom_ref" not in plugin_params
+        runtime_refs = resolved_params.get("_runtime_artifact_refs")
+        assert isinstance(runtime_refs, dict)
+        model_ref = runtime_refs.get("model")
+        assert isinstance(model_ref, dict)
+        assert model_ref.get("model_id") == str(ctx.model.id)
+        assert model_ref.get("artifact_name") == "best.pt"
+
+
+@pytest.mark.anyio
 async def test_generate_prediction_persists_predict_conf_to_plugin_params(prediction_env):
     session_local = prediction_env
     async with session_local() as session:

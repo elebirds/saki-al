@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -492,6 +493,64 @@ func TestResolveModelArtifactCandidatesDeduplicatesAndAppliesDefault(t *testing.
 	want := []string{"best.pth", "best.pt"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("artifact candidates dedupe mismatch: got=%v want=%v", got, want)
+	}
+}
+
+func TestInjectRuntimeArtifactRefsKeepsPluginParamsStable(t *testing.T) {
+	trainTaskID := mustUUID("0df5d8f3-a3a3-45ba-bc7d-194a72aaf0b1")
+	trainStepID := mustUUID("9d566615-cf74-4d48-8b7c-e2baad1b8c0f")
+	injectedAt := time.Date(2026, time.March, 10, 1, 2, 3, 0, time.UTC)
+
+	got := injectRuntimeArtifactRefs(
+		map[string]any{
+			"plugin": map[string]any{
+				"model_source":     "runtime_artifact",
+				"model_custom_ref": "should-be-removed",
+				"epochs":           20,
+			},
+			"sampling": map[string]any{
+				"topk": 32,
+			},
+		},
+		trainTaskID,
+		trainStepID,
+		"best.pt",
+		injectedAt,
+	)
+
+	plugin, ok := got["plugin"].(map[string]any)
+	if !ok {
+		t.Fatalf("plugin params should remain a map, got=%T", got["plugin"])
+	}
+	if _, exists := plugin["model_source"]; exists {
+		t.Fatalf("plugin params should not expose runtime_artifact model_source: %+v", plugin)
+	}
+	if _, exists := plugin["model_custom_ref"]; exists {
+		t.Fatalf("plugin params should not expose model_custom_ref during dispatch: %+v", plugin)
+	}
+	if cast.ToInt(plugin["epochs"]) != 20 {
+		t.Fatalf("unrelated plugin params should be preserved, got=%+v", plugin)
+	}
+
+	refs, ok := got["_runtime_artifact_refs"].(map[string]any)
+	if !ok {
+		t.Fatalf("_runtime_artifact_refs should be a map, got=%T", got["_runtime_artifact_refs"])
+	}
+	modelRef, ok := refs["model"].(map[string]any)
+	if !ok {
+		t.Fatalf("model runtime ref should be a map, got=%T", refs["model"])
+	}
+	if cast.ToString(modelRef["source_task_id"]) != trainTaskID.String() {
+		t.Fatalf("source_task_id mismatch: %v", modelRef["source_task_id"])
+	}
+	if cast.ToString(modelRef["artifact_name"]) != "best.pt" {
+		t.Fatalf("artifact_name mismatch: %v", modelRef["artifact_name"])
+	}
+	if cast.ToString(modelRef["from_step_id"]) != trainStepID.String() {
+		t.Fatalf("from_step_id mismatch: %v", modelRef["from_step_id"])
+	}
+	if cast.ToString(modelRef["injected_at"]) != injectedAt.Format(time.RFC3339) {
+		t.Fatalf("injected_at mismatch: %v", modelRef["injected_at"])
 	}
 }
 

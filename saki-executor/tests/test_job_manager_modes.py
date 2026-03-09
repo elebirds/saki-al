@@ -1,4 +1,5 @@
 import asyncio
+import json
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +10,7 @@ from saki_executor.grpc_gen import runtime_control_pb2 as pb
 from saki_executor.plugins.external_handle import ExternalPluginDescriptor
 from saki_executor.steps.manager import TaskManager
 from saki_executor.plugins.registry import PluginRegistry
+from saki_executor.steps.orchestration.pipeline_stage_service import PipelineStageService
 from runtime_data_test_helper import build_data_response_message
 from saki_plugin_sdk import ExecutionBindingContext, ExecutorPlugin, PluginManifest, TaskRuntimeContext, TrainOutput
 
@@ -445,6 +447,30 @@ class _CaptureModelParamsPlugin(_ModeAwarePlugin):
             params,
             context=context,
         )
+
+
+class _CaptureValidatedModelPlugin(_ModeAwarePlugin):
+    def __init__(self) -> None:
+        super().__init__()
+        self.validated_params: dict[str, Any] | None = None
+        self.last_eval_params: dict[str, Any] | None = None
+
+    def validate_params(self, params: dict[str, Any], *, context: TaskRuntimeContext | None = None) -> None:
+        del context
+        self.validated_params = dict(params)
+        if str(params.get("model_source") or "").strip().lower() == "runtime_artifact":
+            raise AssertionError("plugin validation should not see runtime_artifact")
+
+    async def eval(
+            self,
+            workspace,
+            params: dict[str, Any],
+            emit,
+            *,
+            context: TaskRuntimeContext,
+    ) -> TrainOutput:
+        self.last_eval_params = dict(params)
+        return await super().eval(workspace, params, emit, context=context)
 
 
 class _MinimalPlugin(ExecutorPlugin):
@@ -1297,6 +1323,165 @@ async def test_score_step_shared_model_sets_local_model_ref(tmp_path: Path):
     model_ref = str(plugin.last_predict_params.get("model_custom_ref") or "").strip()
     assert model_ref
     assert Path(model_ref).exists()
+
+
+@pytest.mark.anyio
+async def test_runtime_model_ref_is_materialized_before_plugin_validation(tmp_path: Path, monkeypatch):
+    plugin = _CaptureValidatedModelPlugin()
+    manager = _build_manager(tmp_path, plugin)
+    sent_messages: list[pb.RuntimeMessage] = []
+    downloaded_model = tmp_path / "downloaded" / "best.pt"
+    downloaded_model.parent.mkdir(parents=True, exist_ok=True)
+    downloaded_model.write_bytes(b"mock-runtime-model")
+
+    async def fake_materialize(self, *, workspace, emitter, runtime_model_ref):  # noqa: ANN001
+        del self, emitter, runtime_model_ref
+        return workspace.cache_model_artifact("best.pt", downloaded_model, "train-task-1")
+
+    monkeypatch.setattr(
+        PipelineStageService,
+        "_materialize_runtime_model_ref",
+        fake_materialize,
+    )
+
+    async def fake_send(message: pb.RuntimeMessage) -> None:
+        sent_messages.append(message)
+
+    async def fake_request(message: pb.RuntimeMessage) -> pb.RuntimeMessage:
+        payload_type = message.WhichOneof("payload")
+        assert payload_type == "data_request"
+        request = message.data_request
+        return build_data_response_message(
+            request_id=f"resp-{request.request_id}",
+            reply_to=request.request_id,
+            task_id=request.task_id,
+            query_type=request.query_type,
+            items=_mock_data_items(request.query_type),
+        )
+
+    manager.set_transport(fake_send, fake_request)
+
+    task_id = "eval-runtime-model-ref-1"
+    round_id = "round-runtime-model-ref-1"
+    accepted = await manager.assign_task(
+        "assign-eval-runtime-model-ref-1",
+        {
+            "task_id": task_id,
+            "execution_id": task_id,
+            "round_id": round_id,
+            "project_id": "project-1",
+            "input_commit_id": "commit-1",
+            "plugin_id": plugin.plugin_id,
+            "mode": "simulation",
+            "task_type": "eval",
+            "dispatch_kind": "dispatchable",
+            "round_index": 1,
+            "resolved_params": {
+                "plugin": {},
+                "_runtime_artifact_refs": {
+                    "model": {
+                        "source_task_id": "train-task-1",
+                        "artifact_name": "best.pt",
+                    }
+                },
+            },
+        },
+    )
+    assert accepted is True
+    assert manager._task is not None  # noqa: SLF001
+    await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
+
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
+    assert len(result_messages) == 1
+    assert result_messages[0].task_result.status == pb.SUCCEEDED
+
+    assert plugin.validated_params is not None
+    assert plugin.validated_params.get("model_source") == "custom_local"
+    model_ref = str(plugin.validated_params.get("model_custom_ref") or "").strip()
+    assert model_ref
+    assert Path(model_ref).exists()
+    assert "runtime_artifact" not in json.dumps(plugin.validated_params, ensure_ascii=False)
+
+    assert plugin.last_eval_params is not None
+    assert plugin.last_eval_params.get("model_source") == "custom_local"
+
+    config_path = (
+        tmp_path / "runs" / "rounds" / round_id / "attempt_1" / "steps" / task_id / "config.json"
+    )
+    config_payload = json.loads(config_path.read_text(encoding="utf-8"))
+    plugin_config = config_payload.get("resolved_params", {}).get("plugin", {})
+    assert plugin_config.get("model_source") == "custom_local"
+    assert str(plugin_config.get("model_custom_ref") or "").strip()
+
+
+@pytest.mark.anyio
+async def test_runtime_model_ref_materialization_failure_returns_execution_failed(tmp_path: Path, monkeypatch):
+    plugin = _CaptureValidatedModelPlugin()
+    manager = _build_manager(tmp_path, plugin)
+    sent_messages: list[pb.RuntimeMessage] = []
+
+    async def fake_materialize(self, *, workspace, emitter, runtime_model_ref):  # noqa: ANN001
+        del self, workspace, emitter, runtime_model_ref
+        raise RuntimeError("download ticket unavailable")
+
+    monkeypatch.setattr(
+        PipelineStageService,
+        "_materialize_runtime_model_ref",
+        fake_materialize,
+    )
+
+    async def fake_send(message: pb.RuntimeMessage) -> None:
+        sent_messages.append(message)
+
+    async def fake_request(message: pb.RuntimeMessage) -> pb.RuntimeMessage:
+        payload_type = message.WhichOneof("payload")
+        assert payload_type == "data_request"
+        request = message.data_request
+        return build_data_response_message(
+            request_id=f"resp-{request.request_id}",
+            reply_to=request.request_id,
+            task_id=request.task_id,
+            query_type=request.query_type,
+            items=_mock_data_items(request.query_type),
+        )
+
+    manager.set_transport(fake_send, fake_request)
+
+    accepted = await manager.assign_task(
+        "assign-eval-runtime-model-ref-fail-1",
+        {
+            "task_id": "eval-runtime-model-ref-fail-1",
+            "execution_id": "eval-runtime-model-ref-fail-1",
+            "round_id": "round-runtime-model-ref-fail-1",
+            "project_id": "project-1",
+            "input_commit_id": "commit-1",
+            "plugin_id": plugin.plugin_id,
+            "mode": "simulation",
+            "task_type": "eval",
+            "dispatch_kind": "dispatchable",
+            "round_index": 1,
+            "resolved_params": {
+                "plugin": {},
+                "_runtime_artifact_refs": {
+                    "model": {
+                        "source_task_id": "train-task-1",
+                        "artifact_name": "best.pt",
+                    }
+                },
+            },
+        },
+    )
+    assert accepted is True
+    assert manager._task is not None  # noqa: SLF001
+    await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
+
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
+    assert len(result_messages) == 1
+    result = result_messages[0].task_result
+    assert result.status == pb.FAILED
+    assert "EXECUTION_FAILED" in result.error_message
+    assert "PARAM_VALIDATE_FAILED" not in result.error_message
+    assert plugin.validated_params is None
 
 
 @pytest.mark.anyio

@@ -1487,9 +1487,30 @@ func (s *Service) buildDispatchResolvedParamsTx(
 		)
 	}
 
-	paramsMap := cloneMap(structToMap(stepPayload.Params))
+	paramsMap := injectRuntimeArtifactRefs(
+		cloneMap(structToMap(stepPayload.Params)),
+		trainTaskID,
+		trainStepID,
+		selectedArtifact,
+		time.Now().UTC(),
+	)
+
+	resolvedParams, err := structpb.NewStruct(paramsMap)
+	if err != nil {
+		return nil, err
+	}
+	return resolvedParams, nil
+}
+
+func injectRuntimeArtifactRefs(
+	paramsMap map[string]any,
+	trainTaskID uuid.UUID,
+	trainStepID uuid.UUID,
+	selectedArtifact string,
+	injectedAt time.Time,
+) map[string]any {
 	pluginParams := ensureMap(paramsMap["plugin"])
-	pluginParams["model_source"] = "runtime_artifact"
+	delete(pluginParams, "model_source")
 	delete(pluginParams, "model_custom_ref")
 	paramsMap["plugin"] = pluginParams
 	paramsMap["_runtime_artifact_refs"] = map[string]any{
@@ -1497,15 +1518,10 @@ func (s *Service) buildDispatchResolvedParamsTx(
 			"source_task_id": trainTaskID.String(),
 			"artifact_name":  selectedArtifact,
 			"from_step_id":   strings.TrimSpace(trainStepID.String()),
-			"injected_at":    time.Now().UTC().Format(time.RFC3339),
+			"injected_at":    injectedAt.UTC().Format(time.RFC3339),
 		},
 	}
-
-	resolvedParams, err := structpb.NewStruct(paramsMap)
-	if err != nil {
-		return nil, err
-	}
-	return resolvedParams, nil
+	return paramsMap
 }
 
 func (s *Service) failTaskDispatchPreflightTx(

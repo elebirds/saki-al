@@ -62,6 +62,12 @@ import {
     LoopUpdateRequest,
     LoopSummary,
     RuntimePluginCatalogResponse,
+    RuntimeRelease,
+    RuntimeReleaseListResponse,
+    RuntimeDesiredStatePatchRequest,
+    RuntimeDesiredStateResponse,
+    RuntimeUpdateAttempt,
+    RuntimeUpdateAttemptListResponse,
     RuntimeExecutorListResponse,
     RuntimeExecutorRead,
     RuntimeExecutorStatsRange,
@@ -420,6 +426,19 @@ function normalizeRuntimeExecutor(executor: RuntimeExecutorRead): RuntimeExecuto
     return {
         ...executor,
         currentTaskId: (executor as any).currentTaskId ?? (executor as any).current_task_id ?? null,
+        updateState: (executor as any).updateState ?? (executor as any).update_state ?? {},
+        desiredExecutorVersion: (executor as any).desiredExecutorVersion ?? (executor as any).desired_executor_version ?? null,
+        desiredPlugins: (executor as any).desiredPlugins ?? (executor as any).desired_plugins ?? {},
+        drifted: Boolean((executor as any).drifted ?? false),
+        driftReasons: Array.isArray((executor as any).driftReasons)
+            ? (executor as any).driftReasons
+            : ((executor as any).drift_reasons ?? []),
+        latestUpdate: (executor as any).latestUpdate || (executor as any).latest_update
+            ? normalizeRuntimeUpdateAttempt((executor as any).latestUpdate ?? (executor as any).latest_update)
+            : null,
+        lastFailedUpdate: (executor as any).lastFailedUpdate || (executor as any).last_failed_update
+            ? normalizeRuntimeUpdateAttempt((executor as any).lastFailedUpdate ?? (executor as any).last_failed_update)
+            : null,
         pluginIds: {
             ...pluginIds,
             plugins,
@@ -430,7 +449,36 @@ function normalizeRuntimeExecutor(executor: RuntimeExecutorRead): RuntimeExecuto
 function normalizeRuntimeExecutorList(response: RuntimeExecutorListResponse): RuntimeExecutorListResponse {
     return {
         ...response,
+        summary: {
+            ...response.summary,
+            driftedCount: (response.summary as any).driftedCount ?? (response.summary as any).drifted_count ?? 0,
+            updatingCount: (response.summary as any).updatingCount ?? (response.summary as any).updating_count ?? 0,
+        },
         items: (response.items || []).map((item) => normalizeRuntimeExecutor(item)),
+    };
+}
+
+function normalizeRuntimeRelease(item: RuntimeRelease): RuntimeRelease {
+    return {
+        ...item,
+        manifestJson: (item as any).manifestJson ?? (item as any).manifest_json ?? {},
+    };
+}
+
+function normalizeRuntimeDesiredState(response: RuntimeDesiredStateResponse): RuntimeDesiredStateResponse {
+    return {
+        ...response,
+        items: (response.items || []).map((item: any) => ({
+            ...item,
+            release: normalizeRuntimeRelease(item.release),
+        })),
+    };
+}
+
+function normalizeRuntimeUpdateAttempt(item: RuntimeUpdateAttempt): RuntimeUpdateAttempt {
+    return {
+        ...item,
+        rolledBack: Boolean((item as any).rolledBack ?? (item as any).rolled_back ?? false),
     };
 }
 
@@ -1224,6 +1272,58 @@ export class RealApiService implements ApiService {
     async getRuntimeExecutor(executorId: string): Promise<RuntimeExecutorRead> {
         const response = await this.client.get<RuntimeExecutorRead>(`/runtime/executors/${executorId}`);
         return normalizeRuntimeExecutor(response.data);
+    }
+
+    async createRuntimeRelease(file: File): Promise<RuntimeRelease> {
+        const formData = new FormData();
+        formData.append('file', file);
+        const response = await this.client.post<RuntimeRelease>('/runtime/releases', formData, {
+            headers: {'Content-Type': 'multipart/form-data'},
+        });
+        return normalizeRuntimeRelease(response.data);
+    }
+
+    async getRuntimeReleases(componentType?: string, componentName?: string): Promise<RuntimeReleaseListResponse> {
+        const response = await this.client.get<RuntimeReleaseListResponse>('/runtime/releases', {
+            params: {
+                component_type: componentType,
+                component_name: componentName,
+            },
+        });
+        return {
+            ...response.data,
+            items: (response.data.items || []).map((item) => normalizeRuntimeRelease(item)),
+        };
+    }
+
+    async getRuntimeDesiredState(): Promise<RuntimeDesiredStateResponse> {
+        const response = await this.client.get<RuntimeDesiredStateResponse>('/runtime/desired-state');
+        return normalizeRuntimeDesiredState(response.data);
+    }
+
+    async patchRuntimeDesiredState(payload: RuntimeDesiredStatePatchRequest): Promise<RuntimeDesiredStateResponse> {
+        const response = await this.client.patch<RuntimeDesiredStateResponse>('/runtime/desired-state', payload);
+        return normalizeRuntimeDesiredState(response.data);
+    }
+
+    async getRuntimeUpdateAttempts(query?: {
+        executorId?: string;
+        componentType?: string;
+        componentName?: string;
+        limit?: number;
+    }): Promise<RuntimeUpdateAttemptListResponse> {
+        const response = await this.client.get<RuntimeUpdateAttemptListResponse>('/runtime/update-attempts', {
+            params: {
+                executor_id: query?.executorId,
+                component_type: query?.componentType,
+                component_name: query?.componentName,
+                limit: query?.limit,
+            },
+        });
+        return {
+            ...response.data,
+            items: (response.data.items || []).map((item) => normalizeRuntimeUpdateAttempt(item)),
+        };
     }
 
     async publishModelFromRound(

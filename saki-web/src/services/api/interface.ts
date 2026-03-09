@@ -59,6 +59,11 @@ import {
     PredictionRead,
     PredictionTaskRead,
     RuntimePluginCatalogResponse,
+    RuntimeReleaseListResponse,
+    RuntimeRelease,
+    RuntimeDesiredStateResponse,
+    RuntimeDesiredStatePatchRequest,
+    RuntimeUpdateAttemptListResponse,
     RuntimeExecutorListResponse,
     RuntimeExecutorRead,
     RuntimeExecutorStatsRange,
@@ -311,6 +316,21 @@ export interface ApiService {
     getRuntimeExecutorStats(range: RuntimeExecutorStatsRange): Promise<RuntimeExecutorStatsResponse>;
 
     getRuntimeExecutor(executorId: string): Promise<RuntimeExecutorRead>;
+
+    createRuntimeRelease(file: File): Promise<RuntimeRelease>;
+
+    getRuntimeReleases(componentType?: string, componentName?: string): Promise<RuntimeReleaseListResponse>;
+
+    getRuntimeDesiredState(): Promise<RuntimeDesiredStateResponse>;
+
+    patchRuntimeDesiredState(payload: RuntimeDesiredStatePatchRequest): Promise<RuntimeDesiredStateResponse>;
+
+    getRuntimeUpdateAttempts(query?: {
+        executorId?: string;
+        componentType?: string;
+        componentName?: string;
+        limit?: number;
+    }): Promise<RuntimeUpdateAttemptListResponse>;
 
     publishModelFromRound(projectId: string, payload: ModelPublishFromRoundRequest): Promise<ProjectModel>;
 

@@ -53,18 +53,21 @@ type Querier interface {
 	InsertCommandLog(ctx context.Context, arg InsertCommandLogParams) (int64, error)
 	InsertDispatchOutbox(ctx context.Context, arg InsertDispatchOutboxParams) (int64, error)
 	InsertRound(ctx context.Context, arg InsertRoundParams) error
+	InsertRuntimeUpdateAttempt(ctx context.Context, arg InsertRuntimeUpdateAttemptParams) (int64, error)
 	InsertStep(ctx context.Context, arg InsertStepParams) error
 	InsertStepTask(ctx context.Context, arg InsertStepTaskParams) error
 	InsertTaskCandidateItem(ctx context.Context, arg InsertTaskCandidateItemParams) error
 	InsertTaskEvent(ctx context.Context, arg InsertTaskEventParams) (int64, error)
 	InsertTaskMetricPoint(ctx context.Context, arg InsertTaskMetricPointParams) error
 	InsertTaskStatusSystemEvent(ctx context.Context, arg InsertTaskStatusSystemEventParams) (int64, error)
+	ListDispatchLaneHeadCandidates(ctx context.Context, limitCount int32) ([]ListDispatchLaneHeadCandidatesRow, error)
 	ListInFlightTaskIDsByExecutor(ctx context.Context, arg ListInFlightTaskIDsByExecutorParams) ([]uuid.UUID, error)
 	ListInFlightTaskRecoveryCandidates(ctx context.Context, limitCount int32) ([]ListInFlightTaskRecoveryCandidatesRow, error)
 	ListLoopStoppableSteps(ctx context.Context, loopID uuid.UUID) ([]ListLoopStoppableStepsRow, error)
 	ListOrphanDispatchingTaskIDs(ctx context.Context, arg ListOrphanDispatchingTaskIDsParams) ([]uuid.UUID, error)
 	ListReadyTaskIDsForDispatch(ctx context.Context, limitCount int32) ([]uuid.UUID, error)
 	ListRoundActiveStepIDs(ctx context.Context, roundID uuid.UUID) ([]uuid.UUID, error)
+	ListRuntimeDesiredReleases(ctx context.Context) ([]ListRuntimeDesiredReleasesRow, error)
 	ListTaskCandidatesByTaskID(ctx context.Context, arg ListTaskCandidatesByTaskIDParams) ([]ListTaskCandidatesByTaskIDRow, error)
 	ListTickLoopIDs(ctx context.Context, limitCount int32) ([]uuid.UUID, error)
 	MarkDispatchOutboxRetry(ctx context.Context, arg MarkDispatchOutboxRetryParams) (int64, error)
@@ -104,6 +107,7 @@ type Querier interface {
 	UpdateRoundStateWithReason(ctx context.Context, arg UpdateRoundStateWithReasonParams) error
 	UpdateRoundStateWithReasonGuarded(ctx context.Context, arg UpdateRoundStateWithReasonGuardedParams) (int64, error)
 	UpdateRuntimeExecutorDisconnected(ctx context.Context, arg UpdateRuntimeExecutorDisconnectedParams) error
+	UpdateRuntimeUpdateAttemptByRequestID(ctx context.Context, arg UpdateRuntimeUpdateAttemptByRequestIDParams) (int64, error)
 	UpdateStepArtifacts(ctx context.Context, arg UpdateStepArtifactsParams) error
 	UpdateStepResultProjection(ctx context.Context, arg UpdateStepResultProjectionParams) (int64, error)
 	UpdateTaskExecutionResultGuarded(ctx context.Context, arg UpdateTaskExecutionResultGuardedParams) (int64, error)

@@ -387,6 +387,57 @@ func resourceSummaryToMap(summary *runtimecontrolv1.ResourceSummary) map[string]
 	}
 }
 
+func runtimeComponentTypeToText(value runtimecontrolv1.RuntimeComponentType) string {
+	switch value {
+	case runtimecontrolv1.RuntimeComponentType_EXECUTOR:
+		return "executor"
+	case runtimecontrolv1.RuntimeComponentType_PLUGIN:
+		return "plugin"
+	default:
+		return ""
+	}
+}
+
+func runtimeUpdatePhaseToText(value runtimecontrolv1.RuntimeUpdatePhase) string {
+	switch value {
+	case runtimecontrolv1.RuntimeUpdatePhase_RUNTIME_UPDATE_PHASE_QUEUED:
+		return "queued"
+	case runtimecontrolv1.RuntimeUpdatePhase_RUNTIME_UPDATE_PHASE_DOWNLOADING:
+		return "downloading"
+	case runtimecontrolv1.RuntimeUpdatePhase_RUNTIME_UPDATE_PHASE_VALIDATING:
+		return "validating"
+	case runtimecontrolv1.RuntimeUpdatePhase_RUNTIME_UPDATE_PHASE_INSTALLING:
+		return "installing"
+	case runtimecontrolv1.RuntimeUpdatePhase_RUNTIME_UPDATE_PHASE_ACTIVATING:
+		return "activating"
+	case runtimecontrolv1.RuntimeUpdatePhase_RUNTIME_UPDATE_PHASE_SUCCEEDED:
+		return "succeeded"
+	case runtimecontrolv1.RuntimeUpdatePhase_RUNTIME_UPDATE_PHASE_FAILED:
+		return "failed"
+	case runtimecontrolv1.RuntimeUpdatePhase_RUNTIME_UPDATE_PHASE_ROLLED_BACK:
+		return "rolled_back"
+	default:
+		return ""
+	}
+}
+
+func runtimeUpdateStateToMap(snapshot *runtimecontrolv1.RuntimeUpdateStateSnapshot) map[string]any {
+	if snapshot == nil {
+		return map[string]any{}
+	}
+	return map[string]any{
+		"request_id":         strings.TrimSpace(snapshot.GetRequestId()),
+		"component_type":     runtimeComponentTypeToText(snapshot.GetComponentType()),
+		"component_name":     strings.TrimSpace(snapshot.GetComponentName()),
+		"from_version":       strings.TrimSpace(snapshot.GetFromVersion()),
+		"target_version":     strings.TrimSpace(snapshot.GetTargetVersion()),
+		"phase":              runtimeUpdatePhaseToText(snapshot.GetPhase()),
+		"detail":             strings.TrimSpace(snapshot.GetDetail()),
+		"activation_pending": snapshot.GetActivationPending(),
+		"rollback_pending":   snapshot.GetRollbackPending(),
+	}
+}
+
 func normalizeStringSlice(raw []string) []string {
 	items := make([]string, 0, len(raw))
 	for _, item := range raw {

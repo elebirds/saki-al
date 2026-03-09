@@ -412,6 +412,21 @@ func (c *Client) CreateDownloadTicket(
 	return resp, callErr
 }
 
+func (c *Client) CreateRuntimeReleaseDownloadTicket(
+	ctx context.Context,
+	req *runtimedomainv1.RuntimeReleaseDownloadTicketRequest,
+) (*runtimedomainv1.RuntimeReleaseDownloadTicketResponse, error) {
+	client, token, timeout, err := c.clientForCall()
+	if err != nil {
+		return nil, err
+	}
+	callCtx, cancel := context.WithTimeout(withToken(ctx, token), timeout)
+	defer cancel()
+	resp, callErr := client.CreateRuntimeReleaseDownloadTicket(callCtx, req)
+	c.handleCallError(callErr)
+	return resp, callErr
+}
+
 func IsTransientError(err error) bool {
 	if err == nil {
 		return false

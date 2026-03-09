@@ -1,6 +1,6 @@
 -- name: UpsertRuntimeExecutorOnRegister :exec
 INSERT INTO runtime_executor(
-  id, executor_id, version, status, is_online, current_task_id, plugin_ids, resources, last_seen_at, last_error, created_at, updated_at
+  id, executor_id, version, status, is_online, current_task_id, plugin_ids, resources, update_state, last_seen_at, last_error, created_at, updated_at
 ) VALUES(
   sqlc.arg(executor_row_id)::uuid,
   sqlc.arg(executor_id),
@@ -10,6 +10,7 @@ INSERT INTO runtime_executor(
   NULL,
   sqlc.arg(plugin_ids)::jsonb,
   sqlc.arg(resources)::jsonb,
+  sqlc.arg(update_state)::jsonb,
   now(),
   NULL,
   now(),
@@ -22,13 +23,14 @@ ON CONFLICT (executor_id) DO UPDATE SET
   current_task_id = NULL,
   plugin_ids = EXCLUDED.plugin_ids,
   resources = EXCLUDED.resources,
+  update_state = EXCLUDED.update_state,
   last_seen_at = EXCLUDED.last_seen_at,
   last_error = NULL,
   updated_at = now();
 
 -- name: UpsertRuntimeExecutorOnHeartbeat :exec
 INSERT INTO runtime_executor(
-  id, executor_id, version, status, is_online, current_task_id, plugin_ids, resources, last_seen_at, last_error, created_at, updated_at
+  id, executor_id, version, status, is_online, current_task_id, plugin_ids, resources, update_state, last_seen_at, last_error, created_at, updated_at
 ) VALUES(
   sqlc.arg(executor_row_id)::uuid,
   sqlc.arg(executor_id),
@@ -38,6 +40,7 @@ INSERT INTO runtime_executor(
   sqlc.narg(current_task_id)::uuid,
   '{}'::jsonb,
   sqlc.arg(resources)::jsonb,
+  sqlc.arg(update_state)::jsonb,
   now(),
   NULL,
   now(),
@@ -48,6 +51,7 @@ ON CONFLICT (executor_id) DO UPDATE SET
   is_online = TRUE,
   current_task_id = EXCLUDED.current_task_id,
   resources = EXCLUDED.resources,
+  update_state = EXCLUDED.update_state,
   last_seen_at = EXCLUDED.last_seen_at,
   last_error = NULL,
   updated_at = now();

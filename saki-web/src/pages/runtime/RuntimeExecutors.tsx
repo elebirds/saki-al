@@ -301,7 +301,7 @@ const RuntimeExecutors: React.FC = () => {
                         <div className="flex flex-col gap-4">
 
                             {summary ? (
-                                <div className="grid grid-cols-4 gap-3">
+                                <div className="grid grid-cols-2 gap-3 xl:grid-cols-6">
                                     <div className="rounded-md border border-github-border bg-github-panel p-3">
                                         <div className="text-xs text-github-muted">{t('runtime.executors.summary.total')}</div>
                                         <div className="text-2xl font-semibold text-github-text">{summary.totalCount}</div>
@@ -317,6 +317,14 @@ const RuntimeExecutors: React.FC = () => {
                                     <div className="rounded-md border border-github-border bg-github-panel p-3">
                                         <div className="text-xs text-github-muted">{t('runtime.executors.summary.available')}</div>
                                         <div className="text-2xl font-semibold text-github-text">{summary.availableCount}</div>
+                                    </div>
+                                    <div className="rounded-md border border-github-border bg-github-panel p-3">
+                                        <div className="text-xs text-github-muted">Drifted</div>
+                                        <div className="text-2xl font-semibold text-github-text">{summary.driftedCount || 0}</div>
+                                    </div>
+                                    <div className="rounded-md border border-github-border bg-github-panel p-3">
+                                        <div className="text-xs text-github-muted">Updating</div>
+                                        <div className="text-2xl font-semibold text-github-text">{summary.updatingCount || 0}</div>
                                     </div>
                                 </div>
                             ) : null}
@@ -433,6 +441,8 @@ const RuntimeExecutors: React.FC = () => {
                                                     </td>
                                                     <td className="px-4 py-3 align-top">
                                                         <Tag color={STATUS_COLOR[row.status] || 'default'}>{row.status}</Tag>
+                                                        {row.drifted ? <Tag color="orange">drifted</Tag> : null}
+                                                        {row.latestUpdate?.status ? <Tag color="processing">{row.latestUpdate.status}</Tag> : null}
                                                     </td>
                                                     <td className="px-4 py-3 align-top">
                                                         {row.isOnline ? <Tag color="success">online</Tag> : <Tag>offline</Tag>}
@@ -496,8 +506,13 @@ const RuntimeExecutors: React.FC = () => {
                                                 <div>{selectedExecutor.version || '-'}</div>
                                             </div>
                                             <div>
+                                                <div className="text-xs text-github-muted">目标 Executor 版本</div>
+                                                <div>{selectedExecutor.desiredExecutorVersion || '-'}</div>
+                                            </div>
+                                            <div>
                                                 <div className="text-xs text-github-muted">{t('runtime.executors.detail.status')}</div>
                                                 <Tag color={STATUS_COLOR[selectedExecutor.status] || 'default'}>{selectedExecutor.status}</Tag>
+                                                {selectedExecutor.drifted ? <Tag color="orange">drifted</Tag> : null}
                                             </div>
                                             <div>
                                                 <div className="text-xs text-github-muted">{t('runtime.executors.table.currentStep')}</div>
@@ -511,11 +526,35 @@ const RuntimeExecutors: React.FC = () => {
                                                 <div className="text-xs text-github-muted">{t('runtime.executors.table.lastHeartbeat')}</div>
                                                 <div>{formatDateTime(selectedExecutor.lastSeenAt)}</div>
                                             </div>
+                                            <div>
+                                                <div className="text-xs text-github-muted">最近更新状态</div>
+                                                <div>{selectedExecutor.latestUpdate?.status || '-'}</div>
+                                            </div>
                                         </div>
                                     </div>
 
                                     {selectedExecutor.lastError ? (
                                         <Alert type="error" showIcon message={selectedExecutor.lastError} />
+                                    ) : null}
+
+                                    {selectedExecutor.lastFailedUpdate?.detail ? (
+                                        <Alert
+                                            type="warning"
+                                            showIcon
+                                            message={`最近失败更新: ${selectedExecutor.lastFailedUpdate.status}`}
+                                            description={selectedExecutor.lastFailedUpdate.detail}
+                                        />
+                                    ) : null}
+
+                                    {selectedExecutor.driftReasons.length > 0 ? (
+                                        <div className="rounded-md border border-orange-300 bg-orange-50 p-3 text-sm text-orange-900">
+                                            <div className="mb-2 font-medium">漂移原因</div>
+                                            <div className="space-y-1">
+                                                {selectedExecutor.driftReasons.map((item) => (
+                                                    <div key={item}>{item}</div>
+                                                ))}
+                                            </div>
+                                        </div>
                                     ) : null}
 
                                     <div className="rounded-md border border-github-border bg-github-panel p-3 shadow-sm" style={{ backgroundColor: 'var(--github-panel)' }}>

@@ -785,6 +785,69 @@ export interface RuntimeHostCapability {
     driverInfo?: RuntimeHostDriverInfo;
 }
 
+export type RuntimeComponentType = 'executor' | 'plugin';
+
+export interface RuntimeUpdateAttempt {
+    id: string;
+    executorId: string;
+    componentType: RuntimeComponentType;
+    componentName: string;
+    requestId: string;
+    fromVersion: string;
+    targetVersion: string;
+    status: string;
+    detail?: string | null;
+    startedAt?: string | null;
+    endedAt?: string | null;
+    rolledBack: boolean;
+    rollbackDetail?: string | null;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface RuntimeUpdateAttemptListResponse {
+    items: RuntimeUpdateAttempt[];
+}
+
+export interface RuntimeRelease {
+    id: string;
+    componentType: RuntimeComponentType;
+    componentName: string;
+    version: string;
+    assetId: string;
+    sha256: string;
+    sizeBytes: number;
+    format: string;
+    manifestJson: Record<string, any>;
+    createdBy?: string | null;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface RuntimeReleaseListResponse {
+    items: RuntimeRelease[];
+}
+
+export interface RuntimeDesiredStateItem {
+    componentType: RuntimeComponentType;
+    componentName: string;
+    release: RuntimeRelease;
+}
+
+export interface RuntimeDesiredStateResponse {
+    items: RuntimeDesiredStateItem[];
+}
+
+export interface RuntimeDesiredStatePatchItem {
+    componentType: RuntimeComponentType;
+    componentName: string;
+    releaseId?: string | null;
+}
+
+export interface RuntimeDesiredStatePatchRequest {
+    items: RuntimeDesiredStatePatchItem[];
+}
+
 export interface RuntimeExecutorRead {
     id: string;
     executorId: string;
@@ -800,10 +863,17 @@ export interface RuntimeExecutorRead {
         accelerators?: RuntimeAcceleratorCapability[];
         hostCapability?: RuntimeHostCapability;
     } & Record<string, any>;
+    updateState: Record<string, any>;
+    desiredExecutorVersion?: string | null;
+    desiredPlugins: Record<string, string>;
+    drifted: boolean;
+    driftReasons: string[];
     lastSeenAt?: string | null;
     lastError?: string | null;
     pendingAssignCount: number;
     pendingStopCount: number;
+    latestUpdate?: RuntimeUpdateAttempt | null;
+    lastFailedUpdate?: RuntimeUpdateAttempt | null;
 }
 
 export interface RuntimeExecutorSummary {
@@ -814,6 +884,8 @@ export interface RuntimeExecutorSummary {
     availabilityRate: number;
     pendingAssignCount: number;
     pendingStopCount: number;
+    driftedCount: number;
+    updatingCount: number;
     latestHeartbeatAt?: string | null;
 }
 

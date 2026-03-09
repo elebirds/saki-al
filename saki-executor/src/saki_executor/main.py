@@ -12,6 +12,7 @@ from saki_executor.core.logging import setup_logging
 from saki_executor.runtime.capability.host_capability_cache import HostCapabilityCache
 from saki_executor.steps.manager import TaskManager
 from saki_executor.plugins.registry import PluginRegistry
+from saki_executor.updater import RuntimeUpdater
 
 
 async def run() -> None:
@@ -42,10 +43,14 @@ async def run() -> None:
         strict_train_model_handoff=settings.STRICT_TRAIN_MODEL_HANDOFF,
         host_capability_cache=host_capability_cache,
     )
-    client = AgentClient(plugin_registry=registry, task_manager=manager)
-    manager.set_transport(client.send_message, client.request_message)
-
     shutdown_event = asyncio.Event()
+    runtime_updater = RuntimeUpdater(
+        plugin_registry=registry,
+        host_capability_cache=host_capability_cache,
+        shutdown_event=shutdown_event,
+    )
+    client = AgentClient(plugin_registry=registry, task_manager=manager, runtime_updater=runtime_updater)
+    manager.set_transport(client.send_message, client.request_message)
 
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):

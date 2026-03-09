@@ -1648,6 +1648,15 @@ type RuntimeCommandLog struct {
 	Detail    string
 }
 
+type RuntimeDesiredState struct {
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+	ComponentType string
+	ComponentName string
+	ReleaseID     uuid.UUID
+	UpdatedBy     *uuid.UUID
+}
+
 type RuntimeExecutor struct {
 	CreatedAt     pgtype.Timestamptz
 	UpdatedAt     pgtype.Timestamptz
@@ -1659,6 +1668,7 @@ type RuntimeExecutor struct {
 	CurrentTaskID pgtype.Text
 	PluginIds     []byte
 	Resources     []byte
+	UpdateState   []byte
 	LastSeenAt    pgtype.Timestamptz
 	LastError     pgtype.Text
 }
@@ -1675,6 +1685,39 @@ type RuntimeExecutorStat struct {
 	AvailabilityRate   float64
 	PendingAssignCount int32
 	PendingStopCount   int32
+}
+
+type RuntimeRelease struct {
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+	ID            uuid.UUID
+	ComponentType string
+	ComponentName string
+	Version       string
+	AssetID       uuid.UUID
+	Sha256        string
+	SizeBytes     int64
+	Format        string
+	ManifestJson  []byte
+	CreatedBy     *uuid.UUID
+}
+
+type RuntimeUpdateAttempt struct {
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+	ID             uuid.UUID
+	ExecutorID     string
+	ComponentType  string
+	ComponentName  string
+	RequestID      string
+	FromVersion    string
+	TargetVersion  string
+	Status         string
+	Detail         pgtype.Text
+	StartedAt      pgtype.Timestamptz
+	EndedAt        pgtype.Timestamptz
+	RolledBack     bool
+	RollbackDetail pgtype.Text
 }
 
 type Sample struct {

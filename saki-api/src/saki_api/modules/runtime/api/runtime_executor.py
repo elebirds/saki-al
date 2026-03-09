@@ -9,6 +9,74 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, ConfigDict
 
 
+RuntimeComponentType = Literal["executor", "plugin"]
+
+
+class RuntimeUpdateAttemptRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    executor_id: str
+    component_type: RuntimeComponentType
+    component_name: str
+    request_id: str
+    from_version: str
+    target_version: str
+    status: str
+    detail: str | None = None
+    started_at: datetime | None = None
+    ended_at: datetime | None = None
+    rolled_back: bool = False
+    rollback_detail: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class RuntimeUpdateAttemptListResponse(BaseModel):
+    items: list[RuntimeUpdateAttemptRead] = Field(default_factory=list)
+
+
+class RuntimeReleaseRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    component_type: RuntimeComponentType
+    component_name: str
+    version: str
+    asset_id: uuid.UUID
+    sha256: str
+    size_bytes: int
+    format: str
+    manifest_json: dict[str, Any] = Field(default_factory=dict)
+    created_by: uuid.UUID | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class RuntimeReleaseListResponse(BaseModel):
+    items: list[RuntimeReleaseRead] = Field(default_factory=list)
+
+
+class RuntimeDesiredStateItem(BaseModel):
+    component_type: RuntimeComponentType
+    component_name: str
+    release: RuntimeReleaseRead
+
+
+class RuntimeDesiredStateResponse(BaseModel):
+    items: list[RuntimeDesiredStateItem] = Field(default_factory=list)
+
+
+class RuntimeDesiredStatePatchItem(BaseModel):
+    component_type: RuntimeComponentType
+    component_name: str
+    release_id: uuid.UUID | None = None
+
+
+class RuntimeDesiredStatePatchRequest(BaseModel):
+    items: list[RuntimeDesiredStatePatchItem] = Field(default_factory=list)
+
+
 class RuntimeExecutorRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -20,10 +88,17 @@ class RuntimeExecutorRead(BaseModel):
     current_task_id: str | None = None
     plugin_ids: dict[str, Any] = Field(default_factory=dict)
     resources: dict[str, Any] = Field(default_factory=dict)
+    update_state: dict[str, Any] = Field(default_factory=dict)
+    desired_executor_version: str | None = None
+    desired_plugins: dict[str, str] = Field(default_factory=dict)
+    drifted: bool = False
+    drift_reasons: list[str] = Field(default_factory=list)
     last_seen_at: datetime | None = None
     last_error: str | None = None
     pending_assign_count: int = 0
     pending_stop_count: int = 0
+    latest_update: RuntimeUpdateAttemptRead | None = None
+    last_failed_update: RuntimeUpdateAttemptRead | None = None
 
 
 class RuntimeExecutorSummary(BaseModel):
@@ -34,6 +109,8 @@ class RuntimeExecutorSummary(BaseModel):
     availability_rate: float
     pending_assign_count: int
     pending_stop_count: int
+    drifted_count: int = 0
+    updating_count: int = 0
     latest_heartbeat_at: datetime | None = None
 
 

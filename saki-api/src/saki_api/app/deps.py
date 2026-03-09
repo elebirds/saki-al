@@ -319,6 +319,7 @@ from saki_api.modules.runtime.service.modeling.model_registry_service import Mod
 from saki_api.modules.runtime.service.observability.runtime_observability_service import (
     RuntimeObservabilityService,
 )
+from saki_api.modules.runtime.service.release.runtime_release_service import RuntimeReleaseService
 
 
 def get_runtime_service(
@@ -364,4 +365,16 @@ def get_runtime_observability_service(
 RuntimeObservabilityServiceDep = Annotated[
     RuntimeObservabilityService,
     Depends(get_runtime_observability_service),
+]
+
+
+def get_runtime_release_service(
+        session: AsyncSession = Depends(get_session),
+) -> RuntimeReleaseService:
+    return RuntimeReleaseService(session=session)
+
+
+RuntimeReleaseServiceDep = Annotated[
+    RuntimeReleaseService,
+    Depends(get_runtime_release_service),
 ]

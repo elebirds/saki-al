@@ -23,6 +23,7 @@ class RuntimeExecutor(UUIDMixin, TimestampMixin, SQLModel, table=True):
 
     plugin_ids: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
     resources: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
+    update_state: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
 
     last_seen_at: datetime | None = Field(default=None, index=True, sa_type=sa.DateTime(timezone=True))
     last_error: str | None = Field(default=None, max_length=4000)

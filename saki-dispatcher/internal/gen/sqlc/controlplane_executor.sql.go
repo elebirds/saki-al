@@ -35,7 +35,7 @@ func (q *Queries) UpdateRuntimeExecutorDisconnected(ctx context.Context, arg Upd
 
 const upsertRuntimeExecutorOnHeartbeat = `-- name: UpsertRuntimeExecutorOnHeartbeat :exec
 INSERT INTO runtime_executor(
-  id, executor_id, version, status, is_online, current_task_id, plugin_ids, resources, last_seen_at, last_error, created_at, updated_at
+  id, executor_id, version, status, is_online, current_task_id, plugin_ids, resources, update_state, last_seen_at, last_error, created_at, updated_at
 ) VALUES(
   $1::uuid,
   $2,
@@ -45,6 +45,7 @@ INSERT INTO runtime_executor(
   $4::uuid,
   '{}'::jsonb,
   $5::jsonb,
+  $6::jsonb,
   now(),
   NULL,
   now(),
@@ -55,6 +56,7 @@ ON CONFLICT (executor_id) DO UPDATE SET
   is_online = TRUE,
   current_task_id = EXCLUDED.current_task_id,
   resources = EXCLUDED.resources,
+  update_state = EXCLUDED.update_state,
   last_seen_at = EXCLUDED.last_seen_at,
   last_error = NULL,
   updated_at = now()
@@ -66,6 +68,7 @@ type UpsertRuntimeExecutorOnHeartbeatParams struct {
 	Status        string
 	CurrentTaskID *uuid.UUID
 	Resources     []byte
+	UpdateState   []byte
 }
 
 func (q *Queries) UpsertRuntimeExecutorOnHeartbeat(ctx context.Context, arg UpsertRuntimeExecutorOnHeartbeatParams) error {
@@ -75,13 +78,14 @@ func (q *Queries) UpsertRuntimeExecutorOnHeartbeat(ctx context.Context, arg Upse
 		arg.Status,
 		arg.CurrentTaskID,
 		arg.Resources,
+		arg.UpdateState,
 	)
 	return err
 }
 
 const upsertRuntimeExecutorOnRegister = `-- name: UpsertRuntimeExecutorOnRegister :exec
 INSERT INTO runtime_executor(
-  id, executor_id, version, status, is_online, current_task_id, plugin_ids, resources, last_seen_at, last_error, created_at, updated_at
+  id, executor_id, version, status, is_online, current_task_id, plugin_ids, resources, update_state, last_seen_at, last_error, created_at, updated_at
 ) VALUES(
   $1::uuid,
   $2,
@@ -91,6 +95,7 @@ INSERT INTO runtime_executor(
   NULL,
   $4::jsonb,
   $5::jsonb,
+  $6::jsonb,
   now(),
   NULL,
   now(),
@@ -103,6 +108,7 @@ ON CONFLICT (executor_id) DO UPDATE SET
   current_task_id = NULL,
   plugin_ids = EXCLUDED.plugin_ids,
   resources = EXCLUDED.resources,
+  update_state = EXCLUDED.update_state,
   last_seen_at = EXCLUDED.last_seen_at,
   last_error = NULL,
   updated_at = now()
@@ -114,6 +120,7 @@ type UpsertRuntimeExecutorOnRegisterParams struct {
 	Version       string
 	PluginIds     []byte
 	Resources     []byte
+	UpdateState   []byte
 }
 
 func (q *Queries) UpsertRuntimeExecutorOnRegister(ctx context.Context, arg UpsertRuntimeExecutorOnRegisterParams) error {
@@ -123,6 +130,7 @@ func (q *Queries) UpsertRuntimeExecutorOnRegister(ctx context.Context, arg Upser
 		arg.Version,
 		arg.PluginIds,
 		arg.Resources,
+		arg.UpdateState,
 	)
 	return err
 }

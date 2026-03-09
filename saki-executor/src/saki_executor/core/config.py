@@ -16,10 +16,15 @@ class Settings(BaseSettings):
     API_GRPC_TARGET: str = "localhost:50051"
     INTERNAL_TOKEN: str = "dev-secret"
     HEARTBEAT_INTERVAL_SEC: int = 10
+    HTTP_TIMEOUT_SEC: int = 600
 
     RUNS_DIR: str = "runs"
     CACHE_DIR: str = "cache"
     CACHE_MAX_BYTES: int = 500 * 1024 * 1024 * 1024  # 500 GB
+    MANAGED_RUNTIME_ENABLED: bool = False
+    MANAGED_RUNTIME_ROOT: str = "managed-runtime"
+    LAUNCHER_ACTIVATION_TIMEOUT_SEC: int = 120
+    LAUNCHER_POLL_INTERVAL_MS: int = 500
 
     DEFAULT_GPU_IDS: str = "0"
     CPU_WORKERS: int = 4

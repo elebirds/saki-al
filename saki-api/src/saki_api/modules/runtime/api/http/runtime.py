@@ -6,10 +6,14 @@ import uuid
 import asyncio
 from sqlmodel import select
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, Query, UploadFile
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from saki_api.app.deps import DispatcherAdminClientDep, get_runtime_observability_service
+from saki_api.app.deps import (
+    DispatcherAdminClientDep,
+    get_runtime_release_service,
+    get_runtime_observability_service,
+)
 from saki_api.core.exceptions import ForbiddenAppException, InternalServerErrorAppException
 from saki_api.infra.db.session import get_session
 from saki_api.modules.access.api.dependencies import get_current_user_id
@@ -18,15 +22,21 @@ from saki_api.modules.runtime.domain.loop import Loop
 from saki_api.modules.runtime.api.runtime_executor import (
     RuntimeDomainCommandResponse,
     RuntimeDomainStatusResponse,
+    RuntimeDesiredStatePatchRequest,
+    RuntimeDesiredStateResponse,
     RuntimeExecutorListResponse,
     RuntimeExecutorRead,
     RuntimeExecutorStatsRange,
     RuntimeExecutorStatsResponse,
     RuntimePluginCatalogResponse,
+    RuntimeReleaseListResponse,
+    RuntimeReleaseRead,
+    RuntimeUpdateAttemptListResponse,
 )
 from saki_api.modules.runtime.service.observability.runtime_observability_service import (
     RuntimeObservabilityService,
 )
+from saki_api.modules.runtime.service.release.runtime_release_service import RuntimeReleaseService
 from saki_api.modules.access.domain.rbac import Permissions, ResourceType
 from saki_api.modules.shared.modeling.enums import LoopLifecycle, LoopPauseReason
 
@@ -69,6 +79,16 @@ def _resolve_runtime_observability_service(
     if isinstance(runtime_observability_service, RuntimeObservabilityService):
         return runtime_observability_service
     return RuntimeObservabilityService(session=session)
+
+
+def _resolve_runtime_release_service(
+        runtime_release_service: RuntimeReleaseService | object,
+        *,
+        session: AsyncSession,
+) -> RuntimeReleaseService:
+    if isinstance(runtime_release_service, RuntimeReleaseService):
+        return runtime_release_service
+    return RuntimeReleaseService(session=session)
 
 
 @router.get("/runtime/executors", response_model=RuntimeExecutorListResponse)
@@ -136,6 +156,79 @@ async def list_runtime_plugins(
         runtime_observability_service=runtime_observability_service,
     )
     return await service.list_plugins()
+
+
+@router.post("/runtime/releases", response_model=RuntimeReleaseRead)
+async def create_runtime_release(
+        *,
+        file: UploadFile = File(..., description="tar.gz release archive"),
+        runtime_release_service: RuntimeReleaseService | object = Depends(get_runtime_release_service),
+        session: AsyncSession = Depends(get_session),
+        current_user_id=Depends(get_current_user_id),
+):
+    await _ensure_runtime_manage_permission(session, current_user_id)
+    service = _resolve_runtime_release_service(runtime_release_service, session=session)
+    return await service.create_release(file=file, current_user_id=current_user_id)
+
+
+@router.get("/runtime/releases", response_model=RuntimeReleaseListResponse)
+async def list_runtime_releases(
+        *,
+        component_type: str | None = Query(default=None),
+        component_name: str | None = Query(default=None),
+        runtime_release_service: RuntimeReleaseService | object = Depends(get_runtime_release_service),
+        session: AsyncSession = Depends(get_session),
+        current_user_id=Depends(get_current_user_id),
+):
+    await _ensure_runtime_read_permission(session, current_user_id)
+    service = _resolve_runtime_release_service(runtime_release_service, session=session)
+    return await service.list_releases(component_type=component_type, component_name=component_name)
+
+
+@router.get("/runtime/desired-state", response_model=RuntimeDesiredStateResponse)
+async def get_runtime_desired_state(
+        *,
+        runtime_release_service: RuntimeReleaseService | object = Depends(get_runtime_release_service),
+        session: AsyncSession = Depends(get_session),
+        current_user_id=Depends(get_current_user_id),
+):
+    await _ensure_runtime_read_permission(session, current_user_id)
+    service = _resolve_runtime_release_service(runtime_release_service, session=session)
+    return await service.list_desired_state()
+
+
+@router.patch("/runtime/desired-state", response_model=RuntimeDesiredStateResponse)
+async def patch_runtime_desired_state(
+        *,
+        payload: RuntimeDesiredStatePatchRequest,
+        runtime_release_service: RuntimeReleaseService | object = Depends(get_runtime_release_service),
+        session: AsyncSession = Depends(get_session),
+        current_user_id=Depends(get_current_user_id),
+):
+    await _ensure_runtime_manage_permission(session, current_user_id)
+    service = _resolve_runtime_release_service(runtime_release_service, session=session)
+    return await service.set_desired_state(items=payload.items, current_user_id=current_user_id)
+
+
+@router.get("/runtime/update-attempts", response_model=RuntimeUpdateAttemptListResponse)
+async def list_runtime_update_attempts(
+        *,
+        executor_id: str | None = Query(default=None),
+        component_type: str | None = Query(default=None),
+        component_name: str | None = Query(default=None),
+        limit: int = Query(default=200, ge=1, le=1000),
+        runtime_release_service: RuntimeReleaseService | object = Depends(get_runtime_release_service),
+        session: AsyncSession = Depends(get_session),
+        current_user_id=Depends(get_current_user_id),
+):
+    await _ensure_runtime_read_permission(session, current_user_id)
+    service = _resolve_runtime_release_service(runtime_release_service, session=session)
+    return await service.list_update_attempts(
+        executor_id=executor_id,
+        component_type=component_type,
+        component_name=component_name,
+        limit=limit,
+    )
 
 
 @router.get("/runtime/domain/status", response_model=RuntimeDomainStatusResponse)

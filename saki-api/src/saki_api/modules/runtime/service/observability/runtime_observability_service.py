@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from loguru import logger
+from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.core.exceptions import NotFoundAppException
@@ -24,9 +25,13 @@ from saki_api.modules.runtime.api.runtime_executor import (
     RuntimeExecutorSummary,
     RuntimePluginCatalogResponse,
     RuntimePluginRead,
+    RuntimeUpdateAttemptRead,
 )
+from saki_api.modules.runtime.domain.runtime_desired_state import RuntimeDesiredState
 from saki_api.modules.runtime.domain.runtime_executor import RuntimeExecutor
 from saki_api.modules.runtime.domain.runtime_executor_stats import RuntimeExecutorStats
+from saki_api.modules.runtime.domain.runtime_release import RuntimeRelease
+from saki_api.modules.runtime.domain.runtime_update_attempt import RuntimeUpdateAttempt
 from saki_api.modules.runtime.repo.runtime_executor import RuntimeExecutorRepository
 from saki_api.modules.runtime.repo.runtime_executor_stats import RuntimeExecutorStatsRepository
 from saki_api.modules.runtime.service.catalog.runtime_plugin_catalog_service import (
@@ -74,6 +79,61 @@ class RuntimeObservabilityService:
         if client is None or not client.enabled:
             raise RuntimeError("dispatcher_admin 未配置")
         return client
+
+    @staticmethod
+    def _actual_plugin_versions(executor: RuntimeExecutor) -> dict[str, str]:
+        payload = executor.plugin_ids if isinstance(executor.plugin_ids, dict) else {}
+        plugins = payload.get("plugins")
+        result: dict[str, str] = {}
+        if not isinstance(plugins, list):
+            return result
+        for item in plugins:
+            if not isinstance(item, dict):
+                continue
+            plugin_id = str(item.get("plugin_id") or item.get("pluginId") or "").strip()
+            version = str(item.get("version") or "").strip()
+            if plugin_id:
+                result[plugin_id] = version
+        return result
+
+    async def _load_desired_state_snapshot(self) -> tuple[str | None, dict[str, str]]:
+        stmt = (
+            select(RuntimeDesiredState, RuntimeRelease)
+            .join(RuntimeRelease, RuntimeDesiredState.release_id == RuntimeRelease.id)
+        )
+        rows = await self.session.exec(stmt)
+        desired_executor_version: str | None = None
+        desired_plugins: dict[str, str] = {}
+        for desired, release in rows.all():
+            if desired.component_type == "executor":
+                desired_executor_version = release.version
+                continue
+            if desired.component_type == "plugin":
+                desired_plugins[desired.component_name] = release.version
+        return desired_executor_version, desired_plugins
+
+    async def _load_attempt_snapshot(
+            self,
+            executor_ids: list[str],
+    ) -> tuple[dict[str, RuntimeUpdateAttemptRead], dict[str, RuntimeUpdateAttemptRead]]:
+        if not executor_ids:
+            return {}, {}
+        stmt = (
+            select(RuntimeUpdateAttempt)
+            .where(RuntimeUpdateAttempt.executor_id.in_(executor_ids))
+            .order_by(RuntimeUpdateAttempt.started_at.desc(), RuntimeUpdateAttempt.created_at.desc())
+        )
+        rows = await self.session.exec(stmt)
+        latest_map: dict[str, RuntimeUpdateAttemptRead] = {}
+        failed_map: dict[str, RuntimeUpdateAttemptRead] = {}
+        for attempt in rows.all():
+            executor_id = str(attempt.executor_id or "").strip()
+            if not executor_id:
+                continue
+            latest_map.setdefault(executor_id, RuntimeUpdateAttemptRead.model_validate(attempt))
+            if attempt.status in {"failed", "rolled_back"}:
+                failed_map.setdefault(executor_id, RuntimeUpdateAttemptRead.model_validate(attempt))
+        return latest_map, failed_map
 
     @staticmethod
     def _build_registry_fallback_snapshot(executors: list[RuntimeExecutor]) -> dict[str, Any]:
@@ -145,7 +205,23 @@ class RuntimeObservabilityService:
             executor: RuntimeExecutor,
             pending_assign_count: int,
             pending_stop_count: int,
+            desired_executor_version: str | None,
+            desired_plugins: dict[str, str],
+            latest_update: RuntimeUpdateAttemptRead | None,
+            last_failed_update: RuntimeUpdateAttemptRead | None,
     ) -> RuntimeExecutorRead:
+        actual_plugin_versions = RuntimeObservabilityService._actual_plugin_versions(executor)
+        drift_reasons: list[str] = []
+        if desired_executor_version and str(executor.version or "").strip() != desired_executor_version:
+            drift_reasons.append(
+                f"executor version={str(executor.version or '').strip() or '-'} target={desired_executor_version}"
+            )
+        for plugin_id, target_version in sorted(desired_plugins.items()):
+            actual_version = actual_plugin_versions.get(plugin_id, "")
+            if actual_version != target_version:
+                drift_reasons.append(
+                    f"plugin {plugin_id} version={actual_version or '-'} target={target_version}"
+                )
         return RuntimeExecutorRead(
             id=executor.id,
             executor_id=executor.executor_id,
@@ -155,10 +231,17 @@ class RuntimeObservabilityService:
             current_task_id=executor.current_task_id,
             plugin_ids=executor.plugin_ids or {},
             resources=executor.resources or {},
+            update_state=executor.update_state or {},
+            desired_executor_version=desired_executor_version,
+            desired_plugins=desired_plugins,
+            drifted=bool(drift_reasons),
+            drift_reasons=drift_reasons,
             last_seen_at=executor.last_seen_at,
             last_error=executor.last_error,
             pending_assign_count=pending_assign_count,
             pending_stop_count=pending_stop_count,
+            latest_update=latest_update,
+            last_failed_update=last_failed_update,
         )
 
     async def _list_executors_ordered(self) -> list[RuntimeExecutor]:
@@ -167,16 +250,27 @@ class RuntimeObservabilityService:
     @staticmethod
     def _build_executor_summary(
             *,
-            executors: list[RuntimeExecutor],
+            items: list[RuntimeExecutorRead],
             dispatcher_snapshot: dict[str, Any],
     ) -> RuntimeExecutorSummary:
         latest_heartbeat_at: datetime | None = None
         online_count = int(dispatcher_snapshot.get("online_count", 0))
         busy_count = int(dispatcher_snapshot.get("busy_count", 0))
         available_count = 0
+        drifted_count = 0
+        updating_count = 0
 
-        for executor in executors:
-            if executor.is_online and executor.status not in {"busy", "reserved", "offline"}:
+        for executor in items:
+            if executor.drifted:
+                drifted_count += 1
+            update_phase = str((executor.update_state or {}).get("phase") or "").strip().lower()
+            if update_phase and update_phase not in {"succeeded", "failed", "rolled_back"}:
+                updating_count += 1
+            if (
+                executor.is_online
+                and executor.status not in {"busy", "reserved", "offline", "update_pending", "updating"}
+                and not executor.drifted
+            ):
                 available_count += 1
             if executor.last_seen_at and (latest_heartbeat_at is None or executor.last_seen_at > latest_heartbeat_at):
                 latest_heartbeat_at = executor.last_seen_at
@@ -185,7 +279,7 @@ class RuntimeObservabilityService:
         if isinstance(dispatcher_latest_heartbeat_at, datetime):
             latest_heartbeat_at = dispatcher_latest_heartbeat_at
 
-        total_count = len(executors)
+        total_count = len(items)
         return RuntimeExecutorSummary(
             total_count=total_count,
             online_count=online_count,
@@ -194,6 +288,8 @@ class RuntimeObservabilityService:
             availability_rate=(available_count / total_count) if total_count > 0 else 0.0,
             pending_assign_count=int(dispatcher_snapshot.get("pending_assign_count", 0)),
             pending_stop_count=int(dispatcher_snapshot.get("pending_stop_count", 0)),
+            drifted_count=drifted_count,
+            updating_count=updating_count,
             latest_heartbeat_at=latest_heartbeat_at,
         )
 
@@ -201,6 +297,10 @@ class RuntimeObservabilityService:
         executors = await self._list_executors_ordered()
         dispatcher_snapshot = await self._get_dispatcher_summary_snapshot(executors)
         pending_snapshot_map = await self._get_executor_pending_snapshot_map(executors)
+        desired_executor_version, desired_plugins = await self._load_desired_state_snapshot()
+        latest_attempt_map, failed_attempt_map = await self._load_attempt_snapshot(
+            [item.executor_id for item in executors if str(item.executor_id or "").strip()]
+        )
 
         items: list[RuntimeExecutorRead] = []
         for executor in executors:
@@ -210,12 +310,16 @@ class RuntimeObservabilityService:
                     executor=executor,
                     pending_assign_count=int(pending.get("pending_assign_count", 0)),
                     pending_stop_count=int(pending.get("pending_stop_count", 0)),
+                    desired_executor_version=desired_executor_version,
+                    desired_plugins=desired_plugins,
+                    latest_update=latest_attempt_map.get(executor.executor_id),
+                    last_failed_update=failed_attempt_map.get(executor.executor_id),
                 )
             )
 
         return RuntimeExecutorListResponse(
             summary=self._build_executor_summary(
-                executors=executors,
+                items=items,
                 dispatcher_snapshot=dispatcher_snapshot,
             ),
             items=items,
@@ -244,11 +348,17 @@ class RuntimeObservabilityService:
                     executor_id,
                     exc,
                 )
+        desired_executor_version, desired_plugins = await self._load_desired_state_snapshot()
+        latest_attempt_map, failed_attempt_map = await self._load_attempt_snapshot([executor_id])
 
         return self._to_runtime_executor_read(
             executor=executor,
             pending_assign_count=int(pending.get("pending_assign_count", 0)),
             pending_stop_count=int(pending.get("pending_stop_count", 0)),
+            desired_executor_version=desired_executor_version,
+            desired_plugins=desired_plugins,
+            latest_update=latest_attempt_map.get(executor_id),
+            last_failed_update=failed_attempt_map.get(executor_id),
         )
 
     async def get_executor_stats(self, stats_range: RuntimeExecutorStatsRange) -> RuntimeExecutorStatsResponse:

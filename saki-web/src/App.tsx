@@ -36,6 +36,7 @@ const ChangePassword = lazy(() => import('./pages/user/ChangePassword'));
 const Setup = lazy(() => import('./pages/base/Setup'));
 const NetworkError = lazy(() => import('./pages/base/NetworkError'));
 const RuntimeExecutors = lazy(() => import('./pages/runtime/RuntimeExecutors'));
+const RuntimeReleases = lazy(() => import('./pages/runtime/RuntimeReleases'));
 const SystemCheck = lazy(() => import('./components/SystemCheck'));
 const ProtectedLayout = lazy(() => import('./components/ProtectedLayout'));
 
@@ -99,6 +100,7 @@ const App: React.FC = () => {
                                         <Route path="workspace/:datasetId" element={<ProjectWorkspace/>}/>
                                     </Route>
                                     <Route path="/runtime/executors" element={<RuntimeExecutors/>}/>
+                                    <Route path="/runtime/releases" element={<RuntimeReleases/>}/>
                                     <Route
                                         path="/projects/:projectId/members"
                                         element={<Navigate to="../settings?section=members" replace/>}

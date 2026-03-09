@@ -978,8 +978,66 @@ CREATE TABLE public.runtime_executor (
     current_task_id character varying(64),
     plugin_ids jsonb,
     resources jsonb,
+    update_state jsonb,
     last_seen_at timestamp with time zone,
     last_error character varying(4000)
+);
+
+
+--
+-- Name: runtime_release; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.runtime_release (
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    id uuid NOT NULL,
+    component_type character varying(16) NOT NULL,
+    component_name character varying(255) NOT NULL,
+    version character varying(64) NOT NULL,
+    asset_id uuid NOT NULL,
+    sha256 character varying(64) NOT NULL,
+    size_bytes bigint NOT NULL,
+    format character varying(32) NOT NULL,
+    manifest_json jsonb,
+    created_by uuid
+);
+
+
+--
+-- Name: runtime_desired_state; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.runtime_desired_state (
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    component_type character varying(16) NOT NULL,
+    component_name character varying(255) NOT NULL,
+    release_id uuid NOT NULL,
+    updated_by uuid
+);
+
+
+--
+-- Name: runtime_update_attempt; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.runtime_update_attempt (
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    id uuid NOT NULL,
+    executor_id character varying(128) NOT NULL,
+    component_type character varying(16) NOT NULL,
+    component_name character varying(255) NOT NULL,
+    request_id character varying(128) NOT NULL,
+    from_version character varying(64) NOT NULL,
+    target_version character varying(64) NOT NULL,
+    status character varying(32) NOT NULL,
+    detail character varying(4000),
+    started_at timestamp with time zone,
+    ended_at timestamp with time zone,
+    rolled_back boolean NOT NULL,
+    rollback_detail character varying(4000)
 );
 
 
@@ -1449,6 +1507,30 @@ ALTER TABLE ONLY public.runtime_command_log
 
 ALTER TABLE ONLY public.runtime_executor
     ADD CONSTRAINT runtime_executor_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: runtime_release runtime_release_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.runtime_release
+    ADD CONSTRAINT runtime_release_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: runtime_desired_state runtime_desired_state_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.runtime_desired_state
+    ADD CONSTRAINT runtime_desired_state_pkey PRIMARY KEY (component_type, component_name);
+
+
+--
+-- Name: runtime_update_attempt runtime_update_attempt_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.runtime_update_attempt
+    ADD CONSTRAINT runtime_update_attempt_pkey PRIMARY KEY (id);
 
 
 --
@@ -2532,6 +2614,69 @@ CREATE INDEX ix_runtime_executor_is_online ON public.runtime_executor USING btre
 --
 
 CREATE INDEX ix_runtime_executor_last_seen_at ON public.runtime_executor USING btree (last_seen_at);
+
+
+--
+-- Name: ix_runtime_release_asset_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_runtime_release_asset_id ON public.runtime_release USING btree (asset_id);
+
+
+--
+-- Name: ix_runtime_release_component_name; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_runtime_release_component_name ON public.runtime_release USING btree (component_name);
+
+
+--
+-- Name: ix_runtime_release_component_type; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_runtime_release_component_type ON public.runtime_release USING btree (component_type);
+
+
+--
+-- Name: ix_runtime_release_component_version; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX ix_runtime_release_component_version ON public.runtime_release USING btree (component_type, component_name, version);
+
+
+--
+-- Name: ix_runtime_desired_state_release_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_runtime_desired_state_release_id ON public.runtime_desired_state USING btree (release_id);
+
+
+--
+-- Name: ix_runtime_update_attempt_executor_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_runtime_update_attempt_executor_id ON public.runtime_update_attempt USING btree (executor_id);
+
+
+--
+-- Name: ix_runtime_update_attempt_request_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX ix_runtime_update_attempt_request_id ON public.runtime_update_attempt USING btree (request_id);
+
+
+--
+-- Name: ix_runtime_update_attempt_started_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_runtime_update_attempt_started_at ON public.runtime_update_attempt USING btree (started_at);
+
+
+--
+-- Name: ix_runtime_update_attempt_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_runtime_update_attempt_status ON public.runtime_update_attempt USING btree (status);
 
 
 --

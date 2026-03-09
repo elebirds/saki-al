@@ -85,6 +85,14 @@ func (s *Service) OnAssignTaskAck(ctx context.Context, ack *dispatch.AssignTaskA
 			Str("target_status", strings.ToLower(string(targetStatus))).
 			Msg("写入 assign_ack 系统状态事件失败")
 	}
+	s.logger.Warn().
+		Str("task_id", taskID.String()).
+		Str("executor_id", executorID).
+		Str("request_id", strings.TrimSpace(ack.RequestID)).
+		Str("ack_reason", strings.ToLower(strings.TrimPrefix(ack.Reason.String(), "ACK_REASON_"))).
+		Str("target_status", strings.ToLower(string(targetStatus))).
+		Str("detail", reasonText).
+		Msg("dispatch_trace assign_task ack 触发调度状态回退")
 	s.projectAndRefreshRoundBestEffortTx(ctx, tx, taskID)
 	return tx.Commit(ctx)
 }

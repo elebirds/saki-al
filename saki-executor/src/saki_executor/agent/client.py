@@ -302,11 +302,21 @@ class AgentClient:
             cached_ack = self._take_cached_control_ack(request_id)
             if cached_ack is not None:
                 await self.send_message(cached_ack)
-                logger.info("重复任务派发 request_id={}，已返回缓存 ack。", request_id)
+                logger.info("assign_trace 重复任务派发 request_id={}，已返回缓存 ack。", request_id)
                 return
 
             task_payload = runtime_codec.parse_assign_task(assign)
-            logger.info("收到任务派发 request_id={} task_id={}", request_id, task_payload.get("task_id"))
+            logger.info(
+                "assign_trace 收到任务派发 request_id={} task_id={} execution_id={} plugin_id={} task_type={} mode={} round_id={} attempt={}",
+                request_id,
+                task_payload.get("task_id"),
+                task_payload.get("execution_id"),
+                task_payload.get("plugin_id"),
+                task_payload.get("task_type"),
+                task_payload.get("mode"),
+                task_payload.get("round_id"),
+                task_payload.get("attempt"),
+            )
             ack_reason = "executor_busy"
             ack_detail = "executor busy"
             accepted = False
@@ -316,7 +326,7 @@ class AgentClient:
                     ack_reason = "accepted"
                     ack_detail = "accepted"
             except Exception as exc:
-                logger.warning("任务派发参数非法 request_id={} error={}", request_id, exc)
+                logger.warning("assign_trace 任务派发参数非法 request_id={} error={}", request_id, exc)
                 ack_reason = "rejected"
                 ack_detail = str(exc) or "rejected"
             ack_message = runtime_codec.build_ack_message(
@@ -329,6 +339,15 @@ class AgentClient:
             )
             await self.send_message(ack_message)
             self._cache_control_ack(request_id, ack_message)
+            logger.info(
+                "assign_trace 任务派发 ack 已发送 request_id={} task_id={} execution_id={} accepted={} ack_reason={} detail={}",
+                request_id,
+                task_payload.get("task_id"),
+                task_payload.get("execution_id"),
+                accepted,
+                ack_reason,
+                ack_detail,
+            )
             return
 
         if payload_type == "stop_task":

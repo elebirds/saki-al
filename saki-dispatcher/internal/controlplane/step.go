@@ -77,9 +77,21 @@ func (s *Service) dispatchPending(ctx context.Context, limit int) (int, error) {
 		if len(pass) == 0 {
 			break
 		}
+		s.logger.Debug().
+			Int("claimed", claimed).
+			Int("limit", limit).
+			Int("candidate_count", len(candidates)).
+			Int("pass_count", len(pass)).
+			Msg("dispatch_trace 候选轮次开始")
 		dispatchedThisPass := 0
 		for _, candidate := range pass {
 			if _, available := s.dispatcher.PickExecutor(candidate.PluginID); !available {
+				s.logger.Debug().
+					Str("task_id", candidate.TaskID.String()).
+					Str("lane_id", candidate.LaneID).
+					Str("dispatch_class", candidate.DispatchClass).
+					Str("plugin_id", candidate.PluginID).
+					Msg("dispatch_trace 跳过：当前无可用 executor")
 				continue
 			}
 			dispatched, err := s.dispatchTaskByID(ctx, candidate.TaskID)
@@ -95,6 +107,11 @@ func (s *Service) dispatchPending(ctx context.Context, limit int) (int, error) {
 			if candidate.IsReady {
 				if _, stillAvailable := s.dispatcher.PickExecutor(candidate.PluginID); stillAvailable {
 					s.incrementLaneSkip(candidate.LaneID)
+					s.logger.Debug().
+						Str("task_id", candidate.TaskID.String()).
+						Str("lane_id", candidate.LaneID).
+						Str("dispatch_class", candidate.DispatchClass).
+						Msg("dispatch_trace 未派发：lane 增加 aging")
 				}
 			}
 		}
@@ -201,7 +218,35 @@ func (s *Service) dispatchStepTaskByID(ctx context.Context, taskID uuid.UUID) (b
 		loopPreferredExecutorID,
 	)
 	_ = blockedByLoopBinding
-	if deferredByAffinity || strings.TrimSpace(executorID) == "" {
+	readyAge := time.Duration(0)
+	if stepPayload.UpdatedAt != nil {
+		readyAge = time.Since(stepPayload.UpdatedAt.UTC())
+		if readyAge < 0 {
+			readyAge = 0
+		}
+	}
+	if deferredByAffinity {
+		s.logger.Debug().
+			Str("task_id", taskID.String()).
+			Str("step_id", stepPayload.StepID.String()).
+			Str("step_type", strings.ToLower(string(stepPayload.StepType))).
+			Str("plugin_id", stepPayload.PluginID).
+			Str("loop_preferred_executor_id", loopPreferredExecutorID).
+			Str("dependency_preferred_executor_id", dependencyPreferredExecutorID).
+			Dur("ready_age", readyAge).
+			Msg("dispatch_trace 等待 affinity 窗口")
+		return false, tx.Commit(ctx)
+	}
+	if strings.TrimSpace(executorID) == "" {
+		s.logger.Debug().
+			Str("task_id", taskID.String()).
+			Str("step_id", stepPayload.StepID.String()).
+			Str("step_type", strings.ToLower(string(stepPayload.StepType))).
+			Str("plugin_id", stepPayload.PluginID).
+			Str("loop_preferred_executor_id", loopPreferredExecutorID).
+			Str("dependency_preferred_executor_id", dependencyPreferredExecutorID).
+			Dur("ready_age", readyAge).
+			Msg("dispatch_trace 等待可用 executor")
 		return false, tx.Commit(ctx)
 	}
 
@@ -284,6 +329,19 @@ func (s *Service) dispatchStepTaskByID(ctx context.Context, taskID uuid.UUID) (b
 	if inserted == 0 {
 		return false, tx.Commit(ctx)
 	}
+	s.logger.Info().
+		Str("task_id", taskID.String()).
+		Str("step_id", stepPayload.StepID.String()).
+		Str("round_id", stepPayload.RoundID.String()).
+		Str("loop_id", stepPayload.LoopID.String()).
+		Str("step_type", strings.ToLower(string(stepPayload.StepType))).
+		Str("plugin_id", stepPayload.PluginID).
+		Str("executor_id", executorID).
+		Str("request_id", requestID).
+		Str("execution_id", stepPayload.CurrentExecutionID.String()).
+		Str("loop_preferred_executor_id", loopPreferredExecutorID).
+		Str("dependency_preferred_executor_id", dependencyPreferredExecutorID).
+		Msg("dispatch_trace step 已写入调度 outbox")
 	return true, tx.Commit(ctx)
 }
 
@@ -359,6 +417,10 @@ func (s *Service) dispatchPredictionTaskByID(ctx context.Context, taskID uuid.UU
 
 	executorID, ok := s.dispatcher.PickExecutor(strings.TrimSpace(taskRow.PluginID))
 	if !ok || strings.TrimSpace(executorID) == "" {
+		s.logger.Debug().
+			Str("task_id", taskID.String()).
+			Str("plugin_id", strings.TrimSpace(taskRow.PluginID)).
+			Msg("dispatch_trace prediction 等待可用 executor")
 		return false, tx.Commit(ctx)
 	}
 
@@ -404,8 +466,21 @@ func (s *Service) dispatchPredictionTaskByID(ctx context.Context, taskID uuid.UU
 	}
 	if !s.dispatcher.DispatchTask(executorID, requestID, payload) {
 		_, _ = s.qtx(tx).ResetTaskToReadyQueueFull(ctx, taskRow.ID)
+		s.logger.Warn().
+			Str("task_id", taskRow.ID.String()).
+			Str("plugin_id", strings.TrimSpace(taskRow.PluginID)).
+			Str("executor_id", executorID).
+			Str("request_id", requestID).
+			Msg("dispatch_trace prediction 派发失败：dispatcher 队列已满，已回退 READY")
 		return false, tx.Commit(ctx)
 	}
+	s.logger.Info().
+		Str("task_id", taskRow.ID.String()).
+		Str("plugin_id", strings.TrimSpace(taskRow.PluginID)).
+		Str("executor_id", executorID).
+		Str("request_id", requestID).
+		Str("execution_id", taskRow.CurrentExecutionID.String()).
+		Msg("dispatch_trace prediction 已派发到 executor")
 	return true, tx.Commit(ctx)
 }
 

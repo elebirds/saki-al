@@ -243,7 +243,14 @@ class TaskManager:
         request = TaskExecutionRequest.from_payload(payload)
         async with self._lock:
             if self.busy:
-                logger.warning("拒绝任务分配：执行器忙碌，request_id={}", request_id)
+                logger.warning(
+                    "assign_trace 拒绝任务分配：执行器忙碌 request_id={} incoming_task_id={} incoming_execution_id={} current_task_id={} current_execution_id={}",
+                    request_id,
+                    request.task_id,
+                    request.execution_id,
+                    self.current_task_id,
+                    self.current_execution_id,
+                )
                 return False
             self.current_task_id = request.task_id
             self.current_execution_id = request.execution_id
@@ -251,10 +258,15 @@ class TaskManager:
             self._stop_event.clear()
             self._task = asyncio.create_task(self._run_task(request))
             logger.info(
-                "接受任务分配 request_id={} task_id={} plugin_id={}",
+                "assign_trace 接受任务分配 request_id={} task_id={} execution_id={} plugin_id={} task_type={} mode={} round_id={} attempt={}",
                 request_id,
                 self.current_task_id,
+                self.current_execution_id,
                 request.plugin_id,
+                request.task_type,
+                request.mode,
+                request.round_id,
+                request.attempt,
             )
             return True
 
@@ -296,8 +308,11 @@ class TaskManager:
                 strategy = str(request.query_strategy or "").strip()
         inference_mode = "direct" if request.task_type == "predict" else ""
         logger.info(
-            "任务开始执行 task_id={} plugin_id={} task_type={} mode={} sampling_strategy={} inference_mode={}",
+            "assign_trace 任务开始执行 task_id={} execution_id={} round_id={} attempt={} plugin_id={} task_type={} mode={} sampling_strategy={} inference_mode={}",
             request.task_id,
+            request.execution_id,
+            request.round_id,
+            request.attempt,
             request.plugin_id,
             request.task_type,
             request.mode,
@@ -395,7 +410,12 @@ class TaskManager:
             self._task = None
             self._stop_event.clear()
             self._active_plugin = None
-        logger.info("任务收尾完成 task_id={} final_status={}", task_id, final_status.value)
+        logger.info(
+            "assign_trace 任务收尾完成 task_id={} execution_id={} final_status={}",
+            task_id,
+            execution_id,
+            final_status.value,
+        )
 
     async def _request_upload_ticket(
         self,

@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cast"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/elebirds/saki/saki-dispatcher/internal/dispatch"
 	runtimecontrolv1 "github.com/elebirds/saki/saki-dispatcher/internal/gen/runtimecontrolv1"
 	db "github.com/elebirds/saki/saki-dispatcher/internal/gen/sqlc"
 )
@@ -234,6 +235,61 @@ func TestIsImmediateCancelOnLoopStopping(t *testing.T) {
 		if got != tc.want {
 			t.Fatalf("unexpected stopping cancel policy status=%s got=%v want=%v", tc.status, got, tc.want)
 		}
+	}
+}
+
+func TestShouldRequeueDispatchOutbox(t *testing.T) {
+	dispatcher := dispatch.NewDispatcher()
+	registerExecutorForTest(t, dispatcher, "executor-a", "demo_det_v1")
+	registerExecutorForTest(t, dispatcher, "executor-b", "demo_det_v1")
+
+	service := &Service{dispatcher: dispatcher}
+	taskID := uuid.New()
+	currentExecutionID := uuid.New()
+
+	requeue, reason := service.shouldRequeueDispatchOutbox(db.ListActiveDispatchOutboxRecoveryCandidatesRow{
+		ID:                 uuid.New(),
+		TaskID:             taskID,
+		ExecutorID:         "executor-a",
+		LastError:          "executor 不可用或队列已满",
+		PluginID:           "demo_det_v1",
+		TaskKind:           "STEP",
+		TaskStatus:         "DISPATCHING",
+		CurrentExecutionID: currentExecutionID,
+		AssignedExecutorID: "executor-a",
+		ExecutorOnline:     true,
+	})
+	if !requeue {
+		t.Fatal("queue full outbox should be requeued")
+	}
+	if reason == "" {
+		t.Fatal("queue full outbox should carry a reason")
+	}
+
+	if err := dispatcher.HandleHeartbeat(&runtimecontrolv1.Heartbeat{
+		ExecutorId:    "executor-a",
+		Busy:          true,
+		CurrentTaskId: "other-task",
+	}); err != nil {
+		t.Fatalf("mark executor-a busy failed: %v", err)
+	}
+
+	requeue, reason = service.shouldRequeueDispatchOutbox(db.ListActiveDispatchOutboxRecoveryCandidatesRow{
+		ID:                 uuid.New(),
+		TaskID:             taskID,
+		ExecutorID:         "executor-a",
+		PluginID:           "demo_det_v1",
+		TaskKind:           "STEP",
+		TaskStatus:         "DISPATCHING",
+		CurrentExecutionID: currentExecutionID,
+		AssignedExecutorID: "executor-a",
+		ExecutorOnline:     true,
+	})
+	if !requeue {
+		t.Fatal("busy executor with available fallback should be requeued")
+	}
+	if reason == "" {
+		t.Fatal("busy executor fallback should carry a reason")
 	}
 }
 

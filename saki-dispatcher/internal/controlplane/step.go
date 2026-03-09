@@ -68,6 +68,7 @@ func (s *Service) dispatchPending(ctx context.Context, limit int) (int, error) {
 	claimed := 0
 	_ = s.dispatcher.DrainQueuedTaskIDs()
 	candidateLimit := max(512, limit*32)
+	reservedExecutors := map[string]struct{}{}
 	for claimed < limit {
 		candidates, err := s.listDispatchLaneCandidates(ctx, candidateLimit)
 		if err != nil {
@@ -85,16 +86,25 @@ func (s *Service) dispatchPending(ctx context.Context, limit int) (int, error) {
 			Msg("dispatch_trace 候选轮次开始")
 		dispatchedThisPass := 0
 		for _, candidate := range pass {
-			if _, available := s.dispatcher.PickExecutor(candidate.PluginID); !available {
-				s.logger.Debug().
-					Str("task_id", candidate.TaskID.String()).
-					Str("lane_id", candidate.LaneID).
-					Str("dispatch_class", candidate.DispatchClass).
-					Str("plugin_id", candidate.PluginID).
-					Msg("dispatch_trace 跳过：当前无可用 executor")
+			if _, available := s.dispatcher.PickExecutorExcluding(candidate.PluginID, reservedExecutors); !available {
+				if _, found := s.dispatcher.PickExecutor(candidate.PluginID); found {
+					s.logger.Debug().
+						Str("task_id", candidate.TaskID.String()).
+						Str("lane_id", candidate.LaneID).
+						Str("dispatch_class", candidate.DispatchClass).
+						Str("plugin_id", candidate.PluginID).
+						Msg("dispatch_trace 同轮跳过已预留 executor")
+				} else {
+					s.logger.Debug().
+						Str("task_id", candidate.TaskID.String()).
+						Str("lane_id", candidate.LaneID).
+						Str("dispatch_class", candidate.DispatchClass).
+						Str("plugin_id", candidate.PluginID).
+						Msg("dispatch_trace 跳过：当前无可用 executor")
+				}
 				continue
 			}
-			dispatched, err := s.dispatchTaskByID(ctx, candidate.TaskID)
+			dispatched, executorID, err := s.dispatchTaskByID(ctx, candidate.TaskID, reservedExecutors)
 			if err != nil {
 				return claimed, err
 			}
@@ -102,10 +112,19 @@ func (s *Service) dispatchPending(ctx context.Context, limit int) (int, error) {
 				claimed++
 				dispatchedThisPass++
 				s.recordLaneDispatch(candidate.LaneID)
+				if strings.TrimSpace(executorID) != "" {
+					reservedExecutors[executorID] = struct{}{}
+					s.logger.Debug().
+						Str("task_id", candidate.TaskID.String()).
+						Str("lane_id", candidate.LaneID).
+						Str("dispatch_class", candidate.DispatchClass).
+						Str("executor_id", executorID).
+						Msg("dispatch_trace executor 已预留")
+				}
 				continue
 			}
 			if candidate.IsReady {
-				if _, stillAvailable := s.dispatcher.PickExecutor(candidate.PluginID); stillAvailable {
+				if _, stillAvailable := s.dispatcher.PickExecutorExcluding(candidate.PluginID, reservedExecutors); stillAvailable {
 					s.incrementLaneSkip(candidate.LaneID)
 					s.logger.Debug().
 						Str("task_id", candidate.TaskID.String()).
@@ -130,19 +149,19 @@ func (s *Service) dispatchPending(ctx context.Context, limit int) (int, error) {
 	return claimed + sent, nil
 }
 
-func (s *Service) dispatchStepTaskByID(ctx context.Context, taskID uuid.UUID) (bool, error) {
+func (s *Service) dispatchStepTaskByID(ctx context.Context, taskID uuid.UUID, reservedExecutors map[string]struct{}) (bool, string, error) {
 	tx, err := s.beginTx(ctx)
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 	defer tx.Rollback(ctx)
 
 	stepPayload, ok, err := s.getStepPayloadByIDTx(ctx, tx, taskID)
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 	if !ok {
-		return false, tx.Commit(ctx)
+		return false, "", tx.Commit(ctx)
 	}
 
 	taskStatus := normalizeTaskEnumText(string(stepPayload.TaskStatus))
@@ -150,33 +169,33 @@ func (s *Service) dispatchStepTaskByID(ctx context.Context, taskID uuid.UUID) (b
 		loopLifecycle, err := s.qtx(tx).GetLoopLifecycle(ctx, stepPayload.LoopID)
 		if err != nil {
 			if err == pgx.ErrNoRows {
-				return false, tx.Commit(ctx)
+				return false, "", tx.Commit(ctx)
 			}
-			return false, err
+			return false, "", err
 		}
 		if loopLifecycle != db.LooplifecycleRUNNING {
-			return false, tx.Commit(ctx)
+			return false, "", tx.Commit(ctx)
 		}
 		depsOK, err := s.dependenciesSatisfiedTx(ctx, tx, stepPayload.DependsOnTaskIDs)
 		if err != nil {
-			return false, err
+			return false, "", err
 		}
 		if !depsOK {
-			return false, tx.Commit(ctx)
+			return false, "", tx.Commit(ctx)
 		}
 		promoteToReady := s.promoteTaskToReadyTx
 		if taskStatus == "RETRYING" {
 			if !isRetryDue(time.Now().UTC(), stepPayload.UpdatedAt, stepPayload.Attempt) {
-				return false, tx.Commit(ctx)
+				return false, "", tx.Commit(ctx)
 			}
 			promoteToReady = s.promoteRetryingTaskToReadyTx
 		}
 		promoted, err := promoteToReady(ctx, tx, taskID)
 		if err != nil {
-			return false, err
+			return false, "", err
 		}
 		if !promoted {
-			return false, tx.Commit(ctx)
+			return false, "", tx.Commit(ctx)
 		}
 		stepPayload.TaskStatus = db.RuntimetaskstatusREADY
 		taskStatus = "READY"
@@ -185,17 +204,17 @@ func (s *Service) dispatchStepTaskByID(ctx context.Context, taskID uuid.UUID) (b
 	}
 
 	if taskStatus != "READY" {
-		return false, tx.Commit(ctx)
+		return false, "", tx.Commit(ctx)
 	}
 	if err := s.syncLoopPhaseWithStepTx(ctx, tx, stepPayload); err != nil {
-		return false, err
+		return false, "", err
 	}
 	if isOrchestratorDispatchKind(stepPayload.DispatchKind) {
 		executed, err := s.executeOrchestratorStepTx(ctx, tx, taskID, stepPayload)
 		if err != nil {
-			return false, err
+			return false, "", err
 		}
-		return executed, tx.Commit(ctx)
+		return executed, "", tx.Commit(ctx)
 	}
 
 	loopPreferredExecutorID := preferredExecutorIDFromResolvedParams(stepPayload.Params)
@@ -207,7 +226,7 @@ func (s *Service) dispatchStepTaskByID(ctx context.Context, taskID uuid.UUID) (b
 			stepPayload.DependsOnTaskIDs,
 		)
 		if resolveErr != nil {
-			return false, resolveErr
+			return false, "", resolveErr
 		}
 		dependencyPreferredExecutorID = preferredExecutorID
 	}
@@ -216,6 +235,7 @@ func (s *Service) dispatchStepTaskByID(ctx context.Context, taskID uuid.UUID) (b
 		stepPayload.UpdatedAt,
 		dependencyPreferredExecutorID,
 		loopPreferredExecutorID,
+		reservedExecutors,
 	)
 	_ = blockedByLoopBinding
 	readyAge := time.Duration(0)
@@ -235,7 +255,7 @@ func (s *Service) dispatchStepTaskByID(ctx context.Context, taskID uuid.UUID) (b
 			Str("dependency_preferred_executor_id", dependencyPreferredExecutorID).
 			Dur("ready_age", readyAge).
 			Msg("dispatch_trace 等待 affinity 窗口")
-		return false, tx.Commit(ctx)
+		return false, "", tx.Commit(ctx)
 	}
 	if strings.TrimSpace(executorID) == "" {
 		s.logger.Debug().
@@ -247,7 +267,7 @@ func (s *Service) dispatchStepTaskByID(ctx context.Context, taskID uuid.UUID) (b
 			Str("dependency_preferred_executor_id", dependencyPreferredExecutorID).
 			Dur("ready_age", readyAge).
 			Msg("dispatch_trace 等待可用 executor")
-		return false, tx.Commit(ctx)
+		return false, "", tx.Commit(ctx)
 	}
 
 	resolvedParams, err := s.buildDispatchResolvedParamsTx(ctx, tx, stepPayload)
@@ -266,27 +286,27 @@ func (s *Service) dispatchStepTaskByID(ctx context.Context, taskID uuid.UUID) (b
 				reason = "训练模型交接失败"
 			}
 			if failErr := s.failTaskDispatchPreflightTx(ctx, tx, taskID, reason); failErr != nil {
-				return false, failErr
+				return false, "", failErr
 			}
 			if _, refreshErr := s.refreshRoundAggregateTx(ctx, tx, stepPayload.RoundID); refreshErr != nil {
-				return false, refreshErr
+				return false, "", refreshErr
 			}
 			s.logger.Warn().
 				Str("task_id", taskID.String()).
 				Str("step_id", stepPayload.StepID.String()).
 				Str("task_type", strings.ToLower(string(stepPayload.StepType))).
 				Msgf("训练模型交接失败，步骤已标记 FAILED: %s", reason)
-			return true, tx.Commit(ctx)
+			return true, "", tx.Commit(ctx)
 		}
 	}
 
 	requestID := uuid.NewString()
 	updated, err := s.markTaskDispatchingTx(ctx, tx, taskID, executorID, requestID)
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 	if !updated {
-		return false, tx.Commit(ctx)
+		return false, "", tx.Commit(ctx)
 	}
 
 	inputCommitID := ""
@@ -313,7 +333,7 @@ func (s *Service) dispatchStepTaskByID(ctx context.Context, taskID uuid.UUID) (b
 	}
 	payloadRaw, err := protojson.Marshal(message)
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 	outboxID := uuid.New()
 	inserted, err := s.qtx(tx).InsertDispatchOutbox(ctx, db.InsertDispatchOutboxParams{
@@ -324,10 +344,10 @@ func (s *Service) dispatchStepTaskByID(ctx context.Context, taskID uuid.UUID) (b
 		Payload:    payloadRaw,
 	})
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 	if inserted == 0 {
-		return false, tx.Commit(ctx)
+		return false, "", tx.Commit(ctx)
 	}
 	s.logger.Info().
 		Str("task_id", taskID.String()).
@@ -342,91 +362,91 @@ func (s *Service) dispatchStepTaskByID(ctx context.Context, taskID uuid.UUID) (b
 		Str("loop_preferred_executor_id", loopPreferredExecutorID).
 		Str("dependency_preferred_executor_id", dependencyPreferredExecutorID).
 		Msg("dispatch_trace step 已写入调度 outbox")
-	return true, tx.Commit(ctx)
+	return true, executorID, tx.Commit(ctx)
 }
 
-func (s *Service) dispatchTaskByID(ctx context.Context, taskID uuid.UUID) (bool, error) {
+func (s *Service) dispatchTaskByID(ctx context.Context, taskID uuid.UUID, reservedExecutors map[string]struct{}) (bool, string, error) {
 	tx, err := s.beginTx(ctx)
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 	defer tx.Rollback(ctx)
 
 	taskRow, found, err := s.getTaskForUpdateTx(ctx, tx, taskID)
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 	if !found {
-		return false, tx.Commit(ctx)
+		return false, "", tx.Commit(ctx)
 	}
 	taskKind := normalizeTaskEnumText(taskRow.Kind)
 	if taskKind == "PREDICTION" {
 		if err := tx.Commit(ctx); err != nil {
-			return false, err
+			return false, "", err
 		}
-		return s.dispatchPredictionTaskByID(ctx, taskID)
+		return s.dispatchPredictionTaskByID(ctx, taskID, reservedExecutors)
 	}
 	if taskKind != "STEP" {
-		return false, tx.Commit(ctx)
+		return false, "", tx.Commit(ctx)
 	}
 
 	_, mapped, err := s.resolveStepIDForTaskTx(ctx, tx, taskID)
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 	if !mapped {
 		reason := "step projection missing"
 		if err := s.updateTaskStatusTx(ctx, tx, taskID, "FAILED", reason); err != nil {
-			return false, err
+			return false, "", err
 		}
 		s.logger.Warn().
 			Str("task_id", taskID.String()).
 			Str("task_kind", taskKind).
 			Msg("检测到无 step 投影的 step task，已标记 FAILED")
-		return true, tx.Commit(ctx)
+		return true, "", tx.Commit(ctx)
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return false, err
+		return false, "", err
 	}
-	return s.dispatchStepTaskByID(ctx, taskID)
+	return s.dispatchStepTaskByID(ctx, taskID, reservedExecutors)
 }
 
-func (s *Service) dispatchPredictionTaskByID(ctx context.Context, taskID uuid.UUID) (bool, error) {
+func (s *Service) dispatchPredictionTaskByID(ctx context.Context, taskID uuid.UUID, reservedExecutors map[string]struct{}) (bool, string, error) {
 	tx, err := s.beginTx(ctx)
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 	defer tx.Rollback(ctx)
 
 	taskRow, found, err := s.getTaskForUpdateTx(ctx, tx, taskID)
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 	if !found {
-		return false, tx.Commit(ctx)
+		return false, "", tx.Commit(ctx)
 	}
 	if normalizeTaskEnumText(taskRow.Kind) != "PREDICTION" {
-		return false, tx.Commit(ctx)
+		return false, "", tx.Commit(ctx)
 	}
 	if isTerminalTaskStatus(taskRow.Status) {
-		return false, tx.Commit(ctx)
+		return false, "", tx.Commit(ctx)
 	}
 	if !isTaskStatusDispatchable(taskRow.Status) {
-		return false, tx.Commit(ctx)
+		return false, "", tx.Commit(ctx)
 	}
 
-	executorID, ok := s.dispatcher.PickExecutor(strings.TrimSpace(taskRow.PluginID))
+	executorID, ok := s.dispatcher.PickExecutorExcluding(strings.TrimSpace(taskRow.PluginID), reservedExecutors)
 	if !ok || strings.TrimSpace(executorID) == "" {
 		s.logger.Debug().
 			Str("task_id", taskID.String()).
 			Str("plugin_id", strings.TrimSpace(taskRow.PluginID)).
 			Msg("dispatch_trace prediction 等待可用 executor")
-		return false, tx.Commit(ctx)
+		return false, "", tx.Commit(ctx)
 	}
 
 	resolvedParams, err := toStruct(taskRow.ResolvedParamsJSON)
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 	attempt := max(1, taskRow.Attempt)
 	inputCommitID := ""
@@ -440,10 +460,10 @@ func (s *Service) dispatchPredictionTaskByID(ctx context.Context, taskID uuid.UU
 		TaskID:             taskRow.ID,
 	})
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 	if affected == 0 {
-		return false, tx.Commit(ctx)
+		return false, "", tx.Commit(ctx)
 	}
 
 	payload := &runtimecontrolv1.TaskPayload{
@@ -472,7 +492,7 @@ func (s *Service) dispatchPredictionTaskByID(ctx context.Context, taskID uuid.UU
 			Str("executor_id", executorID).
 			Str("request_id", requestID).
 			Msg("dispatch_trace prediction 派发失败：dispatcher 队列已满，已回退 READY")
-		return false, tx.Commit(ctx)
+		return false, "", tx.Commit(ctx)
 	}
 	s.logger.Info().
 		Str("task_id", taskRow.ID.String()).
@@ -481,7 +501,7 @@ func (s *Service) dispatchPredictionTaskByID(ctx context.Context, taskID uuid.UU
 		Str("request_id", requestID).
 		Str("execution_id", taskRow.CurrentExecutionID.String()).
 		Msg("dispatch_trace prediction 已派发到 executor")
-	return true, tx.Commit(ctx)
+	return true, executorID, tx.Commit(ctx)
 }
 
 func (s *Service) syncLoopPhaseWithStepTx(ctx context.Context, tx pgx.Tx, stepPayload stepDispatchPayload) error {
@@ -1366,6 +1386,7 @@ func (s *Service) pickExecutorForStepDispatch(
 	readyAt *time.Time,
 	dependencyPreferredExecutorID string,
 	loopPreferredExecutorID string,
+	reservedExecutors map[string]struct{},
 ) (executorID string, deferredByAffinity bool, blockedByLoopBinding bool) {
 	loopPreferredExecutorID = strings.TrimSpace(loopPreferredExecutorID)
 	if loopPreferredExecutorID != "" {
@@ -1373,6 +1394,7 @@ func (s *Service) pickExecutorForStepDispatch(
 			pluginID,
 			loopPreferredExecutorID,
 			readyAt,
+			reservedExecutors,
 		)
 		return executorID, deferredByAffinity, false
 	}
@@ -1380,6 +1402,7 @@ func (s *Service) pickExecutorForStepDispatch(
 		pluginID,
 		dependencyPreferredExecutorID,
 		readyAt,
+		reservedExecutors,
 	)
 	return executorID, deferredByAffinity, false
 }
@@ -1388,17 +1411,18 @@ func (s *Service) pickExecutorWithRoundAffinity(
 	pluginID string,
 	preferredExecutorID string,
 	readyAt *time.Time,
+	reservedExecutors map[string]struct{},
 ) (string, bool) {
 	preferredExecutorID = strings.TrimSpace(preferredExecutorID)
 	if preferredExecutorID == "" {
-		executorID, found := s.dispatcher.PickExecutor(pluginID)
+		executorID, found := s.dispatcher.PickExecutorExcluding(pluginID, reservedExecutors)
 		if !found {
 			return "", false
 		}
 		return executorID, false
 	}
 
-	if s.dispatcher.IsExecutorAvailable(preferredExecutorID, pluginID) {
+	if s.dispatcher.IsExecutorAvailableExcluding(preferredExecutorID, pluginID, reservedExecutors) {
 		return preferredExecutorID, false
 	}
 
@@ -1413,7 +1437,7 @@ func (s *Service) pickExecutorWithRoundAffinity(
 		}
 	}
 
-	executorID, found := s.dispatcher.PickExecutor(pluginID)
+	executorID, found := s.dispatcher.PickExecutorExcluding(pluginID, reservedExecutors)
 	if !found {
 		return "", false
 	}
@@ -1905,6 +1929,12 @@ func (s *Service) dispatchOutboxBatch(ctx context.Context, limit int) (int, erro
 		if err != nil {
 			return sent, err
 		}
+		s.logger.Debug().
+			Str("task_id", row.TaskID.String()).
+			Str("executor_id", strings.TrimSpace(row.ExecutorID)).
+			Str("request_id", strings.TrimSpace(row.RequestID)).
+			Int32("attempt", row.AttemptCount).
+			Msg("dispatch_trace outbox 发送失败，已标记重试")
 	}
 	return sent, nil
 }
@@ -1924,6 +1954,13 @@ func (s *Service) recoverDispatchOutbox(ctx context.Context, limit int) error {
 	}
 	staleSendingCutoff := toPGTimestamp(time.Now().UTC().Add(-30 * time.Second))
 	if _, err := s.queries.ReleaseStaleSendingOutbox(ctx, staleSendingCutoff); err != nil {
+		return err
+	}
+	recoveryRows, err := s.queries.ListActiveDispatchOutboxRecoveryCandidates(ctx, int32(max(128, limit*8)))
+	if err != nil {
+		return err
+	}
+	if err := s.recoverActiveDispatchOutboxCandidates(ctx, recoveryRows); err != nil {
 		return err
 	}
 
@@ -1960,6 +1997,211 @@ func (s *Service) recoverDispatchOutbox(ctx context.Context, limit int) error {
 		return err
 	}
 	return nil
+}
+
+func isPreRunDispatchingTaskStatus(raw string) bool {
+	switch normalizeTaskEnumText(raw) {
+	case "DISPATCHING", "SYNCING_ENV", "PROBING_RUNTIME", "BINDING_DEVICE":
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *Service) recoverActiveDispatchOutboxCandidates(
+	ctx context.Context,
+	rows []db.ListActiveDispatchOutboxRecoveryCandidatesRow,
+) error {
+	for start := 0; start < len(rows); {
+		end := start + 1
+		for end < len(rows) && rows[end].TaskID == rows[start].TaskID {
+			end++
+		}
+		if err := s.recoverActiveDispatchOutboxTaskGroup(ctx, rows[start:end]); err != nil {
+			return err
+		}
+		start = end
+	}
+	return nil
+}
+
+func (s *Service) recoverActiveDispatchOutboxTaskGroup(
+	ctx context.Context,
+	rows []db.ListActiveDispatchOutboxRecoveryCandidatesRow,
+) error {
+	if len(rows) == 0 {
+		return nil
+	}
+	taskRow := rows[0]
+	currentExecutionID := taskRow.CurrentExecutionID.String()
+
+	tx, err := s.beginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	activeRows := make([]db.ListActiveDispatchOutboxRecoveryCandidatesRow, 0, len(rows))
+	for _, row := range rows {
+		payloadExecutionID := strings.TrimSpace(cast.ToString(row.PayloadExecutionID))
+		if payloadExecutionID == "" || payloadExecutionID != currentExecutionID {
+			deleted, deleteErr := s.qtx(tx).DeleteDispatchOutboxByID(ctx, row.ID)
+			if deleteErr != nil {
+				return deleteErr
+			}
+			if deleted > 0 {
+				s.logger.Info().
+					Str("task_id", row.TaskID.String()).
+					Str("outbox_id", row.ID.String()).
+					Str("payload_execution_id", payloadExecutionID).
+					Str("current_execution_id", currentExecutionID).
+					Msg("dispatch_trace 已清理过期 execution outbox")
+			}
+			continue
+		}
+		activeRows = append(activeRows, row)
+	}
+
+	if len(activeRows) == 0 {
+		if err := s.resetRecoveredOutboxTaskToReadyTx(
+			ctx,
+			tx,
+			taskRow.TaskID,
+			taskRow.TaskKind,
+			"已回收无效派发 outbox",
+		); err != nil {
+			return err
+		}
+		return tx.Commit(ctx)
+	}
+
+	keeperIndex := 0
+	assignedExecutorID := strings.TrimSpace(taskRow.AssignedExecutorID)
+	if assignedExecutorID != "" {
+		for idx, row := range activeRows {
+			if strings.TrimSpace(row.ExecutorID) == assignedExecutorID {
+				keeperIndex = idx
+				break
+			}
+		}
+	}
+	keeper := activeRows[keeperIndex]
+	for idx, row := range activeRows {
+		if idx == keeperIndex {
+			continue
+		}
+		deleted, deleteErr := s.qtx(tx).DeleteDispatchOutboxByID(ctx, row.ID)
+		if deleteErr != nil {
+			return deleteErr
+		}
+		if deleted > 0 {
+			s.logger.Info().
+				Str("task_id", row.TaskID.String()).
+				Str("outbox_id", row.ID.String()).
+				Str("request_id", strings.TrimSpace(row.RequestID)).
+				Str("executor_id", strings.TrimSpace(row.ExecutorID)).
+				Msg("dispatch_trace 发现重复活跃 outbox 并清理")
+		}
+	}
+
+	if !isPreRunDispatchingTaskStatus(taskRow.TaskStatus) {
+		deleted, deleteErr := s.qtx(tx).DeleteDispatchOutboxByID(ctx, keeper.ID)
+		if deleteErr != nil {
+			return deleteErr
+		}
+		if deleted > 0 {
+			s.logger.Info().
+				Str("task_id", keeper.TaskID.String()).
+				Str("outbox_id", keeper.ID.String()).
+				Str("task_status", normalizeTaskEnumText(taskRow.TaskStatus)).
+				Msg("dispatch_trace 已清理与任务状态不一致的活跃 outbox")
+		}
+		return tx.Commit(ctx)
+	}
+
+	requeue, reason := s.shouldRequeueDispatchOutbox(keeper)
+	if !requeue {
+		return tx.Commit(ctx)
+	}
+
+	deleted, err := s.qtx(tx).DeleteDispatchOutboxByID(ctx, keeper.ID)
+	if err != nil {
+		return err
+	}
+	if deleted == 0 {
+		return tx.Commit(ctx)
+	}
+	if err := s.resetRecoveredOutboxTaskToReadyTx(ctx, tx, keeper.TaskID, keeper.TaskKind, reason); err != nil {
+		return err
+	}
+	s.logger.Info().
+		Str("task_id", keeper.TaskID.String()).
+		Str("outbox_id", keeper.ID.String()).
+		Str("executor_id", strings.TrimSpace(keeper.ExecutorID)).
+		Str("reason", reason).
+		Msg("dispatch_trace outbox 回收并重置 READY")
+	return tx.Commit(ctx)
+}
+
+func (s *Service) resetRecoveredOutboxTaskToReadyTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	taskID uuid.UUID,
+	taskKind string,
+	reason string,
+) error {
+	updated, err := s.qtx(tx).RecoverStaleDispatchingTaskToReady(ctx, db.RecoverStaleDispatchingTaskToReadyParams{
+		LastError: toPGText(reason),
+		TaskID:    taskID,
+	})
+	if err != nil {
+		return err
+	}
+	if updated == 0 {
+		return nil
+	}
+	if normalizeTaskEnumText(taskKind) == "STEP" {
+		projected, projErr := s.qtx(tx).ProjectStepFromTask(ctx, taskID)
+		if projErr != nil {
+			return projErr
+		}
+		if projected == 0 {
+			s.logger.Warn().
+				Str("task_id", taskID.String()).
+				Msg("恢复 outbox 后未找到 step 投影")
+		}
+	}
+	return nil
+}
+
+func (s *Service) shouldRequeueDispatchOutbox(
+	row db.ListActiveDispatchOutboxRecoveryCandidatesRow,
+) (bool, string) {
+	executorID := strings.TrimSpace(row.ExecutorID)
+	assignedExecutorID := strings.TrimSpace(row.AssignedExecutorID)
+	pluginID := strings.TrimSpace(row.PluginID)
+	if executorID == "" {
+		return true, "outbox 未绑定 executor"
+	}
+	if assignedExecutorID == "" {
+		return true, "任务未绑定 executor"
+	}
+	if assignedExecutorID != executorID {
+		return true, "任务绑定 executor 与 outbox 不一致"
+	}
+	if strings.Contains(strings.TrimSpace(row.LastError), "executor 不可用或队列已满") {
+		return true, "目标 executor 队列已满"
+	}
+	if !row.ExecutorOnline {
+		return true, "目标 executor 已离线"
+	}
+	if !s.dispatcher.IsExecutorAvailable(executorID, pluginID) {
+		excluded := map[string]struct{}{executorID: {}}
+		if fallbackExecutorID, found := s.dispatcher.PickExecutorExcluding(pluginID, excluded); found && strings.TrimSpace(fallbackExecutorID) != "" {
+			return true, fmt.Sprintf("目标 executor 当前不可发，存在可替代 executor=%s", fallbackExecutorID)
+		}
+	}
+	return false, ""
 }
 
 func dispatchOutboxRetryBackoff(attempt int32) time.Duration {

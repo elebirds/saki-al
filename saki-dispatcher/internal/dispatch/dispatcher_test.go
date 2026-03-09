@@ -43,3 +43,42 @@ func TestPickExecutorPrefersLeastRecentlyAssigned(t *testing.T) {
 		t.Fatalf("expected least recently assigned executor-b, got=%q", executorID)
 	}
 }
+
+func TestPickExecutorExcludingSkipsReservedExecutor(t *testing.T) {
+	dispatcher := NewDispatcher()
+	_, err := dispatcher.RegisterExecutor(&runtimecontrolv1.Register{
+		RequestId:  "req-a",
+		ExecutorId: "executor-a",
+		Plugins: []*runtimecontrolv1.PluginCapability{
+			{PluginId: "demo_det_v1"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("register executor-a failed: %v", err)
+	}
+	_, err = dispatcher.RegisterExecutor(&runtimecontrolv1.Register{
+		RequestId:  "req-b",
+		ExecutorId: "executor-b",
+		Plugins: []*runtimecontrolv1.PluginCapability{
+			{PluginId: "demo_det_v1"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("register executor-b failed: %v", err)
+	}
+
+	dispatcher.mu.Lock()
+	dispatcher.sessions["executor-a"].LastAssignedAt = time.Now().UTC().Add(-2 * time.Hour)
+	dispatcher.sessions["executor-b"].LastAssignedAt = time.Now().UTC().Add(-1 * time.Hour)
+	dispatcher.mu.Unlock()
+
+	executorID, ok := dispatcher.PickExecutorExcluding("demo_det_v1", map[string]struct{}{
+		"executor-a": {},
+	})
+	if !ok {
+		t.Fatal("expected an available executor after excluding one executor")
+	}
+	if executorID != "executor-b" {
+		t.Fatalf("expected executor-b after excluding executor-a, got=%q", executorID)
+	}
+}

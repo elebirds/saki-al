@@ -91,6 +91,40 @@ WHERE o.task_id = t.id
     'SKIPPED'::runtimetaskstatus
   );
 
+-- name: DeleteDispatchOutboxByID :execrows
+DELETE FROM task_dispatch_outbox
+WHERE id = sqlc.arg(outbox_id)::uuid;
+
+-- name: ListActiveDispatchOutboxRecoveryCandidates :many
+SELECT
+  o.id AS id,
+  o.task_id AS task_id,
+  o.executor_id,
+  o.request_id,
+  o.status::text AS outbox_status,
+  o.attempt_count,
+  COALESCE(o.last_error, '') AS last_error,
+  COALESCE(o.payload->>'executionId', '') AS payload_execution_id,
+  o.created_at,
+  o.updated_at,
+  t.kind::text AS task_kind,
+  t.status::text AS task_status,
+  COALESCE(t.plugin_id, '') AS plugin_id,
+  t.current_execution_id,
+  COALESCE(t.assigned_executor_id, '') AS assigned_executor_id,
+  COALESCE(r.is_online, FALSE) AS executor_online,
+  COALESCE(r.status, '') AS executor_status
+FROM task_dispatch_outbox o
+JOIN task t ON t.id = o.task_id
+LEFT JOIN runtime_executor r ON r.executor_id = o.executor_id
+WHERE o.status IN ('PENDING', 'SENDING')
+ORDER BY
+  o.task_id ASC,
+  o.updated_at DESC,
+  o.created_at DESC,
+  o.id DESC
+LIMIT sqlc.arg(limit_count);
+
 -- name: ListOrphanDispatchingTaskIDs :many
 SELECT t.id AS id
 FROM task t

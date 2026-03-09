@@ -74,6 +74,19 @@ func (q *Queries) ClaimDispatchOutboxDue(ctx context.Context, limitCount int32) 
 	return items, nil
 }
 
+const deleteDispatchOutboxByID = `-- name: DeleteDispatchOutboxByID :execrows
+DELETE FROM task_dispatch_outbox
+WHERE id = $1::uuid
+`
+
+func (q *Queries) DeleteDispatchOutboxByID(ctx context.Context, outboxID uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteDispatchOutboxByID, outboxID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteDispatchOutboxForTerminalTasks = `-- name: DeleteDispatchOutboxForTerminalTasks :execrows
 DELETE FROM task_dispatch_outbox o
 USING task t
@@ -157,6 +170,95 @@ func (q *Queries) InsertDispatchOutbox(ctx context.Context, arg InsertDispatchOu
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const listActiveDispatchOutboxRecoveryCandidates = `-- name: ListActiveDispatchOutboxRecoveryCandidates :many
+SELECT
+  o.id AS id,
+  o.task_id AS task_id,
+  o.executor_id,
+  o.request_id,
+  o.status::text AS outbox_status,
+  o.attempt_count,
+  COALESCE(o.last_error, '') AS last_error,
+  COALESCE(o.payload->>'executionId', '') AS payload_execution_id,
+  o.created_at,
+  o.updated_at,
+  t.kind::text AS task_kind,
+  t.status::text AS task_status,
+  COALESCE(t.plugin_id, '') AS plugin_id,
+  t.current_execution_id,
+  COALESCE(t.assigned_executor_id, '') AS assigned_executor_id,
+  COALESCE(r.is_online, FALSE) AS executor_online,
+  COALESCE(r.status, '') AS executor_status
+FROM task_dispatch_outbox o
+JOIN task t ON t.id = o.task_id
+LEFT JOIN runtime_executor r ON r.executor_id = o.executor_id
+WHERE o.status IN ('PENDING', 'SENDING')
+ORDER BY
+  o.task_id ASC,
+  o.updated_at DESC,
+  o.created_at DESC,
+  o.id DESC
+LIMIT $1
+`
+
+type ListActiveDispatchOutboxRecoveryCandidatesRow struct {
+	ID                 uuid.UUID
+	TaskID             uuid.UUID
+	ExecutorID         string
+	RequestID          string
+	OutboxStatus       string
+	AttemptCount       int32
+	LastError          string
+	PayloadExecutionID interface{}
+	CreatedAt          pgtype.Timestamptz
+	UpdatedAt          pgtype.Timestamptz
+	TaskKind           string
+	TaskStatus         string
+	PluginID           string
+	CurrentExecutionID uuid.UUID
+	AssignedExecutorID string
+	ExecutorOnline     bool
+	ExecutorStatus     string
+}
+
+func (q *Queries) ListActiveDispatchOutboxRecoveryCandidates(ctx context.Context, limitCount int32) ([]ListActiveDispatchOutboxRecoveryCandidatesRow, error) {
+	rows, err := q.db.Query(ctx, listActiveDispatchOutboxRecoveryCandidates, limitCount)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListActiveDispatchOutboxRecoveryCandidatesRow
+	for rows.Next() {
+		var i ListActiveDispatchOutboxRecoveryCandidatesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TaskID,
+			&i.ExecutorID,
+			&i.RequestID,
+			&i.OutboxStatus,
+			&i.AttemptCount,
+			&i.LastError,
+			&i.PayloadExecutionID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.TaskKind,
+			&i.TaskStatus,
+			&i.PluginID,
+			&i.CurrentExecutionID,
+			&i.AssignedExecutorID,
+			&i.ExecutorOnline,
+			&i.ExecutorStatus,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listOrphanDispatchingTaskIDs = `-- name: ListOrphanDispatchingTaskIDs :many

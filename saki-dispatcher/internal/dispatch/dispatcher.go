@@ -246,12 +246,19 @@ func (d *Dispatcher) GetQueue(executorID string) <-chan *runtimecontrolv1.Runtim
 }
 
 func (d *Dispatcher) PickExecutor(pluginID string) (string, bool) {
+	return d.PickExecutorExcluding(pluginID, nil)
+}
+
+func (d *Dispatcher) PickExecutorExcluding(pluginID string, excluded map[string]struct{}) (string, bool) {
 	pluginID = strings.TrimSpace(pluginID)
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 
 	candidates := make([]*ExecutorSession, 0, len(d.sessions))
 	for _, session := range d.sessions {
+		if isExecutorExcluded(session.ExecutorID, excluded) {
+			continue
+		}
 		if !session.IsOnline || session.Busy || session.UpdatePending || strings.TrimSpace(session.ActiveUpdateRequestID) != "" {
 			continue
 		}
@@ -284,9 +291,16 @@ func (d *Dispatcher) PickExecutor(pluginID string) (string, bool) {
 }
 
 func (d *Dispatcher) IsExecutorAvailable(executorID string, pluginID string) bool {
+	return d.IsExecutorAvailableExcluding(executorID, pluginID, nil)
+}
+
+func (d *Dispatcher) IsExecutorAvailableExcluding(executorID string, pluginID string, excluded map[string]struct{}) bool {
 	executorID = strings.TrimSpace(executorID)
 	pluginID = strings.TrimSpace(pluginID)
 	if executorID == "" {
+		return false
+	}
+	if isExecutorExcluded(executorID, excluded) {
 		return false
 	}
 	d.mu.RLock()
@@ -297,6 +311,14 @@ func (d *Dispatcher) IsExecutorAvailable(executorID string, pluginID string) boo
 		return false
 	}
 	return supportsPlugin(session, pluginID)
+}
+
+func isExecutorExcluded(executorID string, excluded map[string]struct{}) bool {
+	if len(excluded) == 0 {
+		return false
+	}
+	_, found := excluded[strings.TrimSpace(executorID)]
+	return found
 }
 
 func supportsPlugin(session *ExecutorSession, pluginID string) bool {

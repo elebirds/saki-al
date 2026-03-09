@@ -63,6 +63,7 @@ func TestPickExecutorForStepDispatchWithLoopPreferredExecutorAvailable(t *testin
 		nil,
 		"",
 		"executor-a",
+		nil,
 	)
 	if blockedByLoopBinding {
 		t.Fatal("preferred executor should not be blocked when available")
@@ -87,6 +88,7 @@ func TestPickExecutorForStepDispatchWithLoopPreferredExecutorUnavailableFallsBac
 		nil,
 		"",
 		"executor-a",
+		nil,
 	)
 	if deferredByAffinity {
 		t.Fatal("preferred executor should fallback immediately when wait window is 0")
@@ -110,6 +112,7 @@ func TestPickExecutorForStepDispatchWithLoopPreferredExecutorUnsupportedPluginFa
 		nil,
 		"",
 		"executor-a",
+		nil,
 	)
 	if deferredByAffinity {
 		t.Fatal("preferred executor should fallback immediately when wait window is 0")
@@ -138,6 +141,7 @@ func TestPickExecutorForStepDispatchKeepsRoundAffinityWhenNoLoopPreferred(t *tes
 		&readyAt,
 		"executor-a",
 		"",
+		nil,
 	)
 	if blockedByLoopBinding {
 		t.Fatal("no loop preferred executor should not trigger strict binding block")
@@ -147,5 +151,32 @@ func TestPickExecutorForStepDispatchKeepsRoundAffinityWhenNoLoopPreferred(t *tes
 	}
 	if executorID != "" {
 		t.Fatalf("deferred round affinity should not pick fallback executor, got=%q", executorID)
+	}
+}
+
+func TestPickExecutorForStepDispatchSkipsReservedExecutors(t *testing.T) {
+	dispatcher := dispatch.NewDispatcher()
+	registerExecutorForTest(t, dispatcher, "executor-a", "demo_det_v1")
+	registerExecutorForTest(t, dispatcher, "executor-b", "demo_det_v1")
+
+	service := &Service{dispatcher: dispatcher}
+	reserved := map[string]struct{}{
+		"executor-a": {},
+	}
+	executorID, deferredByAffinity, blockedByLoopBinding := service.pickExecutorForStepDispatch(
+		"demo_det_v1",
+		nil,
+		"",
+		"",
+		reserved,
+	)
+	if deferredByAffinity {
+		t.Fatal("reserved executor fallback should not defer by affinity")
+	}
+	if blockedByLoopBinding {
+		t.Fatal("reserved executor should not trigger loop binding block")
+	}
+	if executorID != "executor-b" {
+		t.Fatalf("expected non-reserved executor-b, got=%q", executorID)
 	}
 }

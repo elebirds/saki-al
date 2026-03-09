@@ -20,6 +20,7 @@ type Querier interface {
 	CountLoopActiveSteps(ctx context.Context, loopID uuid.UUID) (int32, error)
 	CountLoopInFlightSteps(ctx context.Context, loopID uuid.UUID) (int32, error)
 	CountTaskStatesByRound(ctx context.Context, roundID uuid.UUID) ([]CountTaskStatesByRoundRow, error)
+	DeleteDispatchOutboxByID(ctx context.Context, outboxID uuid.UUID) (int64, error)
 	DeleteDispatchOutboxForTerminalTasks(ctx context.Context) (int64, error)
 	DeletePredictionCandidates(ctx context.Context, arg DeletePredictionCandidatesParams) (int64, error)
 	DeletePredictionEvents(ctx context.Context, arg DeletePredictionEventsParams) (int64, error)
@@ -61,6 +62,7 @@ type Querier interface {
 	InsertTaskEvent(ctx context.Context, arg InsertTaskEventParams) (int64, error)
 	InsertTaskMetricPoint(ctx context.Context, arg InsertTaskMetricPointParams) error
 	InsertTaskStatusSystemEvent(ctx context.Context, arg InsertTaskStatusSystemEventParams) (int64, error)
+	ListActiveDispatchOutboxRecoveryCandidates(ctx context.Context, limitCount int32) ([]ListActiveDispatchOutboxRecoveryCandidatesRow, error)
 	ListDispatchLaneHeadCandidates(ctx context.Context, limitCount int32) ([]ListDispatchLaneHeadCandidatesRow, error)
 	ListInFlightTaskIDsByExecutor(ctx context.Context, arg ListInFlightTaskIDsByExecutorParams) ([]uuid.UUID, error)
 	ListInFlightTaskRecoveryCandidates(ctx context.Context, limitCount int32) ([]ListInFlightTaskRecoveryCandidatesRow, error)

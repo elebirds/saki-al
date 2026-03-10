@@ -414,6 +414,7 @@ async def test_generate_prediction_keeps_runtime_artifact_internal_only(predicti
         assert isinstance(model_ref, dict)
         assert model_ref.get("model_id") == str(ctx.model.id)
         assert model_ref.get("artifact_name") == "best.pt"
+        assert "source_task_id" not in model_ref
 
 
 @pytest.mark.anyio

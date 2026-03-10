@@ -151,7 +151,6 @@ class PredictionTaskMixin:
         model_ref = {
             "artifact_name": matched_artifact_name,
             "model_id": str(model.id),
-            "source_task_id": str(model.source_task_id or ""),
         }
         return model.id, model_ref, matched_artifact_name
 

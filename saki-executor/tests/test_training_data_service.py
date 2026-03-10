@@ -39,6 +39,7 @@ async def test_prepare_filters_unconfirmed_model_annotations(tmp_path):
 
     request = TaskExecutionRequest(
         task_id="step-1",
+        execution_id="step-1",
         round_id="round-1",
         task_type="train",
         dispatch_kind="orchestrator",
@@ -115,6 +116,7 @@ async def test_prepare_requires_snapshot_split_hints_for_active_learning(tmp_pat
 
     request = TaskExecutionRequest(
         task_id="step-1",
+        execution_id="step-1",
         round_id="round-1",
         task_type="train",
         dispatch_kind="orchestrator",
@@ -195,6 +197,7 @@ async def test_prepare_filters_training_data_by_include_label_ids(tmp_path):
 
     request = TaskExecutionRequest(
         task_id="task-include-labels",
+        execution_id="task-include-labels",
         round_id="round-1",
         task_type="train",
         dispatch_kind="orchestrator",
@@ -269,6 +272,7 @@ async def test_prepare_fails_when_include_label_ids_yields_empty_supervised_data
 
     request = TaskExecutionRequest(
         task_id="task-empty-filter",
+        execution_id="task-empty-filter",
         round_id="round-1",
         task_type="eval",
         dispatch_kind="orchestrator",
@@ -342,6 +346,7 @@ async def test_prepare_train_keeps_negative_samples_by_ratio(tmp_path):
 
     request = TaskExecutionRequest(
         task_id="task-negative-ratio-train",
+        execution_id="task-negative-ratio-train",
         round_id="round-1",
         task_type="train",
         dispatch_kind="orchestrator",
@@ -429,6 +434,7 @@ async def test_prepare_train_negative_ratio_unlimited_keeps_all_empty_confirmed_
 
     request = TaskExecutionRequest(
         task_id="task-negative-ratio-unlimited",
+        execution_id="task-negative-ratio-unlimited",
         round_id="round-1",
         task_type="train",
         dispatch_kind="orchestrator",
@@ -495,6 +501,7 @@ async def test_prepare_train_negative_sampling_is_reproducible(tmp_path):
 
     request = TaskExecutionRequest(
         task_id="task-negative-ratio-repro",
+        execution_id="task-negative-ratio-repro",
         round_id="round-1",
         task_type="train",
         dispatch_kind="orchestrator",
@@ -568,6 +575,7 @@ async def test_prepare_train_include_label_filter_does_not_demote_labeled_review
 
     request = TaskExecutionRequest(
         task_id="task-label-filter-reviewed-negative-guard",
+        execution_id="task-label-filter-reviewed-negative-guard",
         round_id="round-1",
         task_type="train",
         dispatch_kind="orchestrator",
@@ -636,6 +644,7 @@ async def test_prepare_eval_ignores_negative_ratio_and_keeps_all_negatives(tmp_p
 
     request = TaskExecutionRequest(
         task_id="task-negative-ratio-eval",
+        execution_id="task-negative-ratio-eval",
         round_id="round-1",
         task_type="eval",
         dispatch_kind="orchestrator",
@@ -675,3 +684,155 @@ async def test_prepare_eval_ignores_negative_ratio_and_keeps_all_negatives(tmp_p
         emit=emit,
     )
     assert {item["id"] for item in bundle.samples} == {"sample-p1", "sample-n1", "sample-n2"}
+
+
+class _FakeConcurrentCache:
+    def __init__(self, cache_dir: Path, *, cached_assets: set[str] | None = None, concurrency: int = 4) -> None:
+        self._cache_dir = cache_dir
+        self._cache_dir.mkdir(parents=True, exist_ok=True)
+        self._cached_assets = set(cached_assets or set())
+        self.download_concurrency = concurrency
+        self.calls: list[str] = []
+
+    def is_cached(self, asset_hash: str) -> bool:
+        return asset_hash in self._cached_assets
+
+    async def ensure_cached(
+        self,
+        asset_hash: str,
+        download_url: str,
+        *,
+        protected: set[str] | None = None,
+        pin_task_id: str | None = None,
+        progress_callback=None,
+    ) -> Path:
+        del download_url, protected, pin_task_id
+        self.calls.append(asset_hash)
+        path = self._cache_dir / asset_hash
+        if self.is_cached(asset_hash):
+            path.write_bytes(b"cached")
+            if progress_callback is not None:
+                progress_callback({"event": "cache_hit", "asset_hash": asset_hash, "size": len(b"cached")})
+            return path
+
+        if progress_callback is not None:
+            progress_callback({"event": "download_started", "asset_hash": asset_hash})
+        for _ in range(3):
+            await asyncio.sleep(0.45)
+            if progress_callback is not None:
+                progress_callback(
+                    {
+                        "event": "download_progress",
+                        "asset_hash": asset_hash,
+                        "bytes_delta": 1024,
+                    }
+                )
+        path.write_bytes(b"downloaded")
+        if progress_callback is not None:
+            progress_callback({"event": "download_completed", "asset_hash": asset_hash, "size": len(b"downloaded")})
+        return path
+
+
+@pytest.mark.anyio
+async def test_prepare_prefetches_assets_concurrently_and_emits_progress_logs(tmp_path, monkeypatch):
+    monkeypatch.setattr("saki_executor.steps.orchestration.training_data_service.settings.ASSET_DOWNLOAD_PROGRESS_INTERVAL_SEC", 1)
+    monkeypatch.setattr("saki_executor.steps.orchestration.training_data_service.settings.ASSET_DOWNLOAD_PROGRESS_MIN_FILE_DELTA", 1)
+
+    async def fetch_all(task_id: str, query_type: str, project_id: str, commit_id: str):
+        del task_id, project_id, commit_id
+        if query_type == "labels":
+            return [{"id": "label-a", "name": "A"}]
+        if query_type == "samples":
+            return [
+                {
+                    "id": "sample-a",
+                    "width": 640,
+                    "height": 480,
+                    "asset_hash": "hash-remote-a",
+                    "download_url": "https://example.test/a",
+                },
+                {
+                    "id": "sample-b",
+                    "width": 640,
+                    "height": 480,
+                    "asset_hash": "hash-remote-a",
+                    "download_url": "https://example.test/a",
+                },
+                {
+                    "id": "sample-c",
+                    "width": 640,
+                    "height": 480,
+                    "asset_hash": "hash-cached-c",
+                    "download_url": "https://example.test/c",
+                },
+                {
+                    "id": "sample-d",
+                    "width": 640,
+                    "height": 480,
+                    "asset_hash": "hash-remote-d",
+                    "download_url": "https://example.test/d",
+                },
+            ]
+        if query_type == "annotations":
+            return [
+                {"id": "ann-a", "sample_id": "sample-a", "category_id": "label-a", "bbox_xywh": [1, 1, 10, 10], "source": "manual"},
+                {"id": "ann-b", "sample_id": "sample-b", "category_id": "label-a", "bbox_xywh": [1, 1, 10, 10], "source": "manual"},
+                {"id": "ann-c", "sample_id": "sample-c", "category_id": "label-a", "bbox_xywh": [1, 1, 10, 10], "source": "manual"},
+                {"id": "ann-d", "sample_id": "sample-d", "category_id": "label-a", "bbox_xywh": [1, 1, 10, 10], "source": "manual"},
+            ]
+        return []
+
+    request = TaskExecutionRequest(
+        task_id="task-download-progress",
+        execution_id="task-download-progress",
+        round_id="round-1",
+        task_type="train",
+        dispatch_kind="orchestrator",
+        plugin_id="plugin-a",
+        resolved_params={},
+        project_id="project-1",
+        input_commit_id="commit-1",
+        query_strategy=None,
+        mode="manual",
+        round_index=1,
+        attempt=1,
+        depends_on_task_ids=[],
+        raw_payload={},
+    )
+    cache = _FakeConcurrentCache(tmp_path / "cache", cached_assets={"hash-cached-c"}, concurrency=4)
+    service = TrainingDataService(fetch_all=fetch_all, cache=cache, stop_event=asyncio.Event())
+    logs: list[dict[str, object]] = []
+
+    async def emit(event_type: str, payload: dict):
+        if event_type == "log":
+            logs.append(dict(payload))
+
+    runtime_context = TaskRuntimeContext(
+        task_id="task-download-progress",
+        round_id="round-1",
+        round_index=1,
+        attempt=1,
+        task_type="train",
+        mode="manual",
+        split_seed=11,
+        train_seed=4,
+        sampling_seed=5,
+        resolved_device_backend="cpu",
+    )
+    bundle = await service.prepare(
+        request=request,
+        plugin_params={"val_split_ratio": 0.2},
+        runtime_context=runtime_context,
+        emit=emit,
+    )
+
+    assert cache.calls.count("hash-remote-a") == 1
+    assert cache.calls.count("hash-cached-c") == 1
+    assert cache.calls.count("hash-remote-d") == 1
+    assert {item["id"] for item in bundle.samples} == {"sample-a", "sample-b", "sample-c", "sample-d"}
+    assert all(item.get("local_path") for item in bundle.samples)
+
+    progress_logs = [item for item in logs if item.get("message_key") == "asset.download.progress"]
+    assert any("训练资产下载开始" in str(item.get("message") or "") for item in progress_logs)
+    assert any("训练资产下载进度" in str(item.get("message") or "") for item in progress_logs)
+    assert any("训练资产下载完成" in str(item.get("message") or "") for item in progress_logs)

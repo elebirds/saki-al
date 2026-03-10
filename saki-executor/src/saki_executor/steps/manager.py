@@ -93,6 +93,7 @@ class TaskManager:
             client_factory=http_client_factory,
             activity_callback=self.mark_local_activity,
         )
+        self.cache.set_activity_callback(self.mark_local_activity)
 
     def set_transport(self, send_message: SendFn, request_message: RequestFn) -> None:
         self._send_message = send_message

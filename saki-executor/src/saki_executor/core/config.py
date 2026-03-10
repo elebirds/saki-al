@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     INTERNAL_TOKEN: str = "dev-secret"
     HEARTBEAT_INTERVAL_SEC: int = 10
     HTTP_TIMEOUT_SEC: int = 600
+    ASSET_DOWNLOAD_CONCURRENCY: int = 8
+    ASSET_DOWNLOAD_PROGRESS_INTERVAL_SEC: int = 5
+    ASSET_DOWNLOAD_PROGRESS_MIN_FILE_DELTA: int = 1
 
     RUNS_DIR: str = "runs"
     CACHE_DIR: str = "cache"

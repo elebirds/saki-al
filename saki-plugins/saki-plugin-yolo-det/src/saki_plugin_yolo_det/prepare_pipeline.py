@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,6 +27,16 @@ _YOLO_TASK_FORMAT_MAP: dict[str, str] = {
     "detect": "det",
     "obb": "obb_poly8",
 }
+
+
+def link_or_copy_file(src: Path, dst: Path) -> None:
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    if dst.exists() or dst.is_symlink():
+        dst.unlink()
+    try:
+        os.link(src, dst)
+    except Exception:
+        shutil.copy2(src, dst)
 
 
 def prepare_yolo_dataset(
@@ -268,7 +279,7 @@ def _write_dataset_files(
             target_images_dir = images_val_dir
         src = Path(item["source_path"])
         dst = target_images_dir / f"{sample_id}.jpg"
-        shutil.copy2(src, dst)
+        link_or_copy_file(src, dst)
 
     shutil.rmtree(labels_train_dir, ignore_errors=True)
     labels_train_dir.mkdir(parents=True, exist_ok=True)

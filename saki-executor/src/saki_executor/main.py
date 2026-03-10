@@ -34,7 +34,12 @@ async def run() -> None:
     )
     host_snapshot = host_capability_cache.refresh()
 
-    cache = AssetCache(root_dir=settings.CACHE_DIR, max_bytes=settings.CACHE_MAX_BYTES)
+    cache = AssetCache(
+        root_dir=settings.CACHE_DIR,
+        max_bytes=settings.CACHE_MAX_BYTES,
+        download_concurrency=settings.ASSET_DOWNLOAD_CONCURRENCY,
+        http_timeout_sec=settings.HTTP_TIMEOUT_SEC,
+    )
     manager = TaskManager(
         runs_dir=settings.RUNS_DIR,
         cache=cache,
@@ -113,6 +118,8 @@ async def run() -> None:
     for task in (client_task, command_task):
         with suppress(asyncio.CancelledError):
             await task
+    with suppress(Exception):
+        await cache.aclose()
 
     logger.info("执行器已退出。")
     if fatal_errors:

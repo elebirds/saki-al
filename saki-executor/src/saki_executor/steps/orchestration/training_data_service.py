@@ -3,10 +3,12 @@ from __future__ import annotations
 import asyncio
 import math
 import random
+import time
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
 from saki_executor.cache.asset_cache import AssetCache
+from saki_executor.core.config import settings
 from saki_executor.steps.contracts import TaskExecutionRequest
 from saki_executor.steps.services import IRDatasetBuildReport, build_training_batch_ir
 from saki_plugin_sdk import TaskRuntimeContext, resolve_train_val_split
@@ -25,6 +27,228 @@ class TrainingDataBundle:
     ir_report: IRDatasetBuildReport
     protected: set[str]
     splits: dict[str, list[dict[str, Any]]]
+
+
+class _AssetDownloadProgressTracker:
+    def __init__(
+        self,
+        *,
+        emit: EmitFn,
+        total_samples: int,
+        total_unique_assets: int,
+        expected_cache_hits: int,
+        concurrency: int,
+    ) -> None:
+        self._emit = emit
+        self._total_samples = max(0, int(total_samples))
+        self._total_unique_assets = max(0, int(total_unique_assets))
+        self._expected_cache_hits = max(0, int(expected_cache_hits))
+        self._concurrency = max(1, int(concurrency))
+        self._progress_interval_sec = max(1, int(settings.ASSET_DOWNLOAD_PROGRESS_INTERVAL_SEC))
+        self._progress_min_file_delta = max(1, int(settings.ASSET_DOWNLOAD_PROGRESS_MIN_FILE_DELTA))
+        self._start_at = time.monotonic()
+        self._last_emit_at = 0.0
+        self._last_completed_logged = 0
+        self._done = asyncio.Event()
+        self._dirty = True
+        self._completed_cache_hits = 0
+        self._completed_downloads = 0
+        self._failed_downloads = 0
+        self._downloaded_bytes = 0
+        self._active_downloads = 0
+
+    @property
+    def total_remote_downloads(self) -> int:
+        return max(0, self._total_unique_assets - self._expected_cache_hits)
+
+    def handle_cache_event(self, payload: dict[str, Any]) -> None:
+        event = str(payload.get("event") or "").strip().lower()
+        if event == "cache_hit":
+            self._completed_cache_hits += 1
+        elif event == "download_started":
+            self._active_downloads += 1
+        elif event == "download_progress":
+            self._downloaded_bytes += max(0, int(payload.get("bytes_delta") or 0))
+        elif event == "download_completed":
+            self._active_downloads = max(0, self._active_downloads - 1)
+            self._completed_downloads += 1
+        elif event == "download_failed":
+            self._active_downloads = max(0, self._active_downloads - 1)
+            self._failed_downloads += 1
+        else:
+            return
+        self._dirty = True
+
+    async def emit_start(self) -> None:
+        await self._emit(
+            "log",
+            {
+                "level": "INFO",
+                "message": (
+                    "训练资产下载开始 "
+                    f"total_samples={self._total_samples} "
+                    f"unique_assets={self._total_unique_assets} "
+                    f"cache_hits={self._expected_cache_hits} "
+                    f"remote_downloads={self.total_remote_downloads} "
+                    f"concurrency={self._concurrency}"
+                ),
+                "message_key": "asset.download.progress",
+                "meta": {
+                    "phase": "start",
+                    "total_samples": self._total_samples,
+                    "unique_assets": self._total_unique_assets,
+                    "cache_hits": self._expected_cache_hits,
+                    "remote_downloads": self.total_remote_downloads,
+                    "concurrency": self._concurrency,
+                },
+            },
+        )
+
+    async def run_periodic_reporter(self) -> None:
+        try:
+            while not self._done.is_set():
+                await asyncio.wait_for(self._done.wait(), timeout=self._progress_interval_sec)
+        except asyncio.TimeoutError:
+            pass
+        except asyncio.CancelledError:
+            raise
+        while not self._done.is_set():
+            await self._maybe_emit_progress()
+            try:
+                await asyncio.wait_for(self._done.wait(), timeout=self._progress_interval_sec)
+            except asyncio.TimeoutError:
+                continue
+        await self._maybe_emit_progress(force=True)
+
+    async def emit_success(self) -> None:
+        elapsed = max(0.001, time.monotonic() - self._start_at)
+        await self._emit(
+            "log",
+            {
+                "level": "INFO",
+                "message": (
+                    "训练资产下载完成 "
+                    f"total_samples={self._total_samples} "
+                    f"unique_assets={self._total_unique_assets} "
+                    f"cache_hits={self._completed_cache_hits}/{self._expected_cache_hits} "
+                    f"downloaded={self._completed_downloads}/{self.total_remote_downloads} "
+                    f"failed={self._failed_downloads} "
+                    f"downloaded_bytes={self._downloaded_bytes} "
+                    f"elapsed_sec={elapsed:.1f} "
+                    f"avg_speed={self._format_rate(self._downloaded_bytes / elapsed)}"
+                ),
+                "message_key": "asset.download.progress",
+                "meta": {
+                    "phase": "complete",
+                    "total_samples": self._total_samples,
+                    "unique_assets": self._total_unique_assets,
+                    "cache_hits_completed": self._completed_cache_hits,
+                    "cache_hits_expected": self._expected_cache_hits,
+                    "downloaded_completed": self._completed_downloads,
+                    "downloaded_expected": self.total_remote_downloads,
+                    "failed": self._failed_downloads,
+                    "downloaded_bytes": self._downloaded_bytes,
+                    "elapsed_sec": round(elapsed, 3),
+                },
+            },
+        )
+
+    async def emit_failure(self, error: BaseException) -> None:
+        elapsed = max(0.001, time.monotonic() - self._start_at)
+        await self._emit(
+            "log",
+            {
+                "level": "ERROR",
+                "message": (
+                    "训练资产下载失败 "
+                    f"total_samples={self._total_samples} "
+                    f"unique_assets={self._total_unique_assets} "
+                    f"cache_hits={self._completed_cache_hits}/{self._expected_cache_hits} "
+                    f"downloaded={self._completed_downloads}/{self.total_remote_downloads} "
+                    f"failed={self._failed_downloads} "
+                    f"downloaded_bytes={self._downloaded_bytes} "
+                    f"elapsed_sec={elapsed:.1f} "
+                    f"error={error}"
+                ),
+                "message_key": "asset.download.progress",
+                "meta": {
+                    "phase": "fail",
+                    "total_samples": self._total_samples,
+                    "unique_assets": self._total_unique_assets,
+                    "cache_hits_completed": self._completed_cache_hits,
+                    "cache_hits_expected": self._expected_cache_hits,
+                    "downloaded_completed": self._completed_downloads,
+                    "downloaded_expected": self.total_remote_downloads,
+                    "failed": self._failed_downloads,
+                    "downloaded_bytes": self._downloaded_bytes,
+                    "elapsed_sec": round(elapsed, 3),
+                    "error": str(error),
+                },
+            },
+        )
+
+    def finish(self) -> None:
+        self._done.set()
+
+    async def _maybe_emit_progress(self, *, force: bool = False) -> None:
+        if not force and not self._dirty:
+            return
+        now = time.monotonic()
+        completed_files = self._completed_cache_hits + self._completed_downloads
+        if not force:
+            if completed_files - self._last_completed_logged < self._progress_min_file_delta and now - self._last_emit_at < self._progress_interval_sec:
+                return
+        elapsed = max(0.001, now - self._start_at)
+        await self._emit(
+            "log",
+            {
+                "level": "INFO",
+                "message": (
+                    "训练资产下载进度 "
+                    f"completed={completed_files}/{self._total_unique_assets} "
+                    f"cache_hits={self._completed_cache_hits}/{self._expected_cache_hits} "
+                    f"downloaded={self._completed_downloads}/{self.total_remote_downloads} "
+                    f"active={self._active_downloads} "
+                    f"failed={self._failed_downloads} "
+                    f"downloaded_bytes={self._downloaded_bytes} "
+                    f"elapsed_sec={elapsed:.1f} "
+                    f"speed={self._format_rate(self._downloaded_bytes / elapsed)}"
+                ),
+                "message_key": "asset.download.progress",
+                "meta": {
+                    "phase": "progress",
+                    "completed": completed_files,
+                    "total_unique_assets": self._total_unique_assets,
+                    "cache_hits_completed": self._completed_cache_hits,
+                    "cache_hits_expected": self._expected_cache_hits,
+                    "downloaded_completed": self._completed_downloads,
+                    "downloaded_expected": self.total_remote_downloads,
+                    "active_downloads": self._active_downloads,
+                    "failed": self._failed_downloads,
+                    "downloaded_bytes": self._downloaded_bytes,
+                    "elapsed_sec": round(elapsed, 3),
+                },
+            },
+        )
+        self._dirty = False
+        self._last_emit_at = now
+        self._last_completed_logged = completed_files
+
+    @staticmethod
+    def _format_rate(value: float) -> str:
+        return f"{_format_bytes(int(max(0.0, value)))}/s"
+
+
+def _format_bytes(value: int) -> str:
+    size = float(max(0, int(value)))
+    units = ("B", "KB", "MB", "GB", "TB")
+    for unit in units:
+        if size < 1024.0 or unit == units[-1]:
+            if unit == "B":
+                return f"{int(size)}{unit}"
+            return f"{size:.1f}{unit}"
+        size /= 1024.0
+    return f"{int(value)}B"
 
 
 class TrainingDataService:
@@ -313,22 +537,11 @@ class TrainingDataService:
             },
         )
 
-        protected: set[str] = set()
-        for item in supervised_samples:
-            if self._stop_event.is_set():
-                raise asyncio.CancelledError("step stop requested")
-            asset_hash = item.get("asset_hash")
-            download_url = item.get("download_url")
-            if not asset_hash or not download_url:
-                continue
-            cached_path = await self._cache.ensure_cached(
-                str(asset_hash),
-                str(download_url),
-                protected=protected,
-                pin_task_id=request.task_id,
-            )
-            item["local_path"] = str(cached_path)
-            protected.add(str(asset_hash))
+        protected = await self._prefetch_supervised_assets(
+            request=request,
+            supervised_samples=supervised_samples,
+            emit=emit,
+        )
 
         ir_batch, ir_report = build_training_batch_ir(
             labels=labels,
@@ -358,6 +571,95 @@ class TrainingDataService:
             protected=protected,
             splits=splits,
         )
+
+    async def _prefetch_supervised_assets(
+        self,
+        *,
+        request: TaskExecutionRequest,
+        supervised_samples: list[dict[str, Any]],
+        emit: EmitFn,
+    ) -> set[str]:
+        protected: set[str] = set()
+        jobs: dict[str, str] = {}
+        for item in supervised_samples:
+            if self._stop_event.is_set():
+                raise asyncio.CancelledError("step stop requested")
+            asset_hash = str(item.get("asset_hash") or "").strip()
+            download_url = str(item.get("download_url") or "").strip()
+            if not asset_hash or not download_url:
+                continue
+            jobs.setdefault(asset_hash, download_url)
+
+        if not jobs:
+            return protected
+
+        protected.update(jobs.keys())
+        expected_cache_hits = sum(1 for asset_hash in jobs if self._cache.is_cached(asset_hash))
+        tracker = _AssetDownloadProgressTracker(
+            emit=emit,
+            total_samples=len(supervised_samples),
+            total_unique_assets=len(jobs),
+            expected_cache_hits=expected_cache_hits,
+            concurrency=self._cache.download_concurrency,
+        )
+        await tracker.emit_start()
+        reporter_task = asyncio.create_task(
+            tracker.run_periodic_reporter(),
+            name=f"asset-progress:{request.task_id}",
+        )
+        download_tasks = [
+            asyncio.create_task(
+                self._cache.ensure_cached(
+                    asset_hash,
+                    download_url,
+                    protected=protected,
+                    pin_task_id=request.task_id,
+                    progress_callback=tracker.handle_cache_event,
+                ),
+                name=f"asset-download:{asset_hash}",
+            )
+            for asset_hash, download_url in jobs.items()
+        ]
+        stop_task = asyncio.create_task(
+            self._stop_event.wait(),
+            name=f"asset-stop:{request.task_id}",
+        )
+        try:
+            done, _ = await asyncio.wait(
+                {stop_task, *download_tasks},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if stop_task in done and self._stop_event.is_set():
+                for task in download_tasks:
+                    task.cancel()
+                await asyncio.gather(*download_tasks, return_exceptions=True)
+                raise asyncio.CancelledError("step stop requested")
+            resolved_paths = await asyncio.gather(*download_tasks)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            await tracker.emit_failure(exc)
+            raise
+        finally:
+            stop_task.cancel()
+            await asyncio.gather(stop_task, return_exceptions=True)
+            tracker.finish()
+            try:
+                await reporter_task
+            except asyncio.CancelledError:
+                pass
+
+        resolved_by_hash = dict(zip(jobs.keys(), resolved_paths, strict=False))
+        for item in supervised_samples:
+            asset_hash = str(item.get("asset_hash") or "").strip()
+            if not asset_hash:
+                continue
+            cached_path = resolved_by_hash.get(asset_hash)
+            if cached_path is not None:
+                item["local_path"] = str(cached_path)
+
+        await tracker.emit_success()
+        return protected
 
     @staticmethod
     def _extract_training_include_label_ids(resolved_params: dict[str, Any] | None) -> set[str]:

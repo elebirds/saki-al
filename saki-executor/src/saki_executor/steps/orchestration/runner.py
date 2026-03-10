@@ -315,6 +315,7 @@ class TaskPipelineRunner:
             self._task_id,
             round_id=self._request.round_id,
             attempt=self._request.attempt,
+            prepared_data_cache_root=self._manager.cache.root / "prepared_data_v2",
         )
         workspace = WorkspaceAdapter(raw_workspace)
         workspace.ensure()

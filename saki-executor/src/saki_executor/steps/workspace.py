@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import uuid
 from datetime import UTC, datetime
@@ -16,6 +17,36 @@ def _normalize_root_path(path: str) -> Path:
         return root.absolute()
 
 
+def _link_or_copy_file(src: Path, dst: Path) -> None:
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    if dst.exists() or dst.is_symlink():
+        dst.unlink()
+    try:
+        os.link(src, dst)
+    except Exception:
+        shutil.copy2(src, dst)
+
+
+def _link_or_copy_tree(src_root: Path, dst_root: Path) -> None:
+    if dst_root.exists():
+        shutil.rmtree(dst_root)
+    dst_root.mkdir(parents=True, exist_ok=True)
+    for path in src_root.rglob("*"):
+        rel = path.relative_to(src_root)
+        target = dst_root / rel
+        if path.is_dir():
+            target.mkdir(parents=True, exist_ok=True)
+            continue
+        if path.is_symlink():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                target.symlink_to(path.readlink())
+            except Exception:
+                shutil.copy2(path, target)
+            continue
+        _link_or_copy_file(path, target)
+
+
 class Workspace:
     def __init__(
         self,
@@ -24,11 +55,17 @@ class Workspace:
         *,
         round_id: str = "",
         attempt: int = 1,
+        prepared_data_cache_root: str | Path | None = None,
     ):
         self.task_id = str(task_id or "").strip()
         self.runs_root = _normalize_root_path(runs_dir)
         self.round_id = str(round_id or "").strip()
         self.attempt = max(1, int(attempt or 1))
+        self._prepared_data_cache_root = (
+            _normalize_root_path(str(prepared_data_cache_root))
+            if prepared_data_cache_root
+            else None
+        )
 
         if self.round_id:
             self.round_root = self.runs_root / "rounds" / self.round_id / f"attempt_{self.attempt}"
@@ -77,6 +114,10 @@ class Workspace:
     def round_manifest_path(self) -> Path:
         return self.shared_dir / "round_manifest.json"
 
+    @property
+    def prepared_data_cache_dir(self) -> Path | None:
+        return self._prepared_data_cache_root
+
     def ensure(self) -> None:
         self.root.mkdir(parents=True, exist_ok=True)
         self.artifacts_dir.mkdir(parents=True, exist_ok=True)
@@ -84,6 +125,8 @@ class Workspace:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.shared_models_dir.mkdir(parents=True, exist_ok=True)
         self.shared_data_cache_dir.mkdir(parents=True, exist_ok=True)
+        if self.prepared_data_cache_dir is not None:
+            self.prepared_data_cache_dir.mkdir(parents=True, exist_ok=True)
         if not self.events_path.exists():
             self.events_path.touch()
         self._ensure_round_manifest()
@@ -174,6 +217,44 @@ class Workspace:
         }
         manifest["data_cache"] = data_cache
         self.write_round_manifest(manifest)
+        return target
+
+    def restore_prepared_data_cache(self, fingerprint: str) -> bool:
+        cache_root = self.prepared_data_cache_dir
+        if cache_root is None:
+            return False
+        cache_path = cache_root / str(fingerprint or "").strip()
+        if not cache_path.exists() or not cache_path.is_dir():
+            return False
+        _link_or_copy_tree(cache_path, self.data_dir)
+        return True
+
+    def store_prepared_data_cache(self, fingerprint: str, source_task_id: str) -> Path:
+        cache_root = self.prepared_data_cache_dir
+        if cache_root is None:
+            raise RuntimeError("prepared data cache root is not configured")
+        key = str(fingerprint or "").strip()
+        if not key:
+            raise ValueError("fingerprint is required")
+        if not self.data_dir.exists():
+            raise FileNotFoundError(f"task data dir not found: {self.data_dir}")
+
+        cache_root.mkdir(parents=True, exist_ok=True)
+        target = cache_root / key
+        if target.exists() and target.is_dir():
+            return target
+
+        tmp = cache_root / f".{key}.tmp-{uuid.uuid4().hex}"
+        if tmp.exists():
+            shutil.rmtree(tmp, ignore_errors=True)
+        shutil.copytree(self.data_dir, tmp)
+        try:
+            tmp.rename(target)
+        except FileExistsError:
+            shutil.rmtree(tmp, ignore_errors=True)
+        except Exception:
+            shutil.rmtree(tmp, ignore_errors=True)
+            raise
         return target
 
     def read_round_manifest(self) -> dict[str, Any]:

@@ -12,7 +12,11 @@ from saki_ir import normalize_prediction_candidates
 from saki_executor.steps.contracts import TaskExecutionRequest
 from saki_executor.steps.orchestration.error_codes import TaskErrorCode, TaskStage, wrap_task_error
 from saki_executor.steps.orchestration.models import BoundExecutionPlan
-from saki_executor.steps.orchestration.training_data_service import TrainingDataService
+from saki_executor.steps.orchestration.training_data_service import (
+    TrainingDataBundle,
+    TrainingDataPlan,
+    TrainingDataService,
+)
 from saki_plugin_sdk import TaskReporter, TaskRuntimeRequirements, WorkspaceProtocol
 
 
@@ -379,51 +383,21 @@ class PipelineStageService:
         workspace: WorkspaceProtocol,
         emitter: Any,
         bound_plan: BoundExecutionPlan,
+        data_bundle: TrainingDataBundle | None = None,
     ) -> set[str]:
         try:
-            runtime_context = bound_plan.plan.runtime_context
-            plugin_params_snapshot = {
-                key: bound_plan.effective_plugin_params.get(key)
-                for key in sorted(bound_plan.effective_plugin_params.keys())
-                if not str(key).startswith("_")
-            }
-            params_snapshot = {
-                "global_seed": str(
-                    (
-                        (
-                            self._request.resolved_params.get("reproducibility")
-                            if isinstance(self._request.resolved_params.get("reproducibility"), dict)
-                            else {}
-                        ).get("global_seed")
-                        or ""
-                    )
-                ).strip(),
-                "split_seed": runtime_context.split_seed,
-                "train_seed": runtime_context.train_seed,
-                "sampling_seed": runtime_context.sampling_seed,
-                "deterministic_level": str(self._request.resolved_params.get("deterministic_level") or "off"),
-                "deterministic": bool(self._request.resolved_params.get("deterministic", False)),
-                "strong_deterministic": bool(
-                    self._request.resolved_params.get("strong_deterministic", False)
-                ),
-                "mode": runtime_context.mode,
-                "task_type": runtime_context.task_type,
-                "round_index": runtime_context.round_index,
-                "task_id": runtime_context.task_id,
-                "plugin_params": plugin_params_snapshot,
-            }
-            await emitter.emit("log", {"level": "INFO", "message": f"生效训练参数: {params_snapshot}"})
-            data_service = TrainingDataService(
-                fetch_all=self._manager.fetch_all_data,
-                cache=self._manager.cache,
-                stop_event=self._manager.stop_event,
+            await self._emit_prepare_params_snapshot(
+                emitter=emitter,
+                bound_plan=bound_plan,
             )
-            data_bundle = await data_service.prepare(
-                request=self._request,
-                plugin_params=bound_plan.effective_plugin_params,
-                runtime_context=runtime_context,
-                emit=emitter.emit,
-            )
+            if data_bundle is None:
+                data_service = self._build_training_data_service()
+                data_bundle = await data_service.prepare(
+                    request=self._request,
+                    plugin_params=bound_plan.effective_plugin_params,
+                    runtime_context=bound_plan.plan.runtime_context,
+                    emit=emitter.emit,
+                )
             await plugin.prepare_data(
                 workspace=workspace,
                 labels=data_bundle.labels,
@@ -441,6 +415,52 @@ class PipelineStageService:
                 exc=exc,
                 message=f"准备数据失败 task_id={self._request.task_id}: {exc}",
             ) from exc
+
+    def _build_training_data_service(self) -> TrainingDataService:
+        return TrainingDataService(
+            fetch_all=self._manager.fetch_all_data,
+            cache=self._manager.cache,
+            stop_event=self._manager.stop_event,
+        )
+
+    async def _emit_prepare_params_snapshot(
+        self,
+        *,
+        emitter: Any,
+        bound_plan: BoundExecutionPlan,
+    ) -> None:
+        runtime_context = bound_plan.plan.runtime_context
+        plugin_params_snapshot = {
+            key: bound_plan.effective_plugin_params.get(key)
+            for key in sorted(bound_plan.effective_plugin_params.keys())
+            if not str(key).startswith("_")
+        }
+        params_snapshot = {
+            "global_seed": str(
+                (
+                    (
+                        self._request.resolved_params.get("reproducibility")
+                        if isinstance(self._request.resolved_params.get("reproducibility"), dict)
+                        else {}
+                    ).get("global_seed")
+                    or ""
+                )
+            ).strip(),
+            "split_seed": runtime_context.split_seed,
+            "train_seed": runtime_context.train_seed,
+            "sampling_seed": runtime_context.sampling_seed,
+            "deterministic_level": str(self._request.resolved_params.get("deterministic_level") or "off"),
+            "deterministic": bool(self._request.resolved_params.get("deterministic", False)),
+            "strong_deterministic": bool(
+                self._request.resolved_params.get("strong_deterministic", False)
+            ),
+            "mode": runtime_context.mode,
+            "task_type": runtime_context.task_type,
+            "round_index": runtime_context.round_index,
+            "task_id": runtime_context.task_id,
+            "plugin_params": plugin_params_snapshot,
+        }
+        await emitter.emit("log", {"level": "INFO", "message": f"生效训练参数: {params_snapshot}"})
 
     async def _prepare_data_for_step(
         self,
@@ -462,6 +482,87 @@ class PipelineStageService:
                 },
             )
             return set()
+
+        data_service = self._build_training_data_service()
+        if self._request.task_type == "train" and self._manager.round_shared_cache_enabled:
+            prepared_plan = await data_service.plan(
+                request=self._request,
+                plugin_params=bound_plan.effective_plugin_params,
+                runtime_context=bound_plan.plan.runtime_context,
+                emit=emitter.emit,
+            )
+            prepared_fingerprint = data_service.build_prepared_data_cache_fingerprint(
+                request=self._request,
+                plugin_params=bound_plan.effective_plugin_params,
+                runtime_context=bound_plan.plan.runtime_context,
+                plan=prepared_plan,
+            )
+            restore_prepared_cache = getattr(workspace, "restore_prepared_data_cache", None)
+            if callable(restore_prepared_cache):
+                try:
+                    if restore_prepared_cache(prepared_fingerprint):
+                        await self._emit_prepare_params_snapshot(
+                            emitter=emitter,
+                            bound_plan=bound_plan,
+                        )
+                        await emitter.emit(
+                            "log",
+                            {
+                                "level": "INFO",
+                                "message": f"prepared data cache 命中 fingerprint={prepared_fingerprint}",
+                            },
+                        )
+                        return set()
+                except Exception as exc:
+                    await emitter.emit(
+                        "log",
+                        {
+                            "level": "WARN",
+                            "message": (
+                                f"prepared data cache 恢复失败 fingerprint={prepared_fingerprint} error={exc}"
+                            ),
+                        },
+                    )
+
+            data_bundle = await data_service.materialize_plan(
+                request=self._request,
+                plan=prepared_plan,
+                emit=emitter.emit,
+            )
+            protected = await self._prepare_plugin_data(
+                plugin=plugin,
+                workspace=workspace,
+                emitter=emitter,
+                bound_plan=bound_plan,
+                data_bundle=data_bundle,
+            )
+            store_prepared_cache = getattr(workspace, "store_prepared_data_cache", None)
+            if callable(store_prepared_cache):
+                try:
+                    cached_path = store_prepared_cache(
+                        fingerprint=prepared_fingerprint,
+                        source_task_id=self._request.task_id,
+                    )
+                    await emitter.emit(
+                        "log",
+                        {
+                            "level": "INFO",
+                            "message": (
+                                f"prepared data cache 已写入 fingerprint={prepared_fingerprint} path={cached_path}"
+                            ),
+                        },
+                    )
+                except Exception as exc:
+                    await emitter.emit(
+                        "log",
+                        {
+                            "level": "WARN",
+                            "message": (
+                                f"prepared data cache 写入失败 fingerprint={prepared_fingerprint} error={exc}"
+                            ),
+                        },
+                    )
+            return protected
 
         fingerprint = self._build_data_cache_fingerprint(bound_plan=bound_plan)
         can_use_shared_cache = (

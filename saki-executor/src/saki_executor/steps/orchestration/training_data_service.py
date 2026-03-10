@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import math
 import random
 import time
@@ -27,6 +29,16 @@ class TrainingDataBundle:
     ir_report: IRDatasetBuildReport
     protected: set[str]
     splits: dict[str, list[dict[str, Any]]]
+
+
+@dataclass(frozen=True)
+class TrainingDataPlan:
+    labels: list[dict[str, Any]]
+    samples: list[dict[str, Any]]
+    train_annotations: list[dict[str, Any]]
+    splits: dict[str, list[dict[str, Any]]]
+    split_seed: int
+    val_ratio: float
 
 
 class _AssetDownloadProgressTracker:
@@ -271,6 +283,26 @@ class TrainingDataService:
         runtime_context: TaskRuntimeContext,
         emit: EmitFn,
     ) -> TrainingDataBundle:
+        plan = await self.plan(
+            request=request,
+            plugin_params=plugin_params,
+            runtime_context=runtime_context,
+            emit=emit,
+        )
+        return await self.materialize_plan(
+            request=request,
+            plan=plan,
+            emit=emit,
+        )
+
+    async def plan(
+        self,
+        *,
+        request: TaskExecutionRequest,
+        plugin_params: dict[str, Any],
+        runtime_context: TaskRuntimeContext,
+        emit: EmitFn,
+    ) -> TrainingDataPlan:
         labels = await self._fetch_all(
             request.task_id,
             "labels",
@@ -537,6 +569,30 @@ class TrainingDataService:
             },
         )
 
+        return TrainingDataPlan(
+            labels=labels,
+            samples=supervised_samples,
+            train_annotations=train_annotations,
+            splits=splits,
+            split_seed=split_seed,
+            val_ratio=val_ratio,
+        )
+
+    async def materialize_plan(
+        self,
+        *,
+        request: TaskExecutionRequest,
+        plan: TrainingDataPlan,
+        emit: EmitFn,
+    ) -> TrainingDataBundle:
+        labels = list(plan.labels)
+        supervised_samples = [dict(item) for item in plan.samples]
+        train_annotations = list(plan.train_annotations)
+        splits = {
+            "train": [dict(item) for item in (plan.splits.get("train") or [])],
+            "val": [dict(item) for item in (plan.splits.get("val") or [])],
+        }
+
         protected = await self._prefetch_supervised_assets(
             request=request,
             supervised_samples=supervised_samples,
@@ -571,6 +627,48 @@ class TrainingDataService:
             protected=protected,
             splits=splits,
         )
+
+    def build_prepared_data_cache_fingerprint(
+        self,
+        *,
+        request: TaskExecutionRequest,
+        plugin_params: dict[str, Any],
+        runtime_context: TaskRuntimeContext,
+        plan: TrainingDataPlan,
+    ) -> str:
+        plugin_subset = {
+            str(key): plugin_params.get(key)
+            for key in sorted(plugin_params.keys())
+            if not str(key).startswith("_") and str(key) not in {"task_type"}
+        }
+        payload = {
+            "version": 1,
+            "cache_kind": "prepared_data_v2",
+            "plugin_id": str(request.plugin_id or "").strip(),
+            "project_id": str(request.project_id or "").strip(),
+            "input_commit_id": str(request.input_commit_id or "").strip(),
+            "mode": str(runtime_context.mode or "").strip(),
+            "split_seed": int(plan.split_seed),
+            "val_ratio": float(plan.val_ratio),
+            "plugin_subset": plugin_subset,
+            "labels": self._canonicalize_labels(plan.labels),
+            "samples": self._canonicalize_samples(plan.samples),
+            "splits": {
+                "train": sorted(
+                    str(item.get("id") or "").strip()
+                    for item in (plan.splits.get("train") or [])
+                    if str(item.get("id") or "").strip()
+                ),
+                "val": sorted(
+                    str(item.get("id") or "").strip()
+                    for item in (plan.splits.get("val") or [])
+                    if str(item.get("id") or "").strip()
+                ),
+            },
+            "annotations": self._canonicalize_annotations(plan.train_annotations),
+        }
+        encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
     async def _prefetch_supervised_assets(
         self,
@@ -660,6 +758,80 @@ class TrainingDataService:
 
         await tracker.emit_success()
         return protected
+
+    @staticmethod
+    def _canonicalize_labels(labels: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        rows = [
+            {
+                "id": str(item.get("id") or "").strip(),
+                "name": str(item.get("name") or "").strip(),
+                "color": str(item.get("color") or "").strip(),
+            }
+            for item in labels
+            if str(item.get("id") or "").strip()
+        ]
+        return sorted(rows, key=lambda item: item["id"])
+
+    @staticmethod
+    def _canonicalize_samples(samples: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        for item in samples:
+            sample_id = str(item.get("id") or "").strip()
+            if not sample_id:
+                continue
+            meta = item.get("meta") if isinstance(item.get("meta"), dict) else {}
+            try:
+                width = int(item.get("width") or 0)
+            except Exception:
+                width = 0
+            try:
+                height = int(item.get("height") or 0)
+            except Exception:
+                height = 0
+            rows.append(
+                {
+                    "id": sample_id,
+                    "asset_hash": str(item.get("asset_hash") or "").strip(),
+                    "width": width,
+                    "height": height,
+                    "split": str(item.get("_split") or "").strip().lower(),
+                    "split_source": str(item.get("_split_source") or "").strip().lower(),
+                    "snapshot_partition": str(meta.get("_snapshot_partition") or "").strip().lower(),
+                }
+            )
+        return sorted(rows, key=lambda item: item["id"])
+
+    @staticmethod
+    def _canonicalize_annotations(annotations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        for item in annotations:
+            sample_id = str(item.get("sample_id") or "").strip()
+            label_id = str(item.get("category_id") or item.get("label_id") or "").strip()
+            if not sample_id or not label_id:
+                continue
+            obb = item.get("obb") if isinstance(item.get("obb"), dict) else None
+            bbox_xywh = item.get("bbox_xywh")
+            rows.append(
+                {
+                    "id": str(item.get("id") or "").strip(),
+                    "sample_id": sample_id,
+                    "label_id": label_id,
+                    "source": str(item.get("source") or "").strip().lower(),
+                    "confidence": item.get("confidence"),
+                    "bbox_xywh": list(bbox_xywh) if isinstance(bbox_xywh, (list, tuple)) else None,
+                    "obb": {
+                        "cx": obb.get("cx"),
+                        "cy": obb.get("cy"),
+                        "width": obb.get("width", obb.get("w")),
+                        "height": obb.get("height", obb.get("h")),
+                        "angle": obb.get("angle_deg_ccw", obb.get("angle_deg", obb.get("angle"))),
+                        "normalized": obb.get("normalized"),
+                    }
+                    if obb
+                    else None,
+                }
+            )
+        return sorted(rows, key=lambda item: (item["sample_id"], item["label_id"], item["id"]))
 
     @staticmethod
     def _extract_training_include_label_ids(resolved_params: dict[str, Any] | None) -> set[str]:

@@ -57,6 +57,12 @@ class WorkspaceAdapter(WorkspaceProtocol):
     def store_shared_data_cache(self, fingerprint: str, source_task_id: str, task_type: str) -> Path:
         return self._workspace.store_shared_data_cache(fingerprint, source_task_id, task_type)
 
+    def restore_prepared_data_cache(self, fingerprint: str) -> bool:
+        return self._workspace.restore_prepared_data_cache(fingerprint)
+
+    def store_prepared_data_cache(self, fingerprint: str, source_task_id: str) -> Path:
+        return self._workspace.store_prepared_data_cache(fingerprint, source_task_id)
+
     def link_shared_model_to_step(self, artifact_name: str) -> Path | None:
         return self._workspace.link_shared_model_to_step(artifact_name)
 

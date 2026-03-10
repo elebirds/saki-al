@@ -446,6 +446,7 @@ class TaskManager:
             request.task_id,
             round_id=request.round_id,
             attempt=request.attempt,
+            prepared_data_cache_root=self.cache.root / "prepared_data_v2",
         )
         workspace.ensure()
         if not workspace.config_path.exists():

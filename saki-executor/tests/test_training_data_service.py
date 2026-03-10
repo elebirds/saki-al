@@ -6,7 +6,7 @@ import pytest
 
 from saki_executor.cache.asset_cache import AssetCache
 from saki_executor.steps.contracts import TaskExecutionRequest
-from saki_executor.steps.orchestration.training_data_service import TrainingDataService
+from saki_executor.steps.orchestration.training_data_service import TrainingDataPlan, TrainingDataService
 from saki_plugin_sdk import TaskRuntimeContext
 
 
@@ -836,3 +836,102 @@ async def test_prepare_prefetches_assets_concurrently_and_emits_progress_logs(tm
     assert any("训练资产下载开始" in str(item.get("message") or "") for item in progress_logs)
     assert any("训练资产下载进度" in str(item.get("message") or "") for item in progress_logs)
     assert any("训练资产下载完成" in str(item.get("message") or "") for item in progress_logs)
+
+
+def test_prepared_data_cache_fingerprint_ignores_attempt(tmp_path):
+    async def fetch_all(task_id: str, query_type: str, project_id: str, commit_id: str):
+        del task_id, query_type, project_id, commit_id
+        return []
+
+    service = TrainingDataService(
+        fetch_all=fetch_all,
+        cache=AssetCache(root_dir=str(tmp_path / "cache"), max_bytes=10 * 1024 * 1024),
+        stop_event=asyncio.Event(),
+    )
+    plan = TrainingDataPlan(
+        labels=[{"id": "label-a", "name": "A", "color": "#fff"}],
+        samples=[
+            {
+                "id": "sample-a",
+                "asset_hash": "hash-a",
+                "width": 640,
+                "height": 480,
+                "_split": "train",
+                "_split_source": "snapshot",
+                "meta": {"_snapshot_partition": "seed"},
+            }
+        ],
+        train_annotations=[
+            {
+                "id": "ann-a",
+                "sample_id": "sample-a",
+                "category_id": "label-a",
+                "bbox_xywh": [1, 2, 3, 4],
+                "source": "manual",
+            }
+        ],
+        splits={"train": [{"id": "sample-a"}], "val": []},
+        split_seed=11,
+        val_ratio=0.2,
+    )
+    runtime_context = TaskRuntimeContext(
+        task_id="task-a",
+        round_id="round-1",
+        round_index=1,
+        attempt=1,
+        task_type="train",
+        mode="simulation",
+        split_seed=11,
+        train_seed=12,
+        sampling_seed=13,
+        resolved_device_backend="cpu",
+    )
+    request_a = TaskExecutionRequest(
+        task_id="task-a",
+        execution_id="exec-a",
+        round_id="round-1",
+        task_type="train",
+        dispatch_kind="dispatchable",
+        plugin_id="plugin-a",
+        resolved_params={},
+        project_id="project-1",
+        input_commit_id="commit-1",
+        query_strategy=None,
+        mode="simulation",
+        round_index=1,
+        attempt=1,
+        depends_on_task_ids=[],
+        raw_payload={},
+    )
+    request_b = TaskExecutionRequest(
+        task_id="task-b",
+        execution_id="exec-b",
+        round_id="round-1",
+        task_type="train",
+        dispatch_kind="dispatchable",
+        plugin_id="plugin-a",
+        resolved_params={},
+        project_id="project-1",
+        input_commit_id="commit-1",
+        query_strategy=None,
+        mode="simulation",
+        round_index=1,
+        attempt=9,
+        depends_on_task_ids=[],
+        raw_payload={},
+    )
+
+    fingerprint_a = service.build_prepared_data_cache_fingerprint(
+        request=request_a,
+        plugin_params={"imgsz": 640, "epochs": 50},
+        runtime_context=runtime_context,
+        plan=plan,
+    )
+    fingerprint_b = service.build_prepared_data_cache_fingerprint(
+        request=request_b,
+        plugin_params={"imgsz": 640, "epochs": 50},
+        runtime_context=runtime_context,
+        plan=plan,
+    )
+
+    assert fingerprint_a == fingerprint_b

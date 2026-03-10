@@ -27,6 +27,7 @@ class SubprocessPluginProxy(ExecutorPlugin):
         metadata_plugin: Any,
         task_id: str,
         emit: EventCallback,
+        mark_activity=None,
         python_executable: str | Path | None = None,
         entrypoint_module: str | None = None,
         extra_env: dict[str, str] | None = None,
@@ -41,6 +42,7 @@ class SubprocessPluginProxy(ExecutorPlugin):
             python_executable=python_executable,
             entrypoint_module=entrypoint_module,
             extra_env=extra_env,
+            activity_callback=mark_activity,
         )
         self._binding_context: ExecutionBindingContext | None = None
 

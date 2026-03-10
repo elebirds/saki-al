@@ -47,6 +47,7 @@ class AgentClient:
 
         self._handled_control_acks: OrderedDict[str, pb.RuntimeMessage] = OrderedDict()
         self._max_cached_control_acks = 2048
+        self.task_manager.set_transport_state_getter(self.is_transport_available)
 
     async def send_message(self, message: pb.RuntimeMessage) -> None:
         if not isinstance(message, pb.RuntimeMessage):
@@ -99,6 +100,9 @@ class AgentClient:
             "last_heartbeat_ts": self._last_heartbeat_ts,
         }
 
+    def is_transport_available(self) -> bool:
+        return self._running and self._connected and self._connect_enabled
+
     async def connect(self) -> None:
         if self._connect_enabled:
             logger.info("连接已是启用状态。")
@@ -140,6 +144,29 @@ class AgentClient:
         self._drain_outbox()
         logger.info("已禁用连接，当前连接将断开。")
         return True
+
+    async def shutdown(self, *, force: bool = True) -> None:
+        self._connect_enabled = False
+        call = self._active_call
+        if call is not None:
+            call.cancel()
+        if self.task_manager.busy:
+            stopped = await self.task_manager.abort_current_task(
+                reason_code="FORCED_ABORT_AFTER_DISCONNECT",
+                reason_message="执行器正在关闭，终止当前执行",
+                report_result=False,
+            ) if force else await self.task_manager.stop_task(
+                str(self.task_manager.current_task_id or ""),
+                execution_id=self.task_manager.current_execution_id,
+            )
+            if not stopped or not await self.task_manager.wait_until_idle(
+                settings.EXECUTOR_STOP_GRACE_SEC + settings.EXECUTOR_STOP_CANCEL_SEC + 1
+            ):
+                exc = RuntimeError("执行器关闭时未能在限定时间内释放 busy")
+                self.task_manager.report_fatal_error(exc)
+                raise exc
+        self._fail_pending("执行器正在关闭")
+        self._drain_outbox()
 
     def _resource_payload(self) -> dict[str, Any]:
         return self.task_manager.get_host_resource_payload()
@@ -411,6 +438,8 @@ class AgentClient:
         stop_event = shutdown_event or asyncio.Event()
         backoff = 1
         while not stop_event.is_set():
+            retry_delay = 0
+            should_retry = False
             while not stop_event.is_set() and not self._connect_enabled:
                 self.task_manager.executor_state = ExecutorState.OFFLINE
                 await asyncio.sleep(0.2)
@@ -453,35 +482,44 @@ class AgentClient:
                 self.task_manager.executor_state = ExecutorState.ERROR_RECOVERY
                 reason = self._format_rpc_error(exc)
                 disconnect_reason = reason
-                if not self._connect_enabled or stop_event.is_set():
+                should_retry = self._connect_enabled and not stop_event.is_set()
+                retry_delay = backoff
+                backoff = min(backoff * 2, 30)
+                if not should_retry:
                     logger.info("连接已断开：{}", reason)
                 else:
                     logger.error("连接失败：{}", reason)
-                    logger.info("本次连接失败，将在 {} 秒后重试。", backoff)
-                await self._sleep_with_interrupt(backoff, stop_event)
-                backoff = min(backoff * 2, 30)
             except Exception as exc:
                 self.task_manager.executor_state = ExecutorState.ERROR_RECOVERY
                 reason = str(exc) or exc.__class__.__name__
                 disconnect_reason = reason
-                if not self._connect_enabled or stop_event.is_set():
+                should_retry = self._connect_enabled and not stop_event.is_set()
+                retry_delay = backoff
+                backoff = min(backoff * 2, 30)
+                if not should_retry:
                     logger.info("连接已断开：{}", reason)
                 else:
                     logger.error("连接失败：{}", reason)
-                    logger.info("本次连接失败，将在 {} 秒后重试。", backoff)
-                await self._sleep_with_interrupt(backoff, stop_event)
-                backoff = min(backoff * 2, 30)
             finally:
                 self._running = False
                 self._connected = False
                 self._active_call = None
                 if heartbeat_task:
                     heartbeat_task.cancel()
-                if self.task_manager.busy and self.task_manager.current_task_id:
-                    await self.task_manager.stop_task(
-                        self.task_manager.current_task_id,
-                        execution_id=self.task_manager.current_execution_id,
+                if self.task_manager.busy:
+                    stopped = await self.task_manager.abort_current_task(
+                        reason_code="FORCED_ABORT_AFTER_DISCONNECT",
+                        reason_message=f"gRPC 会话已结束 reason={disconnect_reason}",
+                        report_result=False,
                     )
+                    if not stopped or self.task_manager.busy:
+                        exc = RuntimeError(
+                            "断流后未能在限定时间内回收当前执行，拒绝继续重连 "
+                            f"task_id={self.task_manager.current_task_id} "
+                            f"execution_id={self.task_manager.current_execution_id}"
+                        )
+                        self.task_manager.report_fatal_error(exc)
+                        raise exc
                 self._fail_pending("gRPC 会话已结束")
                 self._drain_outbox()
                 if not self.task_manager.busy:
@@ -493,3 +531,6 @@ class AgentClient:
                     self.task_manager.executor_state.value,
                     self._connect_enabled,
                 )
+            if should_retry and not stop_event.is_set():
+                logger.info("本次连接失败，将在 {} 秒后重试。", retry_delay)
+                await self._sleep_with_interrupt(retry_delay, stop_event)

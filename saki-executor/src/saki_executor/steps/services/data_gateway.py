@@ -16,15 +16,22 @@ from saki_ir.transport import ChunkAssembler, PayloadChunk
 RequestFn = Callable[[pb.RuntimeMessage], Awaitable[pb.RuntimeMessage | list[pb.RuntimeMessage]]]
 RequestGetterFn = Callable[[], RequestFn | None]
 ExecutionIDGetterFn = Callable[[], str | None]
+ActivityFn = Callable[[str], None]
 
 _DEFAULT_CHUNK_BYTES = 896 * 1024
 _DEFAULT_MAX_UNCOMPRESSED_BYTES = 64 * 1024 * 1024
 
 
 class DataGateway:
-    def __init__(self, request_message_getter: RequestGetterFn, execution_id_getter: ExecutionIDGetterFn) -> None:
+    def __init__(
+        self,
+        request_message_getter: RequestGetterFn,
+        execution_id_getter: ExecutionIDGetterFn,
+        activity_callback: ActivityFn | None = None,
+    ) -> None:
         self._request_message_getter = request_message_getter
         self._execution_id_getter = execution_id_getter
+        self._activity_callback = activity_callback
 
     async def request_upload_ticket(
         self,
@@ -34,6 +41,7 @@ class DataGateway:
         content_type: str,
     ) -> ArtifactUploadTicket:
         request_message = self._required_request_message()
+        self._mark_activity("upload_ticket.request")
         ticket_response = await request_message(
             runtime_codec.build_upload_ticket_request_message(
                 request_id=str(uuid.uuid4()),
@@ -53,6 +61,7 @@ class DataGateway:
             raise RuntimeError(str(error_payload.get("error") or "upload ticket request failed"))
         if payload_type != "upload_ticket_response":
             raise RuntimeError(f"unexpected upload ticket response payload: {payload_type}")
+        self._mark_activity("upload_ticket.response")
         return ArtifactUploadTicket.from_dict(
             runtime_codec.parse_upload_ticket_response(ticket_response.upload_ticket_response)
         )
@@ -66,6 +75,7 @@ class DataGateway:
         artifact_name: str,
     ) -> ArtifactDownloadTicket:
         request_message = self._required_request_message()
+        self._mark_activity("download_ticket.request")
         ticket_response = await request_message(
             runtime_codec.build_download_ticket_request_message(
                 request_id=str(uuid.uuid4()),
@@ -86,6 +96,7 @@ class DataGateway:
             raise RuntimeError(str(error_payload.get("error") or "download ticket request failed"))
         if payload_type != "download_ticket_response":
             raise RuntimeError(f"unexpected download ticket response payload: {payload_type}")
+        self._mark_activity("download_ticket.response")
         return ArtifactDownloadTicket.from_dict(
             runtime_codec.parse_download_ticket_response(ticket_response.download_ticket_response)
         )
@@ -130,6 +141,7 @@ class DataGateway:
         limit: int,
     ) -> FetchedPage:
         request_message = self._required_request_message()
+        self._mark_activity("data_request.send")
         response = await request_message(
             runtime_codec.build_data_request_message(
                 request_id=str(uuid.uuid4()),
@@ -188,6 +200,7 @@ class DataGateway:
             raise RuntimeError("payload 分片未收齐")
 
         encoded = assembler.build()
+        self._mark_activity("data_request.response")
         try:
             batch = decode_payload(
                 encoded,
@@ -215,6 +228,10 @@ class DataGateway:
 
     def _current_execution_id(self) -> str:
         return str(self._execution_id_getter() or "")
+
+    def _mark_activity(self, source: str) -> None:
+        if self._activity_callback is not None:
+            self._activity_callback(source)
 
 
 def _to_payload_chunk(data_response: pb.DataResponse) -> PayloadChunk:

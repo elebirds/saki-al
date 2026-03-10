@@ -226,6 +226,7 @@ class TaskPipelineRunner:
             metadata_plugin=plan.metadata_plugin,
             task_id=self._request.task_id,
             emit=emitter.emit,
+            mark_activity=self._manager.mark_local_activity,
             python_executable=plan.worker_python or getattr(plan.metadata_plugin, "python_path", None),
             entrypoint_module=plan.entrypoint_module or getattr(plan.metadata_plugin, "entrypoint", None),
             extra_env=dict(plan.extra_env),
@@ -321,6 +322,7 @@ class TaskPipelineRunner:
         reporter = TaskReporter(self._task_id, workspace.events_path)
 
         async def _push_event(event: dict[str, Any]) -> None:
+            self._manager.mark_local_activity(f"task_event:{str(event.get('event_type') or '')}")
             await self._manager.push_task_event(self._task_id, event)
 
         emitter = TaskEventEmitter(

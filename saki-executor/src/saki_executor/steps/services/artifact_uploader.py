@@ -8,6 +8,7 @@ import httpx
 from loguru import logger
 
 ClientFactory = Callable[..., Any]
+ActivityFn = Callable[[str], None]
 
 
 class ArtifactUploader:
@@ -17,10 +18,12 @@ class ArtifactUploader:
         client_factory: ClientFactory | None = None,
         max_attempts: int = 3,
         retry_backoff_sec: tuple[float, ...] = (1.0, 2.0),
+        activity_callback: ActivityFn | None = None,
     ) -> None:
         self._client_factory = client_factory or httpx.AsyncClient
         self._max_attempts = max(1, int(max_attempts))
         self._retry_backoff_sec = retry_backoff_sec or (1.0,)
+        self._activity_callback = activity_callback
 
     async def upload_with_retry(
         self,
@@ -42,6 +45,7 @@ class ArtifactUploader:
         while attempt < self._max_attempts:
             attempt += 1
             try:
+                self._mark_activity("artifact_upload.start")
                 async with self._client_factory(timeout=180) as client:
                     response = await client.put(
                         upload_url,
@@ -58,6 +62,7 @@ class ArtifactUploader:
                         )
                         response.raise_for_status()
                     response.raise_for_status()
+                self._mark_activity("artifact_upload.success")
                 logger.info(
                     "制品上传成功 artifact={} attempt={} status={}",
                     artifact_path.name,
@@ -75,6 +80,7 @@ class ArtifactUploader:
                     status_code,
                     type(exc).__name__,
                 )
+                self._mark_activity("artifact_upload.failure")
                 if 400 <= status_code < 500:
                     raise RuntimeError(
                         f"上传失败且状态码不可重试 status={status_code} artifact={artifact_path.name}"
@@ -91,6 +97,7 @@ class ArtifactUploader:
                     attempt,
                     type(exc).__name__,
                 )
+                self._mark_activity("artifact_upload.failure")
                 if attempt >= self._max_attempts:
                     break
                 backoff = self._retry_backoff_sec[min(attempt - 1, len(self._retry_backoff_sec) - 1)]
@@ -99,3 +106,7 @@ class ArtifactUploader:
         raise RuntimeError(
             f"上传失败，已重试 {self._max_attempts} 次 artifact={artifact_path.name}"
         ) from last_error
+
+    def _mark_activity(self, source: str) -> None:
+        if self._activity_callback is not None:
+            self._activity_callback(source)

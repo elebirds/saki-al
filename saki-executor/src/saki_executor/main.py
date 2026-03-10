@@ -44,6 +44,14 @@ async def run() -> None:
         host_capability_cache=host_capability_cache,
     )
     shutdown_event = asyncio.Event()
+    fatal_errors: list[BaseException] = []
+
+    def _report_fatal_error(exc: BaseException) -> None:
+        if not fatal_errors:
+            fatal_errors.append(exc)
+        shutdown_event.set()
+
+    manager.set_fatal_error_callback(_report_fatal_error)
     runtime_updater = RuntimeUpdater(
         plugin_registry=registry,
         host_capability_cache=host_capability_cache,
@@ -96,6 +104,9 @@ async def run() -> None:
     await shutdown_event.wait()
     logger.info("收到关闭信号，准备停止执行器。")
 
+    with suppress(Exception):
+        await client.shutdown(force=True)
+
     for task in (client_task, command_task):
         if not task.done():
             task.cancel()
@@ -104,6 +115,15 @@ async def run() -> None:
             await task
 
     logger.info("执行器已退出。")
+    if fatal_errors:
+        raise fatal_errors[0]
+
+    for task in (client_task, command_task):
+        if task.cancelled():
+            continue
+        exc = task.exception()
+        if exc is not None:
+            raise exc
 
 
 def main() -> None:

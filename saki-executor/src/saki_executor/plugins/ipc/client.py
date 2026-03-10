@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import os
 from pathlib import Path
+import signal
 import sys
 from typing import Any, Awaitable, Callable
 import uuid
@@ -23,6 +24,7 @@ except Exception as exc:  # pragma: no cover
     raise RuntimeError("子进程插件工作进程需要 pyzmq") from exc
 
 EventHandler = Callable[[str, dict[str, Any]], Awaitable[None]]
+ActivityFn = Callable[[str], None]
 
 _STREAM_READ_CHUNK_BYTES = 16 * 1024
 _STREAM_TAIL_BUFFER_LIMIT_BYTES = 256 * 1024
@@ -45,6 +47,7 @@ class PluginWorkerClient:
         python_executable: str | Path | None = None,
         entrypoint_module: str | None = None,
         extra_env: dict[str, str] | None = None,
+        activity_callback: ActivityFn | None = None,
     ) -> None:
         self._plugin_id = plugin_id
         self._task_id = task_id
@@ -56,6 +59,7 @@ class PluginWorkerClient:
             for key, value in (extra_env or {}).items()
             if str(key).strip()
         }
+        self._activity_callback = activity_callback
         self._ctx = zmq.asyncio.Context.instance()
         self._process: asyncio.subprocess.Process | None = None
         self._req_socket: zmq.asyncio.Socket | None = None
@@ -69,6 +73,7 @@ class PluginWorkerClient:
         self._stream_coalescers: dict[str, LogCoalescer] = {}
         self._startup_lock = asyncio.Lock()
         self._request_lock = asyncio.Lock()
+        self._active_recv_task: asyncio.Task[dict[str, Any]] | None = None
         self._closed = False
         self._started = False
 
@@ -118,8 +123,22 @@ class PluginWorkerClient:
                 runtime_context=runtime_context,
                 execution_binding_context=execution_binding_context,
             )
+            self._mark_activity(f"worker_request:{action}:send")
             await self._req_socket.send_json(command_payload)
-            raw_reply = await self._recv_reply_or_raise(timeout_sec=timeout_sec)
+            recv_task = asyncio.create_task(
+                self._recv_reply_or_raise(timeout_sec=timeout_sec),
+                name=f"worker-recv-{self._task_id}",
+            )
+            self._active_recv_task = recv_task
+            try:
+                raw_reply = await recv_task
+            except asyncio.CancelledError:
+                recv_task.cancel()
+                await asyncio.gather(recv_task, return_exceptions=True)
+                raise
+            finally:
+                if self._active_recv_task is recv_task:
+                    self._active_recv_task = None
             reply = protocol.WorkerReplyEnvelope.from_dict(raw_reply)
             if not reply.ok:
                 raise WorkerCommandError(
@@ -137,17 +156,19 @@ class PluginWorkerClient:
             await self._shutdown_gracefully()
         except Exception:
             pass
+        await self._abort_active_recv_task()
+        self._close_sockets()
         await self._terminate_worker()
         await self._stop_background_tasks()
-        self._close_sockets()
         self._cleanup_socket_paths()
         self._started = False
 
     async def terminate(self) -> None:
         self._closed = True
+        await self._abort_active_recv_task()
+        self._close_sockets()
         await self._terminate_worker()
         await self._stop_background_tasks()
-        self._close_sockets()
         self._cleanup_socket_paths()
         self._started = False
 
@@ -211,6 +232,7 @@ class PluginWorkerClient:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=env,
+            start_new_session=True,
         )
 
     def _open_sockets(self) -> None:
@@ -287,6 +309,7 @@ class PluginWorkerClient:
                 raise RuntimeError(f"工作进程请求超时 endpoint={self._command_endpoint}") from exc
         if not isinstance(raw, dict):
             raise RuntimeError("工作进程响应载荷无效")
+        self._mark_activity("worker_request:reply")
         return raw
 
     def _reset_request_socket(self) -> None:
@@ -321,13 +344,13 @@ class PluginWorkerClient:
             return
         if process.returncode is not None:
             return
-        process.terminate()
-        timeout = max(1, int(settings.PLUGIN_WORKER_TERM_TIMEOUT_SEC))
+        self._send_process_group_signal(process, signal.SIGTERM)
+        timeout = max(1, int(settings.PLUGIN_WORKER_KILL_TIMEOUT_SEC))
         try:
             await asyncio.wait_for(process.wait(), timeout=timeout)
             return
         except asyncio.TimeoutError:
-            process.kill()
+            self._send_process_group_signal(process, signal.SIGKILL)
             await process.wait()
 
     async def _event_loop(self) -> None:
@@ -342,6 +365,7 @@ class PluginWorkerClient:
                 if not isinstance(payload, dict):
                     continue
                 event_type = envelope.event_type or topic
+                self._mark_activity(f"worker_event:{event_type}")
                 if event_type == "log":
                     payload = normalize_log_payload(
                         payload,
@@ -355,8 +379,10 @@ class PluginWorkerClient:
                 except Exception:
                     logger.exception("工作进程事件处理失败，task_id={} 事件类型={}", self._task_id, event_type)
         except asyncio.CancelledError:
-            raise
+            return
         except Exception:
+            if self._closed:
+                return
             logger.exception("工作进程事件循环失败，task_id={}", self._task_id)
 
     async def _stream_log_loop(self, stream: asyncio.StreamReader, stream_name: str) -> None:
@@ -367,6 +393,7 @@ class PluginWorkerClient:
                 raw_chunk = await stream.read(_STREAM_READ_CHUNK_BYTES)
                 if not raw_chunk:
                     break
+                self._mark_activity(f"worker_stream:{stream_name}")
                 chunk_text = raw_chunk.decode("utf-8", errors="replace").replace("\r", "\n")
                 tail_buffer += chunk_text
 
@@ -391,8 +418,10 @@ class PluginWorkerClient:
                         coalescer=coalescer,
                     )
         except asyncio.CancelledError:
-            raise
+            return
         except Exception:
+            if self._closed:
+                return
             logger.exception("工作进程流读取失败，task_id={} 流={}", self._task_id, stream_name)
         finally:
             if tail_buffer:
@@ -480,3 +509,35 @@ class PluginWorkerClient:
                     logger.debug("已清理遗留套接字文件：{}", path)
             except Exception as exc:
                 logger.warning("清理套接字失败 {}: {}", path, exc)
+
+    async def _abort_active_recv_task(self) -> None:
+        recv_task = self._active_recv_task
+        self._active_recv_task = None
+        if recv_task is None or recv_task.done():
+            return
+        recv_task.cancel()
+        await asyncio.gather(recv_task, return_exceptions=True)
+
+    def _send_process_group_signal(
+        self,
+        process: asyncio.subprocess.Process,
+        sig: signal.Signals,
+    ) -> None:
+        if process.returncode is not None:
+            return
+        try:
+            os.killpg(os.getpgid(process.pid), sig)
+        except ProcessLookupError:
+            return
+        except Exception:
+            try:
+                if sig == signal.SIGTERM:
+                    process.terminate()
+                else:
+                    process.kill()
+            except ProcessLookupError:
+                return
+
+    def _mark_activity(self, source: str) -> None:
+        if self._activity_callback is not None:
+            self._activity_callback(source)

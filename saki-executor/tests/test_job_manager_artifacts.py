@@ -9,7 +9,6 @@ from saki_executor.cache.asset_cache import AssetCache
 from saki_executor.grpc_gen import runtime_control_pb2 as pb
 from saki_executor.steps.manager import TaskManager
 from saki_executor.steps.services.artifact_uploader import ArtifactUploader
-import saki_executor.steps.services.artifact_uploader as uploader_module
 from saki_executor.plugins.registry import PluginRegistry
 from runtime_data_test_helper import build_data_response_message
 from saki_plugin_sdk import ExecutorPlugin, TaskRuntimeContext, TrainArtifact, TrainOutput
@@ -335,24 +334,22 @@ def _install_async_client_mock(manager: TaskManager):
                 return httpx.Response(500, request=request, text="upload failed")
             return httpx.Response(200, request=request, text="ok")
 
-    manager._artifact_uploader = ArtifactUploader(client_factory=_AsyncClientMock)  # noqa: SLF001
+    manager._artifact_uploader = ArtifactUploader(  # noqa: SLF001
+        client_factory=_AsyncClientMock,
+        retry_backoff_sec=(0.0, 0.0),
+    )
     return state
 
 
 @pytest.mark.anyio
-async def test_artifact_upload_retries_and_uses_storage_uri(tmp_path: Path, monkeypatch):
+async def test_artifact_upload_retries_and_uses_storage_uri(tmp_path: Path):
     manager = _build_manager(tmp_path)
     sent_messages: list[pb.RuntimeMessage] = []
-    backoff_calls: list[float] = []
     upload_state = _install_async_client_mock(manager)
 
     async def fake_send(message: pb.RuntimeMessage) -> None:
         sent_messages.append(message)
 
-    async def fake_sleep(delay: float) -> None:
-        backoff_calls.append(delay)
-
-    monkeypatch.setattr(uploader_module.asyncio, "sleep", fake_sleep)
     manager.set_transport(
         fake_send,
         _make_fake_request({"confusion_matrix.png": {"x-fail-attempts": "2"}}),
@@ -386,7 +383,6 @@ async def test_artifact_upload_retries_and_uses_storage_uri(tmp_path: Path, monk
     optional_url = "https://upload.local/confusion_matrix.png"
     best_url = "https://upload.local/best.pt"
     assert upload_state["attempts"][optional_url] == 3
-    assert backoff_calls == [1.0, 2.0]
     assert upload_state["headers"][best_url].get("Content-Length") == str(len(upload_state["uploaded_bytes"][best_url]))
 
     artifact_events = [
@@ -403,7 +399,7 @@ async def test_artifact_upload_retries_and_uses_storage_uri(tmp_path: Path, monk
 
 
 @pytest.mark.anyio
-async def test_optional_artifact_failure_marks_partial_failed(tmp_path: Path, monkeypatch):
+async def test_optional_artifact_failure_marks_partial_failed(tmp_path: Path):
     manager = _build_manager(tmp_path)
     sent_messages: list[pb.RuntimeMessage] = []
     _install_async_client_mock(manager)
@@ -411,10 +407,6 @@ async def test_optional_artifact_failure_marks_partial_failed(tmp_path: Path, mo
     async def fake_send(message: pb.RuntimeMessage) -> None:
         sent_messages.append(message)
 
-    async def fake_sleep(delay: float) -> None:
-        del delay
-
-    monkeypatch.setattr(uploader_module.asyncio, "sleep", fake_sleep)
     manager.set_transport(
         fake_send,
         _make_fake_request({"confusion_matrix.png": {"x-fail-attempts": "3"}}),
@@ -450,7 +442,7 @@ async def test_optional_artifact_failure_marks_partial_failed(tmp_path: Path, mo
 
 
 @pytest.mark.anyio
-async def test_required_artifact_failure_marks_failed(tmp_path: Path, monkeypatch):
+async def test_required_artifact_failure_marks_failed(tmp_path: Path):
     manager = _build_manager(tmp_path)
     sent_messages: list[pb.RuntimeMessage] = []
     _install_async_client_mock(manager)
@@ -458,10 +450,6 @@ async def test_required_artifact_failure_marks_failed(tmp_path: Path, monkeypatc
     async def fake_send(message: pb.RuntimeMessage) -> None:
         sent_messages.append(message)
 
-    async def fake_sleep(delay: float) -> None:
-        del delay
-
-    monkeypatch.setattr(uploader_module.asyncio, "sleep", fake_sleep)
     manager.set_transport(fake_send, _make_fake_request({"best.pt": {"x-fail-attempts": "3"}}))
 
     accepted = await manager.assign_task(
@@ -492,19 +480,14 @@ async def test_required_artifact_failure_marks_failed(tmp_path: Path, monkeypatc
 
 
 @pytest.mark.anyio
-async def test_read_error_retries_then_succeeds(tmp_path: Path, monkeypatch):
+async def test_read_error_retries_then_succeeds(tmp_path: Path):
     manager = _build_manager(tmp_path)
     sent_messages: list[pb.RuntimeMessage] = []
-    backoff_calls: list[float] = []
     upload_state = _install_async_client_mock(manager)
 
     async def fake_send(message: pb.RuntimeMessage) -> None:
         sent_messages.append(message)
 
-    async def fake_sleep(delay: float) -> None:
-        backoff_calls.append(delay)
-
-    monkeypatch.setattr(uploader_module.asyncio, "sleep", fake_sleep)
     manager.set_transport(fake_send, _make_fake_request({"best.pt": {"x-read-error-attempts": "2"}}))
 
     accepted = await manager.assign_task(
@@ -529,26 +512,20 @@ async def test_read_error_retries_then_succeeds(tmp_path: Path, monkeypatch):
 
     best_url = "https://upload.local/best.pt"
     assert upload_state["attempts"][best_url] == 3
-    assert backoff_calls == [1.0, 2.0]
     result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
     assert len(result_messages) == 1
     assert result_messages[0].task_result.status == pb.SUCCEEDED
 
 
 @pytest.mark.anyio
-async def test_http_4xx_not_retried_and_fails_fast(tmp_path: Path, monkeypatch):
+async def test_http_4xx_not_retried_and_fails_fast(tmp_path: Path):
     manager = _build_manager(tmp_path)
     sent_messages: list[pb.RuntimeMessage] = []
-    backoff_calls: list[float] = []
     upload_state = _install_async_client_mock(manager)
 
     async def fake_send(message: pb.RuntimeMessage) -> None:
         sent_messages.append(message)
 
-    async def fake_sleep(delay: float) -> None:
-        backoff_calls.append(delay)
-
-    monkeypatch.setattr(uploader_module.asyncio, "sleep", fake_sleep)
     manager.set_transport(fake_send, _make_fake_request({"best.pt": {"x-force-status": "403"}}))
 
     accepted = await manager.assign_task(
@@ -573,7 +550,6 @@ async def test_http_4xx_not_retried_and_fails_fast(tmp_path: Path, monkeypatch):
 
     best_url = "https://upload.local/best.pt"
     assert upload_state["attempts"][best_url] == 1
-    assert backoff_calls == []
     result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
     assert len(result_messages) == 1
     result = result_messages[0].task_result

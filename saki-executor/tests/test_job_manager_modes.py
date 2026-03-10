@@ -663,6 +663,65 @@ class _SlowTrainPlugin(ExecutorPlugin):
         return
 
 
+class _HungPlugin(ExecutorPlugin):
+    def __init__(self) -> None:
+        self._pending = asyncio.Event()
+
+    @property
+    def plugin_id(self) -> str:
+        return "hung_plugin"
+
+    @property
+    def version(self) -> str:
+        return "0.1.0"
+
+    @property
+    def supported_task_types(self) -> list[str]:
+        return ["train", "eval"]
+
+    @property
+    def supported_strategies(self) -> list[str]:
+        return ["uncertainty_1_minus_max_conf"]
+
+    async def train(
+            self,
+            workspace,
+            params: dict[str, Any],
+            emit,
+            *,
+            context: TaskRuntimeContext,
+    ) -> TrainOutput:
+        del workspace, params, emit, context
+        await self._pending.wait()
+        return TrainOutput(metrics={"loss": 0.5}, artifacts=[])
+
+    async def eval(
+            self,
+            workspace,
+            params: dict[str, Any],
+            emit,
+            *,
+            context: TaskRuntimeContext,
+    ) -> TrainOutput:
+        return await self.train(workspace, params, emit, context=context)
+
+    async def predict_unlabeled(
+            self,
+            workspace,
+            unlabeled_samples: list[dict[str, Any]],
+            strategy: str,
+            params: dict[str, Any],
+            *,
+            context: TaskRuntimeContext,
+    ) -> list[dict[str, Any]]:
+        del workspace, unlabeled_samples, strategy, params, context
+        return []
+
+    async def stop(self, task_id: str) -> None:
+        del task_id
+        return
+
+
 def _build_manager(tmp_path: Path, plugin: ExecutorPlugin) -> TaskManager:
     registry = PluginRegistry()
     registry.register(plugin)
@@ -2193,8 +2252,7 @@ async def test_stop_task_forces_cancelled_result(tmp_path: Path):
     await asyncio.sleep(0.1)
     stopped = await manager.stop_task("task-stop-1")
     assert stopped is True
-    assert manager._task is not None  # noqa: SLF001
-    await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
+    assert manager.busy is False
 
     result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
     assert len(result_messages) == 1
@@ -2206,3 +2264,59 @@ async def test_stop_task_forces_cancelled_result(tmp_path: Path):
         and message.task_event.WhichOneof("event_payload") == "status_event"
     ]
     assert pb.CANCELLED not in status_codes
+
+
+@pytest.mark.anyio
+async def test_watchdog_forces_failed_result_for_stalled_task(tmp_path: Path, monkeypatch):
+    plugin = _HungPlugin()
+    manager = _build_manager(tmp_path, plugin)
+    sent_messages: list[pb.RuntimeMessage] = []
+
+    monkeypatch.setattr("saki_executor.steps.manager.settings.TASK_STALL_TIMEOUT_TRAIN_SEC", 1)
+    monkeypatch.setattr("saki_executor.steps.manager.settings.EXECUTOR_STOP_GRACE_SEC", 1)
+    monkeypatch.setattr("saki_executor.steps.manager.settings.EXECUTOR_STOP_CANCEL_SEC", 1)
+
+    async def fake_send(message: pb.RuntimeMessage) -> None:
+        sent_messages.append(message)
+
+    async def fake_request(message: pb.RuntimeMessage) -> pb.RuntimeMessage:
+        payload_type = message.WhichOneof("payload")
+        assert payload_type == "data_request"
+        request = message.data_request
+        return build_data_response_message(
+            request_id=f"resp-{request.request_id}",
+            reply_to=request.request_id,
+            task_id=request.task_id,
+            query_type=request.query_type,
+            items=_mock_data_items(request.query_type),
+        )
+
+    manager.set_transport(fake_send, fake_request)
+    manager.set_transport_state_getter(lambda: True)
+
+    accepted = await manager.assign_task(
+        "assign-stall-1",
+        {
+            "task_id": "task-stall-1",
+            "round_id": "job-stall-1",
+            "project_id": "project-1",
+            "input_commit_id": "commit-1",
+            "plugin_id": plugin.plugin_id,
+            "mode": "simulation",
+            "task_type": "train",
+            "dispatch_kind": "dispatchable",
+            "round_index": 1,
+            "query_strategy": "uncertainty_1_minus_max_conf",
+            "resolved_params": {},
+        },
+    )
+    assert accepted is True
+    current_task = manager._task  # noqa: SLF001
+    assert current_task is not None
+    await asyncio.wait_for(current_task, timeout=5.0)
+    assert manager.busy is False
+
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
+    assert len(result_messages) == 1
+    assert result_messages[0].task_result.status == pb.FAILED
+    assert "EXECUTION_STALLED" in result_messages[0].task_result.error_message

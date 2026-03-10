@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -309,6 +310,70 @@ def test_config_service_workers_default_and_clamp():
     assert int(getattr(high_cfg, "workers", -1)) == 32
 
 
+def test_config_service_train_budget_mode_defaults_to_fixed_epochs():
+    service = YoloConfigService()
+    cfg = service.resolve_config(
+        {
+            "yolo_task": "detect",
+            "model_source": "preset",
+        }
+    )
+    assert str(getattr(cfg, "train_budget_mode", "")) == "fixed_epochs"
+    assert int(getattr(cfg, "target_updates", -1)) == 0
+    assert int(getattr(cfg, "min_epochs", -1)) == 1
+    assert int(getattr(cfg, "max_epochs", -1)) == 1000
+    assert bool(getattr(cfg, "budget_disable_early_stop", False)) is True
+
+
+def test_config_service_target_updates_validation():
+    service = YoloConfigService()
+    with pytest.raises(ValueError, match="target_updates must be > 0"):
+        service.resolve_config(
+            {
+                "yolo_task": "detect",
+                "model_source": "preset",
+                "train_budget_mode": "target_updates",
+            }
+        )
+    with pytest.raises(ValueError, match="target_updates must be > 0"):
+        service.resolve_config(
+            {
+                "yolo_task": "detect",
+                "model_source": "preset",
+                "train_budget_mode": "target_updates",
+                "target_updates": -1,
+            }
+        )
+    with pytest.raises(ValueError, match="min_epochs must be <= max_epochs"):
+        service.resolve_config(
+            {
+                "yolo_task": "detect",
+                "model_source": "preset",
+                "train_budget_mode": "target_updates",
+                "target_updates": 100,
+                "min_epochs": 30,
+                "max_epochs": 20,
+            }
+        )
+
+    cfg = service.resolve_config(
+        {
+            "yolo_task": "detect",
+            "model_source": "preset",
+            "train_budget_mode": "target_updates",
+            "target_updates": 3000,
+            "min_epochs": 20,
+            "max_epochs": 300,
+            "budget_disable_early_stop": False,
+        }
+    )
+    assert str(getattr(cfg, "train_budget_mode", "")) == "target_updates"
+    assert int(getattr(cfg, "target_updates", 0)) == 3000
+    assert int(getattr(cfg, "min_epochs", 0)) == 20
+    assert int(getattr(cfg, "max_epochs", 0)) == 300
+    assert bool(getattr(cfg, "budget_disable_early_stop", True)) is False
+
+
 def test_config_service_init_mode_defaults_to_checkpoint_direct():
     service = YoloConfigService()
     cfg = service.resolve_config(
@@ -496,10 +561,10 @@ async def test_runtime_train_reads_split_seed_from_plugin_config_attrs(tmp_path:
         plugin_config = kwargs["plugin_config"]
         assert int(getattr(plugin_config, "split_seed", -1)) == 11
         return TrainConfig(
-            epochs=1,
+            epochs=17,
             batch=1,
             imgsz=640,
-            patience=1,
+            patience=18,
             device="cpu",
             requested_device="auto",
             resolved_backend="cpu",
@@ -508,6 +573,16 @@ async def test_runtime_train_reads_split_seed_from_plugin_config_attrs(tmp_path:
             deterministic=False,
             strong_deterministic=False,
             yolo_task="detect",
+            requested_epochs=300,
+            train_budget_mode="target_updates",
+            target_updates=3000,
+            min_epochs=20,
+            max_epochs=300,
+            budget_disable_early_stop=True,
+            train_sample_count=17,
+            steps_per_epoch=17,
+            effective_epochs=17,
+            effective_patience=18,
         )
 
     async def _fake_run_train_with_epoch_stream(**kwargs) -> dict[str, Any]:
@@ -582,6 +657,20 @@ async def test_runtime_train_reads_split_seed_from_plugin_config_attrs(tmp_path:
     )
     assert output.metrics.get("loss") == 1.0
     assert any("split_seed=11" in msg for msg in emitted_logs)
+    assert any("训练预算解析完成" in msg for msg in emitted_logs)
+    assert any("effective_epochs=17" in msg for msg in emitted_logs)
+    report_payload = json.loads((workspace.artifacts_dir / "report.json").read_text(encoding="utf-8"))
+    budget_summary = report_payload["metric_meta"]["budget_summary"]
+    assert budget_summary == {
+        "mode": "target_updates",
+        "requested_epochs": 300,
+        "target_updates": 3000,
+        "train_sample_count": 17,
+        "batch": 1,
+        "steps_per_epoch": 17,
+        "effective_epochs": 17,
+        "effective_patience": 18,
+    }
 
 
 def test_prepare_pipeline_build_label_index_outputs_class_schema_rows():

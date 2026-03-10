@@ -22,6 +22,16 @@ class TrainConfig:
     workers: int = 2
     init_mode: str = "checkpoint_direct"
     arch_yaml_ref: str = ""
+    requested_epochs: int = 0
+    train_budget_mode: str = "fixed_epochs"
+    target_updates: int = 0
+    min_epochs: int = 1
+    max_epochs: int = 1000
+    budget_disable_early_stop: bool = True
+    train_sample_count: int = 0
+    steps_per_epoch: int = 0
+    effective_epochs: int = 0
+    effective_patience: int = 0
 
 
 @dataclass(frozen=True)

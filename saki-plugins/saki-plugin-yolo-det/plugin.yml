@@ -78,6 +78,7 @@ config_schema:
       label: 训练轮数
       type: integer
       default: 30
+      description: fixed_epochs 模式直接使用；target_updates 模式下仅作展示，不参与实际训练
       props:
         min: 1
         max: 5000
@@ -104,9 +105,58 @@ config_schema:
       label: 早停耐心值
       type: integer
       default: 20
+      description: target_updates 且 budget_disable_early_stop=true 时会被自动覆盖为 effective_epochs + 1
       props:
         min: 1
         max: 1000
+
+    - key: train_budget_mode
+      label: 训练预算模式
+      type: select
+      default: "fixed_epochs"
+      description: fixed_epochs 直接使用训练轮数；target_updates 按目标更新步数自动换算轮数
+      options:
+        - label: 固定轮数
+          value: fixed_epochs
+        - label: 目标更新步数
+          value: target_updates
+
+    - key: target_updates
+      label: 目标更新步数
+      type: integer
+      description: 仅在 target_updates 模式下生效，按 train_sample_count 和 batch 自动换算训练轮数
+      props:
+        min: 1
+        max: 1000000
+        step: 1
+      visible: "form.train_budget_mode === 'target_updates'"
+
+    - key: min_epochs
+      label: 最小训练轮数
+      type: integer
+      default: 1
+      props:
+        min: 1
+        max: 5000
+        step: 1
+      visible: "form.train_budget_mode === 'target_updates'"
+
+    - key: max_epochs
+      label: 最大训练轮数
+      type: integer
+      default: 1000
+      props:
+        min: 1
+        max: 5000
+        step: 1
+      visible: "form.train_budget_mode === 'target_updates'"
+
+    - key: budget_disable_early_stop
+      label: 预算模式禁用早停
+      type: boolean
+      default: true
+      description: 开启后 target_updates 模式会强制将 patience 设为 effective_epochs + 1
+      visible: "form.train_budget_mode === 'target_updates'"
 
     - key: cache
       label: 资源缓存

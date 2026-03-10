@@ -26,6 +26,7 @@ from saki_plugin_yolo_det.metrics_parser import (
 from saki_plugin_yolo_det.predict_service import YoloPredictService
 from saki_plugin_yolo_det.prepare_pipeline import prepare_yolo_dataset
 from saki_plugin_yolo_det.train_async import (
+    build_budget_summary,
     build_training_report_meta,
     load_prepare_stats,
     normalize_training_metrics,
@@ -140,6 +141,23 @@ class YoloRuntimeService:
             resolve_model_ref=self._config_service.resolve_model_ref,
             resolve_arch_ref=self._config_service.resolve_arch_yaml_ref,
         )
+        budget_summary = build_budget_summary(config)
+        await emit(
+            "log",
+            {
+                "level": "INFO",
+                "message": (
+                    "训练预算解析完成 "
+                    f"mode={budget_summary.get('mode')} "
+                    f"train_sample_count={budget_summary.get('train_sample_count')} "
+                    f"batch={budget_summary.get('batch')} "
+                    f"steps_per_epoch={budget_summary.get('steps_per_epoch')} "
+                    f"target_updates={budget_summary.get('target_updates')} "
+                    f"effective_epochs={budget_summary.get('effective_epochs')} "
+                    f"effective_patience={budget_summary.get('effective_patience')}"
+                ),
+            },
+        )
         await emit(
             "log",
             {
@@ -214,6 +232,12 @@ class YoloRuntimeService:
             to_int=to_int,
             to_bool=to_bool,
         )
+        runtime_budget_summary = (
+            dict(train_result.get("budget_summary"))
+            if isinstance(train_result.get("budget_summary"), dict)
+            else dict(budget_summary)
+        )
+        report_meta["budget_summary"] = runtime_budget_summary
         if report_init_load_summary:
             report_meta["init_load_summary"] = report_init_load_summary
         report_meta["train_summary"] = train_summary

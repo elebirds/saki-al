@@ -21,11 +21,14 @@ class YoloConfigService:
     _VALID_MODEL_SOURCES = ("preset", "custom_local", "custom_url")
     _VALID_INIT_MODES = ("checkpoint_direct", "arch_yaml_plus_weights")
     _VALID_MODEL_ARCH_SOURCES = ("builtin", "custom_local")
+    _VALID_TRAIN_BUDGET_MODES = ("fixed_epochs", "target_updates")
     _DEFAULT_AUG_NAMES = tuple(spec.name for spec in build_default_augmentation_specs())
     _VALID_AUG_IOU_MODES = ("rect", "obb", "boundary")
     _WORKERS_MIN = 0
     _WORKERS_MAX = 32
     _WORKERS_DEFAULT = 2
+    _MIN_EPOCHS_DEFAULT = 1
+    _MAX_EPOCHS_DEFAULT = 1000
 
     def __init__(self) -> None:
         self._manifest = PluginManifest.from_yaml(
@@ -276,6 +279,49 @@ class YoloConfigService:
         except Exception:
             workers = self._WORKERS_DEFAULT
         workers = max(self._WORKERS_MIN, min(self._WORKERS_MAX, workers))
+        train_budget_mode = str(
+            self._read_param(config, "train_budget_mode", "fixed_epochs") or "fixed_epochs"
+        ).strip().lower()
+        if train_budget_mode not in self._VALID_TRAIN_BUDGET_MODES:
+            raise ValueError(
+                "unsupported train_budget_mode: "
+                f"{train_budget_mode!r}, must be one of {self._VALID_TRAIN_BUDGET_MODES}"
+            )
+        try:
+            min_epochs = int(self._read_param(config, "min_epochs", self._MIN_EPOCHS_DEFAULT))
+        except Exception:
+            min_epochs = self._MIN_EPOCHS_DEFAULT
+        try:
+            max_epochs = int(self._read_param(config, "max_epochs", self._MAX_EPOCHS_DEFAULT))
+        except Exception:
+            max_epochs = self._MAX_EPOCHS_DEFAULT
+        if min_epochs < 1:
+            raise ValueError("min_epochs must be >= 1")
+        if max_epochs < 1:
+            raise ValueError("max_epochs must be >= 1")
+        if min_epochs > max_epochs:
+            raise ValueError("min_epochs must be <= max_epochs")
+        raw_target_updates = self._read_param(config, "target_updates", None)
+        if raw_target_updates in (None, ""):
+            target_updates = 0
+        else:
+            try:
+                target_updates = int(raw_target_updates)
+            except Exception as exc:
+                raise ValueError("target_updates must be an integer") from exc
+        if train_budget_mode == "target_updates" and target_updates <= 0:
+            raise ValueError("target_updates must be > 0 when train_budget_mode=target_updates")
+        raw_disable_early_stop = self._read_param(config, "budget_disable_early_stop", True)
+        if isinstance(raw_disable_early_stop, str):
+            budget_disable_early_stop = raw_disable_early_stop.strip().lower() not in {
+                "",
+                "0",
+                "false",
+                "no",
+                "off",
+            }
+        else:
+            budget_disable_early_stop = bool(raw_disable_early_stop)
 
         return config.model_copy(
             update={
@@ -291,6 +337,11 @@ class YoloConfigService:
                 "aug_iou_iou_mode": aug_iou_mode,
                 "aug_iou_boundary_d": aug_iou_boundary_d,
                 "workers": workers,
+                "train_budget_mode": train_budget_mode,
+                "target_updates": target_updates,
+                "min_epochs": min_epochs,
+                "max_epochs": max_epochs,
+                "budget_disable_early_stop": budget_disable_early_stop,
             }
         )
 

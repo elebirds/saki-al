@@ -24,6 +24,7 @@ from saki_api.modules.runtime.domain.model_class_schema import ModelClassSchema
 from saki_api.modules.runtime.domain.round import Round
 from saki_api.modules.runtime.domain.task import Task
 from saki_api.modules.runtime.domain.task_candidate_item import TaskCandidateItem
+from saki_api.modules.runtime.domain.task_event import TaskEvent
 from saki_api.modules.runtime.service.runtime_service import RuntimeService
 from saki_api.modules.shared.modeling.enums import (
     AnnotationSource,
@@ -861,6 +862,76 @@ async def test_apply_prediction_preserves_obb_geometry_from_snapshot(prediction_
         assert obb.get("width") == pytest.approx(20.0)
         assert obb.get("height") == pytest.approx(8.0)
         assert obb.get("angle_deg_ccw") == pytest.approx(15.0)
+
+
+@pytest.mark.anyio
+async def test_settle_prediction_emits_materializing_perf_log(prediction_env):
+    session_local = prediction_env
+    async with session_local() as session:
+        ctx = await _seed_prediction_context(session)
+        service = RuntimeService(session)
+        prediction = await _create_prediction_task(service=service, ctx=ctx, scope_status="all")
+        assert prediction.task_id is not None
+
+        await _finish_prediction_task(
+            session=session,
+            task_id=prediction.task_id,
+            rows=[
+                {
+                    "sample_id": str(ctx.sample.id),
+                    "score": 0.77,
+                    "reason": {"mode": "predict", "pred_count": 1},
+                    "prediction_snapshot": {
+                        "base_predictions": [
+                            {
+                                "class_index": 1,
+                                "class_name": ctx.labels_sorted_by_sort[0].name,
+                                "confidence": 0.77,
+                                "geometry": {
+                                    "rect": {
+                                        "x": 3.0,
+                                        "y": 4.0,
+                                        "width": 5.0,
+                                        "height": 6.0,
+                                    }
+                                },
+                            }
+                        ]
+                    },
+                }
+            ],
+        )
+
+        settled = await service.settle_prediction_task(prediction_id=prediction.id)
+        assert settled.status == "ready"
+
+        events = list(
+            (
+                await session.exec(
+                    select(TaskEvent)
+                    .where(TaskEvent.task_id == prediction.task_id)
+                    .order_by(TaskEvent.seq.asc())
+                )
+            ).all()
+        )
+        perf_logs = [
+            item for item in events
+            if item.event_type == "log"
+            and isinstance(item.payload, dict)
+            and str(item.payload.get("message_key") or "") == "prediction.materializing"
+        ]
+        assert len(perf_logs) == 2
+
+        start_meta = dict(perf_logs[0].payload.get("meta") or {})
+        assert start_meta.get("phase") == "start"
+
+        done_meta = dict(perf_logs[-1].payload.get("meta") or {})
+        assert done_meta.get("phase") == "done"
+        assert int(done_meta.get("source_candidates") or 0) == 1
+        assert int(done_meta.get("filtered_candidates") or 0) == 1
+        assert int(done_meta.get("prediction_rows") or 0) == 1
+        assert int(done_meta.get("prediction_boxes") or 0) == 1
+        assert float(done_meta.get("total_sec") or 0.0) >= 0.0
 
 
 @pytest.mark.anyio

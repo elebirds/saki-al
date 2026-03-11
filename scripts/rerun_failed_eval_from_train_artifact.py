@@ -10,6 +10,7 @@ import io
 import json
 import math
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -374,11 +375,27 @@ class ProjectLabelRow:
 
 
 @dataclass(frozen=True)
+class ProjectSampleRow:
+    sample_id: str
+    sample_name: str
+    original_filename: str
+
+
+@dataclass(frozen=True)
 class InputSource:
     kind: str
     local_path: Path | None = None
     ref: str = ""
     message: str = ""
+
+
+@dataclass(frozen=True)
+class LocalPathIndex:
+    root: Path
+    kind: str
+    by_relative_stem: dict[str, list[Path]]
+    by_basename_stem: dict[str, list[Path]]
+    by_export_suffix: dict[str, list[Path]]
 
 
 @dataclass(frozen=True)
@@ -667,7 +684,7 @@ def fetch_loop_test_partitions(
     database: str,
     password: str,
     project_id: str,
-) -> dict[str, dict[str, list[str]]]:
+) -> tuple[dict[str, dict[str, list[str]]], dict[str, ProjectSampleRow]]:
     query = """
 WITH latest_snapshot AS (
   SELECT DISTINCT ON (sv.loop_id)
@@ -681,9 +698,13 @@ WITH latest_snapshot AS (
 SELECT
   ls.loop_id::text AS loop_id,
   lower(ss.partition::text) AS partition,
-  ss.sample_id::text AS sample_id
+  ss.sample_id::text AS sample_id,
+  COALESCE(s.name, '') AS sample_name,
+  COALESCE(a.original_filename, '') AS original_filename
 FROM latest_snapshot ls
 JOIN loop_snapshot_sample ss ON ss.snapshot_version_id = ls.snapshot_version_id
+LEFT JOIN sample s ON s.id = ss.sample_id
+LEFT JOIN asset a ON a.id = s.primary_asset_id
 WHERE ss.partition IN ('TEST_ANCHOR', 'TEST_BATCH')
 ORDER BY ls.loop_id, partition, ss.sample_id
 """.strip()
@@ -730,6 +751,7 @@ ORDER BY ls.loop_id, partition, ss.sample_id
         rows = list(csv.DictReader(io.StringIO(result.stdout)))
 
     grouped: dict[str, dict[str, list[str]]] = {}
+    sample_rows: dict[str, ProjectSampleRow] = {}
     for row in rows:
         loop_id = text_value(row.get("loop_id"))
         partition = text_value(row.get("partition")).lower()
@@ -738,11 +760,16 @@ ORDER BY ls.loop_id, partition, ss.sample_id
             continue
         bucket = grouped.setdefault(loop_id, {"test_anchor": [], "test_batch": []})
         bucket[partition].append(sample_id)
+        sample_rows[sample_id] = ProjectSampleRow(
+            sample_id=sample_id,
+            sample_name=text_value(row.get("sample_name")),
+            original_filename=text_value(row.get("original_filename")),
+        )
 
     for loop_id, bucket in grouped.items():
         for key in ("test_anchor", "test_batch"):
             bucket[key] = sorted(set(bucket.get(key) or []))
-    return grouped
+    return grouped, sample_rows
 
 
 def build_step_root(*, runs_dir: Path, round_id: str, attempt_index: int, task_id: str) -> Path:
@@ -757,6 +784,152 @@ def link_or_copy_file(src: Path, dst: Path) -> None:
         os.link(src, dst)
     except Exception:
         shutil.copy2(src, dst)
+
+
+def sanitize_path_segment(value: str) -> str:
+    cleaned = re.sub(r'[<>:"|?*\x00-\x1f]+', "_", str(value or "").strip())
+    return cleaned or "unknown"
+
+
+def normalize_relative_path(value: str) -> str:
+    raw = str(value or "").replace("\\", "/").strip()
+    trimmed = re.sub(r"^\./", "", raw)
+    trimmed = re.sub(r"^/+", "", trimmed)
+    parts: list[str] = []
+    for part in trimmed.split("/"):
+        token = part.strip()
+        if not token or token in {".", ".."}:
+            continue
+        parts.append(sanitize_path_segment(token))
+    return "/".join(parts)
+
+
+def path_ext(path: str) -> str:
+    idx = path.rfind(".")
+    if idx <= 0 or idx == len(path) - 1:
+        return ""
+    return path[idx:].lower()
+
+
+def strip_ext(path: str) -> str:
+    idx = path.rfind(".")
+    if idx <= 0:
+        return path
+    return path[:idx]
+
+
+def ensure_ext(path: str, ext: str) -> str:
+    if not ext:
+        return path
+    return path if path_ext(path) else f"{path}{ext if ext.startswith('.') else f'.{ext}'}"
+
+
+def build_export_stem(*, raw_name: str, sample_id: str, fallback_filename: str = "") -> str:
+    preferred = normalize_relative_path(raw_name)
+    if not preferred:
+        return ""
+    fallback = normalize_relative_path(fallback_filename)
+    ext = path_ext(preferred) or path_ext(fallback)
+    base_with_ext = ensure_ext(preferred, ext)
+    stem = strip_ext(base_with_ext)
+    suffix = text_value(sample_id).replace("-", "")[:8].lower()
+    if not stem or not suffix:
+        return ""
+    return f"{stem}__{suffix}"
+
+
+def extract_export_suffix(stem: str) -> str:
+    text = text_value(stem)
+    if "__" not in text:
+        return ""
+    suffix = text.rsplit("__", 1)[-1].lower()
+    if re.fullmatch(r"[0-9a-f]{8}", suffix):
+        return suffix
+    return ""
+
+
+def build_local_path_index(*, root: Path, kind: str, allowed_suffixes: tuple[str, ...]) -> LocalPathIndex:
+    if not root.exists():
+        raise FileNotFoundError(f"local {kind} dir not found: {root}")
+    if not root.is_dir():
+        raise NotADirectoryError(f"local {kind} dir is not a directory: {root}")
+
+    by_relative_stem: dict[str, list[Path]] = {}
+    by_basename_stem: dict[str, list[Path]] = {}
+    by_export_suffix: dict[str, list[Path]] = {}
+    for path in sorted(root.rglob("*")):
+        if not path.is_file():
+            continue
+        if path.suffix.lower() not in allowed_suffixes:
+            continue
+        rel_stem = strip_ext(path.relative_to(root).as_posix())
+        base_stem = path.stem
+        by_relative_stem.setdefault(rel_stem, []).append(path)
+        by_basename_stem.setdefault(base_stem, []).append(path)
+        export_suffix = extract_export_suffix(base_stem)
+        if export_suffix:
+            by_export_suffix.setdefault(export_suffix, []).append(path)
+    return LocalPathIndex(
+        root=root,
+        kind=kind,
+        by_relative_stem=by_relative_stem,
+        by_basename_stem=by_basename_stem,
+        by_export_suffix=by_export_suffix,
+    )
+
+
+def build_local_stem_candidates(*, sample_id: str, sample_row: ProjectSampleRow | None) -> list[str]:
+    seen: set[str] = set()
+    candidates: list[str] = []
+
+    def add(value: str) -> None:
+        text = text_value(value)
+        if not text or text in seen:
+            return
+        seen.add(text)
+        candidates.append(text)
+
+    add(sample_id)
+    if sample_row is None:
+        return candidates
+
+    fallback_filename = sample_row.original_filename or sample_row.sample_name
+    for raw_name in (sample_row.sample_name, sample_row.original_filename):
+        export_stem = build_export_stem(
+            raw_name=raw_name,
+            sample_id=sample_id,
+            fallback_filename=fallback_filename,
+        )
+        if not export_stem:
+            continue
+        add(export_stem)
+        add(Path(export_stem).name)
+    return candidates
+
+
+def dedupe_paths(paths: list[Path]) -> list[Path]:
+    seen: set[str] = set()
+    output: list[Path] = []
+    for path in paths:
+        key = str(path.resolve())
+        if key in seen:
+            continue
+        seen.add(key)
+        output.append(path)
+    return output
+
+
+def require_unique_local_match(*, matches: list[Path], sample_id: str, index: LocalPathIndex, reason: str) -> Path:
+    unique = dedupe_paths(matches)
+    if len(unique) == 1:
+        return unique[0]
+    if len(unique) > 1:
+        preview = ", ".join(str(path.relative_to(index.root)) for path in unique[:5])
+        raise RuntimeError(
+            f"multiple local {index.kind} files found for sample_id={sample_id} under {index.root} "
+            f"via {reason}: {preview}"
+        )
+    raise FileNotFoundError(f"local {index.kind} not found for sample_id={sample_id} under {index.root}")
 
 
 def merged_request_params(candidate: CandidateRow) -> dict[str, Any]:
@@ -804,22 +977,129 @@ def ordered_label_rows_for_candidate(
     return [item for item in project_labels if item.id in include_label_ids]
 
 
-def find_local_image_path(images_dir: Path, sample_id: str) -> Path:
-    exact_matches = [
-        path
-        for path in images_dir.iterdir()
-        if path.is_file() and path.stem == sample_id and path.suffix.lower() in SUPPORTED_IMAGE_SUFFIXES
-    ]
-    if len(exact_matches) == 1:
-        return exact_matches[0]
-    if len(exact_matches) > 1:
-        raise RuntimeError(f"multiple local images found for sample_id={sample_id} under {images_dir}")
+def candidate_yolo_task(candidate: CandidateRow) -> str:
+    params = plugin_params_for_eval(candidate)
+    task = text_value(params.get("yolo_task") or params.get("task"))
+    return task.lower() if task else "obb"
 
-    for suffix in SUPPORTED_IMAGE_SUFFIXES:
-        candidate = images_dir / f"{sample_id}{suffix}"
-        if candidate.exists():
-            return candidate
-    raise FileNotFoundError(f"local image not found for sample_id={sample_id} under {images_dir}")
+
+def read_image_size(path: Path) -> tuple[int, int]:
+    try:
+        from PIL import Image  # type: ignore
+    except Exception as exc:
+        raise RuntimeError("Pillow is required to inspect local image sizes for OBB label conversion") from exc
+
+    with Image.open(path) as image:
+        width, height = image.size
+    width = int(width)
+    height = int(height)
+    if width <= 0 or height <= 0:
+        raise RuntimeError(f"invalid image size for {path}: width={width}, height={height}")
+    return width, height
+
+
+def convert_local_obb_labels_to_poly8(
+    *,
+    label_source: Path,
+    image_path: Path,
+    label_rows: list[ProjectLabelRow],
+) -> str:
+    raw_text = label_source.read_text(encoding="utf-8")
+    if not raw_text.strip():
+        return ""
+
+    add_repo_src_paths()
+    from saki_ir import ConversionContext, ConversionReport, ir_to_yolo_obb_txt, yolo_obb_txt_to_ir  # type: ignore
+
+    image_w, image_h = read_image_size(image_path)
+    class_names = [row.name for row in label_rows]
+    class_to_index = {row.name: index for index, row in enumerate(label_rows)}
+    import_ctx = ConversionContext(
+        strict=False,
+        include_external_ref=False,
+        emit_labels=True,
+        yolo_is_normalized=True,
+        # Accept either 6-col rbox or 9-col poly8 local labels, then re-export poly8.
+        yolo_label_format="det",
+        yolo_obb_angle_unit="deg",
+        yolo_float_precision=6,
+    )
+    import_report = ConversionReport()
+    batch = yolo_obb_txt_to_ir(
+        raw_text,
+        image_w=image_w,
+        image_h=image_h,
+        class_names=class_names,
+        image_relpath=image_path.name,
+        ctx=import_ctx,
+        report=import_report,
+    )
+    if import_report.errors:
+        preview = "; ".join(import_report.errors[:3])
+        raise RuntimeError(
+            f"failed to parse local OBB label file {label_source}: {preview}"
+        )
+
+    export_report = ConversionReport()
+    converted = ir_to_yolo_obb_txt(
+        batch,
+        image_w=image_w,
+        image_h=image_h,
+        class_to_index=class_to_index,
+        fmt="poly8",
+        angle_unit="deg",
+        ctx=import_ctx,
+        report=export_report,
+    )
+    if export_report.errors:
+        preview = "; ".join(export_report.errors[:3])
+        raise RuntimeError(
+            f"failed to convert local OBB label file {label_source} to poly8: {preview}"
+        )
+    return f"{converted}\n" if converted else ""
+
+
+def find_local_path(
+    *,
+    index: LocalPathIndex,
+    sample_id: str,
+    sample_row: ProjectSampleRow | None,
+) -> Path:
+    candidate_stems = build_local_stem_candidates(sample_id=sample_id, sample_row=sample_row)
+    for stem in candidate_stems:
+        relative_matches = index.by_relative_stem.get(stem) or []
+        if relative_matches:
+            return require_unique_local_match(
+                matches=relative_matches,
+                sample_id=sample_id,
+                index=index,
+                reason=f"relative_stem={stem}",
+            )
+        basename_matches = index.by_basename_stem.get(stem) or []
+        if basename_matches:
+            return require_unique_local_match(
+                matches=basename_matches,
+                sample_id=sample_id,
+                index=index,
+                reason=f"basename_stem={stem}",
+            )
+
+    export_suffix = text_value(sample_id).replace("-", "")[:8].lower()
+    if export_suffix:
+        suffix_matches = index.by_export_suffix.get(export_suffix) or []
+        if suffix_matches:
+            return require_unique_local_match(
+                matches=suffix_matches,
+                sample_id=sample_id,
+                index=index,
+                reason=f"export_suffix={export_suffix}",
+            )
+
+    tried = ", ".join(candidate_stems[:6])
+    raise FileNotFoundError(
+        f"local {index.kind} not found for sample_id={sample_id} under {index.root}; "
+        f"tried={tried or sample_id}"
+    )
 
 
 def write_empty_label_file(path: Path) -> None:
@@ -830,10 +1110,11 @@ def write_empty_label_file(path: Path) -> None:
 def materialize_local_eval_dataset(
     *,
     candidate: CandidateRow,
-    local_images_dir: Path,
-    local_labels_dir: Path,
+    local_image_index: LocalPathIndex,
+    local_label_index: LocalPathIndex,
     dataset_cache_root: Path,
     loop_test_partitions: dict[str, dict[str, list[str]]],
+    sample_rows_by_id: dict[str, ProjectSampleRow],
     project_labels: list[ProjectLabelRow],
     strict_local_labels: bool,
 ) -> InputSource:
@@ -841,6 +1122,7 @@ def materialize_local_eval_dataset(
     anchor_ids = sorted(set(partition_rows.get("test_anchor") or []))
     batch_ids = sorted(set(partition_rows.get("test_batch") or []))
     composite_ids = sorted(set(anchor_ids).union(batch_ids))
+    yolo_task = candidate_yolo_task(candidate)
     if not composite_ids:
         return InputSource(
             kind="missing",
@@ -858,11 +1140,13 @@ def materialize_local_eval_dataset(
     dataset_key_payload = {
         "loop_id": candidate.loop_id,
         "label_ids": [item.id for item in label_rows],
-        "images_dir": str(local_images_dir),
-        "labels_dir": str(local_labels_dir),
+        "images_dir": str(local_image_index.root),
+        "labels_dir": str(local_label_index.root),
         "anchor_ids": anchor_ids,
         "batch_ids": batch_ids,
         "strict_local_labels": bool(strict_local_labels),
+        "yolo_task": yolo_task,
+        "materializer_version": 2,
     }
     dataset_key = hashlib.sha256(
         json.dumps(dataset_key_payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
@@ -879,19 +1163,39 @@ def materialize_local_eval_dataset(
 
     missing_labels: list[str] = []
     for sample_id in composite_ids:
-        image_path = find_local_image_path(local_images_dir, sample_id)
+        sample_row = sample_rows_by_id.get(sample_id)
+        image_path = find_local_path(
+            index=local_image_index,
+            sample_id=sample_id,
+            sample_row=sample_row,
+        )
         image_target = images_val_dir / f"{sample_id}{image_path.suffix.lower()}"
         link_or_copy_file(image_path, image_target)
 
-        label_source = local_labels_dir / f"{sample_id}.txt"
         label_target = labels_val_dir / f"{sample_id}.txt"
-        if label_source.exists():
-            link_or_copy_file(label_source, label_target)
-        else:
+        try:
+            label_source = find_local_path(
+                index=local_label_index,
+                sample_id=sample_id,
+                sample_row=sample_row,
+            )
+            if yolo_task == "obb":
+                converted_label = convert_local_obb_labels_to_poly8(
+                    label_source=label_source,
+                    image_path=image_target,
+                    label_rows=label_rows,
+                )
+                if converted_label:
+                    label_target.write_text(converted_label, encoding="utf-8")
+                else:
+                    write_empty_label_file(label_target)
+            else:
+                link_or_copy_file(label_source, label_target)
+        except FileNotFoundError:
             missing_labels.append(sample_id)
             if strict_local_labels:
                 raise FileNotFoundError(
-                    f"local label not found for sample_id={sample_id} under {local_labels_dir}"
+                    f"local label not found for sample_id={sample_id} under {local_label_index.root}"
                 )
             write_empty_label_file(label_target)
 
@@ -939,8 +1243,8 @@ def materialize_local_eval_dataset(
             "test_batch": batch_ids,
         },
         "local_dataset_meta": {
-            "images_dir": str(local_images_dir),
-            "labels_dir": str(local_labels_dir),
+            "images_dir": str(local_image_index.root),
+            "labels_dir": str(local_label_index.root),
             "strict_local_labels": bool(strict_local_labels),
             "missing_label_count": len(missing_labels),
             "missing_label_sample_ids": missing_labels,
@@ -1436,18 +1740,22 @@ def rerun_candidate(
     profile_id: str,
     project_labels: list[ProjectLabelRow],
     loop_test_partitions: dict[str, dict[str, list[str]]],
+    sample_rows_by_id: dict[str, ProjectSampleRow],
+    local_image_index: LocalPathIndex | None,
+    local_label_index: LocalPathIndex | None,
     args: argparse.Namespace,
 ) -> dict[str, str]:
     if args.local_images_dir and args.local_labels_dir:
-        local_images_dir = resolve_repo_path(args.local_images_dir, default=Path(args.local_images_dir))
-        local_labels_dir = resolve_repo_path(args.local_labels_dir, default=Path(args.local_labels_dir))
         try:
+            if local_image_index is None or local_label_index is None:
+                raise RuntimeError("local path index is not initialized")
             data_source = materialize_local_eval_dataset(
                 candidate=candidate,
-                local_images_dir=local_images_dir,
-                local_labels_dir=local_labels_dir,
+                local_image_index=local_image_index,
+                local_label_index=local_label_index,
                 dataset_cache_root=dataset_cache_root,
                 loop_test_partitions=loop_test_partitions,
+                sample_rows_by_id=sample_rows_by_id,
                 project_labels=project_labels,
                 strict_local_labels=bool(args.strict_local_labels),
             )
@@ -1711,8 +2019,6 @@ def main() -> None:
         rerun_candidates = [item for item in rerun_candidates if is_selected_sim_loop(item.loop_name)]
 
     if args.loop_name_regex:
-        import re
-
         pattern = re.compile(args.loop_name_regex)
         rerun_candidates = [item for item in rerun_candidates if pattern.search(item.loop_name)]
 
@@ -1741,9 +2047,14 @@ def main() -> None:
 
     project_labels: list[ProjectLabelRow] = []
     loop_test_partitions: dict[str, dict[str, list[str]]] = {}
+    sample_rows_by_id: dict[str, ProjectSampleRow] = {}
+    local_image_index: LocalPathIndex | None = None
+    local_label_index: LocalPathIndex | None = None
     if args.local_images_dir or args.local_labels_dir:
         if not (args.local_images_dir and args.local_labels_dir):
             raise SystemExit("--local-images-dir 和 --local-labels-dir 必须同时提供")
+        local_images_dir = resolve_repo_path(args.local_images_dir, default=Path(args.local_images_dir))
+        local_labels_dir = resolve_repo_path(args.local_labels_dir, default=Path(args.local_labels_dir))
         project_labels = fetch_project_labels(
             host=args.host,
             port=args.port,
@@ -1752,13 +2063,23 @@ def main() -> None:
             password=password,
             project_id=args.project_id,
         )
-        loop_test_partitions = fetch_loop_test_partitions(
+        loop_test_partitions, sample_rows_by_id = fetch_loop_test_partitions(
             host=args.host,
             port=args.port,
             user=args.user,
             database=args.database,
             password=password,
             project_id=args.project_id,
+        )
+        local_image_index = build_local_path_index(
+            root=local_images_dir,
+            kind="image",
+            allowed_suffixes=SUPPORTED_IMAGE_SUFFIXES,
+        )
+        local_label_index = build_local_path_index(
+            root=local_labels_dir,
+            kind="label",
+            allowed_suffixes=(".txt",),
         )
 
     rows: list[dict[str, str]] = []
@@ -1780,6 +2101,9 @@ def main() -> None:
                 profile_id=profile_id,
                 project_labels=project_labels,
                 loop_test_partitions=loop_test_partitions,
+                sample_rows_by_id=sample_rows_by_id,
+                local_image_index=local_image_index,
+                local_label_index=local_label_index,
                 args=args,
             )
         )

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import heapq
+import time
 from typing import Any, Awaitable, Callable
 
 from saki_executor.cache.asset_cache import AssetCache
@@ -9,6 +10,7 @@ from saki_executor.steps.contracts import FetchedPage
 from saki_plugin_sdk import ExecutionBindingContext, ExecutorPlugin, WorkspaceProtocol
 
 FetchPageFn = Callable[..., Awaitable[FetchedPage]]
+EmitLogFn = Callable[[dict[str, Any]], Awaitable[None]]
 
 
 class SamplingService:
@@ -123,15 +125,46 @@ class SamplingService:
         protected: set[str],
         query_type: str,
         context: ExecutionBindingContext,
+        emit_log: EmitLogFn | None = None,
     ) -> list[dict[str, Any]]:
         page_size = max(1, min(5000, int(params.get("predict_page_size", params.get("unlabeled_page_size", 1000)))))
         cursor: str | None = None
         rows: list[dict[str, Any]] = []
+        total_started_at = time.perf_counter()
+        page_index = 0
+        total_samples = 0
+        total_batch_rows = 0
+        total_nonempty_rows = 0
+        total_pred_boxes = 0
+        total_fetch_sec = 0.0
+        total_cache_sec = 0.0
+        total_predict_sec = 0.0
+        total_normalize_sec = 0.0
+
+        await self._emit_prediction_log(
+            emit_log,
+            level="INFO",
+            message=(
+                "Prediction 分页采集开始 "
+                f"page_size={page_size} predict_conf={params.get('predict_conf')} "
+                f"imgsz={params.get('imgsz')} batch={params.get('batch')}"
+            ),
+            meta={
+                "phase": "start",
+                "page_size": page_size,
+                "predict_conf": params.get("predict_conf"),
+                "imgsz": params.get("imgsz"),
+                "batch": params.get("batch"),
+                "query_type": query_type,
+            },
+        )
 
         while True:
             if self._stop_event.is_set():
                 raise asyncio.CancelledError("step stop requested")
 
+            page_index += 1
+            fetch_started_at = time.perf_counter()
             response = await self._fetch_page(
                 task_id=task_id,
                 query_type=query_type,
@@ -140,36 +173,122 @@ class SamplingService:
                 cursor=cursor,
                 limit=page_size,
             )
+            fetch_sec = time.perf_counter() - fetch_started_at
+            total_fetch_sec += fetch_sec
             chunk = response.items
             if not chunk and not response.next_cursor:
                 break
 
+            cache_hits = 0
+            cache_misses = 0
+            cache_started_at = time.perf_counter()
             for item in chunk:
                 asset_hash = item.get("asset_hash")
                 download_url = item.get("download_url")
                 if not asset_hash or not download_url:
                     continue
+                asset_hash_text = str(asset_hash)
+                if self._cache.is_cached(asset_hash_text):
+                    cache_hits += 1
+                else:
+                    cache_misses += 1
                 cached_path = await self._cache.ensure_cached(
-                    str(asset_hash),
+                    asset_hash_text,
                     str(download_url),
                     protected=protected,
                     pin_task_id=task_id,
                 )
                 item["local_path"] = str(cached_path)
-                protected.add(str(asset_hash))
+                protected.add(asset_hash_text)
+            cache_sec = time.perf_counter() - cache_started_at
+            total_cache_sec += cache_sec
 
+            predict_started_at = time.perf_counter()
             batch = await plugin.predict_samples_batch(
                 workspace=workspace,
                 samples=chunk,
                 params=params,
                 context=context,
             )
-            rows.extend(self._normalize_batch(batch or []))
+            predict_sec = time.perf_counter() - predict_started_at
+            total_predict_sec += predict_sec
+
+            normalize_started_at = time.perf_counter()
+            normalized_batch = self._normalize_batch(batch or [])
+            normalize_sec = time.perf_counter() - normalize_started_at
+            total_normalize_sec += normalize_sec
+            rows.extend(normalized_batch)
+
+            page_nonempty_rows, page_pred_boxes = self._summarize_prediction_batch(batch or [])
+            total_samples += len(chunk)
+            total_batch_rows += len(batch or [])
+            total_nonempty_rows += page_nonempty_rows
+            total_pred_boxes += page_pred_boxes
+
+            await self._emit_prediction_log(
+                emit_log,
+                level="INFO",
+                message=(
+                    f"Prediction 分页[{page_index}] samples={len(chunk)} "
+                    f"fetch={fetch_sec:.3f}s cache={cache_sec:.3f}s "
+                    f"(hit={cache_hits} miss={cache_misses}) "
+                    f"predict={predict_sec:.3f}s normalize={normalize_sec:.3f}s "
+                    f"returned={len(batch or [])} nonempty={page_nonempty_rows} boxes={page_pred_boxes}"
+                ),
+                meta={
+                    "phase": "page",
+                    "page_index": page_index,
+                    "samples": len(chunk),
+                    "fetch_sec": round(fetch_sec, 6),
+                    "cache_sec": round(cache_sec, 6),
+                    "cache_hits": cache_hits,
+                    "cache_misses": cache_misses,
+                    "predict_sec": round(predict_sec, 6),
+                    "normalize_sec": round(normalize_sec, 6),
+                    "returned_rows": len(batch or []),
+                    "normalized_rows": len(normalized_batch),
+                    "nonempty_rows": page_nonempty_rows,
+                    "pred_boxes": page_pred_boxes,
+                    "cumulative_samples": total_samples,
+                    "cumulative_returned_rows": total_batch_rows,
+                    "cumulative_nonempty_rows": total_nonempty_rows,
+                    "cumulative_pred_boxes": total_pred_boxes,
+                },
+            )
             cursor = response.next_cursor
             if not cursor:
                 break
 
-        return self._build_ranked_output_from_rows(rows)
+        rank_started_at = time.perf_counter()
+        ranked_rows = self._build_ranked_output_from_rows(rows)
+        rank_sec = time.perf_counter() - rank_started_at
+        total_sec = time.perf_counter() - total_started_at
+        await self._emit_prediction_log(
+            emit_log,
+            level="INFO",
+            message=(
+                f"Prediction 分页采集完成 pages={page_index} samples={total_samples} "
+                f"fetch={total_fetch_sec:.3f}s cache={total_cache_sec:.3f}s "
+                f"predict={total_predict_sec:.3f}s normalize={total_normalize_sec:.3f}s "
+                f"rank={rank_sec:.3f}s total={total_sec:.3f}s "
+                f"returned={total_batch_rows} nonempty={total_nonempty_rows} boxes={total_pred_boxes}"
+            ),
+            meta={
+                "phase": "done",
+                "pages": page_index,
+                "samples": total_samples,
+                "fetch_sec": round(total_fetch_sec, 6),
+                "cache_sec": round(total_cache_sec, 6),
+                "predict_sec": round(total_predict_sec, 6),
+                "normalize_sec": round(total_normalize_sec, 6),
+                "rank_sec": round(rank_sec, 6),
+                "total_sec": round(total_sec, 6),
+                "returned_rows": total_batch_rows,
+                "nonempty_rows": total_nonempty_rows,
+                "pred_boxes": total_pred_boxes,
+            },
+        )
+        return ranked_rows
 
     @staticmethod
     def _normalize_batch(batch: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -245,3 +364,44 @@ class SamplingService:
                 row["reason"] = {**reason, "rank": rank}
             output.append(row)
         return output
+
+    @staticmethod
+    async def _emit_prediction_log(
+        emit_log: EmitLogFn | None,
+        *,
+        level: str,
+        message: str,
+        meta: dict[str, Any],
+    ) -> None:
+        if emit_log is None:
+            return
+        await emit_log(
+            {
+                "level": level,
+                "message": message,
+                "message_key": "prediction.perf",
+                "message_args": dict(meta),
+                "meta": dict(meta),
+            }
+        )
+
+    @staticmethod
+    def _summarize_prediction_batch(batch: list[dict[str, Any]]) -> tuple[int, int]:
+        nonempty_rows = 0
+        pred_boxes = 0
+        for item in batch:
+            if not isinstance(item, dict):
+                continue
+            snapshot_raw = item.get("prediction_snapshot")
+            snapshot = snapshot_raw if isinstance(snapshot_raw, dict) else {}
+            box_count = 0
+            for key in ("base_predictions", "predictions"):
+                rows_raw = snapshot.get(key)
+                if isinstance(rows_raw, list):
+                    box_count = len(rows_raw)
+                    if box_count > 0:
+                        break
+            if box_count > 0:
+                nonempty_rows += 1
+                pred_boxes += box_count
+        return nonempty_rows, pred_boxes

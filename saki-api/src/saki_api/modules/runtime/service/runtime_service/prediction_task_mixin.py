@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 import uuid
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import func
@@ -25,6 +27,8 @@ from saki_api.modules.runtime.domain.prediction_item import PredictionItem
 from saki_api.modules.runtime.domain.prediction import Prediction
 from saki_api.modules.runtime.domain.step import Step
 from saki_api.modules.runtime.domain.task_candidate_item import TaskCandidateItem
+from saki_api.modules.runtime.domain.task import Task
+from saki_api.modules.runtime.domain.task_event import TaskEvent
 from saki_api.modules.runtime.service.runtime_service.prediction_label_resolver import (
     PredictionLabelResolver,
     PredictionResolveError,
@@ -40,6 +44,39 @@ from saki_api.modules.system.service.system_settings_reader import system_settin
 
 
 class PredictionTaskMixin:
+    async def _append_task_log_event(
+        self,
+        *,
+        task: Task,
+        level: str,
+        message: str,
+        message_key: str,
+        meta: dict[str, Any],
+    ) -> None:
+        execution_id = getattr(task, "current_execution_id", None) or uuid.uuid4()
+        seq_stmt = select(func.max(TaskEvent.seq)).where(
+            TaskEvent.task_id == task.id,
+            TaskEvent.execution_id == execution_id,
+        )
+        current_seq = (await self.session.exec(seq_stmt)).one_or_none()
+        next_seq = int(current_seq or 0) + 1
+        await self.task_event_repo.create(
+            {
+                "task_id": task.id,
+                "execution_id": execution_id,
+                "seq": next_seq,
+                "ts": datetime.now(UTC),
+                "event_type": "log",
+                "payload": {
+                    "level": str(level or "INFO"),
+                    "message": str(message or ""),
+                    "message_key": str(message_key or ""),
+                    "message_args": dict(meta or {}),
+                    "meta": dict(meta or {}),
+                },
+            }
+        )
+
     @staticmethod
     def _safe_uuid(raw: Any) -> uuid.UUID | None:
         if raw is None:
@@ -575,6 +612,18 @@ class PredictionTaskMixin:
                     "last_error": None,
                 },
             ) or prediction
+            materialize_started_at = time.perf_counter()
+            await self._append_task_log_event(
+                task=task,
+                level="INFO",
+                message=f"Prediction materializing started prediction_id={prediction.id}",
+                message_key="prediction.materializing",
+                meta={
+                    "phase": "start",
+                    "prediction_id": str(prediction.id),
+                    "task_id": str(task.id),
+                },
+            )
 
             task_meta = prediction.params.get("_prediction_task") if isinstance(prediction.params, dict) else {}
             target_branch_id = self._safe_uuid(task_meta.get("target_branch_id")) if isinstance(task_meta, dict) else None
@@ -585,7 +634,10 @@ class PredictionTaskMixin:
                 branch_row = await self.project_gateway.get_branch(target_branch_id)
                 base_commit_id = branch_row.head_commit_id if branch_row else None
 
+            source_candidates_started_at = time.perf_counter()
             source_candidates = await self._task_result_candidates(task_id=task.id)
+            source_candidates_sec = time.perf_counter() - source_candidates_started_at
+            filter_started_at = time.perf_counter()
             filtered_candidates = await self._filter_candidates_by_sample_scope(
                 project_id=prediction.project_id,
                 target_branch_id=target_branch_id,
@@ -595,12 +647,39 @@ class PredictionTaskMixin:
                 scope_payload=dict(prediction.scope_payload or {}),
                 candidates=source_candidates,
             )
+            filter_sec = time.perf_counter() - filter_started_at
+            build_rows_started_at = time.perf_counter()
             try:
                 prediction_rows, total_prediction_items = await self._build_prediction_rows_from_candidates(
                     prediction_id=prediction.id,
                     candidates=filtered_candidates,
                 )
             except PredictionResolveError as exc:
+                build_rows_sec = time.perf_counter() - build_rows_started_at
+                total_sec = time.perf_counter() - materialize_started_at
+                await self._append_task_log_event(
+                    task=task,
+                    level="ERROR",
+                    message=(
+                        f"Prediction materializing failed prediction_id={prediction.id} "
+                        f"source_candidates={len(source_candidates)} filtered={len(filtered_candidates)} "
+                        f"load={source_candidates_sec:.3f}s filter={filter_sec:.3f}s "
+                        f"build={build_rows_sec:.3f}s total={total_sec:.3f}s error={exc.to_error_message()}"
+                    ),
+                    message_key="prediction.materializing",
+                    meta={
+                        "phase": "failed",
+                        "prediction_id": str(prediction.id),
+                        "task_id": str(task.id),
+                        "source_candidates": len(source_candidates),
+                        "filtered_candidates": len(filtered_candidates),
+                        "source_candidates_sec": round(source_candidates_sec, 6),
+                        "filter_sec": round(filter_sec, 6),
+                        "build_rows_sec": round(build_rows_sec, 6),
+                        "total_sec": round(total_sec, 6),
+                        "error": exc.to_error_message(),
+                    },
+                )
                 prediction = await self.prediction_repo.update(
                     prediction.id,
                     {
@@ -609,9 +688,39 @@ class PredictionTaskMixin:
                     },
                 ) or prediction
                 return self._attach_task_projection(prediction, None)
+            build_rows_sec = time.perf_counter() - build_rows_started_at
+            replace_rows_started_at = time.perf_counter()
             await self.prediction_item_repo.replace_rows(
                 prediction_id=prediction.id,
                 rows=prediction_rows,
+            )
+            replace_rows_sec = time.perf_counter() - replace_rows_started_at
+            total_sec = time.perf_counter() - materialize_started_at
+            await self._append_task_log_event(
+                task=task,
+                level="INFO",
+                message=(
+                    f"Prediction materializing finished prediction_id={prediction.id} "
+                    f"source_candidates={len(source_candidates)} filtered={len(filtered_candidates)} "
+                    f"prediction_rows={len(prediction_rows)} boxes={int(total_prediction_items)} "
+                    f"load={source_candidates_sec:.3f}s filter={filter_sec:.3f}s "
+                    f"build={build_rows_sec:.3f}s replace={replace_rows_sec:.3f}s total={total_sec:.3f}s"
+                ),
+                message_key="prediction.materializing",
+                meta={
+                    "phase": "done",
+                    "prediction_id": str(prediction.id),
+                    "task_id": str(task.id),
+                    "source_candidates": len(source_candidates),
+                    "filtered_candidates": len(filtered_candidates),
+                    "prediction_rows": len(prediction_rows),
+                    "prediction_boxes": int(total_prediction_items),
+                    "source_candidates_sec": round(source_candidates_sec, 6),
+                    "filter_sec": round(filter_sec, 6),
+                    "build_rows_sec": round(build_rows_sec, 6),
+                    "replace_rows_sec": round(replace_rows_sec, 6),
+                    "total_sec": round(total_sec, 6),
+                },
             )
             prediction = await self.prediction_repo.update(
                 prediction.id,

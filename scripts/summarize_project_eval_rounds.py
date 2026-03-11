@@ -10,7 +10,7 @@ import shutil
 import statistics
 import subprocess
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 
@@ -30,6 +30,19 @@ class RoundEvalRow:
     map50_95: float | None
     precision: float | None
     recall: float | None
+    metric_source: str = "db"
+
+
+@dataclass(frozen=True)
+class RerunMetricRow:
+    loop_name: str
+    round_index: int
+    attempt_index: int
+    rerun_status: str
+    map50: float | None
+    map50_95: float | None
+    precision: float | None
+    recall: float | None
 
 
 def parse_args() -> argparse.Namespace:
@@ -41,6 +54,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--database", default="saki")
     parser.add_argument("--password-env", default="PGPASSWORD")
     parser.add_argument("--out-dir", default="runs/exports")
+    parser.add_argument("--rerun-metrics-csv", default="")
+    parser.add_argument("--filename-suffix", default="")
     return parser.parse_args()
 
 
@@ -156,6 +171,63 @@ ORDER BY lr.loop_name, lr.round_index
     ]
 
 
+def load_rerun_metric_rows(path: Path) -> dict[tuple[str, int, int], RerunMetricRow]:
+    overrides: dict[tuple[str, int, int], RerunMetricRow] = {}
+    with path.open(encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        for row in reader:
+            loop_name = (row.get("loop_name") or "").strip()
+            round_index = int((row.get("round_index") or "0").strip() or 0)
+            attempt_index = int((row.get("attempt_index") or "0").strip() or 0)
+            rerun_status = (row.get("rerun_status") or "").strip()
+            map50 = parse_float(row.get("rerun_map50") or "")
+            map50_95 = parse_float(row.get("rerun_map50_95") or "")
+            precision = parse_float(row.get("rerun_precision") or "")
+            recall = parse_float(row.get("rerun_recall") or "")
+            if not loop_name or round_index <= 0 or attempt_index <= 0:
+                continue
+            if not any(value is not None for value in (map50, map50_95, precision, recall)):
+                continue
+            overrides[(loop_name, round_index, attempt_index)] = RerunMetricRow(
+                loop_name=loop_name,
+                round_index=round_index,
+                attempt_index=attempt_index,
+                rerun_status=rerun_status,
+                map50=map50,
+                map50_95=map50_95,
+                precision=precision,
+                recall=recall,
+            )
+    return overrides
+
+
+def overlay_rerun_metrics(
+    latest_rows: list[RoundEvalRow],
+    overrides: dict[tuple[str, int, int], RerunMetricRow],
+) -> tuple[list[RoundEvalRow], int]:
+    merged: list[RoundEvalRow] = []
+    applied = 0
+    for row in latest_rows:
+        override = overrides.get((row.loop_name, row.round_index, row.attempt_index))
+        if override is None:
+            merged.append(row)
+            continue
+        merged.append(
+            replace(
+                row,
+                eval_step_state="SUCCEEDED",
+                eval_task_status="SUCCEEDED",
+                map50=override.map50,
+                map50_95=override.map50_95,
+                precision=override.precision,
+                recall=override.recall,
+                metric_source=f"rerun:{override.rerun_status or 'metrics'}",
+            )
+        )
+        applied += 1
+    return merged, applied
+
+
 def derive_groups(loop_names: list[str]) -> tuple[dict[str, str], dict[str, str]]:
     suffix_match: dict[str, tuple[str, str]] = {}
     prefix_members: dict[str, list[str]] = defaultdict(list)
@@ -249,6 +321,13 @@ def main() -> None:
         database=args.database,
         project_id=args.project_id,
     )
+    rerun_overlay_count = 0
+    if args.rerun_metrics_csv:
+        rerun_metrics_path = Path(args.rerun_metrics_csv)
+        if not rerun_metrics_path.exists():
+            raise SystemExit(f"补跑结果 CSV 不存在: {rerun_metrics_path}")
+        rerun_overrides = load_rerun_metric_rows(rerun_metrics_path)
+        latest_rows, rerun_overlay_count = overlay_rerun_metrics(latest_rows, rerun_overrides)
     loop_names = sorted({row.loop_name for row in latest_rows})
     group_by_loop, seed_by_loop = derive_groups(loop_names)
 
@@ -268,10 +347,19 @@ def main() -> None:
         success_rows = [row for row in round_rows if is_success(row)]
         failed_rows = [row for row in round_rows if not is_success(row)]
         non_success_included_rows = [row for row in success_rows if is_non_success_status(row)]
+        rerun_rows = [row for row in success_rows if row.metric_source.startswith("rerun:")]
         present_loop_names = {row.loop_name for row in round_rows}
         missing_rows = [name for name in group_members[group_name] if name not in present_loop_names]
 
         notes: list[str] = []
+        if rerun_rows:
+            notes.append(
+                "补跑覆盖: "
+                + "; ".join(
+                    f"{row.loop_name}(attempt={row.attempt_index}, source={row.metric_source})"
+                    for row in rerun_rows
+                )
+            )
         if non_success_included_rows:
             notes.append(
                 "非成功态但已纳入: "
@@ -332,6 +420,7 @@ def main() -> None:
         "",
         f"- 共识别出 {len(group_members)} 个实验组。",
         f"- 其中多 seed 实验组 {len(seeded_groups)} 个，单独实验 {len(single_groups)} 个。",
+        f"- 补跑结果覆盖 {rerun_overlay_count} 个 latest-attempt round。",
         "",
         "## 多 Seed 实验组",
     ]
@@ -342,8 +431,9 @@ def main() -> None:
         overview_lines.append(f"- `{group_name}`")
 
     out_dir = Path(args.out_dir)
-    csv_path = out_dir / f"{args.project_id}_experiment_round_eval_stats.csv"
-    md_path = out_dir / f"{args.project_id}_experiment_overview.md"
+    suffix = f"_{args.filename_suffix.strip()}" if args.filename_suffix.strip() else ""
+    csv_path = out_dir / f"{args.project_id}_experiment_round_eval_stats{suffix}.csv"
+    md_path = out_dir / f"{args.project_id}_experiment_overview{suffix}.md"
     write_csv(csv_path, stat_rows)
     write_markdown(md_path, "\n".join(overview_lines) + "\n")
     print(csv_path)

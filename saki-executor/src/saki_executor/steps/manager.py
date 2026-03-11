@@ -284,6 +284,7 @@ class TaskManager:
         protected: set[str],
         query_type: str,
         context: ExecutionBindingContext,
+        emit_log=None,
     ) -> list[dict[str, Any]]:
         return await self._collect_prediction_candidates_streaming(
             plugin=plugin,
@@ -295,6 +296,7 @@ class TaskManager:
             protected=protected,
             query_type=query_type,
             context=context,
+            emit_log=emit_log,
         )
 
     async def assign_task(self, request_id: str, payload: dict[str, Any]) -> bool:
@@ -689,6 +691,7 @@ class TaskManager:
         protected: set[str],
         query_type: str,
         context: ExecutionBindingContext,
+        emit_log=None,
     ) -> list[dict[str, Any]]:
         return await self._sampling_service.collect_prediction_candidates_streaming(
             plugin=plugin,
@@ -700,6 +703,7 @@ class TaskManager:
             protected=protected,
             query_type=query_type,
             context=context,
+            emit_log=emit_log,
         )
 
     async def _stall_watchdog_loop(self, request: TaskExecutionRequest) -> None:

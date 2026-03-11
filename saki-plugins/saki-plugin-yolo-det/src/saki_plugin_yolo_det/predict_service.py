@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
+from itertools import zip_longest
 from pathlib import Path
 from typing import Any, Callable
 
@@ -121,6 +122,7 @@ class YoloPredictService:
         cfg = self._config_service.resolve_config(params)
         conf = to_float(cfg.predict_conf, 0.1)
         imgsz = to_int(cfg.imgsz, 640)
+        batch = max(1, to_int(getattr(cfg, "batch", 16), 16))
         device = to_yolo_device(
             str(context.device_binding.backend or ""),
             str(context.device_binding.device_spec or ""),
@@ -135,6 +137,7 @@ class YoloPredictService:
             samples=samples,
             conf=conf,
             imgsz=imgsz,
+            batch=batch,
             device=device,
         )
 
@@ -180,10 +183,12 @@ class YoloPredictService:
         samples: list[dict[str, Any]],
         conf: float,
         imgsz: int,
+        batch: int,
         device: Any,
     ) -> list[dict[str, Any]]:
         model = self._get_or_load_model(model_path=model_path, device=device)
-        rows: list[dict[str, Any]] = []
+        valid_samples: list[tuple[str, Path]] = []
+        image_paths: list[Path] = []
         for sample in samples:
             if self._stop_flag.is_set():
                 raise RuntimeError("prediction stopped")
@@ -194,13 +199,25 @@ class YoloPredictService:
             image_path = Path(local_path)
             if not image_path.exists():
                 continue
-            predictions = self._predict_single_image(
-                model=model,
-                image_path=image_path,
-                conf=conf,
-                imgsz=imgsz,
-                device=device,
-            )
+            valid_samples.append((sample_id, image_path))
+            image_paths.append(image_path)
+
+        results = self._predict_image_batch(
+            model=model,
+            image_paths=image_paths,
+            conf=conf,
+            imgsz=imgsz,
+            batch=batch,
+            device=device,
+        )
+        rows: list[dict[str, Any]] = []
+        for sample_meta, result in zip_longest(valid_samples, results):
+            if self._stop_flag.is_set():
+                raise RuntimeError("prediction stopped")
+            if sample_meta is None:
+                break
+            sample_id, _image_path = sample_meta
+            predictions = self._extract_predictions(result)
             max_conf = max((float(item.get("confidence") or 0.0) for item in predictions), default=0.0)
             rows.append(
                 {
@@ -234,11 +251,32 @@ class YoloPredictService:
         if Image is None or np is None:
             raise RuntimeError("numpy and pillow are required for yolo_det_v1 plugin")
 
-    def _load_predict_source(self, image_path: Path) -> Any:
-        self._ensure_image_deps()
-        with Image.open(image_path) as img:
-            rgb = img.convert("RGB")
-            return np.array(rgb)  # type: ignore[union-attr]
+    def _predict_image_batch(
+        self,
+        *,
+        model: Any,
+        image_paths: list[Path],
+        conf: float,
+        imgsz: int,
+        batch: int,
+        device: Any,
+    ) -> list[Any]:
+        if not image_paths:
+            return []
+        kwargs = {
+            "source": [str(path) for path in image_paths],
+            "conf": conf,
+            "imgsz": imgsz,
+            "device": device,
+            "verbose": False,
+            "batch": max(1, min(int(batch), len(image_paths))),
+        }
+        try:
+            predicts = model.predict(**kwargs)
+        except TypeError:
+            kwargs.pop("batch", None)
+            predicts = model.predict(**kwargs)
+        return list(predicts or [])
 
     def _predict_single_image(
         self,
@@ -249,13 +287,13 @@ class YoloPredictService:
         imgsz: int,
         device: Any,
     ) -> list[dict[str, Any]]:
-        source = self._load_predict_source(image_path)
-        predicts = model.predict(
-            source=source,
+        predicts = self._predict_image_batch(
+            model=model,
+            image_paths=[image_path],
             conf=conf,
             imgsz=imgsz,
+            batch=1,
             device=device,
-            verbose=False,
         )
         first = predicts[0] if predicts else None
         return self._extract_predictions(first)

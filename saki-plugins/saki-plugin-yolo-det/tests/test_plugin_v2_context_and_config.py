@@ -735,7 +735,6 @@ def test_predict_service_extract_predictions_contains_class_index_and_name():
 @pytest.mark.anyio
 async def test_predict_service_uncertainty_accepts_suffixless_local_path(tmp_path: Path):
     from types import SimpleNamespace
-    import numpy as np
     from PIL import Image as PILImage
 
     class _ConfigStub:
@@ -784,11 +783,13 @@ async def test_predict_service_uncertainty_accepts_suffixless_local_path(tmp_pat
         class _FakeYOLO:
             def __init__(self, _model_path: str):
                 self.sources: list[Any] = []
+                self.batches: list[int] = []
                 model_holder["model"] = self
 
-            def predict(self, *, source, conf, imgsz, device, verbose):
+            def predict(self, *, source, conf, imgsz, device, verbose, batch):
                 del conf, imgsz, device, verbose
                 self.sources.append(source)
+                self.batches.append(batch)
                 return [_Result()]
 
         return _FakeYOLO
@@ -859,13 +860,13 @@ async def test_predict_service_uncertainty_accepts_suffixless_local_path(tmp_pat
     model = model_holder.get("model")
     assert model is not None
     assert model.sources
-    assert isinstance(model.sources[0], np.ndarray)
+    assert model.sources[0] == [str(image_path)]
+    assert model.batches == [1]
 
 
 @pytest.mark.anyio
 async def test_predict_service_direct_predict_accepts_suffixless_local_path(tmp_path: Path):
     from types import SimpleNamespace
-    import numpy as np
     from PIL import Image as PILImage
 
     class _ConfigStub:
@@ -911,11 +912,13 @@ async def test_predict_service_direct_predict_accepts_suffixless_local_path(tmp_
         class _FakeYOLO:
             def __init__(self, _model_path: str):
                 self.sources: list[Any] = []
+                self.batches: list[int] = []
                 model_holder["model"] = self
 
-            def predict(self, *, source, conf, imgsz, device, verbose):
+            def predict(self, *, source, conf, imgsz, device, verbose, batch):
                 del conf, imgsz, device, verbose
                 self.sources.append(source)
+                self.batches.append(batch)
                 return [_Result()]
 
         return _FakeYOLO
@@ -989,13 +992,143 @@ async def test_predict_service_direct_predict_accepts_suffixless_local_path(tmp_
     model = model_holder.get("model")
     assert model is not None
     assert model.sources
-    assert isinstance(model.sources[0], np.ndarray)
+    assert model.sources[0] == [str(image_path)]
+    assert model.batches == [1]
+
+
+@pytest.mark.anyio
+async def test_predict_service_direct_predict_batches_multiple_samples(tmp_path: Path):
+    from types import SimpleNamespace
+    from PIL import Image as PILImage
+
+    class _ConfigStub:
+        def resolve_config(self, _params: dict[str, Any], **_kwargs: Any):
+            return SimpleNamespace(
+                predict_conf=0.1,
+                imgsz=640,
+                batch=16,
+            )
+
+        async def resolve_model_ref(self, *, workspace: WorkspaceProtocol, params: Any):
+            del params
+            return str(workspace.artifacts_dir / "best.pt")
+
+    model_holder: dict[str, Any] = {}
+
+    class _Array:
+        def __init__(self, values):
+            self._values = values
+
+        def cpu(self):
+            return self
+
+        def tolist(self):
+            return list(self._values)
+
+    class _Boxes:
+        def __init__(self, idx: int):
+            self.cls = _Array([0])
+            self.conf = _Array([0.6 + (idx * 0.1)])
+            self.xyxy = _Array([[1.0, 2.0, 9.0 + idx, 10.0 + idx]])
+
+        def __len__(self):
+            return 1
+
+    class _Result:
+        def __init__(self, idx: int):
+            self.boxes = _Boxes(idx)
+            self.names = {0: "target"}
+
+    def _load_yolo():
+        class _FakeYOLO:
+            def __init__(self, _model_path: str):
+                self.sources: list[Any] = []
+                self.batches: list[int] = []
+                model_holder["model"] = self
+
+            def predict(self, *, source, conf, imgsz, device, verbose, batch):
+                del conf, imgsz, device, verbose
+                self.sources.append(source)
+                self.batches.append(batch)
+                return [_Result(idx) for idx, _item in enumerate(source)]
+
+        return _FakeYOLO
+
+    service = YoloPredictService(
+        stop_flag=__import__("threading").Event(),
+        config_service=_ConfigStub(),
+        load_yolo=_load_yolo,
+    )
+    workspace = Workspace(str(tmp_path / "runs"), "step-yolo-predict-batch")
+    workspace.ensure()
+    (workspace.artifacts_dir / "best.pt").write_bytes(b"model")
+
+    samples: list[dict[str, Any]] = []
+    for idx in range(3):
+        image_path = tmp_path / "assets" / f"predict_batch_{idx}.png"
+        image_path.parent.mkdir(parents=True, exist_ok=True)
+        PILImage.new("RGB", (16, 16), color=(10 + idx, 120, 30)).save(image_path)
+        samples.append({"id": f"s{idx}", "local_path": str(image_path)})
+
+    context = ExecutionBindingContext(
+        task_context=TaskRuntimeContext(
+            task_id="task-yolo-predict-batch",
+            round_id="round-1",
+            round_index=1,
+            attempt=1,
+            task_type="predict",
+            mode="manual",
+            split_seed=1,
+            train_seed=2,
+            sampling_seed=3,
+            resolved_device_backend="cpu",
+        ),
+        host_capability=HostCapabilitySnapshot.from_dict(
+            {
+                "cpu_workers": 8,
+                "memory_mb": 4096,
+                "gpus": [],
+                "metal_available": False,
+                "platform": "darwin",
+                "arch": "arm64",
+                "driver_info": {},
+            }
+        ),
+        runtime_capability=RuntimeCapabilitySnapshot(
+            framework="torch",
+            framework_version="2.2.0",
+            backends=["cpu"],
+            backend_details={},
+            errors=[],
+        ),
+        device_binding=DeviceBinding(
+            backend="cpu",
+            device_spec="cpu",
+            precision="fp32",
+            profile_id="cpu",
+            reason="test",
+            fallback_applied=False,
+        ),
+        profile_id="cpu",
+    )
+
+    rows = await service.predict_samples_batch(
+        workspace=workspace,
+        samples=samples,
+        params={},
+        context=context,
+    )
+
+    assert len(rows) == 3
+    model = model_holder.get("model")
+    assert model is not None
+    assert model.sources == [[sample["local_path"] for sample in samples]]
+    assert model.batches == [3]
 
 
 @pytest.mark.anyio
 async def test_predict_service_predict_samples_keeps_full_prediction_snapshot(tmp_path: Path):
     from types import SimpleNamespace
-    import numpy as np
     from PIL import Image as PILImage
 
     class _ConfigStub:
@@ -1043,8 +1176,9 @@ async def test_predict_service_predict_samples_keeps_full_prediction_snapshot(tm
             def __init__(self, _model_path: str):
                 pass
 
-            def predict(self, *, source, conf, imgsz, device, verbose):
+            def predict(self, *, source, conf, imgsz, device, verbose, batch):
                 del source, conf, imgsz, device, verbose
+                assert batch == 1
                 return [_Result()]
 
         return _FakeYOLO

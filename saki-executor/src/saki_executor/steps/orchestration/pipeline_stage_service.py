@@ -931,6 +931,7 @@ class PipelineStageService:
             protected=protected,
             query_type="samples",
             context=bound_plan.execution_context,
+            emit_log=lambda payload: emitter.emit("log", payload),
         )
 
     async def _upload_artifacts(

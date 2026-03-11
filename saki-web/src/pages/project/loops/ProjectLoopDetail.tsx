@@ -37,6 +37,7 @@ import {
 import {ROUND_WS_RECONNECT_DELAYS, buildRoundEventsWsUrl} from './runtimeRoundWs';
 import {formatDateTime} from './runtimeTime';
 import {isLoopDeletable} from './loopLifecycle';
+import {resolvePredictionTargetModel} from './predictionModelSelection';
 import {
     Loop,
     LoopSnapshotRead,
@@ -635,8 +636,25 @@ const ProjectLoopDetail: React.FC = () => {
             messageApi.warning('当前 round 缺少 plugin 信息，无法创建任务');
             return;
         }
-        const models = await api.getProjectModels(projectId, 100).catch(() => []);
-        const targetModel = models.find((item) => String(item.pluginId || '').trim() === pluginId);
+        let targetModel = null;
+        const latestModelId = String(loop.latestModelId || '').trim();
+        if (latestModelId) {
+            targetModel = await api.getModel(latestModelId).catch(() => null);
+        }
+        if (!targetModel) {
+            const roundModels = await api.getProjectModels(projectId, {
+                limit: 100,
+                roundId: targetRoundId,
+            }).catch(() => []);
+            targetModel = resolvePredictionTargetModel(loop, latestRound, roundModels);
+        }
+        if (!targetModel) {
+            const pluginModels = await api.getProjectModels(projectId, {
+                limit: 100,
+                pluginId,
+            }).catch(() => []);
+            targetModel = resolvePredictionTargetModel(loop, latestRound, pluginModels);
+        }
         if (!targetModel?.id) {
             messageApi.warning('当前项目缺少可用模型，请先发布模型再创建 Prediction');
             return;

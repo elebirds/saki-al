@@ -24,12 +24,14 @@ import {api} from '../../services/api';
 import {
     Dataset,
     ExportBundleLayout,
+    FormatProfileCapability,
     FormatProfileId,
     Project,
     ProjectBranch,
     ProjectExportResolveResponse,
     ProjectIOCapabilities,
     SampleScope,
+    YoloLabelFormat,
 } from '../../types';
 import {useResourcePermission} from '../../hooks';
 
@@ -53,6 +55,7 @@ interface StreamZipParams {
     datasetIds: string[];
     zipWriter: ZipWriter<unknown>;
     formatProfile: FormatProfileId;
+    yoloLabelFormat?: YoloLabelFormat;
     sampleScope: SampleScope;
     includeAssets: boolean;
     bundleLayout: ExportBundleLayout;
@@ -150,6 +153,7 @@ async function streamZipByChunks(params: StreamZipParams): Promise<void> {
         datasetIds,
         zipWriter,
         formatProfile,
+        yoloLabelFormat,
         sampleScope,
         includeAssets,
         bundleLayout,
@@ -169,6 +173,7 @@ async function streamZipByChunks(params: StreamZipParams): Promise<void> {
                 datasetIds,
                 sampleScope,
                 formatProfile,
+                yoloLabelFormat,
                 bundleLayout,
                 includeAssets,
                 cursor: cursor ?? null,
@@ -284,6 +289,7 @@ const ProjectExportWorkspace: React.FC = () => {
     const [commitId, setCommitId] = useState('');
     const [sampleScope, setSampleScope] = useState<SampleScope>('all');
     const [formatProfile, setFormatProfile] = useState<FormatProfileId>('coco');
+    const [yoloLabelFormat, setYoloLabelFormat] = useState<YoloLabelFormat>('obb_rbox');
     const [includeAssets, setIncludeAssets] = useState(true);
     const [bundleLayout, setBundleLayout] = useState<ExportBundleLayout>('merged_zip');
     const [failFast, setFailFast] = useState(false);
@@ -348,6 +354,14 @@ const ProjectExportWorkspace: React.FC = () => {
         () => (capabilities?.exportProfiles || []).filter((item) => item.available),
         [capabilities],
     );
+    const selectedFormatCapability = useMemo(
+        () => exportProfiles.find((item) => item.id === formatProfile) as FormatProfileCapability | undefined,
+        [exportProfiles, formatProfile],
+    );
+    const selectedYoloLabelOptions = useMemo(
+        () => (selectedFormatCapability?.yoloLabelOptions || []) as YoloLabelFormat[],
+        [selectedFormatCapability],
+    );
 
     useEffect(() => {
         if (exportProfiles.length === 0) return;
@@ -357,6 +371,17 @@ const ProjectExportWorkspace: React.FC = () => {
             setFormatProfile(next);
         }
     }, [exportProfiles, formatProfile]);
+
+    useEffect(() => {
+        if (formatProfile !== 'yolo_obb') return;
+        if (selectedYoloLabelOptions.length === 0) {
+            setYoloLabelFormat('obb_rbox');
+            return;
+        }
+        if (!selectedYoloLabelOptions.includes(yoloLabelFormat)) {
+            setYoloLabelFormat(selectedYoloLabelOptions[0]);
+        }
+    }, [formatProfile, selectedYoloLabelOptions, yoloLabelFormat]);
 
     const estimatedTotalBytes = resolveResult?.estimatedTotalAssetBytes || 0;
 
@@ -391,10 +416,11 @@ const ProjectExportWorkspace: React.FC = () => {
             snapshot,
             sampleScope,
             formatProfile,
+            yoloLabelFormat: formatProfile === 'yolo_obb' ? yoloLabelFormat : undefined,
             includeAssets,
             bundleLayout,
         };
-    }, [projectId, formatProfile, snapshotType, branchName, commitId, selectedDatasetIds, sampleScope, includeAssets, bundleLayout]);
+    }, [projectId, formatProfile, yoloLabelFormat, snapshotType, branchName, commitId, selectedDatasetIds, sampleScope, includeAssets, bundleLayout]);
 
     const writeZipPayload = useCallback(async (args: {
         zipWriter: ZipWriter<unknown>;
@@ -411,6 +437,7 @@ const ProjectExportWorkspace: React.FC = () => {
             datasetIds,
             zipWriter,
             formatProfile,
+            yoloLabelFormat: formatProfile === 'yolo_obb' ? yoloLabelFormat : undefined,
             sampleScope,
             includeAssets,
             bundleLayout,
@@ -425,6 +452,7 @@ const ProjectExportWorkspace: React.FC = () => {
             projectId,
             title,
             formatProfile,
+            yoloLabelFormat: formatProfile === 'yolo_obb' ? yoloLabelFormat : undefined,
             includeAssets,
             sampleScope,
             datasetIds,
@@ -433,6 +461,7 @@ const ProjectExportWorkspace: React.FC = () => {
     }, [
         projectId,
         formatProfile,
+        yoloLabelFormat,
         sampleScope,
         includeAssets,
         bundleLayout,
@@ -799,6 +828,22 @@ const ProjectExportWorkspace: React.FC = () => {
                                 />
                             </div>
                         </div>
+                        {formatProfile === 'yolo_obb' ? (
+                            <div>
+                                <Text strong>{t('export.project.yoloSubFormatLabel')}</Text>
+                                <Select
+                                    className="mt-2 w-full"
+                                    value={yoloLabelFormat}
+                                    onChange={(value) => setYoloLabelFormat(value as YoloLabelFormat)}
+                                    options={selectedYoloLabelOptions.map((value) => ({
+                                        label: value === 'obb_poly8'
+                                            ? t('export.project.yoloSubFormatObbPoly8')
+                                            : t('export.project.yoloSubFormatObbRbox'),
+                                        value,
+                                    }))}
+                                />
+                            </div>
+                        ) : null}
                         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                             <div>
                                 <Text strong>{t('export.project.bundleLayoutLabel')}</Text>

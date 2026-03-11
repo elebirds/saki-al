@@ -5,6 +5,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+YoloLabelFormat = Literal["det", "obb_rbox", "obb_poly8"]
+
 
 class FormatProfileRead(BaseModel):
     id: Literal["coco", "voc", "yolo", "yolo_obb", "dota"]
@@ -41,6 +43,7 @@ class ProjectExportResolveRequest(BaseModel):
     snapshot: ExportSnapshot = Field(discriminator="type")
     sample_scope: Literal["all", "labeled", "unlabeled"] = "all"
     format_profile: Literal["coco", "voc", "yolo", "yolo_obb", "dota"]
+    yolo_label_format: YoloLabelFormat | None = None
     include_assets: bool = True
     bundle_layout: Literal["merged_zip", "per_dataset_zip"] = "merged_zip"
 
@@ -76,6 +79,7 @@ class ProjectExportChunkRequest(BaseModel):
     dataset_ids: list[uuid.UUID] = Field(default_factory=list)
     sample_scope: Literal["all", "labeled", "unlabeled"] = "all"
     format_profile: Literal["coco", "voc", "yolo", "yolo_obb", "dota"]
+    yolo_label_format: YoloLabelFormat | None = None
     bundle_layout: Literal["merged_zip", "per_dataset_zip"] = "merged_zip"
     include_assets: bool = True
     cursor: int | None = None

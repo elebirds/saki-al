@@ -6,6 +6,7 @@ import type {
     ProjectExportChunkResponse,
     ProjectExportResolveRequest,
     SampleScope,
+    YoloLabelFormat,
 } from '../../../types';
 import type {ApiService} from '../../../services/api/interface';
 
@@ -18,13 +19,15 @@ export type AssertChunkApi = Assert<HasChunkApi>;
 
 export type HasFormatProfile = 'formatProfile' extends keyof ProjectExportResolveRequest ? true : false;
 export type AssertFormatProfile = Assert<HasFormatProfile>;
-export type HasLegacyYoloSubFormat = 'yoloLabelFormat' extends keyof ProjectExportResolveRequest ? true : false;
-export type AssertNoLegacyYoloSubFormat = Assert<HasLegacyYoloSubFormat extends false ? true : false>;
+export type HasYoloLabelFormat = 'yoloLabelFormat' extends keyof ProjectExportResolveRequest ? true : false;
+export type AssertYoloLabelFormat = Assert<HasYoloLabelFormat>;
 
 export type HasResolvedCommitId = 'resolvedCommitId' extends keyof ProjectExportChunkRequest ? true : false;
 export type AssertResolvedCommitId = Assert<HasResolvedCommitId>;
 export type HasChunkFormatProfile = 'formatProfile' extends keyof ProjectExportChunkRequest ? true : false;
 export type AssertChunkFormatProfile = Assert<HasChunkFormatProfile>;
+export type HasChunkYoloLabelFormat = 'yoloLabelFormat' extends keyof ProjectExportChunkRequest ? true : false;
+export type AssertChunkYoloLabelFormat = Assert<HasChunkYoloLabelFormat>;
 export type HasChunkBundleLayout = 'bundleLayout' extends keyof ProjectExportChunkRequest ? true : false;
 export type AssertChunkBundleLayout = Assert<HasChunkBundleLayout>;
 
@@ -40,10 +43,12 @@ export type HasFilePath = 'path' extends keyof ProjectExportChunkFile ? true : f
 export type AssertFilePath = Assert<HasFilePath>;
 
 const formatProfiles: FormatProfileId[] = ['coco', 'voc', 'yolo', 'yolo_obb', 'dota'];
+const yoloLabelFormats: YoloLabelFormat[] = ['det', 'obb_rbox', 'obb_poly8'];
 const sampleScopes: SampleScope[] = ['all', 'labeled', 'unlabeled'];
 const layouts: ExportBundleLayout[] = ['merged_zip', 'per_dataset_zip'];
 
 void formatProfiles;
+void yoloLabelFormats;
 void sampleScopes;
 void layouts;
 
@@ -52,5 +57,6 @@ export const projectExportWorkspaceManualChecklist = [
     '不支持 File System Access API 或非安全上下文：自动回退为内存打包下载，按钮仍可用。',
     '选择 merged_zip：导出单个 ZIP，目录中包含 datasets/<dataset>/...。',
     '选择 per_dataset_zip：选择目录后，为每个数据集生成一个 ZIP 文件。',
+    '选择 yolo_obb：可切换 OBB RBox / OBB Poly8，导出请求需携带 yoloLabelFormat。',
     '导出中点击取消：请求中断，文件流关闭，状态显示已取消。',
 ] as const;

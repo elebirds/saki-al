@@ -149,7 +149,10 @@ class ExportService:
         }
         dataset_ids = await self._resolve_dataset_ids(project_id=project_id, dataset_ids=payload.dataset_ids)
         commit_id = await self._resolve_commit_id(project_id=project_id, snapshot=payload.snapshot)
-        self._validate_format_options(payload=payload)
+        self._validate_format_options(
+            format_profile=payload.format_profile,
+            yolo_label_format=payload.yolo_label_format,
+        )
 
         sample_stmt = self._build_sample_statement(
             dataset_ids=dataset_ids,
@@ -257,7 +260,10 @@ class ExportService:
     ) -> ProjectExportChunkResponse:
         dataset_ids = await self._resolve_dataset_ids(project_id=project_id, dataset_ids=payload.dataset_ids)
         await self._ensure_commit_in_project(project_id=project_id, commit_id=payload.resolved_commit_id)
-        _ = get_format_profile(payload.format_profile)
+        resolved_yolo_label_format = self._validate_format_options(
+            format_profile=payload.format_profile,
+            yolo_label_format=payload.yolo_label_format,
+        )
 
         offset = max(0, int(payload.cursor or 0))
         sample_stmt = self._build_sample_statement(
@@ -320,6 +326,7 @@ class ExportService:
                         label_records=label_records,
                         class_to_index=yolo_class_to_index,
                         format_profile=payload.format_profile,
+                        yolo_label_format=resolved_yolo_label_format,
                         issues=issues,
                         dataset_name=dataset_name_by_id.get(sample.dataset_id),
                     )
@@ -619,15 +626,16 @@ class ExportService:
         ]
 
     @staticmethod
-    def _build_conversion_context(format_profile: str) -> ConversionContext:
+    def _build_conversion_context(format_profile: str, yolo_label_format: str | None = None) -> ConversionContext:
         if format_profile == "yolo_obb":
+            resolved = yolo_label_format or "obb_rbox"
             return ConversionContext(
                 strict=False,
                 include_external_ref=True,
                 emit_labels=True,
                 naming="keep_external",
                 yolo_is_normalized=True,
-                yolo_label_format="obb_rbox",
+                yolo_label_format=resolved,
                 yolo_obb_angle_unit="deg",
                 yolo_float_precision=6,
             )
@@ -671,6 +679,7 @@ class ExportService:
         label_records: list[LabelRecord],
         class_to_index: dict[str, int],
         format_profile: str,
+        yolo_label_format: str | None,
         issues: list[str],
         dataset_name: str | None,
     ) -> list[ProjectExportChunkFileRead]:
@@ -684,7 +693,7 @@ class ExportService:
         batch = build_batch(label_records, [sample_record], ann_records)
 
         report = ConversionReport()
-        context = self._build_conversion_context(format_profile)
+        context = self._build_conversion_context(format_profile, yolo_label_format)
         if format_profile == "voc":
             content = ir_to_voc_xml(batch, ctx=context, report=report)
             issues.extend(
@@ -754,7 +763,7 @@ class ExportService:
             image_w=int(sample_ctx.width),
             image_h=int(sample_ctx.height),
             class_to_index=class_to_index,
-            fmt="rbox",
+            fmt="poly8" if yolo_label_format == "obb_poly8" else "rbox",
             angle_unit="deg",
             ctx=context,
             report=report,
@@ -1028,8 +1037,25 @@ class ExportService:
             raise BadRequestAppException("Commit not found in project")
 
     @staticmethod
-    def _validate_format_options(*, payload: ProjectExportResolveRequest) -> None:
-        _ = get_format_profile(payload.format_profile)
+    def _validate_format_options(*, format_profile: str, yolo_label_format: str | None) -> str | None:
+        profile = get_format_profile(format_profile)
+        normalized = str(yolo_label_format or "").strip().lower() or None
+        allowed = set(profile.yolo_label_options)
+
+        if normalized is None:
+            if format_profile == "yolo":
+                return "det"
+            if format_profile == "yolo_obb":
+                return "obb_rbox"
+            return None
+
+        if not allowed:
+            raise BadRequestAppException(f"format_profile={format_profile} does not support yolo_label_format")
+        if normalized not in allowed:
+            raise BadRequestAppException(
+                f"format_profile={format_profile} does not support yolo_label_format={normalized}"
+            )
+        return normalized
 
     def _sample_id_subquery(
         self,

@@ -1,4 +1,5 @@
 export type FormatProfileId = 'coco' | 'voc' | 'yolo' | 'yolo_obb' | 'dota';
+export type YoloLabelFormat = 'det' | 'obb_rbox' | 'obb_poly8';
 export type SampleScope = 'all' | 'labeled' | 'unlabeled';
 export type ExportBundleLayout = 'merged_zip' | 'per_dataset_zip';
 
@@ -8,7 +9,7 @@ export interface FormatProfileCapability {
     supportsImport: boolean;
     supportsExport: boolean;
     supportedAnnotationTypes: string[];
-    yoloLabelOptions: string[];
+    yoloLabelOptions: YoloLabelFormat[];
     available: boolean;
     reason?: string | null;
 }
@@ -28,6 +29,7 @@ export interface ProjectExportResolveRequest {
     snapshot: ProjectExportSnapshot;
     sampleScope: SampleScope;
     formatProfile: FormatProfileId;
+    yoloLabelFormat?: YoloLabelFormat;
     includeAssets: boolean;
     bundleLayout: ExportBundleLayout;
 }
@@ -54,6 +56,7 @@ export interface ProjectExportChunkRequest {
     datasetIds: string[];
     sampleScope: SampleScope;
     formatProfile: FormatProfileId;
+    yoloLabelFormat?: YoloLabelFormat;
     bundleLayout: ExportBundleLayout;
     includeAssets: boolean;
     cursor?: number | null;

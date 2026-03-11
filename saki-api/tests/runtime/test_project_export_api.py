@@ -9,6 +9,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 import saki_api.modules.shared.modeling  # noqa: F401
 from saki_api.core.config import settings
+from saki_api.core.exceptions import BadRequestAppException
 from saki_api.modules.access.domain.access import User
 from saki_api.modules.annotation.domain.annotation import Annotation
 from saki_api.modules.annotation.domain.camap import CommitAnnotationMap
@@ -48,6 +49,14 @@ async def export_env(tmp_path):
         yield session_local
     finally:
         await engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+def stub_storage_provider(monkeypatch):
+    monkeypatch.setattr(
+        "saki_api.modules.storage.service.asset.get_storage_provider",
+        lambda: object(),
+    )
 
 
 async def _seed_project(
@@ -371,6 +380,87 @@ async def test_export_chunk_pagination_and_asset_url_toggle(export_env, monkeypa
             for file in assets_page.files
             if file.source_type == "url"
         )
+
+
+@pytest.mark.anyio
+async def test_yolo_obb_export_chunk_supports_poly8(export_env):
+    session_local = export_env
+    async with session_local() as session:
+        seeded = await _seed_project(
+            session,
+            enabled_annotation_types=[AnnotationType.RECT, AnnotationType.OBB],
+            include_obb_annotation=True,
+        )
+
+        project_id = seeded["project_id"]
+        dataset_id = seeded["dataset_id"]
+        commit_id = seeded["commit_id"]
+
+        service = ExportService(session)
+
+        rbox_page = await service.get_export_chunk(
+            project_id=project_id,
+            payload=ProjectExportChunkRequest(
+                resolved_commit_id=commit_id,
+                dataset_ids=[dataset_id],
+                sample_scope="all",
+                format_profile="yolo_obb",
+                yolo_label_format="obb_rbox",
+                bundle_layout="merged_zip",
+                include_assets=False,
+                cursor=0,
+                limit=1,
+            ),
+        )
+        poly8_page = await service.get_export_chunk(
+            project_id=project_id,
+            payload=ProjectExportChunkRequest(
+                resolved_commit_id=commit_id,
+                dataset_ids=[dataset_id],
+                sample_scope="all",
+                format_profile="yolo_obb",
+                yolo_label_format="obb_poly8",
+                bundle_layout="merged_zip",
+                include_assets=False,
+                cursor=0,
+                limit=1,
+            ),
+        )
+
+        rbox_file = next(file for file in rbox_page.files if file.path.endswith(".txt"))
+        poly8_file = next(file for file in poly8_page.files if file.path.endswith(".txt"))
+        rbox_line = next(line for line in (rbox_file.text_content or "").splitlines() if line.strip())
+        poly8_line = next(line for line in (poly8_file.text_content or "").splitlines() if line.strip())
+
+        assert len(rbox_line.split()) == 6
+        assert len(poly8_line.split()) == 9
+
+
+@pytest.mark.anyio
+async def test_resolve_export_rejects_invalid_yolo_label_format_combo(export_env):
+    session_local = export_env
+    async with session_local() as session:
+        seeded = await _seed_project(
+            session,
+            enabled_annotation_types=[AnnotationType.RECT],
+            include_obb_annotation=False,
+        )
+
+        service = ExportService(session)
+
+        with pytest.raises(BadRequestAppException, match="yolo_label_format=obb_poly8"):
+            await service.resolve_export(
+                project_id=seeded["project_id"],
+                payload=ProjectExportResolveRequest(
+                    dataset_ids=[seeded["dataset_id"]],
+                    snapshot={"type": "branch_head", "branch_name": "master"},
+                    sample_scope="all",
+                    format_profile="yolo",
+                    yolo_label_format="obb_poly8",
+                    include_assets=False,
+                    bundle_layout="merged_zip",
+                ),
+            )
 
 
 @pytest.mark.anyio

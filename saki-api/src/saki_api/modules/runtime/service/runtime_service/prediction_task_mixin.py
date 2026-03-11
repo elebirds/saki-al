@@ -307,9 +307,10 @@ class PredictionTaskMixin:
         *,
         prediction_id: uuid.UUID,
         candidates: list[TaskCandidateItem],
-    ) -> list[dict[str, Any]]:
+    ) -> tuple[list[dict[str, Any]], int]:
         resolver = await self._prediction_resolver_for_prediction(prediction_id=prediction_id)
         prediction_rows: list[dict[str, Any]] = []
+        total_prediction_items = 0
         for idx, candidate in enumerate(candidates):
             raw_candidate: dict[str, Any] = {
                 "sample_id": str(candidate.sample_id),
@@ -332,6 +333,7 @@ class PredictionTaskMixin:
             prediction_entries = self._prediction_entries_from_snapshot(snapshot)
             if not prediction_entries:
                 continue
+            total_prediction_items += len(prediction_entries)
             primary_prediction = prediction_entries[0]
             decision = resolver.resolve(
                 snapshot=snapshot,
@@ -365,7 +367,7 @@ class PredictionTaskMixin:
                     "meta": meta_payload,
                 }
             )
-        return prediction_rows
+        return prediction_rows, total_prediction_items
 
     @staticmethod
     def _prediction_status_from_task(task_status: RuntimeTaskStatus | None) -> str:
@@ -594,7 +596,7 @@ class PredictionTaskMixin:
                 candidates=source_candidates,
             )
             try:
-                prediction_rows = await self._build_prediction_rows_from_candidates(
+                prediction_rows, total_prediction_items = await self._build_prediction_rows_from_candidates(
                     prediction_id=prediction.id,
                     candidates=filtered_candidates,
                 )
@@ -615,7 +617,7 @@ class PredictionTaskMixin:
                 prediction.id,
                 {
                     "status": "ready",
-                    "total_items": int(len(prediction_rows)),
+                    "total_items": int(total_prediction_items),
                     "last_error": None,
                 },
             ) or prediction

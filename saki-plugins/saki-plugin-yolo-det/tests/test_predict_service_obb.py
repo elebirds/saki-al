@@ -5,6 +5,7 @@ import threading
 
 import pytest
 
+from saki_ir import quad8_to_obb_payload
 from saki_plugin_yolo_det.config_service import YoloConfigService
 from saki_plugin_yolo_det.predict_service import YoloPredictService
 
@@ -44,7 +45,19 @@ def _build_service() -> YoloPredictService:
     )
 
 
-def test_extract_predictions_obb_includes_qbox_and_rect() -> None:
+def _assert_geometry_matches_qbox(row: dict[str, object], expected_qbox: tuple[float, ...]) -> None:
+    geometry = dict((row.get("geometry") if isinstance(row, dict) else {}) or {})
+    expected = quad8_to_obb_payload(expected_qbox, fit_mode="strict_then_min_area")
+    actual_obb = dict(geometry.get("obb") or {})
+    expected_obb = dict(expected.get("obb") or {})
+    assert actual_obb.get("cx") == pytest.approx(expected_obb.get("cx"))
+    assert actual_obb.get("cy") == pytest.approx(expected_obb.get("cy"))
+    assert actual_obb.get("width") == pytest.approx(expected_obb.get("width"))
+    assert actual_obb.get("height") == pytest.approx(expected_obb.get("height"))
+    assert actual_obb.get("angle_deg_ccw") == pytest.approx(expected_obb.get("angle_deg_ccw"))
+
+
+def test_extract_predictions_obb_includes_qbox_and_obb_geometry() -> None:
     service = _build_service()
     rows = service._extract_predictions(_ObbResult())
     assert len(rows) == 1
@@ -53,14 +66,10 @@ def test_extract_predictions_obb_includes_qbox_and_rect() -> None:
     assert row["class_name"] == "car"
     assert row["confidence"] == pytest.approx(0.9)
     assert row["qbox"] == pytest.approx((1.0, 2.0, 5.0, 2.0, 5.0, 4.0, 1.0, 4.0))
-    rect = (row.get("geometry") or {}).get("rect") or {}
-    assert rect.get("x") == pytest.approx(1.0)
-    assert rect.get("y") == pytest.approx(2.0)
-    assert rect.get("width") == pytest.approx(4.0)
-    assert rect.get("height") == pytest.approx(2.0)
+    _assert_geometry_matches_qbox(row, (1.0, 2.0, 5.0, 2.0, 5.0, 4.0, 1.0, 4.0))
 
 
-def test_inverse_aug_box_flips_qbox_hflip_and_rebuilds_rect() -> None:
+def test_inverse_aug_box_flips_qbox_hflip_and_rebuilds_obb() -> None:
     service = _build_service()
     row = {
         "class_index": 1,
@@ -70,15 +79,12 @@ def test_inverse_aug_box_flips_qbox_hflip_and_rebuilds_rect() -> None:
         "geometry": {"rect": {"x": 1.0, "y": 1.0, "width": 2.0, "height": 1.0}},
     }
     restored = service._inverse_aug_box(name="hflip", row=row, width=10, height=8)
-    assert restored["qbox"] == pytest.approx((9.0, 1.0, 7.0, 1.0, 7.0, 2.0, 9.0, 2.0))
-    rect = (restored.get("geometry") or {}).get("rect") or {}
-    assert rect.get("x") == pytest.approx(7.0)
-    assert rect.get("y") == pytest.approx(1.0)
-    assert rect.get("width") == pytest.approx(2.0)
-    assert rect.get("height") == pytest.approx(1.0)
+    expected_qbox = (9.0, 1.0, 7.0, 1.0, 7.0, 2.0, 9.0, 2.0)
+    assert restored["qbox"] == pytest.approx(expected_qbox)
+    _assert_geometry_matches_qbox(restored, expected_qbox)
 
 
-def test_inverse_aug_box_flips_qbox_vflip_and_rebuilds_rect() -> None:
+def test_inverse_aug_box_flips_qbox_vflip_and_rebuilds_obb() -> None:
     service = _build_service()
     row = {
         "class_index": 1,
@@ -88,15 +94,12 @@ def test_inverse_aug_box_flips_qbox_vflip_and_rebuilds_rect() -> None:
         "geometry": {"rect": {"x": 1.0, "y": 1.0, "width": 2.0, "height": 1.0}},
     }
     restored = service._inverse_aug_box(name="vflip", row=row, width=10, height=8)
-    assert restored["qbox"] == pytest.approx((1.0, 7.0, 3.0, 7.0, 3.0, 6.0, 1.0, 6.0))
-    rect = (restored.get("geometry") or {}).get("rect") or {}
-    assert rect.get("x") == pytest.approx(1.0)
-    assert rect.get("y") == pytest.approx(6.0)
-    assert rect.get("width") == pytest.approx(2.0)
-    assert rect.get("height") == pytest.approx(1.0)
+    expected_qbox = (1.0, 7.0, 3.0, 7.0, 3.0, 6.0, 1.0, 6.0)
+    assert restored["qbox"] == pytest.approx(expected_qbox)
+    _assert_geometry_matches_qbox(restored, expected_qbox)
 
 
-def test_inverse_aug_box_restores_rot90_qbox_and_rect() -> None:
+def test_inverse_aug_box_restores_rot90_qbox_and_obb() -> None:
     service = _build_service()
     row = {
         "class_index": 1,
@@ -106,15 +109,12 @@ def test_inverse_aug_box_restores_rot90_qbox_and_rect() -> None:
         "geometry": {"rect": {"x": 1.0, "y": 7.0, "width": 1.0, "height": 2.0}},
     }
     restored = service._inverse_aug_box(name="rot90", row=row, width=10, height=8)
-    assert restored["qbox"] == pytest.approx((1.0, 1.0, 3.0, 1.0, 3.0, 2.0, 1.0, 2.0), abs=1e-6)
-    rect = (restored.get("geometry") or {}).get("rect") or {}
-    assert rect.get("x") == pytest.approx(1.0, abs=1e-6)
-    assert rect.get("y") == pytest.approx(1.0, abs=1e-6)
-    assert rect.get("width") == pytest.approx(2.0, abs=1e-6)
-    assert rect.get("height") == pytest.approx(1.0, abs=1e-6)
+    expected_qbox = (1.0, 1.0, 3.0, 1.0, 3.0, 2.0, 1.0, 2.0)
+    assert restored["qbox"] == pytest.approx(expected_qbox, abs=1e-6)
+    _assert_geometry_matches_qbox(restored, expected_qbox)
 
 
-def test_inverse_aug_box_restores_affine_qbox_and_rect() -> None:
+def test_inverse_aug_box_restores_affine_qbox_and_obb() -> None:
     service = _build_service()
     original = (4.0, 3.0, 6.0, 3.0, 6.0, 5.0, 4.0, 5.0)
     aug = _rotate_quad8(original, angle_deg=12.0, cx=5.0, cy=4.0)
@@ -127,11 +127,7 @@ def test_inverse_aug_box_restores_affine_qbox_and_rect() -> None:
     }
     restored = service._inverse_aug_box(name="affine_rot_p12", row=row, width=10, height=8)
     assert restored["qbox"] == pytest.approx(original, abs=1e-6)
-    rect = (restored.get("geometry") or {}).get("rect") or {}
-    assert rect.get("x") == pytest.approx(4.0, abs=1e-6)
-    assert rect.get("y") == pytest.approx(3.0, abs=1e-6)
-    assert rect.get("width") == pytest.approx(2.0, abs=1e-6)
-    assert rect.get("height") == pytest.approx(2.0, abs=1e-6)
+    _assert_geometry_matches_qbox(restored, original)
 
 
 def _rotate_quad8(quad8: tuple[float, ...], *, angle_deg: float, cx: float, cy: float) -> tuple[float, ...]:

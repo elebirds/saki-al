@@ -747,6 +747,9 @@ async def test_apply_prediction_merges_head_commit_and_expands_multi_predictions
             ],
         )
 
+        settled = await service.get_prediction_task(task_id=prediction.task_id)
+        assert settled.total_items == 2
+
         result = await service.apply_prediction(
             prediction_id=prediction.id,
             actor_user_id=ctx.actor.id,
@@ -782,6 +785,82 @@ async def test_apply_prediction_merges_head_commit_and_expands_multi_predictions
             assert ann.get("type") == "rect"
             assert isinstance(ann.get("group_id"), str) and ann.get("group_id")
             assert isinstance(ann.get("lineage_id"), str) and ann.get("lineage_id")
+
+
+@pytest.mark.anyio
+async def test_apply_prediction_preserves_obb_geometry_from_snapshot(prediction_env):
+    session_local = prediction_env
+    async with session_local() as session:
+        ctx = await _seed_prediction_context(session)
+        service = RuntimeService(session)
+        prediction = await _create_prediction_task(service=service, ctx=ctx, scope_status="all")
+
+        await _finish_prediction_task(
+            session=session,
+            task_id=prediction.task_id,
+            rows=[
+                {
+                    "sample_id": ctx.sample.id,
+                    "score": 0.84,
+                    "reason": {
+                        "prediction_snapshot": {
+                            "base_predictions": [
+                                {
+                                    "class_index": 1,
+                                    "class_name": ctx.labels_sorted_by_sort[1].name,
+                                    "confidence": 0.84,
+                                    "geometry": {
+                                        "obb": {
+                                            "cx": 12.0,
+                                            "cy": 18.0,
+                                            "width": 20.0,
+                                            "height": 8.0,
+                                            "angle_deg_ccw": 15.0,
+                                        }
+                                    },
+                                }
+                            ]
+                        }
+                    },
+                    "prediction_snapshot": {},
+                }
+            ],
+        )
+
+        settled = await service.get_prediction_task(task_id=prediction.task_id)
+        assert settled.total_items == 1
+
+        result = await service.apply_prediction(
+            prediction_id=prediction.id,
+            actor_user_id=ctx.actor.id,
+            branch_name="master",
+            dry_run=False,
+        )
+        assert result["applied_count"] == 1
+
+        draft = await session.exec(
+            select(AnnotationDraft).where(
+                AnnotationDraft.project_id == ctx.project.id,
+                AnnotationDraft.sample_id == ctx.sample.id,
+                AnnotationDraft.user_id == ctx.actor.id,
+                AnnotationDraft.branch_name == "master",
+            )
+        )
+        row = draft.one_or_none()
+        assert row is not None
+        payload = row.payload if isinstance(row.payload, dict) else {}
+        annotations = payload.get("annotations") if isinstance(payload.get("annotations"), list) else []
+        assert len(annotations) == 1
+
+        ann = annotations[0]
+        assert ann.get("type") == AnnotationType.OBB.value
+        geometry = dict(ann.get("geometry") or {})
+        obb = dict(geometry.get("obb") or {})
+        assert obb.get("cx") == pytest.approx(12.0)
+        assert obb.get("cy") == pytest.approx(18.0)
+        assert obb.get("width") == pytest.approx(20.0)
+        assert obb.get("height") == pytest.approx(8.0)
+        assert obb.get("angle_deg_ccw") == pytest.approx(15.0)
 
 
 @pytest.mark.anyio

@@ -990,3 +990,128 @@ async def test_predict_service_direct_predict_accepts_suffixless_local_path(tmp_
     assert model is not None
     assert model.sources
     assert isinstance(model.sources[0], np.ndarray)
+
+
+@pytest.mark.anyio
+async def test_predict_service_predict_samples_keeps_full_prediction_snapshot(tmp_path: Path):
+    from types import SimpleNamespace
+    import numpy as np
+    from PIL import Image as PILImage
+
+    class _ConfigStub:
+        def resolve_config(self, _params: dict[str, Any], **_kwargs: Any):
+            return SimpleNamespace(
+                predict_conf=0.1,
+                imgsz=640,
+            )
+
+        async def resolve_model_ref(self, *, workspace: WorkspaceProtocol, params: Any):
+            del params
+            return str(workspace.artifacts_dir / "best.pt")
+
+    class _Array:
+        def __init__(self, values):
+            self._values = values
+
+        def cpu(self):
+            return self
+
+        def tolist(self):
+            return list(self._values)
+
+    class _Boxes:
+        def __init__(self):
+            self.cls = _Array([0 for _ in range(35)])
+            self.conf = _Array([0.5 + (idx * 0.01) for idx in range(35)])
+            self.xyxy = _Array(
+                [
+                    [float(idx), float(idx + 1), float(idx + 2), float(idx + 3)]
+                    for idx in range(35)
+                ]
+            )
+
+        def __len__(self):
+            return 35
+
+    class _Result:
+        def __init__(self):
+            self.boxes = _Boxes()
+            self.names = {0: "target"}
+
+    def _load_yolo():
+        class _FakeYOLO:
+            def __init__(self, _model_path: str):
+                pass
+
+            def predict(self, *, source, conf, imgsz, device, verbose):
+                del source, conf, imgsz, device, verbose
+                return [_Result()]
+
+        return _FakeYOLO
+
+    service = YoloPredictService(
+        stop_flag=__import__("threading").Event(),
+        config_service=_ConfigStub(),
+        load_yolo=_load_yolo,
+    )
+    workspace = Workspace(str(tmp_path / "runs"), "step-yolo-predict-full-snapshot")
+    workspace.ensure()
+    (workspace.artifacts_dir / "best.pt").write_bytes(b"model")
+
+    image_path = tmp_path / "assets" / "hash_without_ext_predict_many"
+    image_path.parent.mkdir(parents=True, exist_ok=True)
+    PILImage.new("RGB", (20, 20), color=(10, 20, 200)).save(image_path, format="PNG")
+
+    context = ExecutionBindingContext(
+        task_context=TaskRuntimeContext(
+            task_id="task-yolo-predict-full-snapshot",
+            round_id="round-1",
+            round_index=1,
+            attempt=1,
+            task_type="predict",
+            mode="manual",
+            split_seed=1,
+            train_seed=2,
+            sampling_seed=3,
+            resolved_device_backend="cpu",
+        ),
+        host_capability=HostCapabilitySnapshot.from_dict(
+            {
+                "cpu_workers": 8,
+                "memory_mb": 4096,
+                "gpus": [],
+                "metal_available": False,
+                "platform": "darwin",
+                "arch": "arm64",
+                "driver_info": {},
+            }
+        ),
+        runtime_capability=RuntimeCapabilitySnapshot(
+            framework="torch",
+            framework_version="2.2.0",
+            backends=["cpu"],
+            backend_details={},
+            errors=[],
+        ),
+        device_binding=DeviceBinding(
+            backend="cpu",
+            device_spec="cpu",
+            precision="fp32",
+            profile_id="cpu",
+            reason="test",
+            fallback_applied=False,
+        ),
+        profile_id="cpu",
+    )
+
+    rows = await service.predict_samples_batch(
+        workspace=workspace,
+        samples=[{"id": "s3", "local_path": str(image_path)}],
+        params={},
+        context=context,
+    )
+    assert len(rows) == 1
+    snapshot = rows[0].get("prediction_snapshot") or {}
+    base_predictions = snapshot.get("base_predictions") if isinstance(snapshot, dict) else []
+    assert isinstance(base_predictions, list)
+    assert len(base_predictions) == 35

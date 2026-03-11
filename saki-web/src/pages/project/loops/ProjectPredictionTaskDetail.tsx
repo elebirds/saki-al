@@ -14,6 +14,7 @@ import {
 } from '../../../types';
 import RoundConsolePanel from './components/RoundConsolePanel';
 import TaskArtifactTableCard, {TaskArtifactTableRow} from './components/TaskArtifactTableCard';
+import {expandPredictionDetailItems} from './predictionDetailRows';
 import {mergeRuntimeRoundEvents} from './runtimeEventFormatter';
 import {formatDateTime} from './runtimeTime';
 import {buildArtifactKey} from './roundDetail/transforms';
@@ -231,6 +232,11 @@ const ProjectPredictionTaskDetail: React.FC = () => {
         return taskArtifacts.map((item) => toTaskArtifactRow(taskId, item));
     }, [detail?.prediction?.taskId, taskArtifacts]);
 
+    const predictionRows = useMemo(
+        () => expandPredictionDetailItems(detail?.items || []),
+        [detail?.items],
+    );
+
     if (!canManageLoops) {
         return (
             <Card className="!border-github-border !bg-github-panel">
@@ -331,11 +337,12 @@ const ProjectPredictionTaskDetail: React.FC = () => {
             <Card className="!border-github-border !bg-github-panel" title={t('project.predictionTasks.detail.itemsTitle')}>
                 <Table
                     size="small"
-                    rowKey={(row: any) => `${row.sampleId}-${row.rank}`}
-                    dataSource={detail.items || []}
+                    rowKey={(row: any) => String(row.key || `${row.sampleId}-${row.rank}-${row.boxIndex}`)}
+                    dataSource={predictionRows}
                     pagination={{pageSize: 20}}
                     columns={[
                         {title: '#', dataIndex: 'rank', width: 80},
+                        {title: '框序号', dataIndex: 'boxIndex', width: 90},
                         {
                             title: 'Sample ID',
                             dataIndex: 'sampleId',
@@ -347,6 +354,24 @@ const ProjectPredictionTaskDetail: React.FC = () => {
                             dataIndex: 'labelId',
                             width: 280,
                             render: (value?: string | null) => (value ? <Typography.Text code>{value}</Typography.Text> : '-'),
+                        },
+                        {
+                            title: 'Class',
+                            dataIndex: 'className',
+                            width: 160,
+                            render: (value?: string) => value || '-',
+                        },
+                        {
+                            title: 'Class Index',
+                            dataIndex: 'classIndex',
+                            width: 120,
+                            render: (value?: number | null) => (typeof value === 'number' ? value : '-'),
+                        },
+                        {
+                            title: 'Geometry',
+                            dataIndex: 'geometryType',
+                            width: 120,
+                            render: (value?: string) => value || '-',
                         },
                         {
                             title: 'Score',

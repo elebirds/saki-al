@@ -17,7 +17,7 @@ except Exception:  # pragma: no cover - optional dependency
 from saki_plugin_sdk import ExecutionBindingContext, WorkspaceProtocol
 from saki_plugin_sdk.augmentations import build_augmented_views, inverse_augmented_prediction_row
 from saki_plugin_sdk.strategies.builtin import normalize_strategy_name, score_by_strategy
-from saki_ir import normalize_quad8, quad8_to_aabb_rect
+from saki_ir import normalize_quad8, quad8_to_aabb_rect, quad8_to_obb_payload
 from saki_plugin_yolo_det.common import to_float, to_int, to_yolo_device
 from saki_plugin_yolo_det.config_service import YoloConfigService
 from saki_plugin_yolo_det.predict_pipeline import (
@@ -213,7 +213,7 @@ class YoloPredictService:
                     },
                     "prediction_snapshot": {
                         "pred_count": len(predictions),
-                        "base_predictions": [export_prediction_entry(item) for item in predictions[:30]],
+                        "base_predictions": [export_prediction_entry(item) for item in predictions],
                     },
                 }
             )
@@ -272,7 +272,7 @@ class YoloPredictService:
     ) -> list[list[dict[str, Any]]]:
         if Image is None or np is None:
             raise RuntimeError("numpy and pillow are required for yolo_det_v1 plugin")
-        return predict_with_augmentations(
+        rows_by_aug = predict_with_augmentations(
             model=model,
             image_path=image_path,
             conf=conf,
@@ -284,6 +284,40 @@ class YoloPredictService:
             extract_predictions=self._extract_predictions,
             enabled_aug_names=enabled_aug_names,
         )
+        return [
+            [self._rebuild_prediction_geometry(item) for item in rows]
+            for rows in rows_by_aug
+        ]
+
+    def _geometry_from_qbox(self, qbox: tuple[float, ...]) -> dict[str, Any]:
+        try:
+            geometry = quad8_to_obb_payload(qbox, fit_mode="strict_then_min_area")
+            if isinstance(geometry, dict):
+                return dict(geometry)
+        except Exception:
+            pass
+
+        x, y, width, height = quad8_to_aabb_rect(qbox)
+        return {
+            "rect": {
+                "x": x,
+                "y": y,
+                "width": width,
+                "height": height,
+            }
+        }
+
+    def _rebuild_prediction_geometry(self, row: dict[str, Any]) -> dict[str, Any]:
+        out = dict(row or {})
+        qbox = normalize_quad8(out.get("qbox"))
+        if qbox is not None:
+            out["qbox"] = qbox
+            out["geometry"] = self._geometry_from_qbox(qbox)
+            return out
+
+        geometry = out.get("geometry")
+        out["geometry"] = dict(geometry) if isinstance(geometry, dict) else {}
+        return out
 
     def _extract_predictions(self, result) -> list[dict[str, Any]]:
         if result is None:
@@ -310,22 +344,15 @@ class YoloPredictService:
                     if qbox is None:
                         continue
                     cls_idx = int(cls_id)
-                    x, y, width, height = quad8_to_aabb_rect(qbox)
                     rows.append(
-                        {
-                            "class_index": cls_idx,
-                            "class_name": _class_name_for(cls_idx),
-                            "confidence": float(conf),
-                            "qbox": qbox,
-                            "geometry": {
-                                "rect": {
-                                    "x": x,
-                                    "y": y,
-                                    "width": width,
-                                    "height": height,
-                                }
-                            },
-                        }
+                        self._rebuild_prediction_geometry(
+                            {
+                                "class_index": cls_idx,
+                                "class_name": _class_name_for(cls_idx),
+                                "confidence": float(conf),
+                                "qbox": qbox,
+                            }
+                        )
                     )
                 return rows
 
@@ -402,4 +429,4 @@ class YoloPredictService:
         view = next((item for item in views if item.name == key), views[0])
         out = inverse_augmented_prediction_row(row, view=view)
         out["confidence"] = to_float(out.get("confidence", 0.0), 0.0)
-        return out
+        return self._rebuild_prediction_geometry(out)

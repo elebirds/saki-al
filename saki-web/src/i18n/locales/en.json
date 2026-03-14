@@ -1074,13 +1074,14 @@
         "loadFailed": "Failed to load prediction tasks",
         "createSuccess": "Prediction task created",
         "createFailed": "Failed to create prediction task",
-        "applySuccess": "Applied to Draft: {{count}} items",
+        "applySuccess": "Applied to draft branch {{branch}}: {{count}} items",
         "applyFailed": "Failed to apply prediction task result"
       },
       "table": {
         "taskId": "Task ID",
         "status": "Status",
         "totalItems": "Items",
+        "targetBranch": "Target Branch",
         "error": "Error",
         "actions": "Actions"
       },
@@ -1105,6 +1106,14 @@
       "modal": {
         "title": "Create Prediction Task",
         "okText": "Create"
+      },
+      "applyModal": {
+        "title": "Apply Prediction",
+        "okText": "Apply to Draft",
+        "description": "This writes prediction results into your draft on the selected branch.",
+        "hint": "Changing the branch does not regenerate the prediction; it only changes the write target.",
+        "branchPlaceholder": "Select target branch",
+        "defaultTarget": "Prediction original target branch: {{branch}}"
       },
       "form": {
         "plugin": "Plugin",

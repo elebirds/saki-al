@@ -67,13 +67,21 @@ async def dispatch_loop_command(
         raise InternalServerErrorAppException("dispatcher loop 命令失败") from exc
 
 
-def to_prediction_read(row, *, task=None) -> PredictionRead:
+def to_prediction_read(
+    row,
+    *,
+    task=None,
+    target_branch_id=None,
+    target_branch_name: str | None = None,
+) -> PredictionRead:
     task_status = getattr(task, "status", None)
     return PredictionRead(
         id=row.id,
         project_id=row.project_id,
         plugin_id=str(row.plugin_id or ""),
         model_id=row.model_id,
+        target_branch_id=target_branch_id,
+        target_branch_name=target_branch_name,
         base_commit_id=row.base_commit_id,
         task_id=row.task_id,
         task_status=task_status,
@@ -89,5 +97,18 @@ def to_prediction_read(row, *, task=None) -> PredictionRead:
     )
 
 
-def to_prediction_task_read(row, *, task=None) -> PredictionTaskRead:
-    return PredictionTaskRead(**to_prediction_read(row, task=task).model_dump())
+def to_prediction_task_read(
+    row,
+    *,
+    task=None,
+    target_branch_id=None,
+    target_branch_name: str | None = None,
+) -> PredictionTaskRead:
+    return PredictionTaskRead(
+        **to_prediction_read(
+            row,
+            task=task,
+            target_branch_id=target_branch_id,
+            target_branch_name=target_branch_name,
+        ).model_dump()
+    )

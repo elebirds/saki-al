@@ -14,6 +14,7 @@ import {
     RuntimePluginCatalogItem,
 } from '../../../types';
 import RoundConsolePanel from './components/RoundConsolePanel';
+import PredictionApplyModal from './components/PredictionApplyModal';
 import {mergeRuntimeRoundEvents} from './runtimeEventFormatter';
 
 const statusColor: Record<string, string> = {
@@ -90,6 +91,8 @@ const ProjectPredictionTasks: React.FC = () => {
     const [plugins, setPlugins] = useState<RuntimePluginCatalogItem[]>([]);
     const [branchCommits, setBranchCommits] = useState<CommitHistoryItem[]>([]);
     const [selectedTaskId, setSelectedTaskId] = useState<string>('');
+    const [applyTargetTask, setApplyTargetTask] = useState<PredictionTaskRead | null>(null);
+    const [applying, setApplying] = useState(false);
     const [taskConsoleEvents, setTaskConsoleEvents] = useState<RuntimeRoundEvent[]>([]);
     const [taskConsoleLoading, setTaskConsoleLoading] = useState(false);
     const taskAfterSeqRef = useRef<number>(0);
@@ -343,15 +346,27 @@ const ProjectPredictionTasks: React.FC = () => {
         }
     }, [api, form, messageApi, projectId, refresh, t]);
 
-    const onApply = useCallback(async (taskId: string) => {
+    const onApply = useCallback(async (task: PredictionTaskRead) => {
+        setApplyTargetTask(task);
+    }, []);
+
+    const onConfirmApply = useCallback(async (branchId: string, branchName: string) => {
+        if (!applyTargetTask) return;
         try {
-            const result = await api.applyPrediction(taskId, {});
-            messageApi.success(t('project.predictionTasks.messages.applySuccess', {count: result.appliedCount}));
+            setApplying(true);
+            const result = await api.applyPrediction(applyTargetTask.id, {targetBranchId: branchId});
+            messageApi.success(t('project.predictionTasks.messages.applySuccess', {
+                count: result.appliedCount,
+                branch: result.appliedBranchName || branchName,
+            }));
+            setApplyTargetTask(null);
             await refresh();
         } catch (error: any) {
             messageApi.error(error?.message || t('project.predictionTasks.messages.applyFailed'));
+        } finally {
+            setApplying(false);
         }
-    }, [api, messageApi, refresh, t]);
+    }, [api, applyTargetTask, messageApi, refresh, t]);
 
     return (
         <div className="p-6 space-y-4">
@@ -420,6 +435,12 @@ const ProjectPredictionTasks: React.FC = () => {
                             width: 100,
                         },
                         {
+                            title: t('project.predictionTasks.table.targetBranch'),
+                            dataIndex: 'targetBranchName',
+                            width: 180,
+                            render: (value?: string | null) => value || '-',
+                        },
+                        {
                             title: t('project.predictionTasks.table.error'),
                             dataIndex: 'lastError',
                             width: 380,
@@ -437,14 +458,14 @@ const ProjectPredictionTasks: React.FC = () => {
                                     >
                                         {t('project.predictionTasks.actions.detail')}
                                     </Button>
-                    <Button
-                        size="small"
-                        type="primary"
-                        disabled={!['ready', 'applied'].includes(String(row.status || '').toLowerCase())}
-                        onClick={() => void onApply(row.id)}
-                    >
-                        {t('project.predictionTasks.actions.apply')}
-                    </Button>
+                                    <Button
+                                        size="small"
+                                        type="primary"
+                                        disabled={!['ready', 'applied'].includes(String(row.status || '').toLowerCase())}
+                                        onClick={() => void onApply(row)}
+                                    >
+                                        {t('project.predictionTasks.actions.apply')}
+                                    </Button>
                                 </Space>
                             ),
                         },
@@ -463,6 +484,18 @@ const ProjectPredictionTasks: React.FC = () => {
                 emptyDescription={selectedTask ? '暂无任务日志' : '请选择一个 Prediction Task 查看日志'}
                 exportFilePrefix={selectedTask ? `prediction-task-${selectedTask.taskId}` : 'prediction-task'}
                 maxHeight={420}
+            />
+
+            <PredictionApplyModal
+                open={!!applyTargetTask}
+                projectId={projectId}
+                prediction={applyTargetTask}
+                confirmLoading={applying}
+                onCancel={() => {
+                    if (applying) return;
+                    setApplyTargetTask(null);
+                }}
+                onConfirm={onConfirmApply}
             />
 
             <Modal

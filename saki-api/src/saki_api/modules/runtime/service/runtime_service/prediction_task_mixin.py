@@ -126,6 +126,59 @@ class PredictionTaskMixin:
         return (await self.project_gateway.get_branch_name(branch_id)) or "master"
 
     @staticmethod
+    def _prediction_task_meta(prediction: Prediction | dict[str, Any] | None) -> dict[str, Any]:
+        if isinstance(prediction, dict):
+            params = prediction
+        else:
+            params = prediction.params if prediction is not None and isinstance(prediction.params, dict) else {}
+        task_meta = params.get("_prediction_task") if isinstance(params, dict) else {}
+        return dict(task_meta) if isinstance(task_meta, dict) else {}
+
+    async def resolve_prediction_target_branch(
+        self,
+        *,
+        prediction: Prediction,
+        override_target_branch_id: uuid.UUID | None = None,
+        override_branch_name: str | None = None,
+    ) -> tuple[uuid.UUID | None, str | None, Branch | None]:
+        project_id = prediction.project_id
+        task_meta = self._prediction_task_meta(prediction)
+        default_target_branch_id = self._safe_uuid(task_meta.get("target_branch_id"))
+        default_target_branch_name = str(task_meta.get("target_branch_name") or "").strip() or None
+
+        branch_row: Branch | None = None
+        if override_target_branch_id is not None:
+            branch_row = await self.project_gateway.get_branch_in_project(
+                branch_id=override_target_branch_id,
+                project_id=project_id,
+            )
+            if branch_row is None:
+                raise BadRequestAppException("target_branch_id does not belong to project")
+        else:
+            resolved_branch_name = str(override_branch_name or "").strip()
+            if resolved_branch_name:
+                branch_row = await self.project_gateway.get_branch_by_name(
+                    project_id=project_id,
+                    name=resolved_branch_name,
+                )
+                if branch_row is None:
+                    raise BadRequestAppException(f"branch '{resolved_branch_name}' not found in project")
+            elif default_target_branch_id is not None:
+                branch_row = await self.project_gateway.get_branch_in_project(
+                    branch_id=default_target_branch_id,
+                    project_id=project_id,
+                )
+            elif default_target_branch_name:
+                branch_row = await self.project_gateway.get_branch_by_name(
+                    project_id=project_id,
+                    name=default_target_branch_name,
+                )
+
+        if branch_row is not None:
+            return branch_row.id, str(branch_row.name or "").strip() or None, branch_row
+        return default_target_branch_id, default_target_branch_name, None
+
+    @staticmethod
     def _prediction_scope_status(*, scope_type: str, scope_payload: dict[str, Any]) -> str:
         if scope_type != "sample_status":
             raise BadRequestAppException("scope_type must be sample_status")
@@ -531,6 +584,7 @@ class PredictionTaskMixin:
         task_meta = {
             "plugin_id": plugin_id,
             "target_branch_id": str(target_branch_id),
+            "target_branch_name": str(target_branch.name or "").strip() or "master",
             "base_commit_id": str(base_commit_id),
             "model_id": str(model_id),
             "schema_hash": schema_hash,
@@ -782,6 +836,7 @@ class PredictionTaskMixin:
         *,
         prediction_id: uuid.UUID,
         actor_user_id: uuid.UUID | None,
+        target_branch_id: uuid.UUID | None = None,
         branch_name: str | None = None,
         dry_run: bool = False,
     ) -> dict[str, Any]:
@@ -789,32 +844,25 @@ class PredictionTaskMixin:
             raise BadRequestAppException("actor user is required when applying prediction")
         prediction = await self.settle_prediction_task(prediction_id=prediction_id)
         project_id = prediction.project_id
+        resolved_branch_id, resolved_branch_name, branch_row = await self.resolve_prediction_target_branch(
+            prediction=prediction,
+            override_target_branch_id=target_branch_id,
+            override_branch_name=branch_name,
+        )
+        if branch_row is None:
+            raise BadRequestAppException("target branch not found when applying prediction")
+
         items = await self.prediction_item_repo.list_by_prediction(prediction_id, limit=100000)
         if not items:
             return {
                 "prediction_id": prediction.id,
+                "applied_branch_id": resolved_branch_id,
+                "applied_branch_name": resolved_branch_name,
                 "applied_count": 0,
                 "status": str(prediction.status or "ready"),
             }
 
-        resolved_branch_name = str(branch_name or "").strip()
-        branch_row: Branch | None = None
-        if resolved_branch_name:
-            branch_row = await self.project_gateway.get_branch_by_name(
-                project_id=project_id,
-                name=resolved_branch_name,
-            )
-            if branch_row is None:
-                raise BadRequestAppException(f"branch '{resolved_branch_name}' not found in project")
-        else:
-            task_meta = prediction.params.get("_prediction_task") if isinstance(prediction.params, dict) else {}
-            target_branch_id = self._safe_uuid(task_meta.get("target_branch_id")) if isinstance(task_meta, dict) else None
-            if target_branch_id is not None:
-                branch_row = await self.project_gateway.get_branch(target_branch_id)
-        if branch_row is None:
-            raise BadRequestAppException("target branch not found when applying prediction")
-
-        resolved_branch_name = str(getattr(branch_row, "name", "") or "").strip() or "master"
+        resolved_branch_name = str(resolved_branch_name or getattr(branch_row, "name", "") or "").strip() or "master"
         branch_head_commit_id: uuid.UUID | None = getattr(branch_row, "head_commit_id", None)
         try:
             resolver = await self._prediction_resolver_for_prediction(prediction_id=prediction_id)
@@ -828,6 +876,8 @@ class PredictionTaskMixin:
             ) or prediction
             return {
                 "prediction_id": prediction.id,
+                "applied_branch_id": resolved_branch_id,
+                "applied_branch_name": resolved_branch_name,
                 "applied_count": 0,
                 "status": str(prediction.status or "failed"),
             }
@@ -882,6 +932,8 @@ class PredictionTaskMixin:
                     ) or prediction
                     return {
                         "prediction_id": prediction.id,
+                        "applied_branch_id": resolved_branch_id,
+                        "applied_branch_name": resolved_branch_name,
                         "applied_count": 0,
                         "status": str(prediction.status or "failed"),
                     }
@@ -899,6 +951,8 @@ class PredictionTaskMixin:
                     ) or prediction
                     return {
                         "prediction_id": prediction.id,
+                        "applied_branch_id": resolved_branch_id,
+                        "applied_branch_name": resolved_branch_name,
                         "applied_count": 0,
                         "status": str(prediction.status or "failed"),
                     }
@@ -921,6 +975,8 @@ class PredictionTaskMixin:
                         ) or prediction
                         return {
                             "prediction_id": prediction.id,
+                            "applied_branch_id": resolved_branch_id,
+                            "applied_branch_name": resolved_branch_name,
                             "applied_count": 0,
                             "status": str(prediction.status or "failed"),
                         }
@@ -991,6 +1047,8 @@ class PredictionTaskMixin:
 
         return {
             "prediction_id": prediction.id,
+            "applied_branch_id": resolved_branch_id,
+            "applied_branch_name": resolved_branch_name,
             "applied_count": int(applied_count),
             "status": str(prediction.status or ("ready" if dry_run else "applied")),
         }

@@ -402,6 +402,8 @@ class PredictionRead(BaseModel):
     project_id: uuid.UUID
     plugin_id: str
     model_id: uuid.UUID
+    target_branch_id: Optional[uuid.UUID] = None
+    target_branch_name: Optional[str] = None
     base_commit_id: Optional[uuid.UUID] = None
     task_id: uuid.UUID
     task_status: Optional[RuntimeTaskStatus] = None
@@ -437,12 +439,15 @@ class PredictionDetailRead(BaseModel):
 
 
 class PredictionApplyRequest(BaseModel):
+    target_branch_id: Optional[uuid.UUID] = None
     branch_name: Optional[str] = None
     dry_run: bool = False
 
 
 class PredictionApplyResponse(BaseModel):
     prediction_id: uuid.UUID
+    applied_branch_id: Optional[uuid.UUID] = None
+    applied_branch_name: Optional[str] = None
     applied_count: int = 0
     status: str
 

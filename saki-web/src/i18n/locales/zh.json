@@ -1101,13 +1101,14 @@
         "loadFailed": "加载预测任务失败",
         "createSuccess": "预测任务已创建",
         "createFailed": "创建预测任务失败",
-        "applySuccess": "已应用到 Draft：{{count}} 条",
+        "applySuccess": "已应用到分支草稿 {{branch}}：{{count}} 条",
         "applyFailed": "应用 Prediction 失败"
       },
       "table": {
         "taskId": "任务 ID",
         "status": "状态",
         "totalItems": "条目数",
+        "targetBranch": "目标分支",
         "error": "错误",
         "actions": "操作"
       },
@@ -1132,6 +1133,14 @@
       "modal": {
         "title": "新建 Prediction Task",
         "okText": "创建"
+      },
+      "applyModal": {
+        "title": "应用 Prediction",
+        "okText": "应用到草稿",
+        "description": "此操作会把 prediction 结果写入所选分支的当前用户草稿。",
+        "hint": "切换分支不会重新生成 prediction，只改变写入目标。",
+        "branchPlaceholder": "请选择目标分支",
+        "defaultTarget": "Prediction 原始目标分支：{{branch}}"
       },
       "form": {
         "plugin": "Plugin",

@@ -236,6 +236,25 @@ async def _seed_committed_annotation(
     return annotation
 
 
+async def _seed_branch(
+    *,
+    session: AsyncSession,
+    project_id: uuid.UUID,
+    head_commit_id: uuid.UUID,
+    name: str,
+) -> Branch:
+    branch = Branch(
+        project_id=project_id,
+        name=name,
+        head_commit_id=head_commit_id,
+        description=name,
+        is_protected=False,
+    )
+    session.add(branch)
+    await session.flush()
+    return branch
+
+
 async def _create_prediction_task(
     *,
     service: RuntimeService,
@@ -862,6 +881,187 @@ async def test_apply_prediction_preserves_obb_geometry_from_snapshot(prediction_
         assert obb.get("width") == pytest.approx(20.0)
         assert obb.get("height") == pytest.approx(8.0)
         assert obb.get("angle_deg_ccw") == pytest.approx(15.0)
+
+
+@pytest.mark.anyio
+async def test_prediction_target_branch_projection_and_apply_override(prediction_env):
+    session_local = prediction_env
+    async with session_local() as session:
+        ctx = await _seed_prediction_context(session)
+        feature_branch = await _seed_branch(
+            session=session,
+            project_id=ctx.project.id,
+            head_commit_id=ctx.init_commit.id,
+            name="feature/predict-apply",
+        )
+        await session.commit()
+
+        service = RuntimeService(session)
+        prediction = await _create_prediction_task(service=service, ctx=ctx, scope_status="all")
+        target_branch_id, target_branch_name, _branch_row = await service.resolve_prediction_target_branch(
+            prediction=prediction,
+        )
+        assert target_branch_id == ctx.branch.id
+        assert target_branch_name == "master"
+
+        await _finish_prediction_task(
+            session=session,
+            task_id=prediction.task_id,
+            rows=[
+                {
+                    "sample_id": ctx.sample.id,
+                    "score": 0.84,
+                    "reason": {
+                        "prediction_snapshot": {
+                            "base_predictions": [
+                                {
+                                    "class_index": 1,
+                                    "class_name": ctx.labels_sorted_by_sort[1].name,
+                                    "confidence": 0.84,
+                                    "geometry": {
+                                        "rect": {
+                                            "x": 12.0,
+                                            "y": 18.0,
+                                            "width": 20.0,
+                                            "height": 8.0,
+                                        }
+                                    },
+                                }
+                            ]
+                        }
+                    },
+                    "prediction_snapshot": {},
+                }
+            ],
+        )
+
+        result = await service.apply_prediction(
+            prediction_id=prediction.id,
+            actor_user_id=ctx.actor.id,
+            target_branch_id=feature_branch.id,
+            dry_run=False,
+        )
+        assert result["applied_branch_id"] == feature_branch.id
+        assert result["applied_branch_name"] == feature_branch.name
+        assert result["applied_count"] == 1
+
+        draft = await session.exec(
+            select(AnnotationDraft).where(
+                AnnotationDraft.project_id == ctx.project.id,
+                AnnotationDraft.sample_id == ctx.sample.id,
+                AnnotationDraft.user_id == ctx.actor.id,
+                AnnotationDraft.branch_name == feature_branch.name,
+            )
+        )
+        row = draft.one_or_none()
+        assert row is not None
+
+
+@pytest.mark.anyio
+async def test_apply_prediction_prefers_target_branch_id_over_branch_name(prediction_env):
+    session_local = prediction_env
+    async with session_local() as session:
+        ctx = await _seed_prediction_context(session)
+        feature_branch = await _seed_branch(
+            session=session,
+            project_id=ctx.project.id,
+            head_commit_id=ctx.init_commit.id,
+            name="feature/override-precedence",
+        )
+        await session.commit()
+
+        service = RuntimeService(session)
+        prediction = await _create_prediction_task(service=service, ctx=ctx, scope_status="all")
+        await _finish_prediction_task(
+            session=session,
+            task_id=prediction.task_id,
+            rows=[
+                {
+                    "sample_id": ctx.sample.id,
+                    "score": 0.84,
+                    "reason": {
+                        "prediction_snapshot": {
+                            "base_predictions": [
+                                {
+                                    "class_index": 1,
+                                    "class_name": ctx.labels_sorted_by_sort[1].name,
+                                    "confidence": 0.84,
+                                    "geometry": {
+                                        "rect": {
+                                            "x": 1.0,
+                                            "y": 2.0,
+                                            "width": 3.0,
+                                            "height": 4.0,
+                                        }
+                                    },
+                                }
+                            ]
+                        }
+                    },
+                    "prediction_snapshot": {},
+                }
+            ],
+        )
+
+        result = await service.apply_prediction(
+            prediction_id=prediction.id,
+            actor_user_id=ctx.actor.id,
+            target_branch_id=feature_branch.id,
+            branch_name="master",
+            dry_run=False,
+        )
+        assert result["applied_branch_id"] == feature_branch.id
+        assert result["applied_branch_name"] == feature_branch.name
+
+        master_draft = await session.exec(
+            select(AnnotationDraft).where(
+                AnnotationDraft.project_id == ctx.project.id,
+                AnnotationDraft.sample_id == ctx.sample.id,
+                AnnotationDraft.user_id == ctx.actor.id,
+                AnnotationDraft.branch_name == "master",
+            )
+        )
+        assert master_draft.one_or_none() is None
+
+
+@pytest.mark.anyio
+async def test_apply_prediction_rejects_target_branch_id_outside_project(prediction_env):
+    session_local = prediction_env
+    async with session_local() as session:
+        ctx = await _seed_prediction_context(session)
+
+        other_project = Project(name=f"other-project-{uuid.uuid4()}", task_type=TaskType.DETECTION, config={})
+        session.add(other_project)
+        await session.flush()
+        other_commit = Commit(
+            project_id=other_project.id,
+            parent_id=None,
+            message="other-init",
+            author_type=AuthorType.SYSTEM,
+            author_id=None,
+            stats={},
+            commit_hash=f"other-init-{uuid.uuid4()}",
+        )
+        session.add(other_commit)
+        await session.flush()
+        foreign_branch = await _seed_branch(
+            session=session,
+            project_id=other_project.id,
+            head_commit_id=other_commit.id,
+            name="foreign-branch",
+        )
+        await session.commit()
+
+        service = RuntimeService(session)
+        prediction = await _create_prediction_task(service=service, ctx=ctx, scope_status="all")
+
+        with pytest.raises(BadRequestAppException, match="target_branch_id does not belong to project"):
+            await service.apply_prediction(
+                prediction_id=prediction.id,
+                actor_user_id=ctx.actor.id,
+                target_branch_id=foreign_branch.id,
+                dry_run=False,
+            )
 
 
 @pytest.mark.anyio

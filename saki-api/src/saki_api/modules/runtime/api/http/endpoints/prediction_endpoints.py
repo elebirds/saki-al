@@ -30,6 +30,30 @@ from saki_api.modules.runtime.api.round_step import (
 router = APIRouter()
 
 
+async def _serialize_prediction(runtime_service: RuntimeServiceDep, row, *, task=None) -> PredictionRead:
+    target_branch_id, target_branch_name, _branch_row = await runtime_service.resolve_prediction_target_branch(
+        prediction=row,
+    )
+    return to_prediction_read(
+        row,
+        task=task,
+        target_branch_id=target_branch_id,
+        target_branch_name=target_branch_name,
+    )
+
+
+async def _serialize_prediction_task(runtime_service: RuntimeServiceDep, row, *, task=None) -> PredictionTaskRead:
+    target_branch_id, target_branch_name, _branch_row = await runtime_service.resolve_prediction_target_branch(
+        prediction=row,
+    )
+    return to_prediction_task_read(
+        row,
+        task=task,
+        target_branch_id=target_branch_id,
+        target_branch_name=target_branch_name,
+    )
+
+
 @router.post("/projects/{project_id}/predictions", response_model=PredictionRead)
 async def create_prediction(
     *,
@@ -63,7 +87,7 @@ async def create_prediction(
             )
     settled = await runtime_service.get_prediction_task(task_id=result.task_id)
     task = await runtime_service.task_repo.get_by_id(settled.task_id)
-    return to_prediction_read(settled, task=task)
+    return await _serialize_prediction(runtime_service, settled, task=task)
 
 
 @router.get("/projects/{project_id}/predictions", response_model=list[PredictionRead])
@@ -86,7 +110,8 @@ async def list_predictions(
     tasks = await runtime_service.task_repo.get_by_ids(task_ids)
     task_by_id = {item.id: item for item in tasks}
     return [
-        to_prediction_read(
+        await _serialize_prediction(
+            runtime_service,
             row,
             task=task_by_id.get(getattr(row, "task_id", None)),
         )
@@ -114,7 +139,8 @@ async def list_prediction_tasks(
     tasks = await runtime_service.task_repo.get_by_ids(task_ids)
     task_by_id = {item.id: item for item in tasks}
     return [
-        to_prediction_task_read(
+        await _serialize_prediction_task(
+            runtime_service,
             row,
             task=task_by_id.get(getattr(row, "task_id", None)),
         )
@@ -138,7 +164,7 @@ async def get_prediction_task(
         required=Permissions.LOOP_READ,
     )
     task = await runtime_service.task_repo.get_by_id(row.task_id) if getattr(row, "task_id", None) else None
-    return to_prediction_task_read(row, task=task)
+    return await _serialize_prediction_task(runtime_service, row, task=task)
 
 
 @router.get("/predictions/{prediction_id}", response_model=PredictionDetailRead)
@@ -154,6 +180,9 @@ async def get_prediction_detail(
         prediction_id=prediction_id,
         item_limit=item_limit,
     )
+    target_branch_id, target_branch_name, _branch_row = await runtime_service.resolve_prediction_target_branch(
+        prediction=prediction,
+    )
     await ensure_loop_project_perm(
         session=session,
         current_user_id=current_user_id,
@@ -164,6 +193,8 @@ async def get_prediction_detail(
         prediction=to_prediction_read(
             prediction,
             task=(await runtime_service.task_repo.get_by_id(prediction.task_id) if prediction.task_id else None),
+            target_branch_id=target_branch_id,
+            target_branch_name=target_branch_name,
         ),
         items=[
             {
@@ -200,11 +231,14 @@ async def apply_prediction(
     result = await runtime_service.apply_prediction(
         prediction_id=prediction_id,
         actor_user_id=current_user_id,
+        target_branch_id=payload.target_branch_id,
         branch_name=payload.branch_name,
         dry_run=bool(payload.dry_run),
     )
     return PredictionApplyResponse(
         prediction_id=result["prediction_id"],
+        applied_branch_id=result.get("applied_branch_id"),
+        applied_branch_name=result.get("applied_branch_name"),
         applied_count=int(result.get("applied_count", 0)),
         status=str(result.get("status") or "ready"),
     )

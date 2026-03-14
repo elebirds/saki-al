@@ -27,6 +27,7 @@ import {useNavigate, useParams} from 'react-router-dom';
 import {useResourcePermission} from '../../../hooks';
 import {api} from '../../../services/api';
 import {useAuthStore} from '../../../store/authStore';
+import PredictionApplyModal from './components/PredictionApplyModal';
 import RoundConsolePanel from './components/RoundConsolePanel';
 import {
     getMetricBySource,
@@ -216,6 +217,7 @@ const ProjectLoopDetail: React.FC = () => {
     const [predictionLoading, setPredictionLoading] = useState(false);
     const [predictionSubmitting, setPredictionSubmitting] = useState(false);
     const [applyingPredictionId, setApplyingPredictionId] = useState<string>('');
+    const [applyTargetPrediction, setApplyTargetPrediction] = useState<PredictionRead | null>(null);
     const [predictionScopeOpen, setPredictionScopeOpen] = useState(false);
     const [predictionScopeStatus, setPredictionScopeStatus] = useState<'all' | 'unlabeled' | 'labeled' | 'draft'>('all');
     const [snapshotInitOpen, setSnapshotInitOpen] = useState(false);
@@ -685,19 +687,25 @@ const ProjectLoopDetail: React.FC = () => {
         }
     }, [loopId, projectId, latestRound?.id, latestRound?.pluginId, loop, refreshPredictions, messageApi]);
 
-    const handleApplyPrediction = useCallback(async (predictionId: string) => {
-        if (!predictionId) return;
-        setApplyingPredictionId(predictionId);
+    const handleApplyPrediction = useCallback(async (prediction: PredictionRead) => {
+        if (!prediction?.id) return;
+        setApplyTargetPrediction(prediction);
+    }, []);
+
+    const handleConfirmApplyPrediction = useCallback(async (branchId: string, branchName: string) => {
+        if (!applyTargetPrediction?.id) return;
+        setApplyingPredictionId(applyTargetPrediction.id);
         try {
-            const result = await api.applyPrediction(predictionId, {});
-            messageApi.success(`已应用到 Draft：${result.appliedCount} 条`);
+            const result = await api.applyPrediction(applyTargetPrediction.id, {targetBranchId: branchId});
+            messageApi.success(`已应用到分支草稿 ${result.appliedBranchName || branchName}：${result.appliedCount} 条`);
+            setApplyTargetPrediction(null);
             await refreshPredictions();
         } catch (error: any) {
             messageApi.error(error?.message || '应用 Prediction 失败');
         } finally {
             setApplyingPredictionId('');
         }
-    }, [refreshPredictions, messageApi]);
+    }, [api, applyTargetPrediction, refreshPredictions, messageApi]);
 
     const parseSampleIds = (raw?: string): string[] | undefined => {
         const text = String(raw || '').trim();
@@ -1256,6 +1264,12 @@ const ProjectLoopDetail: React.FC = () => {
                             width: 100,
                         },
                         {
+                            title: '目标分支',
+                            dataIndex: 'targetBranchName',
+                            width: 160,
+                            render: (value?: string | null) => value || '-',
+                        },
+                        {
                             title: '创建时间',
                             dataIndex: 'createdAt',
                             width: 180,
@@ -1267,7 +1281,7 @@ const ProjectLoopDetail: React.FC = () => {
                             render: (_: unknown, row: PredictionRead) => (
                                 <Button
                                     size="small"
-                                    onClick={() => void handleApplyPrediction(row.id)}
+                                    onClick={() => void handleApplyPrediction(row)}
                                     loading={applyingPredictionId === row.id}
                                     disabled={!['ready', 'applied'].includes(String(row.status || '').toLowerCase())}
                                 >
@@ -1300,6 +1314,18 @@ const ProjectLoopDetail: React.FC = () => {
                     ]}
                 />
             </Modal>
+
+            <PredictionApplyModal
+                open={!!applyTargetPrediction}
+                projectId={projectId}
+                prediction={applyTargetPrediction}
+                confirmLoading={!!applyingPredictionId}
+                onCancel={() => {
+                    if (applyingPredictionId) return;
+                    setApplyTargetPrediction(null);
+                }}
+                onConfirm={handleConfirmApplyPrediction}
+            />
 
             <Card className="!border-github-border !bg-github-panel" title="当前 Loop 的 Rounds">
                 <Table

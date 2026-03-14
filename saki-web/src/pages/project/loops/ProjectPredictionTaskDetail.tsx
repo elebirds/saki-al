@@ -12,6 +12,7 @@ import {
     RuntimeRoundEvent,
     TaskArtifactRead,
 } from '../../../types';
+import PredictionApplyModal from './components/PredictionApplyModal';
 import RoundConsolePanel from './components/RoundConsolePanel';
 import TaskArtifactTableCard, {TaskArtifactTableRow} from './components/TaskArtifactTableCard';
 import {expandPredictionDetailItems} from './predictionDetailRows';
@@ -90,6 +91,7 @@ const ProjectPredictionTaskDetail: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [applying, setApplying] = useState(false);
+    const [applyModalOpen, setApplyModalOpen] = useState(false);
     const [consoleLoading, setConsoleLoading] = useState(false);
     const [consoleConnected, setConsoleConnected] = useState(false);
     const [detail, setDetail] = useState<PredictionDetailRead | null>(null);
@@ -214,10 +216,19 @@ const ProjectPredictionTaskDetail: React.FC = () => {
 
     const onApplyPrediction = useCallback(async () => {
         if (!detail?.prediction?.id) return;
+        setApplyModalOpen(true);
+    }, [detail?.prediction?.id]);
+
+    const onConfirmApplyPrediction = useCallback(async (branchId: string, branchName: string) => {
+        if (!detail?.prediction?.id) return;
         try {
             setApplying(true);
-            const result = await api.applyPrediction(detail.prediction.id, {});
-            messageApi.success(t('project.predictionTasks.messages.applySuccess', {count: result.appliedCount}));
+            const result = await api.applyPrediction(detail.prediction.id, {targetBranchId: branchId});
+            messageApi.success(t('project.predictionTasks.messages.applySuccess', {
+                count: result.appliedCount,
+                branch: result.appliedBranchName || branchName,
+            }));
+            setApplyModalOpen(false);
             await loadDetail(true, false);
         } catch (error: any) {
             messageApi.error(error?.message || t('project.predictionTasks.messages.applyFailed'));
@@ -308,6 +319,9 @@ const ProjectPredictionTaskDetail: React.FC = () => {
                     <Descriptions.Item label="Plugin">{prediction.pluginId || '-'}</Descriptions.Item>
                     <Descriptions.Item label="Model">
                         <Typography.Text code>{prediction.modelId}</Typography.Text>
+                    </Descriptions.Item>
+                    <Descriptions.Item label={t('project.predictionTasks.table.targetBranch')}>
+                        {prediction.targetBranchName || '-'}
                     </Descriptions.Item>
                     <Descriptions.Item label={t('project.predictionTasks.table.totalItems')}>
                         {Number(prediction.totalItems || 0)}
@@ -403,6 +417,18 @@ const ProjectPredictionTaskDetail: React.FC = () => {
                 emptyDescription={t('project.predictionTasks.detail.consoleEmpty')}
                 exportFilePrefix={`prediction-task-${prediction.taskId}`}
                 maxHeight={520}
+            />
+
+            <PredictionApplyModal
+                open={applyModalOpen}
+                projectId={projectId}
+                prediction={prediction}
+                confirmLoading={applying}
+                onCancel={() => {
+                    if (applying) return;
+                    setApplyModalOpen(false);
+                }}
+                onConfirm={onConfirmApplyPrediction}
             />
         </div>
     );

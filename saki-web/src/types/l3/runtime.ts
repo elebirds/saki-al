@@ -402,6 +402,8 @@ export interface PredictionRead {
     projectId: string;
     pluginId: string;
     modelId: string;
+    targetBranchId?: string | null;
+    targetBranchName?: string | null;
     baseCommitId?: string | null;
     taskId: string;
     taskStatus?: RuntimeTaskStatus | null;
@@ -435,12 +437,15 @@ export interface PredictionDetailRead {
 }
 
 export interface PredictionApplyRequest {
+    targetBranchId?: string;
     branchName?: string;
     dryRun?: boolean;
 }
 
 export interface PredictionApplyResponse {
     predictionId: string;
+    appliedBranchId?: string | null;
+    appliedBranchName?: string | null;
     appliedCount: number;
     status: string;
 }

@@ -3,11 +3,13 @@ package runtimegrpc
 import (
 	"context"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/rs/zerolog"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/proto"
 
 	runtimecontrolv1 "github.com/elebirds/saki/saki-dispatcher/internal/gen/runtimecontrolv1"
 	runtimedomainv1 "github.com/elebirds/saki/saki-dispatcher/internal/gen/runtimedomainv1"
@@ -196,5 +198,92 @@ func TestHandleIncomingDownloadTicketRequestReturnsNotImplementedWhenDomainDisab
 	}
 	if errPayload.GetTaskId() != "consumer-task-1" {
 		t.Fatalf("error task_id mismatch: got=%q", errPayload.GetTaskId())
+	}
+}
+
+func TestTaskResultChunkAssemblerBuildsOriginalTaskResult(t *testing.T) {
+	largeSuffix := strings.Repeat("x", 1024)
+	result := &runtimecontrolv1.TaskResult{
+		RequestId:   "req-result-1",
+		TaskId:      "task-result-1",
+		ExecutionId: "execution-result-1",
+		Status:      runtimecontrolv1.RuntimeTaskStatus_SUCCEEDED,
+	}
+	for index := 0; index < 4000; index++ {
+		result.Candidates = append(result.Candidates, &runtimecontrolv1.QueryCandidate{
+			SampleId: "sample-" + time.Unix(int64(index), 0).UTC().Format("150405") + "-" + largeSuffix,
+			Score:    0.8,
+		})
+	}
+
+	chunks, err := buildTaskResultChunkMessages(result, 256*1024)
+	if err != nil {
+		t.Fatalf("buildTaskResultChunkMessages failed: %v", err)
+	}
+	if len(chunks) <= 1 {
+		t.Fatalf("expected chunked messages, got=%d", len(chunks))
+	}
+
+	assembler := newTaskResultChunkAssembler()
+	var rebuilt *runtimecontrolv1.TaskResult
+	for _, message := range chunks {
+		chunk := message.GetTaskResultChunk()
+		if chunk == nil {
+			t.Fatalf("expected task_result_chunk payload")
+		}
+		item, done, addErr := assembler.add(chunk)
+		if addErr != nil {
+			t.Fatalf("assembler.add failed: %v", addErr)
+		}
+		if done {
+			rebuilt = item
+		}
+	}
+	if rebuilt == nil {
+		t.Fatalf("expected rebuilt task result")
+	}
+
+	originalBytes, err := proto.Marshal(result)
+	if err != nil {
+		t.Fatalf("marshal original failed: %v", err)
+	}
+	rebuiltBytes, err := proto.Marshal(rebuilt)
+	if err != nil {
+		t.Fatalf("marshal rebuilt failed: %v", err)
+	}
+	if !proto.Equal(result, rebuilt) || string(originalBytes) != string(rebuiltBytes) {
+		t.Fatalf("rebuilt task result bytes mismatch")
+	}
+}
+
+func TestTaskResultChunkAssemblerRejectsChecksumMismatch(t *testing.T) {
+	largeSuffix := strings.Repeat("y", 1024)
+	result := &runtimecontrolv1.TaskResult{
+		RequestId: "req-result-bad",
+		TaskId:    "task-result-bad",
+		Status:    runtimecontrolv1.RuntimeTaskStatus_SUCCEEDED,
+	}
+	for index := 0; index < 2000; index++ {
+		result.Candidates = append(result.Candidates, &runtimecontrolv1.QueryCandidate{
+			SampleId: "sample-" + largeSuffix,
+			Score:    float64(index),
+		})
+	}
+
+	chunks, err := buildTaskResultChunkMessages(result, 128*1024)
+	if err != nil {
+		t.Fatalf("buildTaskResultChunkMessages failed: %v", err)
+	}
+	if len(chunks) <= 1 {
+		t.Fatalf("expected chunked messages, got=%d", len(chunks))
+	}
+
+	chunk := chunks[0].GetTaskResultChunk()
+	chunk.PayloadChunk = append([]byte{}, chunk.PayloadChunk...)
+	chunk.PayloadChunk[0] ^= 0xFF
+
+	assembler := newTaskResultChunkAssembler()
+	if _, _, err := assembler.add(chunk); err == nil {
+		t.Fatalf("expected checksum mismatch error")
 	}
 }

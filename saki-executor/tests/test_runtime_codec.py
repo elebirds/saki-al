@@ -225,7 +225,7 @@ def test_parse_assign_task_resource_summary_keeps_host_capability():
 
 
 def test_task_status_codec_mapping():
-    message = codec.build_task_result_message(
+    messages = codec.build_task_result_message(
         request_id="result-1",
         task_id="task-1",
         status="failed",
@@ -234,7 +234,8 @@ def test_task_status_codec_mapping():
         candidates=[],
         error_message="task failed",
     )
-    assert message.task_result.status == pb.FAILED
+    assert len(messages) == 1
+    assert messages[0].task_result.status == pb.FAILED
     assert codec.status_enum_to_text(pb.FAILED) == "failed"
     assert codec.task_status_to_enum("syncing_env") == pb.SYNCING_ENV
     assert codec.task_status_to_enum("probing_runtime") == pb.PROBING_RUNTIME
@@ -242,6 +243,83 @@ def test_task_status_codec_mapping():
     assert codec.status_enum_to_text(pb.SYNCING_ENV) == "syncing_env"
     assert codec.status_enum_to_text(pb.PROBING_RUNTIME) == "probing_runtime"
     assert codec.status_enum_to_text(pb.BINDING_DEVICE) == "binding_device"
+
+
+def test_build_task_result_message_keeps_small_payload_inline():
+    messages = codec.build_task_result_message(
+        request_id="result-inline-1",
+        task_id="task-inline-1",
+        execution_id="execution-inline-1",
+        status="succeeded",
+        metrics={"map50": 0.5},
+        artifacts={"report.json": {"kind": "report", "uri": "s3://bucket/report.json"}},
+        candidates=[
+            {
+                "sample_id": "sample-1",
+                "score": 0.9,
+                "reason": {"prediction_snapshot": {"base_predictions": [{"confidence": 0.9}]}},
+            }
+        ],
+    )
+
+    assert len(messages) == 1
+    assert messages[0].WhichOneof("payload") == "task_result"
+    assert messages[0].task_result.task_id == "task-inline-1"
+    assert len(messages[0].task_result.candidates) == 1
+
+
+def test_build_task_result_message_splits_large_payload_into_chunks():
+    large_suffix = "x" * 768
+    candidates = []
+    for index in range(6000):
+        candidates.append(
+            {
+                "sample_id": f"sample-{index}-{large_suffix}",
+                "score": 0.8,
+                "reason": {
+                    "prediction_snapshot": {
+                        "base_predictions": [
+                            {
+                                "class_index": 0,
+                                "class_name": "target",
+                                "confidence": 0.8,
+                                "geometry": {
+                                    "obb": {
+                                        "cx": 0.5,
+                                        "cy": 0.5,
+                                        "w": 0.2,
+                                        "h": 0.1,
+                                        "angle": 15.0,
+                                    }
+                                },
+                                "qbox": [0.1, 0.1, 0.2, 0.1, 0.2, 0.2, 0.1, 0.2],
+                            }
+                        ]
+                    }
+                },
+            }
+        )
+
+    messages = codec.build_task_result_message(
+        request_id="result-chunked-1",
+        task_id="task-chunked-1",
+        execution_id="execution-chunked-1",
+        status="succeeded",
+        metrics={},
+        artifacts={},
+        candidates=candidates,
+    )
+
+    assert len(messages) > 1
+    assert all(message.WhichOneof("payload") == "task_result_chunk" for message in messages)
+    first = messages[0].task_result_chunk
+    last = messages[-1].task_result_chunk
+    assert first.task_id == "task-chunked-1"
+    assert first.execution_id == "execution-chunked-1"
+    assert first.chunk_count == len(messages)
+    assert first.chunk_index == 0
+    assert last.is_last_chunk is True
+    assert last.chunk_index == len(messages) - 1
 
 
 def test_build_task_event_message_log_supports_structured_fields():

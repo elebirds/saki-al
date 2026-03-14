@@ -385,16 +385,26 @@ class TaskPipelineRunner:
         error_message: str = "",
         warnings: list[str] | None = None,
     ) -> None:
-        await self._manager.send_runtime_message(
-            runtime_codec.build_task_result_message(
-                request_id=str(uuid.uuid4()),
-                task_id=self._task_id,
-                execution_id=self._request.execution_id,
-                status=status.value,
-                metrics=metrics,
-                artifacts=artifacts,
-                candidates=candidates,
-                error_message=error_message,
-                warnings=warnings,
-            )
+        result_messages = runtime_codec.build_task_result_message(
+            request_id=str(uuid.uuid4()),
+            task_id=self._task_id,
+            execution_id=self._request.execution_id,
+            status=status.value,
+            metrics=metrics,
+            artifacts=artifacts,
+            candidates=candidates,
+            error_message=error_message,
+            warnings=warnings,
         )
+        if len(result_messages) > 1:
+            serialized_bytes = sum(len(message.task_result_chunk.payload_chunk) for message in result_messages)
+            logger.info(
+                "任务结果启用分块回传 task_id={} execution_id={} mode=chunked_task_result serialized_bytes={} chunk_count={} candidate_count={}",
+                self._task_id,
+                self._request.execution_id,
+                serialized_bytes,
+                len(result_messages),
+                len(candidates),
+            )
+        for message in result_messages:
+            await self._manager.send_runtime_message(message)

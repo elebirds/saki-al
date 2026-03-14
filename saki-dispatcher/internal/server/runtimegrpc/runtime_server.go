@@ -3,12 +3,14 @@ package runtimegrpc
 import (
 	"context"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"strings"
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"google.golang.org/grpc/peer"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/elebirds/saki/saki-dispatcher/internal/controlplane"
 	"github.com/elebirds/saki/saki-dispatcher/internal/dispatch"
@@ -24,6 +26,22 @@ type Server struct {
 	controlPlane *controlplane.Service
 	domainClient *runtime_domain_client.Client
 	logger       zerolog.Logger
+}
+
+var _crc32cTable = crc32.MakeTable(crc32.Castagnoli)
+
+type taskResultChunkAssembler struct {
+	payloads map[string]*taskResultPayloadAssembler
+}
+
+type taskResultPayloadAssembler struct {
+	requestID        string
+	taskID           string
+	executionID      string
+	chunkCount       uint32
+	payloadTotalSize uint64
+	payloadChecksum  uint32
+	chunks           map[uint32][]byte
 }
 
 func NewServer(
@@ -43,9 +61,11 @@ func NewServer(
 func (s *Server) Stream(stream runtimecontrolv1.RuntimeControl_StreamServer) (retErr error) {
 	var executorID string
 	peerAddr := streamPeerAddr(stream.Context())
+	resultChunks := newTaskResultChunkAssembler()
 	s.logger.Info().Str("peer", peerAddr).Msg("runtime stream 已连接")
 
 	defer func() {
+		resultChunks.reset()
 		if executorID != "" {
 			s.dispatcher.UnregisterExecutor(executorID)
 			disconnectReason := ""
@@ -95,7 +115,7 @@ func (s *Server) Stream(stream runtimecontrolv1.RuntimeControl_StreamServer) (re
 			}
 			return err
 		case message := <-incoming:
-			responses, nextExecutorID, err := s.handleIncoming(message, executorID)
+			responses, nextExecutorID, err := s.handleIncomingWithAssembler(message, executorID, resultChunks)
 			if err != nil {
 				return err
 			}
@@ -133,6 +153,14 @@ func streamPeerAddr(ctx context.Context) string {
 func (s *Server) handleIncoming(
 	message *runtimecontrolv1.RuntimeMessage,
 	currentExecutorID string,
+) ([]*runtimecontrolv1.RuntimeMessage, string, error) {
+	return s.handleIncomingWithAssembler(message, currentExecutorID, newTaskResultChunkAssembler())
+}
+
+func (s *Server) handleIncomingWithAssembler(
+	message *runtimecontrolv1.RuntimeMessage,
+	currentExecutorID string,
+	resultChunks *taskResultChunkAssembler,
 ) ([]*runtimecontrolv1.RuntimeMessage, string, error) {
 	switch payload := message.GetPayload().(type) {
 	case *runtimecontrolv1.RuntimeMessage_Register:
@@ -212,20 +240,24 @@ func (s *Server) handleIncoming(
 		)), currentExecutorID, nil
 
 	case *runtimecontrolv1.RuntimeMessage_TaskResult:
-		result := payload.TaskResult
-		taskID := resolveTaskID(result.GetTaskId())
-		if s.controlPlane != nil {
-			if err := s.controlPlane.OnTaskResult(context.Background(), result); err != nil {
-				s.logger.Warn().Err(err).Str("task_id", taskID).Msg("持久化 task_result 失败")
-			}
+		return s.handleTaskResultMessage(payload.TaskResult, currentExecutorID)
+
+	case *runtimecontrolv1.RuntimeMessage_TaskResultChunk:
+		chunk := payload.TaskResultChunk
+		result, done, err := resultChunks.add(chunk)
+		if err != nil {
+			return singleMessage(buildError(
+				taskResultChunkErrorCode(err),
+				err.Error(),
+				chunk.GetRequestId(),
+				resolveTaskID(chunk.GetTaskId()),
+				runtimecontrolv1.RuntimeQueryType_RUNTIME_QUERY_TYPE_UNSPECIFIED,
+			)), currentExecutorID, nil
 		}
-		return singleMessage(buildAck(
-			result.GetRequestId(),
-			runtimecontrolv1.AckStatus_OK,
-			runtimecontrolv1.AckType_ACK_TYPE_REQUEST,
-			runtimecontrolv1.AckReason_ACK_REASON_ACCEPTED,
-			"task_result 已接收",
-		)), currentExecutorID, nil
+		if !done || result == nil {
+			return nil, currentExecutorID, nil
+		}
+		return s.handleTaskResultMessage(result, currentExecutorID)
 
 	case *runtimecontrolv1.RuntimeMessage_UpdateEvent:
 		event := payload.UpdateEvent
@@ -478,6 +510,25 @@ func (s *Server) handleIncoming(
 	}
 }
 
+func (s *Server) handleTaskResultMessage(
+	result *runtimecontrolv1.TaskResult,
+	currentExecutorID string,
+) ([]*runtimecontrolv1.RuntimeMessage, string, error) {
+	taskID := resolveTaskID(result.GetTaskId())
+	if s.controlPlane != nil {
+		if err := s.controlPlane.OnTaskResult(context.Background(), result); err != nil {
+			s.logger.Warn().Err(err).Str("task_id", taskID).Msg("持久化 task_result 失败")
+		}
+	}
+	return singleMessage(buildAck(
+		result.GetRequestId(),
+		runtimecontrolv1.AckStatus_OK,
+		runtimecontrolv1.AckType_ACK_TYPE_REQUEST,
+		runtimecontrolv1.AckReason_ACK_REASON_ACCEPTED,
+		"task_result 已接收",
+	)), currentExecutorID, nil
+}
+
 func (s *Server) syncRuntimeUpdatePlan(ctx context.Context, executorID string) {
 	if s.controlPlane == nil {
 		return
@@ -625,4 +676,157 @@ func singleMessage(message *runtimecontrolv1.RuntimeMessage) []*runtimecontrolv1
 		return nil
 	}
 	return []*runtimecontrolv1.RuntimeMessage{message}
+}
+
+func newTaskResultChunkAssembler() *taskResultChunkAssembler {
+	return &taskResultChunkAssembler{payloads: make(map[string]*taskResultPayloadAssembler)}
+}
+
+func (a *taskResultChunkAssembler) reset() {
+	if a == nil {
+		return
+	}
+	clear(a.payloads)
+}
+
+func (a *taskResultChunkAssembler) add(chunk *runtimecontrolv1.TaskResultChunk) (*runtimecontrolv1.TaskResult, bool, error) {
+	if a == nil {
+		return nil, false, fmt.Errorf("invalid_task_result_chunk: assembler is nil")
+	}
+	if chunk == nil {
+		return nil, false, fmt.Errorf("invalid_task_result_chunk: chunk is nil")
+	}
+	payloadID := strings.TrimSpace(chunk.GetPayloadId())
+	requestID := strings.TrimSpace(chunk.GetRequestId())
+	taskID := resolveTaskID(chunk.GetTaskId())
+	if payloadID == "" || requestID == "" || taskID == "" {
+		return nil, false, fmt.Errorf("invalid_task_result_chunk: missing required fields")
+	}
+	chunkCount := chunk.GetChunkCount()
+	chunkIndex := chunk.GetChunkIndex()
+	if chunkCount == 0 || chunkIndex >= chunkCount {
+		return nil, false, fmt.Errorf("invalid_task_result_chunk: invalid chunk index metadata")
+	}
+	payloadChunk := chunk.GetPayloadChunk()
+	if crc32.Checksum(payloadChunk, _crc32cTable) != chunk.GetChunkChecksumCrc32C() {
+		return nil, false, fmt.Errorf("task_result_chunk_checksum_mismatch: chunk checksum mismatch")
+	}
+
+	item, ok := a.payloads[payloadID]
+	if !ok {
+		item = &taskResultPayloadAssembler{
+			requestID:        requestID,
+			taskID:           taskID,
+			executionID:      strings.TrimSpace(chunk.GetExecutionId()),
+			chunkCount:       chunkCount,
+			payloadTotalSize: chunk.GetPayloadTotalSize(),
+			payloadChecksum:  chunk.GetPayloadChecksumCrc32C(),
+			chunks:           make(map[uint32][]byte, chunkCount),
+		}
+		a.payloads[payloadID] = item
+	}
+	if item.requestID != requestID ||
+		item.taskID != taskID ||
+		item.executionID != strings.TrimSpace(chunk.GetExecutionId()) ||
+		item.chunkCount != chunkCount ||
+		item.payloadTotalSize != chunk.GetPayloadTotalSize() ||
+		item.payloadChecksum != chunk.GetPayloadChecksumCrc32C() {
+		delete(a.payloads, payloadID)
+		return nil, false, fmt.Errorf("invalid_task_result_chunk: inconsistent chunk metadata")
+	}
+
+	if existing, exists := item.chunks[chunkIndex]; exists {
+		if string(existing) != string(payloadChunk) {
+			delete(a.payloads, payloadID)
+			return nil, false, fmt.Errorf("invalid_task_result_chunk: conflicting duplicate chunk")
+		}
+	} else {
+		item.chunks[chunkIndex] = append([]byte(nil), payloadChunk...)
+	}
+	if uint32(len(item.chunks)) != item.chunkCount {
+		return nil, false, nil
+	}
+
+	payload := make([]byte, 0, item.payloadTotalSize)
+	for index := uint32(0); index < item.chunkCount; index++ {
+		part, exists := item.chunks[index]
+		if !exists {
+			delete(a.payloads, payloadID)
+			return nil, false, fmt.Errorf("task_result_chunk_incomplete: missing chunk")
+		}
+		payload = append(payload, part...)
+	}
+	delete(a.payloads, payloadID)
+	if uint64(len(payload)) != item.payloadTotalSize {
+		return nil, false, fmt.Errorf("task_result_chunk_incomplete: payload size mismatch")
+	}
+	if crc32.Checksum(payload, _crc32cTable) != item.payloadChecksum {
+		return nil, false, fmt.Errorf("task_result_chunk_checksum_mismatch: payload checksum mismatch")
+	}
+
+	result := &runtimecontrolv1.TaskResult{}
+	if err := proto.Unmarshal(payload, result); err != nil {
+		return nil, false, fmt.Errorf("invalid_task_result_chunk: %w", err)
+	}
+	return result, true, nil
+}
+
+func buildTaskResultChunkMessages(result *runtimecontrolv1.TaskResult, chunkBytes int) ([]*runtimecontrolv1.RuntimeMessage, error) {
+	if result == nil {
+		return nil, fmt.Errorf("task result is nil")
+	}
+	if chunkBytes <= 0 {
+		return nil, fmt.Errorf("chunkBytes must be > 0")
+	}
+	payload, err := proto.Marshal(result)
+	if err != nil {
+		return nil, err
+	}
+	chunkCount := (len(payload) + chunkBytes - 1) / chunkBytes
+	if chunkCount <= 0 {
+		chunkCount = 1
+	}
+	payloadID := uuid.NewString()
+	payloadChecksum := crc32.Checksum(payload, _crc32cTable)
+	messages := make([]*runtimecontrolv1.RuntimeMessage, 0, chunkCount)
+	for index := 0; index < chunkCount; index++ {
+		start := index * chunkBytes
+		end := start + chunkBytes
+		if end > len(payload) {
+			end = len(payload)
+		}
+		part := payload[start:end]
+		messages = append(messages, &runtimecontrolv1.RuntimeMessage{
+			Payload: &runtimecontrolv1.RuntimeMessage_TaskResultChunk{
+				TaskResultChunk: &runtimecontrolv1.TaskResultChunk{
+					RequestId:             result.GetRequestId(),
+					TaskId:                result.GetTaskId(),
+					ExecutionId:           result.GetExecutionId(),
+					PayloadId:             payloadID,
+					ChunkIndex:            uint32(index),
+					ChunkCount:            uint32(chunkCount),
+					PayloadChunk:          append([]byte(nil), part...),
+					PayloadTotalSize:      uint64(len(payload)),
+					PayloadChecksumCrc32C: payloadChecksum,
+					ChunkChecksumCrc32C:   crc32.Checksum(part, _crc32cTable),
+					IsLastChunk:           index == chunkCount-1,
+				},
+			},
+		})
+	}
+	return messages, nil
+}
+
+func taskResultChunkErrorCode(err error) string {
+	if err == nil {
+		return "invalid_task_result_chunk"
+	}
+	switch {
+	case strings.Contains(err.Error(), "checksum"):
+		return "task_result_chunk_checksum_mismatch"
+	case strings.Contains(err.Error(), "incomplete"):
+		return "task_result_chunk_incomplete"
+	default:
+		return "invalid_task_result_chunk"
+	}
 }

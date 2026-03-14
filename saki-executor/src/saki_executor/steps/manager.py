@@ -462,18 +462,17 @@ class TaskManager:
         self.mark_local_activity("task_result.cancelled")
         reporter = self._ensure_reporter(request)
         reporter.status(TaskStatus.CANCELLED.value, "任务已取消")
-        await self._send_message(
-            runtime_codec.build_task_result_message(
-                request_id=str(uuid.uuid4()),
-                task_id=request.task_id,
-                execution_id=request.execution_id,
-                status=TaskStatus.CANCELLED.value,
-                metrics={},
-                artifacts={},
-                candidates=[],
-                error_message="已按请求取消",
-            )
-        )
+        for message in runtime_codec.build_task_result_message(
+            request_id=str(uuid.uuid4()),
+            task_id=request.task_id,
+            execution_id=request.execution_id,
+            status=TaskStatus.CANCELLED.value,
+            metrics={},
+            artifacts={},
+            candidates=[],
+            error_message="已按请求取消",
+        ):
+            await self._send_message(message)
         logger.warning("任务被取消 task_id={}", request.task_id)
         return TaskStatus.CANCELLED
 
@@ -487,18 +486,17 @@ class TaskManager:
         reporter.status(status.value, message)
         if self._send_message is not None and self._forced_terminal_report:
             self.mark_local_activity("task_result.forced")
-            await self._send_message(
-                runtime_codec.build_task_result_message(
-                    request_id=str(uuid.uuid4()),
-                    task_id=request.task_id,
-                    execution_id=request.execution_id,
-                    status=status.value,
-                    metrics={},
-                    artifacts={},
-                    candidates=[],
-                    error_message=message if status == TaskStatus.FAILED else "",
-                )
-            )
+            for result_message in runtime_codec.build_task_result_message(
+                request_id=str(uuid.uuid4()),
+                task_id=request.task_id,
+                execution_id=request.execution_id,
+                status=status.value,
+                metrics={},
+                artifacts={},
+                candidates=[],
+                error_message=message if status == TaskStatus.FAILED else "",
+            ):
+                await self._send_message(result_message)
         if status == TaskStatus.FAILED:
             logger.error("任务被强制失败 task_id={} error={}", request.task_id, message)
         else:
@@ -519,18 +517,17 @@ class TaskManager:
         self.mark_local_activity("task_result.failed")
         reporter = self._ensure_reporter(request)
         reporter.status(TaskStatus.FAILED.value, error_message)
-        await self._send_message(
-            runtime_codec.build_task_result_message(
-                request_id=str(uuid.uuid4()),
-                task_id=request.task_id,
-                execution_id=request.execution_id,
-                status=TaskStatus.FAILED.value,
-                metrics={},
-                artifacts={},
-                candidates=[],
-                error_message=error_message,
-            )
-        )
+        for result_message in runtime_codec.build_task_result_message(
+            request_id=str(uuid.uuid4()),
+            task_id=request.task_id,
+            execution_id=request.execution_id,
+            status=TaskStatus.FAILED.value,
+            metrics={},
+            artifacts={},
+            candidates=[],
+            error_message=error_message,
+        ):
+            await self._send_message(result_message)
         logger.exception("任务执行失败 task_id={} error={}", request.task_id, error_message)
         return TaskStatus.FAILED
 

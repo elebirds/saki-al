@@ -290,6 +290,20 @@ message TaskResult {
   repeated string warnings = 9;
 }
 
+message TaskResultChunk {
+  string request_id = 1;
+  string task_id = 2;
+  string execution_id = 3;
+  string payload_id = 4;
+  uint32 chunk_index = 5;
+  uint32 chunk_count = 6;
+  bytes payload_chunk = 7;
+  uint64 payload_total_size = 8;
+  uint32 payload_checksum_crc32c = 9;
+  uint32 chunk_checksum_crc32c = 10;
+  bool is_last_chunk = 11;
+}
+
 message DataRequest {
   string request_id = 1;
   string task_id = 2;
@@ -419,15 +433,16 @@ message RuntimeMessage {
     StopTask stop_task = 4;
     TaskEvent task_event = 5;
     TaskResult task_result = 6;
-    DataRequest data_request = 7;
-    DataResponse data_response = 8;
-    UploadTicketRequest upload_ticket_request = 9;
-    UploadTicketResponse upload_ticket_response = 10;
-    DownloadTicketRequest download_ticket_request = 11;
-    DownloadTicketResponse download_ticket_response = 12;
-    Ack ack = 13;
-    Error error = 14;
-    RuntimeUpdateCommand update_command = 15;
-    RuntimeUpdateEvent update_event = 16;
+    TaskResultChunk task_result_chunk = 7;
+    DataRequest data_request = 8;
+    DataResponse data_response = 9;
+    UploadTicketRequest upload_ticket_request = 10;
+    UploadTicketResponse upload_ticket_response = 11;
+    DownloadTicketRequest download_ticket_request = 12;
+    DownloadTicketResponse download_ticket_response = 13;
+    Ack ack = 14;
+    Error error = 15;
+    RuntimeUpdateCommand update_command = 16;
+    RuntimeUpdateEvent update_event = 17;
   }
 }

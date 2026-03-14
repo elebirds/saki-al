@@ -2,12 +2,17 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from typing import Any
+from uuid import uuid4
 
 from google.protobuf.json_format import MessageToDict
 from google.protobuf.struct_pb2 import Struct
 
 from saki_executor.grpc_gen import runtime_control_pb2 as pb
+from saki_ir.crc32c import checksum_crc32c
 from saki_executor.steps.state import TaskStatus
+
+_TASK_RESULT_INLINE_MAX_BYTES = 3 * 1024 * 1024
+_TASK_RESULT_CHUNK_BYTES = 896 * 1024
 
 _TASK_STATUS_TO_ENUM: dict[str, int] = {
     TaskStatus.PENDING.value: pb.PENDING,
@@ -585,7 +590,7 @@ def build_task_result_message(
     candidates: list[dict[str, Any]],
     error_message: str = "",
     warnings: list[str] | None = None,
-) -> pb.RuntimeMessage:
+) -> list[pb.RuntimeMessage]:
     task_id = str(task_id)
     task_result = pb.TaskResult(
         request_id=request_id,
@@ -622,7 +627,36 @@ def build_task_result_message(
             )
         )
 
-    return pb.RuntimeMessage(task_result=task_result)
+    serialized = task_result.SerializeToString()
+    if len(serialized) <= _TASK_RESULT_INLINE_MAX_BYTES:
+        return [pb.RuntimeMessage(task_result=task_result)]
+
+    payload_id = str(uuid4())
+    payload_checksum = checksum_crc32c(serialized)
+    chunk_count = max(1, (len(serialized) + _TASK_RESULT_CHUNK_BYTES - 1) // _TASK_RESULT_CHUNK_BYTES)
+    messages: list[pb.RuntimeMessage] = []
+    for chunk_index in range(chunk_count):
+        start = chunk_index * _TASK_RESULT_CHUNK_BYTES
+        end = start + _TASK_RESULT_CHUNK_BYTES
+        payload_chunk = serialized[start:end]
+        messages.append(
+            pb.RuntimeMessage(
+                task_result_chunk=pb.TaskResultChunk(
+                    request_id=str(request_id or ""),
+                    task_id=task_id,
+                    execution_id=str(execution_id or ""),
+                    payload_id=payload_id,
+                    chunk_index=chunk_index,
+                    chunk_count=chunk_count,
+                    payload_chunk=payload_chunk,
+                    payload_total_size=len(serialized),
+                    payload_checksum_crc32c=payload_checksum,
+                    chunk_checksum_crc32c=checksum_crc32c(payload_chunk),
+                    is_last_chunk=(chunk_index == chunk_count - 1),
+                )
+            )
+        )
+    return messages
 
 
 def get_message_request_id(message: pb.RuntimeMessage) -> str:

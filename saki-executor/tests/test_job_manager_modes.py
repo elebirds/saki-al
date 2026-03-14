@@ -381,6 +381,66 @@ class _BatchTopKStrictPlugin(_BatchScoringPlugin):
         return candidates
 
 
+class _ChunkedPredictPlugin(_ModeAwarePlugin):
+    async def predict_samples_batch(
+            self,
+            workspace,
+            samples: list[dict[str, Any]],
+            params: dict[str, Any],
+            *,
+            context: TaskRuntimeContext,
+    ) -> list[dict[str, Any]]:
+        del workspace, params, context
+        self.predict_calls += 1
+        payload_blob = "z" * 131072
+        return [
+            {
+                "sample_id": str(item.get("id") or ""),
+                "score": 0.8,
+                "reason": {
+                    "prediction_snapshot": {
+                        "base_predictions": [
+                            {
+                                "class_index": 0,
+                                "class_name": "mock",
+                                "confidence": 0.8,
+                                "attrs": {"blob": payload_blob},
+                                "geometry": {
+                                    "rect": {
+                                        "x": 1.0,
+                                        "y": 1.0,
+                                        "width": 10.0,
+                                        "height": 10.0,
+                                    }
+                                },
+                            }
+                        ]
+                    }
+                },
+                "prediction_snapshot": {
+                    "base_predictions": [
+                        {
+                            "class_index": 0,
+                            "class_name": "mock",
+                            "confidence": 0.8,
+                            "attrs": {"blob": payload_blob},
+                            "geometry": {
+                                "rect": {
+                                    "x": 1.0,
+                                    "y": 1.0,
+                                    "width": 10.0,
+                                    "height": 10.0,
+                                }
+                            },
+                        }
+                    ]
+                },
+            }
+            for item in samples
+            if item.get("id")
+        ]
+
+
 class _InvalidPredictionSnapshotPlugin(_BatchScoringPlugin):
     async def predict_unlabeled_batch(
             self,
@@ -2264,6 +2324,58 @@ async def test_stop_task_forces_cancelled_result(tmp_path: Path):
         and message.task_event.WhichOneof("event_payload") == "status_event"
     ]
     assert pb.CANCELLED not in status_codes
+
+
+@pytest.mark.anyio
+async def test_predict_large_result_is_sent_as_chunked_task_result(tmp_path: Path):
+    plugin = _ChunkedPredictPlugin()
+    manager = _build_manager(tmp_path, plugin)
+    sent_messages: list[pb.RuntimeMessage] = []
+
+    async def fake_send(message: pb.RuntimeMessage) -> None:
+        sent_messages.append(message)
+
+    sample_items = [pb.DataItem(sample_item=pb.SampleItem(id=f"p{index}")) for index in range(48)]
+
+    async def fake_request(message: pb.RuntimeMessage) -> pb.RuntimeMessage:
+        payload_type = message.WhichOneof("payload")
+        assert payload_type == "data_request"
+        request = message.data_request
+        return build_data_response_message(
+            request_id=f"resp-{request.request_id}",
+            reply_to=request.request_id,
+            task_id=request.task_id,
+            query_type=request.query_type,
+            items=sample_items if request.query_type == pb.SAMPLES else _mock_data_items(request.query_type),
+        )
+
+    manager.set_transport(fake_send, fake_request)
+
+    accepted = await manager.assign_task(
+        "assign-chunked-predict-1",
+        {
+            "task_id": "task-chunked-predict-1",
+            "round_id": "",
+            "project_id": "project-1",
+            "input_commit_id": "commit-1",
+            "plugin_id": plugin.plugin_id,
+            "mode": "manual",
+            "task_type": "predict",
+            "dispatch_kind": "dispatchable",
+            "round_index": 0,
+            "resolved_params": {},
+        },
+    )
+    assert accepted is True
+    assert manager._task is not None  # noqa: SLF001
+    await asyncio.wait_for(manager._task, timeout=5.0)  # noqa: SLF001
+
+    chunk_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result_chunk"]
+    inline_result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
+    assert len(chunk_messages) > 1
+    assert len(inline_result_messages) == 0
+    assert chunk_messages[0].task_result_chunk.task_id == "task-chunked-predict-1"
+    assert chunk_messages[-1].task_result_chunk.is_last_chunk is True
 
 
 @pytest.mark.anyio

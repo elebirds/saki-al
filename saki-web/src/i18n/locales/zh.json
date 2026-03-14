@@ -1102,7 +1102,9 @@
         "createSuccess": "预测任务已创建",
         "createFailed": "创建预测任务失败",
         "applySuccess": "已应用到分支草稿 {{branch}}：{{count}} 条",
-        "applyFailed": "应用 Prediction 失败"
+        "applyFailed": "应用 Prediction 失败",
+        "deleteSuccess": "已删除 Prediction 及关联运行时记录",
+        "deleteFailed": "删除 Prediction 失败"
       },
       "table": {
         "taskId": "任务 ID",
@@ -1115,7 +1117,13 @@
       "actions": {
         "gotoLoop": "跳转 Loop",
         "apply": "应用",
-        "detail": "详情"
+        "detail": "详情",
+        "delete": "删除"
+      },
+      "deleteConfirm": {
+        "title": "删除当前 Prediction？",
+        "description": "会级联删除 prediction 及其运行时记录，但不会回滚已应用到草稿的内容。",
+        "okText": "确认删除"
       },
       "detail": {
         "title": "Prediction 任务详情",

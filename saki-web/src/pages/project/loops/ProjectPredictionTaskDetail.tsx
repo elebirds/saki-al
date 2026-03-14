@@ -1,5 +1,5 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {Alert, App, Button, Card, Descriptions, Empty, Space, Spin, Table, Tag, Typography} from 'antd';
+import {Alert, App, Button, Card, Descriptions, Empty, Popconfirm, Space, Spin, Table, Tag, Typography} from 'antd';
 import {ArrowLeftOutlined, ReloadOutlined} from '@ant-design/icons';
 import {useTranslation} from 'react-i18next';
 import {useNavigate, useParams} from 'react-router-dom';
@@ -92,6 +92,7 @@ const ProjectPredictionTaskDetail: React.FC = () => {
     const [refreshing, setRefreshing] = useState(false);
     const [applying, setApplying] = useState(false);
     const [applyModalOpen, setApplyModalOpen] = useState(false);
+    const [deleting, setDeleting] = useState(false);
     const [consoleLoading, setConsoleLoading] = useState(false);
     const [consoleConnected, setConsoleConnected] = useState(false);
     const [detail, setDetail] = useState<PredictionDetailRead | null>(null);
@@ -237,6 +238,20 @@ const ProjectPredictionTaskDetail: React.FC = () => {
         }
     }, [detail?.prediction?.id, api, messageApi, t, loadDetail]);
 
+    const onDeletePrediction = useCallback(async () => {
+        if (!detail?.prediction?.id || !projectId) return;
+        try {
+            setDeleting(true);
+            await api.deletePrediction(detail.prediction.id);
+            messageApi.success(t('project.predictionTasks.messages.deleteSuccess'));
+            navigate(`/projects/${projectId}/prediction-tasks`);
+        } catch (error: any) {
+            messageApi.error(error?.message || t('project.predictionTasks.messages.deleteFailed'));
+        } finally {
+            setDeleting(false);
+        }
+    }, [detail?.prediction?.id, api, messageApi, navigate, projectId, t]);
+
     const artifactRows = useMemo<TaskArtifactTableRow[]>(() => {
         const taskId = String(detail?.prediction?.taskId || '').trim();
         if (!taskId) return [];
@@ -291,6 +306,18 @@ const ProjectPredictionTaskDetail: React.FC = () => {
                     <Button icon={<ReloadOutlined/>} loading={refreshing} onClick={() => void loadDetail(true, false)}>
                         {t('project.predictionTasks.refresh')}
                     </Button>
+                    <Popconfirm
+                        title={t('project.predictionTasks.deleteConfirm.title')}
+                        description={t('project.predictionTasks.deleteConfirm.description')}
+                        okText={t('project.predictionTasks.deleteConfirm.okText')}
+                        cancelText={t('common.cancel')}
+                        okButtonProps={{danger: true, loading: deleting}}
+                        onConfirm={() => void onDeletePrediction()}
+                    >
+                        <Button danger loading={deleting}>
+                            {t('project.predictionTasks.actions.delete')}
+                        </Button>
+                    </Popconfirm>
                     <Button
                         type="primary"
                         loading={applying}

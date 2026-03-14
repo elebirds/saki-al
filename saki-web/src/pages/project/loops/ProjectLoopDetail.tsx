@@ -16,6 +16,7 @@ import {
     Progress,
     Select,
     Slider,
+    Space,
     Statistic,
     Spin,
     Table,
@@ -218,6 +219,7 @@ const ProjectLoopDetail: React.FC = () => {
     const [predictionSubmitting, setPredictionSubmitting] = useState(false);
     const [applyingPredictionId, setApplyingPredictionId] = useState<string>('');
     const [applyTargetPrediction, setApplyTargetPrediction] = useState<PredictionRead | null>(null);
+    const [deletingPredictionId, setDeletingPredictionId] = useState<string>('');
     const [predictionScopeOpen, setPredictionScopeOpen] = useState(false);
     const [predictionScopeStatus, setPredictionScopeStatus] = useState<'all' | 'unlabeled' | 'labeled' | 'draft'>('all');
     const [snapshotInitOpen, setSnapshotInitOpen] = useState(false);
@@ -706,6 +708,20 @@ const ProjectLoopDetail: React.FC = () => {
             setApplyingPredictionId('');
         }
     }, [api, applyTargetPrediction, refreshPredictions, messageApi]);
+
+    const handleDeletePrediction = useCallback(async (prediction: PredictionRead) => {
+        if (!prediction?.id) return;
+        setDeletingPredictionId(prediction.id);
+        try {
+            await api.deletePrediction(prediction.id);
+            messageApi.success('已删除 Prediction 及关联运行时记录');
+            await refreshPredictions();
+        } catch (error: any) {
+            messageApi.error(error?.message || '删除 Prediction 失败');
+        } finally {
+            setDeletingPredictionId('');
+        }
+    }, [api, messageApi, refreshPredictions]);
 
     const parseSampleIds = (raw?: string): string[] | undefined => {
         const text = String(raw || '').trim();
@@ -1277,16 +1293,34 @@ const ProjectLoopDetail: React.FC = () => {
                         },
                         {
                             title: '操作',
-                            width: 180,
+                            width: 280,
                             render: (_: unknown, row: PredictionRead) => (
-                                <Button
-                                    size="small"
-                                    onClick={() => void handleApplyPrediction(row)}
-                                    loading={applyingPredictionId === row.id}
-                                    disabled={!['ready', 'applied'].includes(String(row.status || '').toLowerCase())}
-                                >
-                                    应用到 Draft
-                                </Button>
+                                <Space>
+                                    <Button
+                                        size="small"
+                                        onClick={() => void handleApplyPrediction(row)}
+                                        loading={applyingPredictionId === row.id}
+                                        disabled={!['ready', 'applied'].includes(String(row.status || '').toLowerCase())}
+                                    >
+                                        应用到 Draft
+                                    </Button>
+                                    <Popconfirm
+                                        title="删除当前 Prediction？"
+                                        description="会级联删除 prediction 及其运行时记录，但不会回滚已应用到草稿的内容。"
+                                        okText="确认删除"
+                                        cancelText="取消"
+                                        okButtonProps={{danger: true, loading: deletingPredictionId === row.id}}
+                                        onConfirm={() => void handleDeletePrediction(row)}
+                                    >
+                                        <Button
+                                            size="small"
+                                            danger
+                                            loading={deletingPredictionId === row.id}
+                                        >
+                                            删除
+                                        </Button>
+                                    </Popconfirm>
+                                </Space>
                             ),
                         },
                     ]}

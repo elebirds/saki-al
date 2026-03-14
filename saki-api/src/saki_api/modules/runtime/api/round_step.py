@@ -451,6 +451,17 @@ class PredictionApplyResponse(BaseModel):
     applied_count: int = 0
     status: str
 
+
+class PredictionDeleteResponse(BaseModel):
+    prediction_id: uuid.UUID
+    task_id: Optional[uuid.UUID] = None
+    deleted_prediction_item_count: int = 0
+    deleted_task_event_count: int = 0
+    deleted_task_metric_count: int = 0
+    deleted_task_candidate_count: int = 0
+    status: str = "deleted"
+
+
 class TaskArtifactDownloadResponse(BaseModel):
     task_id: uuid.UUID
     artifact_name: str

@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import func
-from sqlmodel import select
+from sqlmodel import delete, select
 
 from saki_ir import IRValidationError, normalize_prediction_candidate, normalize_prediction_snapshot
 from saki_api.core.exceptions import BadRequestAppException, NotFoundAppException
@@ -22,13 +22,16 @@ from saki_api.modules.annotation.repo.draft import AnnotationDraftRepository
 from saki_api.modules.project.domain.branch import Branch
 from saki_api.modules.project.domain.commit import Commit
 from saki_api.modules.project.domain.commit_sample_state import CommitSampleState
+from saki_api.modules.runtime.domain.dispatch_outbox import TaskDispatchOutbox
 from saki_api.modules.runtime.domain.model_class_schema import ModelClassSchema
+from saki_api.modules.runtime.domain.prediction_binding import PredictionBinding
 from saki_api.modules.runtime.domain.prediction_item import PredictionItem
 from saki_api.modules.runtime.domain.prediction import Prediction
 from saki_api.modules.runtime.domain.step import Step
 from saki_api.modules.runtime.domain.task_candidate_item import TaskCandidateItem
 from saki_api.modules.runtime.domain.task import Task
 from saki_api.modules.runtime.domain.task_event import TaskEvent
+from saki_api.modules.runtime.domain.task_metric_point import TaskMetricPoint
 from saki_api.modules.runtime.service.runtime_service.prediction_label_resolver import (
     PredictionLabelResolver,
     PredictionResolveError,
@@ -829,6 +832,71 @@ class PredictionTaskMixin:
         prediction = await self.settle_prediction_task(prediction_id=prediction_id)
         items = await self.prediction_item_repo.list_by_prediction(prediction_id, limit=item_limit)
         return prediction, items
+
+    @transactional
+    async def delete_prediction(
+        self,
+        *,
+        prediction_id: uuid.UUID,
+        actor_user_id: uuid.UUID | None = None,
+    ) -> dict[str, Any]:
+        prediction = await self.prediction_repo.get_by_id_or_raise(prediction_id)
+        task_id = getattr(prediction, "task_id", None)
+
+        deleted_prediction_items = int(
+            (
+                await self.session.exec(
+                    delete(PredictionItem).where(PredictionItem.prediction_id == prediction.id)
+                )
+            ).rowcount or 0
+        )
+        await self.session.exec(
+            delete(PredictionBinding).where(PredictionBinding.prediction_id == prediction.id)
+        )
+
+        deleted_task_events = 0
+        deleted_task_metrics = 0
+        deleted_task_candidates = 0
+        if task_id is not None:
+            await self.session.exec(
+                delete(TaskDispatchOutbox).where(TaskDispatchOutbox.task_id == task_id)
+            )
+            deleted_task_events = int(
+                (
+                    await self.session.exec(
+                        delete(TaskEvent).where(TaskEvent.task_id == task_id)
+                    )
+                ).rowcount or 0
+            )
+            deleted_task_metrics = int(
+                (
+                    await self.session.exec(
+                        delete(TaskMetricPoint).where(TaskMetricPoint.task_id == task_id)
+                    )
+                ).rowcount or 0
+            )
+            deleted_task_candidates = int(
+                (
+                    await self.session.exec(
+                        delete(TaskCandidateItem).where(TaskCandidateItem.task_id == task_id)
+                    )
+                ).rowcount or 0
+            )
+
+        await self.session.exec(delete(Prediction).where(Prediction.id == prediction.id))
+        if task_id is not None:
+            await self.session.exec(delete(Task).where(Task.id == task_id))
+
+        return {
+            "prediction_id": prediction.id,
+            "task_id": task_id,
+            "deleted_prediction_item_count": deleted_prediction_items,
+            "deleted_task_event_count": deleted_task_events,
+            "deleted_task_metric_count": deleted_task_metrics,
+            "deleted_task_candidate_count": deleted_task_candidates,
+            "status": "deleted",
+            "actor_user_id": str(actor_user_id) if actor_user_id else None,
+        }
 
     @transactional
     async def apply_prediction(

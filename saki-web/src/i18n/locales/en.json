@@ -1075,7 +1075,9 @@
         "createSuccess": "Prediction task created",
         "createFailed": "Failed to create prediction task",
         "applySuccess": "Applied to draft branch {{branch}}: {{count}} items",
-        "applyFailed": "Failed to apply prediction task result"
+        "applyFailed": "Failed to apply prediction task result",
+        "deleteSuccess": "Prediction and related runtime records deleted",
+        "deleteFailed": "Failed to delete prediction"
       },
       "table": {
         "taskId": "Task ID",
@@ -1088,7 +1090,13 @@
       "actions": {
         "gotoLoop": "Go to Loop",
         "apply": "Apply",
-        "detail": "Detail"
+        "detail": "Detail",
+        "delete": "Delete"
+      },
+      "deleteConfirm": {
+        "title": "Delete this prediction?",
+        "description": "This will cascade delete the prediction and related runtime records, but will not roll back already applied drafts.",
+        "okText": "Delete"
       },
       "detail": {
         "title": "Prediction Task Detail",

@@ -55,6 +55,7 @@ import {
     PredictionApplyRequest,
     PredictionApplyResponse,
     PredictionDetailRead,
+    PredictionDeleteResponse,
     PredictionCreateRequest,
     PredictionRead,
     PredictionTaskRead,
@@ -281,6 +282,7 @@ export interface ApiService {
         predictionId: string,
         payload: PredictionApplyRequest,
     ): Promise<PredictionApplyResponse>;
+    deletePrediction(predictionId: string): Promise<PredictionDeleteResponse>;
     cleanupRoundPredictions(loopId: string, roundIndex: number): Promise<RoundPredictionCleanupResponse>;
 
     getLoopSummary(loopId: string): Promise<LoopSummary>;

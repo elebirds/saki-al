@@ -54,6 +54,7 @@ import {
     RoundMissingSamplesResponse,
     PredictionApplyRequest,
     PredictionApplyResponse,
+    PredictionDeleteResponse,
     PredictionCreateRequest,
     PredictionDetailRead,
     PredictionRead,
@@ -1096,6 +1097,11 @@ export class RealApiService implements ApiService {
             `/predictions/${predictionId}:apply`,
             payload ?? {},
         );
+        return response.data;
+    }
+
+    async deletePrediction(predictionId: string): Promise<PredictionDeleteResponse> {
+        const response = await this.client.delete<PredictionDeleteResponse>(`/predictions/${predictionId}`);
         return response.data;
     }
 

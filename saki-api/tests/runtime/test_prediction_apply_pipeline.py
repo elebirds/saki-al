@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -21,10 +22,15 @@ from saki_api.modules.project.domain.project import Project, ProjectDataset
 from saki_api.modules.runtime.domain.loop import Loop
 from saki_api.modules.runtime.domain.model import Model
 from saki_api.modules.runtime.domain.model_class_schema import ModelClassSchema
+from saki_api.modules.runtime.domain.prediction import Prediction
+from saki_api.modules.runtime.domain.prediction_binding import PredictionBinding
+from saki_api.modules.runtime.domain.prediction_item import PredictionItem
 from saki_api.modules.runtime.domain.round import Round
+from saki_api.modules.runtime.domain.dispatch_outbox import TaskDispatchOutbox
 from saki_api.modules.runtime.domain.task import Task
 from saki_api.modules.runtime.domain.task_candidate_item import TaskCandidateItem
 from saki_api.modules.runtime.domain.task_event import TaskEvent
+from saki_api.modules.runtime.domain.task_metric_point import TaskMetricPoint
 from saki_api.modules.runtime.service.runtime_service import RuntimeService
 from saki_api.modules.shared.modeling.enums import (
     AnnotationSource,
@@ -36,7 +42,7 @@ from saki_api.modules.shared.modeling.enums import (
 )
 from saki_api.modules.storage.domain.dataset import Dataset
 from saki_api.modules.storage.domain.sample import Sample
-from saki_api.core.exceptions import BadRequestAppException
+from saki_api.core.exceptions import BadRequestAppException, NotFoundAppException
 
 
 @dataclass
@@ -1368,3 +1374,241 @@ async def test_settle_prediction_fails_on_class_name_and_index_conflict(predicti
         settled = await service.get_prediction_task(task_id=prediction.task_id)
         assert str(settled.status or "").lower() == "failed"
         assert "PREDICTION_LABEL_CONFLICT" in str(settled.last_error or "")
+
+
+@pytest.mark.anyio
+async def test_delete_prediction_cascades_runtime_records(prediction_env):
+    session_local = prediction_env
+    async with session_local() as session:
+        ctx = await _seed_prediction_context(session)
+        service = RuntimeService(session)
+        prediction = await _create_prediction_task(service=service, ctx=ctx, scope_status="all")
+        assert prediction.task_id is not None
+
+        await _finish_prediction_task(
+            session=session,
+            task_id=prediction.task_id,
+            rows=[
+                {
+                    "sample_id": ctx.sample.id,
+                    "score": 0.91,
+                    "reason": {
+                        "prediction_snapshot": {
+                            "base_predictions": [
+                                {
+                                    "class_index": 0,
+                                    "class_name": ctx.labels_sorted_by_sort[0].name,
+                                    "confidence": 0.91,
+                                    "geometry": {
+                                        "rect": {
+                                            "x": 2,
+                                            "y": 3,
+                                            "width": 12,
+                                            "height": 14,
+                                        }
+                                    },
+                                }
+                            ]
+                        }
+                    },
+                    "prediction_snapshot": {},
+                }
+            ],
+        )
+        settled = await service.settle_prediction_task(prediction_id=prediction.id)
+        assert settled.status == "ready"
+
+        task_row = await session.get(Task, prediction.task_id)
+        assert task_row is not None
+        session.add(
+            TaskDispatchOutbox(
+                task_id=prediction.task_id,
+                executor_id="executor-a",
+                request_id=f"req-{uuid.uuid4()}",
+                payload={"kind": "predict"},
+                status="pending",
+                attempt_count=0,
+                next_attempt_at=datetime.now(UTC),
+                last_error=None,
+            )
+        )
+        session.add(
+            TaskMetricPoint(
+                task_id=prediction.task_id,
+                metric_step=1,
+                epoch=1,
+                metric_name="loss",
+                metric_value=0.123,
+                ts=datetime.now(UTC),
+            )
+        )
+        session.add(
+            TaskEvent(
+                task_id=prediction.task_id,
+                execution_id=task_row.current_execution_id,
+                seq=99,
+                ts=datetime.now(UTC),
+                event_type="log",
+                payload={"message": "delete me"},
+            )
+        )
+        await session.commit()
+
+        result = await service.delete_prediction(
+            prediction_id=prediction.id,
+            actor_user_id=ctx.actor.id,
+        )
+        assert result["prediction_id"] == prediction.id
+        assert result["task_id"] == prediction.task_id
+        assert result["deleted_prediction_item_count"] == 1
+        assert result["deleted_task_event_count"] >= 1
+        assert result["deleted_task_metric_count"] == 1
+        assert result["deleted_task_candidate_count"] == 1
+        assert result["status"] == "deleted"
+
+        assert await session.get(Prediction, prediction.id) is None
+        assert await session.get(Task, prediction.task_id) is None
+
+        prediction_items = list(
+            (
+                await session.exec(
+                    select(PredictionItem).where(PredictionItem.prediction_id == prediction.id)
+                )
+            ).all()
+        )
+        prediction_bindings = list(
+            (
+                await session.exec(
+                    select(PredictionBinding).where(PredictionBinding.prediction_id == prediction.id)
+                )
+            ).all()
+        )
+        task_events = list(
+            (
+                await session.exec(
+                    select(TaskEvent).where(TaskEvent.task_id == prediction.task_id)
+                )
+            ).all()
+        )
+        task_metrics = list(
+            (
+                await session.exec(
+                    select(TaskMetricPoint).where(TaskMetricPoint.task_id == prediction.task_id)
+                )
+            ).all()
+        )
+        task_candidates = list(
+            (
+                await session.exec(
+                    select(TaskCandidateItem).where(TaskCandidateItem.task_id == prediction.task_id)
+                )
+            ).all()
+        )
+        task_outbox = list(
+            (
+                await session.exec(
+                    select(TaskDispatchOutbox).where(TaskDispatchOutbox.task_id == prediction.task_id)
+                )
+            ).all()
+        )
+        assert prediction_items == []
+        assert prediction_bindings == []
+        assert task_events == []
+        assert task_metrics == []
+        assert task_candidates == []
+        assert task_outbox == []
+
+        with pytest.raises(NotFoundAppException, match="not found"):
+            await service.get_prediction_detail(prediction_id=prediction.id, item_limit=10)
+
+
+@pytest.mark.anyio
+async def test_delete_applied_prediction_keeps_existing_annotation_draft(prediction_env):
+    session_local = prediction_env
+    async with session_local() as session:
+        ctx = await _seed_prediction_context(session)
+        service = RuntimeService(session)
+        prediction = await _create_prediction_task(service=service, ctx=ctx, scope_status="all")
+
+        await _finish_prediction_task(
+            session=session,
+            task_id=prediction.task_id,
+            rows=[
+                {
+                    "sample_id": ctx.sample.id,
+                    "score": 0.74,
+                    "reason": {
+                        "prediction_snapshot": {
+                            "base_predictions": [
+                                {
+                                    "class_index": 0,
+                                    "class_name": ctx.labels_sorted_by_sort[0].name,
+                                    "confidence": 0.74,
+                                    "geometry": {
+                                        "rect": {
+                                            "x": 8,
+                                            "y": 9,
+                                            "width": 16,
+                                            "height": 18,
+                                        }
+                                    },
+                                }
+                            ]
+                        }
+                    },
+                    "prediction_snapshot": {},
+                }
+            ],
+        )
+
+        apply_result = await service.apply_prediction(
+            prediction_id=prediction.id,
+            actor_user_id=ctx.actor.id,
+            branch_name="master",
+            dry_run=False,
+        )
+        assert apply_result["applied_count"] == 1
+
+        draft_before_delete = (
+            await session.exec(
+                select(AnnotationDraft).where(
+                    AnnotationDraft.project_id == ctx.project.id,
+                    AnnotationDraft.sample_id == ctx.sample.id,
+                    AnnotationDraft.user_id == ctx.actor.id,
+                    AnnotationDraft.branch_name == "master",
+                )
+            )
+        ).one_or_none()
+        assert draft_before_delete is not None
+
+        await service.delete_prediction(
+            prediction_id=prediction.id,
+            actor_user_id=ctx.actor.id,
+        )
+
+        draft_after_delete = (
+            await session.exec(
+                select(AnnotationDraft).where(
+                    AnnotationDraft.project_id == ctx.project.id,
+                    AnnotationDraft.sample_id == ctx.sample.id,
+                    AnnotationDraft.user_id == ctx.actor.id,
+                    AnnotationDraft.branch_name == "master",
+                )
+            )
+        ).one_or_none()
+        assert draft_after_delete is not None
+        assert draft_after_delete.id == draft_before_delete.id
+
+
+@pytest.mark.anyio
+async def test_delete_prediction_raises_not_found_for_missing_row(prediction_env):
+    session_local = prediction_env
+    async with session_local() as session:
+        await _seed_prediction_context(session)
+        service = RuntimeService(session)
+
+        with pytest.raises(NotFoundAppException, match="not found"):
+            await service.delete_prediction(
+                prediction_id=uuid.uuid4(),
+                actor_user_id=uuid.uuid4(),
+            )

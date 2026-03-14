@@ -21,6 +21,7 @@ from saki_api.modules.runtime.api.round_step import (
     PredictionApplyRequest,
     PredictionApplyResponse,
     PredictionCreateRequest,
+    PredictionDeleteResponse,
     PredictionDetailRead,
     PredictionRead,
     PredictionTaskRead,
@@ -241,6 +242,36 @@ async def apply_prediction(
         applied_branch_name=result.get("applied_branch_name"),
         applied_count=int(result.get("applied_count", 0)),
         status=str(result.get("status") or "ready"),
+    )
+
+
+@router.delete("/predictions/{prediction_id}", response_model=PredictionDeleteResponse)
+async def delete_prediction(
+    *,
+    prediction_id: uuid.UUID,
+    runtime_service: RuntimeServiceDep,
+    session: AsyncSession = Depends(get_session),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
+):
+    prediction = await runtime_service.prediction_repo.get_by_id_or_raise(prediction_id)
+    await ensure_loop_project_perm(
+        session=session,
+        current_user_id=current_user_id,
+        project_id=prediction.project_id,
+        required=Permissions.LOOP_MANAGE,
+    )
+    result = await runtime_service.delete_prediction(
+        prediction_id=prediction_id,
+        actor_user_id=current_user_id,
+    )
+    return PredictionDeleteResponse(
+        prediction_id=result["prediction_id"],
+        task_id=result.get("task_id"),
+        deleted_prediction_item_count=int(result.get("deleted_prediction_item_count", 0)),
+        deleted_task_event_count=int(result.get("deleted_task_event_count", 0)),
+        deleted_task_metric_count=int(result.get("deleted_task_metric_count", 0)),
+        deleted_task_candidate_count=int(result.get("deleted_task_candidate_count", 0)),
+        status=str(result.get("status") or "deleted"),
     )
 
 

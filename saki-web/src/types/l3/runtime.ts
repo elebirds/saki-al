@@ -450,6 +450,16 @@ export interface PredictionApplyResponse {
     status: string;
 }
 
+export interface PredictionDeleteResponse {
+    predictionId: string;
+    taskId?: string | null;
+    deletedPredictionItemCount: number;
+    deletedTaskEventCount: number;
+    deletedTaskMetricCount: number;
+    deletedTaskCandidateCount: number;
+    status: string;
+}
+
 export interface TaskArtifactDownload {
     taskId: string;
     artifactName: string;

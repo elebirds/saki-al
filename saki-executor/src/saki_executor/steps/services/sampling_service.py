@@ -6,6 +6,7 @@ import time
 from typing import Any, Awaitable, Callable
 
 from saki_executor.cache.asset_cache import AssetCache
+from saki_executor.core.config import settings
 from saki_executor.steps.contracts import FetchedPage
 from saki_plugin_sdk import ExecutionBindingContext, ExecutorPlugin, WorkspaceProtocol
 
@@ -64,19 +65,11 @@ class SamplingService:
             if not chunk and not response.next_cursor:
                 break
 
-            for item in chunk:
-                asset_hash = item.get("asset_hash")
-                download_url = item.get("download_url")
-                if not asset_hash or not download_url:
-                    continue
-                cached_path = await self._cache.ensure_cached(
-                    str(asset_hash),
-                    str(download_url),
-                    protected=protected,
-                    pin_task_id=task_id,
-                )
-                item["local_path"] = str(cached_path)
-                protected.add(str(asset_hash))
+            await self._cache_page_assets(
+                chunk=chunk,
+                protected=protected,
+                pin_task_id=task_id,
+            )
 
             call_params = params
             if keep_all:
@@ -179,27 +172,12 @@ class SamplingService:
             if not chunk and not response.next_cursor:
                 break
 
-            cache_hits = 0
-            cache_misses = 0
             cache_started_at = time.perf_counter()
-            for item in chunk:
-                asset_hash = item.get("asset_hash")
-                download_url = item.get("download_url")
-                if not asset_hash or not download_url:
-                    continue
-                asset_hash_text = str(asset_hash)
-                if self._cache.is_cached(asset_hash_text):
-                    cache_hits += 1
-                else:
-                    cache_misses += 1
-                cached_path = await self._cache.ensure_cached(
-                    asset_hash_text,
-                    str(download_url),
-                    protected=protected,
-                    pin_task_id=task_id,
-                )
-                item["local_path"] = str(cached_path)
-                protected.add(asset_hash_text)
+            cache_result = await self._cache_page_assets(
+                chunk=chunk,
+                protected=protected,
+                pin_task_id=task_id,
+            )
             cache_sec = time.perf_counter() - cache_started_at
             total_cache_sec += cache_sec
 
@@ -227,11 +205,14 @@ class SamplingService:
 
             await self._emit_prediction_log(
                 emit_log,
-                level="INFO",
+                level="WARN" if cache_sec > float(settings.HEARTBEAT_INTERVAL_SEC) else "INFO",
                 message=(
                     f"Prediction 分页[{page_index}] samples={len(chunk)} "
                     f"fetch={fetch_sec:.3f}s cache={cache_sec:.3f}s "
-                    f"(hit={cache_hits} miss={cache_misses}) "
+                    f"(lookup={cache_result.lookup_sec:.3f}s flush={cache_result.flush_sec:.3f}s "
+                    f"hit={cache_result.cache_hits} miss={cache_result.cache_misses} "
+                    f"mode={'all_hit' if cache_result.all_hit else 'mixed'} "
+                    f"dirty={cache_result.dirty_entries} flushes={cache_result.flush_count}) "
                     f"predict={predict_sec:.3f}s normalize={normalize_sec:.3f}s "
                     f"returned={len(batch or [])} nonempty={page_nonempty_rows} boxes={page_pred_boxes}"
                 ),
@@ -241,8 +222,13 @@ class SamplingService:
                     "samples": len(chunk),
                     "fetch_sec": round(fetch_sec, 6),
                     "cache_sec": round(cache_sec, 6),
-                    "cache_hits": cache_hits,
-                    "cache_misses": cache_misses,
+                    "cache_lookup_sec": round(cache_result.lookup_sec, 6),
+                    "cache_flush_sec": round(cache_result.flush_sec, 6),
+                    "cache_hits": cache_result.cache_hits,
+                    "cache_misses": cache_result.cache_misses,
+                    "cache_all_hit": bool(cache_result.all_hit),
+                    "cache_dirty_entries": cache_result.dirty_entries,
+                    "cache_flush_count": cache_result.flush_count,
                     "predict_sec": round(predict_sec, 6),
                     "normalize_sec": round(normalize_sec, 6),
                     "returned_rows": len(batch or []),
@@ -289,6 +275,40 @@ class SamplingService:
             },
         )
         return ranked_rows
+
+    async def _cache_page_assets(
+        self,
+        *,
+        chunk: list[dict[str, Any]],
+        protected: set[str],
+        pin_task_id: str,
+    ):
+        jobs: list[tuple[str, str]] = []
+        for index, item in enumerate(chunk, start=1):
+            asset_hash = str(item.get("asset_hash") or "").strip()
+            download_url = str(item.get("download_url") or "").strip()
+            if not asset_hash or not download_url:
+                continue
+            jobs.append((asset_hash, download_url))
+            protected.add(asset_hash)
+            if index % 128 == 0:
+                await asyncio.sleep(0)
+
+        result = await self._cache.ensure_cached_batch(
+            jobs,
+            protected=protected,
+            pin_task_id=pin_task_id,
+        )
+        for index, item in enumerate(chunk, start=1):
+            asset_hash = str(item.get("asset_hash") or "").strip()
+            if not asset_hash:
+                continue
+            cached_path = result.paths.get(asset_hash)
+            if cached_path is not None:
+                item["local_path"] = str(cached_path)
+            if index % 128 == 0:
+                await asyncio.sleep(0)
+        return result
 
     @staticmethod
     def _normalize_batch(batch: list[dict[str, Any]]) -> list[dict[str, Any]]:

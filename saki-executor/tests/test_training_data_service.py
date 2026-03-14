@@ -4,6 +4,7 @@ import asyncio
 
 import pytest
 
+from saki_executor.cache.asset_cache import CacheBatchResult
 from saki_executor.cache.asset_cache import AssetCache
 from saki_executor.steps.contracts import TaskExecutionRequest
 from saki_executor.steps.orchestration.training_data_service import TrainingDataPlan, TrainingDataService
@@ -696,6 +697,43 @@ class _FakeConcurrentCache:
 
     def is_cached(self, asset_hash: str) -> bool:
         return asset_hash in self._cached_assets
+
+    async def ensure_cached_batch(
+        self,
+        items: list[tuple[str, str]],
+        *,
+        protected: set[str] | None = None,
+        pin_task_id: str | None = None,
+        progress_callback=None,
+        yield_every: int = 64,
+    ) -> CacheBatchResult:
+        del yield_every
+        paths: dict[str, Path] = {}
+        cache_hits = 0
+        cache_misses = 0
+        for asset_hash, download_url in items:
+            was_cached = self.is_cached(asset_hash)
+            path = await self.ensure_cached(
+                asset_hash,
+                download_url,
+                protected=protected,
+                pin_task_id=pin_task_id,
+                progress_callback=progress_callback,
+            )
+            paths[asset_hash] = path
+            if was_cached:
+                cache_hits += 1
+            else:
+                cache_misses += 1
+        return CacheBatchResult(
+            paths=paths,
+            cache_hits=cache_hits,
+            cache_misses=cache_misses,
+            lookup_sec=0.0,
+            flush_sec=0.0,
+            dirty_entries=len(paths),
+            flush_count=1 if paths else 0,
+        )
 
     async def ensure_cached(
         self,

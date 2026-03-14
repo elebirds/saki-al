@@ -106,3 +106,85 @@ async def test_asset_cache_cleans_up_tmp_file_when_download_cancelled(tmp_path: 
     tmp_files = list((tmp_path / "cache").rglob("*.tmp-*"))
     assert tmp_files == []
     assert cache._inflight == {}  # noqa: SLF001
+
+
+@pytest.mark.anyio
+async def test_asset_cache_batch_all_hits_flushes_index_once(tmp_path: Path, monkeypatch) -> None:
+    cache_dir = tmp_path / "cache"
+    cache = AssetCache(root_dir=str(cache_dir), max_bytes=1024 * 1024, download_concurrency=2)
+    write_calls: list[int] = []
+
+    def _write_snapshot(path: Path, snapshot: dict[str, object]) -> None:
+        write_calls.append(len(snapshot))
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{}", encoding="utf-8")
+
+    monkeypatch.setattr(cache, "_write_index_snapshot", _write_snapshot)
+
+    items: list[tuple[str, str]] = []
+    for idx in range(1000):
+        payload = f"cached-{idx}".encode("utf-8")
+        asset_hash = hashlib.sha256(payload).hexdigest()
+        path = cache._asset_path(asset_hash)  # noqa: SLF001
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+        items.append((asset_hash, f"https://example.test/{idx}"))
+
+    result = await cache.ensure_cached_batch(items, protected=set(), pin_task_id="task-cache-hit")
+
+    assert result.cache_hits == 1000
+    assert result.cache_misses == 0
+    assert result.flush_count == 1
+    assert len(write_calls) == 1
+
+
+@pytest.mark.anyio
+async def test_asset_cache_batch_yields_control_for_large_hit_set(tmp_path: Path, monkeypatch) -> None:
+    cache = AssetCache(root_dir=str(tmp_path / "cache"), max_bytes=1024 * 1024, download_concurrency=2)
+    yield_calls: list[int] = []
+    original_sleep = asyncio.sleep
+
+    async def _tracked_sleep(delay: float):
+        if delay == 0:
+            yield_calls.append(1)
+        return await original_sleep(delay)
+
+    monkeypatch.setattr("saki_executor.cache.asset_cache.asyncio.sleep", _tracked_sleep)
+
+    items: list[tuple[str, str]] = []
+    for idx in range(130):
+        payload = f"yield-{idx}".encode("utf-8")
+        asset_hash = hashlib.sha256(payload).hexdigest()
+        path = cache._asset_path(asset_hash)  # noqa: SLF001
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+        items.append((asset_hash, f"https://example.test/yield-{idx}"))
+
+    await cache.ensure_cached_batch(items, protected=set(), pin_task_id="task-yield")
+
+    assert len(yield_calls) >= 2
+
+
+@pytest.mark.anyio
+async def test_asset_cache_aclose_flushes_dirty_index(tmp_path: Path, monkeypatch) -> None:
+    cache = AssetCache(root_dir=str(tmp_path / "cache"), max_bytes=1024 * 1024, download_concurrency=2)
+    write_calls: list[int] = []
+
+    def _write_snapshot(path: Path, snapshot: dict[str, object]) -> None:
+        write_calls.append(len(snapshot))
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{}", encoding="utf-8")
+
+    monkeypatch.setattr(cache, "_write_index_snapshot", _write_snapshot)
+
+    async with cache._state_lock:  # noqa: SLF001
+        cache._touch_index_record_locked(  # noqa: SLF001
+            asset_hash="hash-dirty",
+            size=12,
+            last_access=1.0,
+            pin_task_id="task-dirty",
+        )
+
+    await cache.aclose()
+
+    assert len(write_calls) == 1

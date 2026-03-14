@@ -4,6 +4,7 @@ import json
 import os
 import time
 from contextlib import suppress
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
@@ -11,6 +12,23 @@ import httpx
 
 AssetProgressFn = Callable[[dict[str, Any]], None]
 ActivityFn = Callable[[str], None]
+
+_CACHE_BATCH_YIELD_EVERY = 64
+
+
+@dataclass(frozen=True)
+class CacheBatchResult:
+    paths: dict[str, Path]
+    cache_hits: int
+    cache_misses: int
+    lookup_sec: float
+    flush_sec: float
+    dirty_entries: int
+    flush_count: int
+
+    @property
+    def all_hit(self) -> bool:
+        return self.cache_misses == 0
 
 
 class AssetCache:
@@ -38,6 +56,10 @@ class AssetCache:
         self._download_semaphore = asyncio.Semaphore(self._download_concurrency)
         self._inflight: dict[str, asyncio.Task[Path]] = {}
         self._inflight_lock = asyncio.Lock()
+        self._index_version = 0
+        self._flushed_index_version = 0
+        self._index_version = 1 if self._index else 0
+        self._flushed_index_version = self._index_version
 
     @property
     def download_concurrency(self) -> int:
@@ -58,6 +80,21 @@ class AssetCache:
         self.index_path.parent.mkdir(parents=True, exist_ok=True)
         self.index_path.write_text(json.dumps(self._index, ensure_ascii=False, indent=2), encoding="utf-8")
 
+    @staticmethod
+    def _build_index_snapshot(index: dict[str, Any]) -> dict[str, Any]:
+        snapshot: dict[str, Any] = {}
+        for asset_hash, data in index.items():
+            if isinstance(data, dict):
+                snapshot[asset_hash] = dict(data)
+            else:
+                snapshot[asset_hash] = data
+        return snapshot
+
+    @staticmethod
+    def _write_index_snapshot(path: Path, snapshot: dict[str, Any]) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
+
     def _asset_path(self, asset_hash: str) -> Path:
         return self.assets_dir / asset_hash[:2] / asset_hash
 
@@ -67,10 +104,26 @@ class AssetCache:
     def _current_size(self) -> int:
         return sum(int(item.get("size", 0)) for item in self._index.values())
 
-    def _evict_if_needed(
-            self,
-            protected: set[str] | None = None,
-            active_task_id: str | None = None,
+    def _touch_index_record_locked(
+        self,
+        *,
+        asset_hash: str,
+        size: int,
+        last_access: float,
+        pin_task_id: str | None,
+    ) -> None:
+        record = self._index.get(asset_hash) or {}
+        record["last_access"] = float(last_access)
+        record["size"] = int(size)
+        if pin_task_id:
+            record["pin_task_id"] = pin_task_id
+        self._index[asset_hash] = record
+        self._index_version += 1
+
+    def _evict_if_needed_locked(
+        self,
+        protected: set[str] | None = None,
+        active_task_id: str | None = None,
     ) -> None:
         protected = protected or set()
         pinned_id = active_task_id
@@ -100,9 +153,29 @@ class AssetCache:
                     pass
             total -= int(data.get("size", 0))
             self._index.pop(asset_hash, None)
-        self._save_index()
+            self._index_version += 1
+
+    async def flush_index(self, *, force: bool = False) -> tuple[int, float]:
+        async with self._state_lock:
+            if not force and self._flushed_index_version >= self._index_version:
+                return 0, 0.0
+            snapshot = self._build_index_snapshot(self._index)
+            target_version = self._index_version
+
+        started_at = time.perf_counter()
+        await asyncio.to_thread(
+            self._write_index_snapshot,
+            self.index_path,
+            snapshot,
+        )
+        elapsed = time.perf_counter() - started_at
+
+        async with self._state_lock:
+            self._flushed_index_version = max(self._flushed_index_version, target_version)
+        return 1, elapsed
 
     async def aclose(self) -> None:
+        await self.flush_index(force=True)
         async with self._client_lock:
             client = self._client
             self._client = None
@@ -117,30 +190,176 @@ class AssetCache:
         pin_task_id: str | None = None,
         progress_callback: AssetProgressFn | None = None,
     ) -> Path:
-        path = self._asset_path(asset_hash)
-        now = time.time()
-        pinned_id = pin_task_id
+        result = await self.ensure_cached_batch(
+            [(asset_hash, download_url)],
+            protected=protected,
+            pin_task_id=pin_task_id,
+            progress_callback=progress_callback,
+        )
+        path = result.paths.get(asset_hash)
+        if path is None:
+            raise FileNotFoundError(f"cached asset path missing: {asset_hash}")
+        return path
 
-        if path.exists():
-            stat = path.stat()
-            async with self._state_lock:
-                record = self._index.get(asset_hash) or {}
-                record["last_access"] = now
-                record["size"] = stat.st_size
-                if pinned_id:
-                    record["pin_task_id"] = pinned_id
-                self._index[asset_hash] = record
-                self._save_index()
-            self._emit_progress(
-                progress_callback,
-                {
-                    "event": "cache_hit",
-                    "asset_hash": asset_hash,
-                    "size": int(stat.st_size),
-                },
+    async def ensure_cached_batch(
+        self,
+        items: list[tuple[str, str]],
+        *,
+        protected: set[str] | None = None,
+        pin_task_id: str | None = None,
+        progress_callback: AssetProgressFn | None = None,
+        yield_every: int = _CACHE_BATCH_YIELD_EVERY,
+    ) -> CacheBatchResult:
+        paths: dict[str, Path] = {}
+        if not items:
+            return CacheBatchResult(
+                paths=paths,
+                cache_hits=0,
+                cache_misses=0,
+                lookup_sec=0.0,
+                flush_sec=0.0,
+                dirty_entries=0,
+                flush_count=0,
             )
-            return path
 
+        deduped: dict[str, str] = {}
+        for asset_hash, download_url in items:
+            asset_hash_text = str(asset_hash or "").strip()
+            download_url_text = str(download_url or "").strip()
+            if not asset_hash_text or not download_url_text:
+                continue
+            deduped.setdefault(asset_hash_text, download_url_text)
+
+        if not deduped:
+            return CacheBatchResult(
+                paths=paths,
+                cache_hits=0,
+                cache_misses=0,
+                lookup_sec=0.0,
+                flush_sec=0.0,
+                dirty_entries=0,
+                flush_count=0,
+            )
+
+        protected_set = set(protected or set())
+        cache_hits = 0
+        cache_misses = 0
+        dirty_entries = 0
+        yielded = 0
+        lookup_started_at = time.perf_counter()
+        hit_updates: list[tuple[str, Path, int, float]] = []
+        miss_items: list[tuple[str, str]] = []
+
+        for asset_hash, download_url in deduped.items():
+            path = self._asset_path(asset_hash)
+            if path.exists():
+                stat = path.stat()
+                hit_updates.append((asset_hash, path, int(stat.st_size), time.time()))
+                self._emit_progress(
+                    progress_callback,
+                    {
+                        "event": "cache_hit",
+                        "asset_hash": asset_hash,
+                        "size": int(stat.st_size),
+                    },
+                )
+                paths[asset_hash] = path
+                cache_hits += 1
+            else:
+                miss_items.append((asset_hash, download_url))
+                cache_misses += 1
+            yielded += 1
+            if yielded % max(1, int(yield_every or 1)) == 0:
+                self._mark_activity("asset_cache.batch_lookup")
+                await asyncio.sleep(0)
+
+        if hit_updates:
+            async with self._state_lock:
+                for asset_hash, _path, size, touched_at in hit_updates:
+                    self._touch_index_record_locked(
+                        asset_hash=asset_hash,
+                        size=size,
+                        last_access=touched_at,
+                        pin_task_id=pin_task_id,
+                    )
+                    dirty_entries += 1
+            self._mark_activity("asset_cache.cache_hit_batch")
+
+        miss_results = await self._ensure_misses_cached(
+            miss_items=miss_items,
+            protected=protected_set,
+            pin_task_id=pin_task_id,
+            progress_callback=progress_callback,
+        )
+        paths.update(miss_results)
+        lookup_sec = time.perf_counter() - lookup_started_at
+        flush_count, flush_sec = await self.flush_index(force=False)
+        return CacheBatchResult(
+            paths=paths,
+            cache_hits=cache_hits,
+            cache_misses=cache_misses,
+            lookup_sec=lookup_sec,
+            flush_sec=flush_sec,
+            dirty_entries=dirty_entries + cache_misses,
+            flush_count=flush_count,
+        )
+
+    async def _ensure_misses_cached(
+        self,
+        *,
+        miss_items: list[tuple[str, str]],
+        protected: set[str],
+        pin_task_id: str | None,
+        progress_callback: AssetProgressFn | None,
+    ) -> dict[str, Path]:
+        if not miss_items:
+            return {}
+
+        tasks: dict[str, tuple[asyncio.Task[Path], bool]] = {}
+        for asset_hash, download_url in miss_items:
+            task, owner = await self._get_or_create_inflight_download(
+                asset_hash=asset_hash,
+                download_url=download_url,
+                protected=protected,
+                pin_task_id=pin_task_id,
+                progress_callback=progress_callback,
+            )
+            tasks[asset_hash] = (task, owner)
+
+        resolved: dict[str, Path] = {}
+        try:
+            for asset_hash, (task, owner) in tasks.items():
+                path = await task
+                resolved[asset_hash] = path
+                if not owner:
+                    stat = path.stat()
+                    self._emit_progress(
+                        progress_callback,
+                        {
+                            "event": "inflight_join",
+                            "asset_hash": asset_hash,
+                            "size": int(stat.st_size),
+                        },
+                    )
+        finally:
+            for asset_hash, (task, owner) in tasks.items():
+                if not owner:
+                    continue
+                async with self._inflight_lock:
+                    current = self._inflight.get(asset_hash)
+                    if current is task:
+                        self._inflight.pop(asset_hash, None)
+        return resolved
+
+    async def _get_or_create_inflight_download(
+        self,
+        *,
+        asset_hash: str,
+        download_url: str,
+        protected: set[str] | None,
+        pin_task_id: str | None,
+        progress_callback: AssetProgressFn | None,
+    ) -> tuple[asyncio.Task[Path], bool]:
         async with self._inflight_lock:
             inflight = self._inflight.get(asset_hash)
             if inflight is None:
@@ -149,35 +368,14 @@ class AssetCache:
                         asset_hash=asset_hash,
                         download_url=download_url,
                         protected=protected,
-                        pin_task_id=pinned_id,
+                        pin_task_id=pin_task_id,
                         progress_callback=progress_callback,
                     ),
                     name=f"asset-cache:{asset_hash}",
                 )
                 self._inflight[asset_hash] = inflight
-                owner = True
-            else:
-                owner = False
-
-        try:
-            path = await inflight
-            if not owner:
-                stat = path.stat()
-                self._emit_progress(
-                    progress_callback,
-                    {
-                        "event": "inflight_join",
-                        "asset_hash": asset_hash,
-                        "size": int(stat.st_size),
-                    },
-                )
-            return path
-        finally:
-            if owner:
-                async with self._inflight_lock:
-                    current = self._inflight.get(asset_hash)
-                    if current is inflight:
-                        self._inflight.pop(asset_hash, None)
+                return inflight, True
+            return inflight, False
 
     async def _download_asset(
         self,
@@ -241,16 +439,16 @@ class AssetCache:
 
             tmp.rename(path)
             async with self._state_lock:
-                self._index[asset_hash] = {
-                    "size": path.stat().st_size,
-                    "last_access": now,
-                    "pin_task_id": pin_task_id,
-                }
-                self._evict_if_needed(
+                self._touch_index_record_locked(
+                    asset_hash=asset_hash,
+                    size=path.stat().st_size,
+                    last_access=now,
+                    pin_task_id=pin_task_id,
+                )
+                self._evict_if_needed_locked(
                     protected=protected,
                     active_task_id=pin_task_id,
                 )
-                self._save_index()
             final_size = int(path.stat().st_size)
             self._mark_activity("asset_cache.download_completed")
             self._emit_progress(

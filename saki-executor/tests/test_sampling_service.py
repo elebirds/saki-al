@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 
+from saki_executor.cache.asset_cache import CacheBatchResult
 from saki_executor.steps.contracts import FetchedPage
 from saki_executor.steps.services.sampling_service import SamplingService
 
@@ -17,6 +18,37 @@ class _CacheStub:
 
     def is_cached(self, asset_hash: str) -> bool:
         return asset_hash in self._cached_hashes
+
+    async def ensure_cached_batch(
+        self,
+        items: list[tuple[str, str]],
+        *,
+        protected: set[str] | None = None,
+        pin_task_id: str | None = None,
+        progress_callback=None,
+        yield_every: int = 64,
+    ) -> CacheBatchResult:
+        del protected, pin_task_id, progress_callback, yield_every
+        paths: dict[str, Path] = {}
+        cache_hits = 0
+        cache_misses = 0
+        for asset_hash, download_url in items:
+            was_cached = asset_hash in self._cached_hashes
+            path = await self.ensure_cached(asset_hash, download_url)
+            paths[asset_hash] = path
+            if was_cached:
+                cache_hits += 1
+            else:
+                cache_misses += 1
+        return CacheBatchResult(
+            paths=paths,
+            cache_hits=cache_hits,
+            cache_misses=cache_misses,
+            lookup_sec=0.0,
+            flush_sec=0.0,
+            dirty_entries=len(paths),
+            flush_count=1 if paths else 0,
+        )
 
     async def ensure_cached(
         self,
@@ -78,6 +110,37 @@ class _PluginStub:
                 }
             )
         return rows
+
+
+class _BatchOnlyCacheStub:
+    def __init__(self, root: Path) -> None:
+        self._root = root
+
+    async def ensure_cached_batch(
+        self,
+        items: list[tuple[str, str]],
+        *,
+        protected: set[str] | None = None,
+        pin_task_id: str | None = None,
+        progress_callback=None,
+        yield_every: int = 64,
+    ) -> CacheBatchResult:
+        del protected, pin_task_id, progress_callback, yield_every
+        paths: dict[str, Path] = {}
+        for asset_hash, _download_url in items:
+            path = self._root / asset_hash
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"x")
+            paths[asset_hash] = path
+        return CacheBatchResult(
+            paths=paths,
+            cache_hits=len(items),
+            cache_misses=0,
+            lookup_sec=0.0,
+            flush_sec=0.0,
+            dirty_entries=len(items),
+            flush_count=1 if items else 0,
+        )
 
 
 @pytest.mark.anyio
@@ -154,6 +217,8 @@ async def test_collect_prediction_candidates_streaming_emits_perf_logs(tmp_path:
     assert first_page_meta["samples"] == 2
     assert first_page_meta["cache_hits"] == 1
     assert first_page_meta["cache_misses"] == 1
+    assert "cache_lookup_sec" in first_page_meta
+    assert "cache_flush_sec" in first_page_meta
     assert first_page_meta["returned_rows"] == 2
     assert first_page_meta["nonempty_rows"] == 1
     assert first_page_meta["pred_boxes"] == 1
@@ -164,3 +229,59 @@ async def test_collect_prediction_candidates_streaming_emits_perf_logs(tmp_path:
     assert done_meta["returned_rows"] == 3
     assert done_meta["nonempty_rows"] == 2
     assert done_meta["pred_boxes"] == 2
+
+
+@pytest.mark.anyio
+async def test_collect_prediction_candidates_streaming_yields_control_on_large_page(tmp_path: Path, monkeypatch) -> None:
+    original_sleep = asyncio.sleep
+    yield_calls: list[int] = []
+
+    async def _tracked_sleep(delay: float) -> None:
+        if delay == 0:
+            yield_calls.append(1)
+        await original_sleep(delay)
+
+    monkeypatch.setattr("saki_executor.steps.services.sampling_service.asyncio.sleep", _tracked_sleep)
+
+    page = FetchedPage(
+        request_id="r1",
+        reply_to="reply",
+        task_id="task-1",
+        query_type="samples",
+        items=[
+            {
+                "id": f"sample-{idx}",
+                "asset_hash": f"hash-{idx}",
+                "download_url": f"https://example/{idx}",
+            }
+            for idx in range(260)
+        ],
+        next_cursor=None,
+    )
+
+    async def _fetch_page(**kwargs) -> FetchedPage:
+        del kwargs
+        return page
+
+    service = SamplingService(
+        fetch_page=_fetch_page,
+        cache=_BatchOnlyCacheStub(root=tmp_path / "cache"),
+        stop_event=asyncio.Event(),
+    )
+    plugin = _PluginStub()
+
+    rows = await service.collect_prediction_candidates_streaming(
+        plugin=plugin,
+        workspace=object(),
+        task_id="task-1",
+        project_id="project-1",
+        commit_id="commit-1",
+        params={"predict_page_size": 260, "predict_conf": 0.1, "imgsz": 640, "batch": 16},
+        protected=set(),
+        query_type="samples",
+        context=object(),
+        emit_log=None,
+    )
+
+    assert len(rows) == 260
+    assert len(yield_calls) >= 4

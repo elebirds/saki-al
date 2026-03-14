@@ -705,34 +705,29 @@ class TrainingDataService:
             tracker.run_periodic_reporter(),
             name=f"asset-progress:{request.task_id}",
         )
-        download_tasks = [
-            asyncio.create_task(
-                self._cache.ensure_cached(
-                    asset_hash,
-                    download_url,
-                    protected=protected,
-                    pin_task_id=request.task_id,
-                    progress_callback=tracker.handle_cache_event,
-                ),
-                name=f"asset-download:{asset_hash}",
-            )
-            for asset_hash, download_url in jobs.items()
-        ]
+        cache_task = asyncio.create_task(
+            self._cache.ensure_cached_batch(
+                list(jobs.items()),
+                protected=protected,
+                pin_task_id=request.task_id,
+                progress_callback=tracker.handle_cache_event,
+            ),
+            name=f"asset-cache-batch:{request.task_id}",
+        )
         stop_task = asyncio.create_task(
             self._stop_event.wait(),
             name=f"asset-stop:{request.task_id}",
         )
         try:
             done, _ = await asyncio.wait(
-                {stop_task, *download_tasks},
+                {stop_task, cache_task},
                 return_when=asyncio.FIRST_COMPLETED,
             )
             if stop_task in done and self._stop_event.is_set():
-                for task in download_tasks:
-                    task.cancel()
-                await asyncio.gather(*download_tasks, return_exceptions=True)
+                cache_task.cancel()
+                await asyncio.gather(cache_task, return_exceptions=True)
                 raise asyncio.CancelledError("step stop requested")
-            resolved_paths = await asyncio.gather(*download_tasks)
+            cache_result = await cache_task
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -747,7 +742,7 @@ class TrainingDataService:
             except asyncio.CancelledError:
                 pass
 
-        resolved_by_hash = dict(zip(jobs.keys(), resolved_paths, strict=False))
+        resolved_by_hash = dict(cache_result.paths)
         for item in supervised_samples:
             asset_hash = str(item.get("asset_hash") or "").strip()
             if not asset_hash:

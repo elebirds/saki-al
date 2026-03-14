@@ -39,7 +39,10 @@ class YoloDetectionPlugin(ExecutorPlugin):
     def __init__(self) -> None:
         super().__init__()
         self._manifest = self._load_manifest()
-        self._runtime = YoloRuntimeService()
+        self._runtime = YoloRuntimeService(
+            log_info=self.logger.info,
+            log_warning=self.logger.warning,
+        )
 
     async def on_load(self, context: dict[str, Any]) -> None:
         del context
@@ -283,7 +286,13 @@ class YoloDetectionPlugin(ExecutorPlugin):
         *,
         context: ExecutionBindingContext,
     ) -> list[dict[str, Any]]:
-        self.logger.info(f"执行直接推理，样本数：{len(samples)}")
+        self.logger.info(
+            "执行直接推理 "
+            f"samples={len(samples)} "
+            f"predict_conf={params.get('predict_conf')} "
+            f"imgsz={params.get('imgsz')} "
+            f"batch={params.get('batch')}"
+        )
         return await self._runtime.predict_samples_batch(
             workspace=workspace,
             samples=samples,

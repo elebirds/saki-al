@@ -50,7 +50,12 @@ class YoloRuntimeService:
         "SimHei",
     )
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        log_info: Callable[[str], None] | None = None,
+        log_warning: Callable[[str], None] | None = None,
+    ) -> None:
         self._stop_flag = threading.Event()
         self._font_setup_lock = threading.Lock()
         self._font_setup_done = False
@@ -64,6 +69,8 @@ class YoloRuntimeService:
             stop_flag=self._stop_flag,
             config_service=self._config_service,
             load_yolo=self._load_yolo,
+            log_info=log_info,
+            log_warning=log_warning,
         )
 
     @property

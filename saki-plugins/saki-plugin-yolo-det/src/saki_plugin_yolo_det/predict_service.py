@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import gc
 import threading
 from itertools import zip_longest
 from pathlib import Path
@@ -35,10 +36,14 @@ class YoloPredictService:
         stop_flag: threading.Event,
         config_service: YoloConfigService,
         load_yolo: Callable[[], Any],
+        log_info: Callable[[str], None] | None = None,
+        log_warning: Callable[[str], None] | None = None,
     ) -> None:
         self._stop_flag = stop_flag
         self._config_service = config_service
         self._load_yolo = load_yolo
+        self._log_info = log_info
+        self._log_warning = log_warning
         self._model_cache_lock = threading.Lock()
         self._cached_model_key: tuple[str, str] | None = None
         self._cached_model: Any | None = None
@@ -251,7 +256,33 @@ class YoloPredictService:
         if Image is None or np is None:
             raise RuntimeError("numpy and pillow are required for yolo_det_v1 plugin")
 
-    def _predict_image_batch(
+    @staticmethod
+    def _is_oom_error(exc: Exception) -> bool:
+        text = str(exc or "").strip().lower()
+        if not text:
+            return False
+        return "out of memory" in text or "cuda error: out of memory" in text
+
+    @staticmethod
+    def _clear_accelerator_cache() -> None:
+        gc.collect()
+        try:
+            import torch  # type: ignore
+        except Exception:
+            return
+
+        try:
+            if getattr(torch, "cuda", None) and torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception:
+            pass
+        try:
+            if getattr(torch, "mps", None) and hasattr(torch.mps, "empty_cache"):
+                torch.mps.empty_cache()
+        except Exception:
+            pass
+
+    def _run_model_predict(
         self,
         *,
         model: Any,
@@ -261,8 +292,6 @@ class YoloPredictService:
         batch: int,
         device: Any,
     ) -> list[Any]:
-        if not image_paths:
-            return []
         kwargs = {
             "source": [str(path) for path in image_paths],
             "conf": conf,
@@ -277,6 +306,100 @@ class YoloPredictService:
             kwargs.pop("batch", None)
             predicts = model.predict(**kwargs)
         return list(predicts or [])
+
+    def _predict_image_chunk_with_backoff(
+        self,
+        *,
+        model: Any,
+        image_paths: list[Path],
+        conf: float,
+        imgsz: int,
+        batch: int,
+        device: Any,
+    ) -> list[Any]:
+        if not image_paths:
+            return []
+
+        requested_batch = max(1, min(int(batch), len(image_paths)))
+        current_batch = requested_batch
+        attempted_batches: list[int] = []
+
+        while True:
+            attempted_batches.append(current_batch)
+            try:
+                predicts = self._run_model_predict(
+                    model=model,
+                    image_paths=image_paths,
+                    conf=conf,
+                    imgsz=imgsz,
+                    batch=current_batch,
+                    device=device,
+                )
+                if len(attempted_batches) > 1 and self._log_info is not None:
+                    self._log_info(
+                        "YOLO 直接推理降批成功 "
+                        f"images={len(image_paths)} imgsz={imgsz} device={device} "
+                        f"requested_batch={requested_batch} final_batch={current_batch} "
+                        f"attempts={attempted_batches}"
+                    )
+                return predicts
+            except Exception as exc:
+                if not self._is_oom_error(exc):
+                    raise
+                self._clear_accelerator_cache()
+                if current_batch <= 1:
+                    attempts_text = "->".join(str(item) for item in attempted_batches)
+                    raise RuntimeError(
+                        "YOLO 直接推理显存不足，自动降批后仍失败 "
+                        f"images={len(image_paths)} imgsz={imgsz} device={device} attempts={attempts_text}: {exc}"
+                    ) from exc
+                next_batch = max(1, current_batch // 2)
+                if self._log_warning is not None:
+                    self._log_warning(
+                        "YOLO 直接推理触发显存回退 "
+                        f"images={len(image_paths)} imgsz={imgsz} device={device} "
+                        f"requested_batch={requested_batch} current_batch={current_batch} "
+                        f"next_batch={next_batch} error={exc}"
+                    )
+                current_batch = next_batch
+
+    def _predict_image_batch(
+        self,
+        *,
+        model: Any,
+        image_paths: list[Path],
+        conf: float,
+        imgsz: int,
+        batch: int,
+        device: Any,
+    ) -> list[Any]:
+        if not image_paths:
+            return []
+        requested_batch = max(1, min(int(batch), len(image_paths)))
+        chunk_size = max(requested_batch, min(len(image_paths), requested_batch * 8))
+        if len(image_paths) > chunk_size and self._log_info is not None:
+            self._log_info(
+                "YOLO 直接推理分块执行 "
+                f"images={len(image_paths)} imgsz={imgsz} device={device} "
+                f"requested_batch={requested_batch} chunk_size={chunk_size}"
+            )
+
+        outputs: list[Any] = []
+        for start in range(0, len(image_paths), chunk_size):
+            if self._stop_flag.is_set():
+                raise RuntimeError("prediction stopped")
+            chunk_paths = image_paths[start : start + chunk_size]
+            outputs.extend(
+                self._predict_image_chunk_with_backoff(
+                    model=model,
+                    image_paths=chunk_paths,
+                    conf=conf,
+                    imgsz=imgsz,
+                    batch=requested_batch,
+                    device=device,
+                )
+            )
+        return outputs
 
     def _predict_single_image(
         self,

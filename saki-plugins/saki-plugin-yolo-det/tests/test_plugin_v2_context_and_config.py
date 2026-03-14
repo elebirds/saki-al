@@ -1249,3 +1249,141 @@ async def test_predict_service_predict_samples_keeps_full_prediction_snapshot(tm
     base_predictions = snapshot.get("base_predictions") if isinstance(snapshot, dict) else []
     assert isinstance(base_predictions, list)
     assert len(base_predictions) == 35
+
+
+@pytest.mark.anyio
+async def test_predict_service_direct_predict_retries_with_smaller_batch_on_oom(tmp_path: Path):
+    from types import SimpleNamespace
+    from PIL import Image as PILImage
+
+    class _ConfigStub:
+        def resolve_config(self, _params: dict[str, Any], **_kwargs: Any):
+            return SimpleNamespace(
+                predict_conf=0.1,
+                imgsz=640,
+                batch=16,
+            )
+
+        async def resolve_model_ref(self, *, workspace: WorkspaceProtocol, params: Any):
+            del params
+            return str(workspace.artifacts_dir / "best.pt")
+
+    class _Array:
+        def __init__(self, values):
+            self._values = values
+
+        def cpu(self):
+            return self
+
+        def tolist(self):
+            return list(self._values)
+
+    class _Boxes:
+        def __init__(self, idx: int):
+            self.cls = _Array([0])
+            self.conf = _Array([0.5 + (idx * 0.01)])
+            self.xyxy = _Array([[1.0, 2.0, 8.0 + idx, 9.0 + idx]])
+
+        def __len__(self):
+            return 1
+
+    class _Result:
+        def __init__(self, idx: int):
+            self.boxes = _Boxes(idx)
+            self.names = {0: "target"}
+
+    model_holder: dict[str, Any] = {}
+    warning_logs: list[str] = []
+    info_logs: list[str] = []
+
+    def _load_yolo():
+        class _FakeYOLO:
+            def __init__(self, _model_path: str):
+                self.sources: list[Any] = []
+                self.batches: list[int] = []
+                model_holder["model"] = self
+
+            def predict(self, *, source, conf, imgsz, device, verbose, batch):
+                del conf, imgsz, device, verbose
+                self.sources.append(list(source))
+                self.batches.append(batch)
+                if batch > 3:
+                    raise RuntimeError("CUDA out of memory")
+                return [_Result(idx) for idx, _item in enumerate(source)]
+
+        return _FakeYOLO
+
+    service = YoloPredictService(
+        stop_flag=__import__("threading").Event(),
+        config_service=_ConfigStub(),
+        load_yolo=_load_yolo,
+        log_info=info_logs.append,
+        log_warning=warning_logs.append,
+    )
+    workspace = Workspace(str(tmp_path / "runs"), "step-yolo-predict-oom-fallback")
+    workspace.ensure()
+    (workspace.artifacts_dir / "best.pt").write_bytes(b"model")
+
+    samples: list[dict[str, Any]] = []
+    for idx in range(6):
+        image_path = tmp_path / "assets" / f"predict_oom_{idx}.png"
+        image_path.parent.mkdir(parents=True, exist_ok=True)
+        PILImage.new("RGB", (16, 16), color=(10 + idx, 80, 30)).save(image_path)
+        samples.append({"id": f"s{idx}", "local_path": str(image_path)})
+
+    context = ExecutionBindingContext(
+        task_context=TaskRuntimeContext(
+            task_id="task-yolo-predict-oom-fallback",
+            round_id="round-1",
+            round_index=1,
+            attempt=1,
+            task_type="predict",
+            mode="manual",
+            split_seed=1,
+            train_seed=2,
+            sampling_seed=3,
+            resolved_device_backend="cuda",
+        ),
+        host_capability=HostCapabilitySnapshot.from_dict(
+            {
+                "cpu_workers": 8,
+                "memory_mb": 4096,
+                "gpus": [],
+                "metal_available": False,
+                "platform": "darwin",
+                "arch": "arm64",
+                "driver_info": {},
+            }
+        ),
+        runtime_capability=RuntimeCapabilitySnapshot(
+            framework="torch",
+            framework_version="2.2.0",
+            backends=["cuda"],
+            backend_details={},
+            errors=[],
+        ),
+        device_binding=DeviceBinding(
+            backend="cuda",
+            device_spec="0",
+            precision="fp32",
+            profile_id="cuda",
+            reason="test",
+            fallback_applied=False,
+        ),
+        profile_id="cuda",
+    )
+
+    rows = await service.predict_samples_batch(
+        workspace=workspace,
+        samples=samples,
+        params={},
+        context=context,
+    )
+
+    assert len(rows) == 6
+    model = model_holder.get("model")
+    assert model is not None
+    assert model.batches == [6, 3]
+    assert len(model.sources) == 2
+    assert any("显存回退" in item for item in warning_logs)
+    assert any("降批成功" in item for item in info_logs)

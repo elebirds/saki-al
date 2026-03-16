@@ -9,3 +9,38 @@ message TaskEvent {
   string event_type = 2;
   string message = 3;
 }
+
+enum TaskEventPhase {
+  TASK_EVENT_PHASE_UNSPECIFIED = 0;
+  TASK_EVENT_PHASE_RUNNING = 1;
+  TASK_EVENT_PHASE_SUCCEEDED = 2;
+  TASK_EVENT_PHASE_FAILED = 3;
+  TASK_EVENT_PHASE_CANCELED = 4;
+}
+
+message TaskEventEnvelope {
+  string executor_id = 1;
+  string task_id = 2;
+  string execution_id = 3;
+  TaskEventPhase phase = 4;
+
+  oneof payload {
+    TaskLogEvent log = 10;
+    TaskProgressEvent progress = 11;
+    TaskResultEvent result = 12;
+  }
+}
+
+message TaskLogEvent {
+  string level = 1;
+  string message = 2;
+}
+
+message TaskProgressEvent {
+  int32 percent = 1;
+  string message = 2;
+}
+
+message TaskResultEvent {
+  bytes payload = 1;
+}

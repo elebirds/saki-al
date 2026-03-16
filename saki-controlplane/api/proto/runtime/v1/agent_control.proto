@@ -6,13 +6,51 @@ option go_package = "github.com/elebirds/saki/saki-controlplane/internal/gen/pro
 
 service AgentControl {
   rpc Register(RegisterRequest) returns (RegisterResponse);
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+  rpc AssignTask(AssignTaskRequest) returns (AssignTaskResponse);
+  rpc StopTask(StopTaskRequest) returns (StopTaskResponse);
 }
 
 message RegisterRequest {
   string executor_id = 1;
   string version = 2;
+  repeated string capabilities = 3;
 }
 
 message RegisterResponse {
+  bool accepted = 1;
+  int64 heartbeat_interval_ms = 2;
+}
+
+message HeartbeatRequest {
+  string executor_id = 1;
+  string agent_version = 2;
+  repeated string running_task_ids = 3;
+  int64 sent_at_unix_ms = 4;
+}
+
+message HeartbeatResponse {
+  bool accepted = 1;
+  int64 next_heartbeat_ms = 2;
+}
+
+message AssignTaskRequest {
+  string task_id = 1;
+  string execution_id = 2;
+  string task_type = 3;
+  bytes payload = 4;
+}
+
+message AssignTaskResponse {
+  bool accepted = 1;
+}
+
+message StopTaskRequest {
+  string task_id = 1;
+  string execution_id = 2;
+  string reason = 3;
+}
+
+message StopTaskResponse {
   bool accepted = 1;
 }

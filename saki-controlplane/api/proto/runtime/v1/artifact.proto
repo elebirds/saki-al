@@ -6,6 +6,7 @@ option go_package = "github.com/elebirds/saki/saki-controlplane/internal/gen/pro
 
 service ArtifactService {
   rpc CreateDownloadTicket(CreateDownloadTicketRequest) returns (CreateDownloadTicketResponse);
+  rpc CreateUploadTicket(CreateUploadTicketRequest) returns (CreateUploadTicketResponse);
 }
 
 message CreateDownloadTicketRequest {
@@ -13,5 +14,13 @@ message CreateDownloadTicketRequest {
 }
 
 message CreateDownloadTicketResponse {
+  string url = 1;
+}
+
+message CreateUploadTicketRequest {
+  string artifact_id = 1;
+}
+
+message CreateUploadTicketResponse {
   string url = 1;
 }

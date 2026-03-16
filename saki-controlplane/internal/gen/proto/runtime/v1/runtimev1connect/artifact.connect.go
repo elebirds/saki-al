@@ -36,11 +36,15 @@ const (
 	// ArtifactServiceCreateDownloadTicketProcedure is the fully-qualified name of the ArtifactService's
 	// CreateDownloadTicket RPC.
 	ArtifactServiceCreateDownloadTicketProcedure = "/saki.runtime.v1.ArtifactService/CreateDownloadTicket"
+	// ArtifactServiceCreateUploadTicketProcedure is the fully-qualified name of the ArtifactService's
+	// CreateUploadTicket RPC.
+	ArtifactServiceCreateUploadTicketProcedure = "/saki.runtime.v1.ArtifactService/CreateUploadTicket"
 )
 
 // ArtifactServiceClient is a client for the saki.runtime.v1.ArtifactService service.
 type ArtifactServiceClient interface {
 	CreateDownloadTicket(context.Context, *connect.Request[v1.CreateDownloadTicketRequest]) (*connect.Response[v1.CreateDownloadTicketResponse], error)
+	CreateUploadTicket(context.Context, *connect.Request[v1.CreateUploadTicketRequest]) (*connect.Response[v1.CreateUploadTicketResponse], error)
 }
 
 // NewArtifactServiceClient constructs a client for the saki.runtime.v1.ArtifactService service. By
@@ -60,12 +64,19 @@ func NewArtifactServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 			connect.WithSchema(artifactServiceMethods.ByName("CreateDownloadTicket")),
 			connect.WithClientOptions(opts...),
 		),
+		createUploadTicket: connect.NewClient[v1.CreateUploadTicketRequest, v1.CreateUploadTicketResponse](
+			httpClient,
+			baseURL+ArtifactServiceCreateUploadTicketProcedure,
+			connect.WithSchema(artifactServiceMethods.ByName("CreateUploadTicket")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // artifactServiceClient implements ArtifactServiceClient.
 type artifactServiceClient struct {
 	createDownloadTicket *connect.Client[v1.CreateDownloadTicketRequest, v1.CreateDownloadTicketResponse]
+	createUploadTicket   *connect.Client[v1.CreateUploadTicketRequest, v1.CreateUploadTicketResponse]
 }
 
 // CreateDownloadTicket calls saki.runtime.v1.ArtifactService.CreateDownloadTicket.
@@ -73,9 +84,15 @@ func (c *artifactServiceClient) CreateDownloadTicket(ctx context.Context, req *c
 	return c.createDownloadTicket.CallUnary(ctx, req)
 }
 
+// CreateUploadTicket calls saki.runtime.v1.ArtifactService.CreateUploadTicket.
+func (c *artifactServiceClient) CreateUploadTicket(ctx context.Context, req *connect.Request[v1.CreateUploadTicketRequest]) (*connect.Response[v1.CreateUploadTicketResponse], error) {
+	return c.createUploadTicket.CallUnary(ctx, req)
+}
+
 // ArtifactServiceHandler is an implementation of the saki.runtime.v1.ArtifactService service.
 type ArtifactServiceHandler interface {
 	CreateDownloadTicket(context.Context, *connect.Request[v1.CreateDownloadTicketRequest]) (*connect.Response[v1.CreateDownloadTicketResponse], error)
+	CreateUploadTicket(context.Context, *connect.Request[v1.CreateUploadTicketRequest]) (*connect.Response[v1.CreateUploadTicketResponse], error)
 }
 
 // NewArtifactServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -91,10 +108,18 @@ func NewArtifactServiceHandler(svc ArtifactServiceHandler, opts ...connect.Handl
 		connect.WithSchema(artifactServiceMethods.ByName("CreateDownloadTicket")),
 		connect.WithHandlerOptions(opts...),
 	)
+	artifactServiceCreateUploadTicketHandler := connect.NewUnaryHandler(
+		ArtifactServiceCreateUploadTicketProcedure,
+		svc.CreateUploadTicket,
+		connect.WithSchema(artifactServiceMethods.ByName("CreateUploadTicket")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/saki.runtime.v1.ArtifactService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case ArtifactServiceCreateDownloadTicketProcedure:
 			artifactServiceCreateDownloadTicketHandler.ServeHTTP(w, r)
+		case ArtifactServiceCreateUploadTicketProcedure:
+			artifactServiceCreateUploadTicketHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -106,4 +131,8 @@ type UnimplementedArtifactServiceHandler struct{}
 
 func (UnimplementedArtifactServiceHandler) CreateDownloadTicket(context.Context, *connect.Request[v1.CreateDownloadTicketRequest]) (*connect.Response[v1.CreateDownloadTicketResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("saki.runtime.v1.ArtifactService.CreateDownloadTicket is not implemented"))
+}
+
+func (UnimplementedArtifactServiceHandler) CreateUploadTicket(context.Context, *connect.Request[v1.CreateUploadTicketRequest]) (*connect.Response[v1.CreateUploadTicketResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("saki.runtime.v1.ArtifactService.CreateUploadTicket is not implemented"))
 }

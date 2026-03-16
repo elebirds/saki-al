@@ -35,11 +35,20 @@ const (
 const (
 	// AgentControlRegisterProcedure is the fully-qualified name of the AgentControl's Register RPC.
 	AgentControlRegisterProcedure = "/saki.runtime.v1.AgentControl/Register"
+	// AgentControlHeartbeatProcedure is the fully-qualified name of the AgentControl's Heartbeat RPC.
+	AgentControlHeartbeatProcedure = "/saki.runtime.v1.AgentControl/Heartbeat"
+	// AgentControlAssignTaskProcedure is the fully-qualified name of the AgentControl's AssignTask RPC.
+	AgentControlAssignTaskProcedure = "/saki.runtime.v1.AgentControl/AssignTask"
+	// AgentControlStopTaskProcedure is the fully-qualified name of the AgentControl's StopTask RPC.
+	AgentControlStopTaskProcedure = "/saki.runtime.v1.AgentControl/StopTask"
 )
 
 // AgentControlClient is a client for the saki.runtime.v1.AgentControl service.
 type AgentControlClient interface {
 	Register(context.Context, *connect.Request[v1.RegisterRequest]) (*connect.Response[v1.RegisterResponse], error)
+	Heartbeat(context.Context, *connect.Request[v1.HeartbeatRequest]) (*connect.Response[v1.HeartbeatResponse], error)
+	AssignTask(context.Context, *connect.Request[v1.AssignTaskRequest]) (*connect.Response[v1.AssignTaskResponse], error)
+	StopTask(context.Context, *connect.Request[v1.StopTaskRequest]) (*connect.Response[v1.StopTaskResponse], error)
 }
 
 // NewAgentControlClient constructs a client for the saki.runtime.v1.AgentControl service. By
@@ -59,12 +68,33 @@ func NewAgentControlClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(agentControlMethods.ByName("Register")),
 			connect.WithClientOptions(opts...),
 		),
+		heartbeat: connect.NewClient[v1.HeartbeatRequest, v1.HeartbeatResponse](
+			httpClient,
+			baseURL+AgentControlHeartbeatProcedure,
+			connect.WithSchema(agentControlMethods.ByName("Heartbeat")),
+			connect.WithClientOptions(opts...),
+		),
+		assignTask: connect.NewClient[v1.AssignTaskRequest, v1.AssignTaskResponse](
+			httpClient,
+			baseURL+AgentControlAssignTaskProcedure,
+			connect.WithSchema(agentControlMethods.ByName("AssignTask")),
+			connect.WithClientOptions(opts...),
+		),
+		stopTask: connect.NewClient[v1.StopTaskRequest, v1.StopTaskResponse](
+			httpClient,
+			baseURL+AgentControlStopTaskProcedure,
+			connect.WithSchema(agentControlMethods.ByName("StopTask")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // agentControlClient implements AgentControlClient.
 type agentControlClient struct {
-	register *connect.Client[v1.RegisterRequest, v1.RegisterResponse]
+	register   *connect.Client[v1.RegisterRequest, v1.RegisterResponse]
+	heartbeat  *connect.Client[v1.HeartbeatRequest, v1.HeartbeatResponse]
+	assignTask *connect.Client[v1.AssignTaskRequest, v1.AssignTaskResponse]
+	stopTask   *connect.Client[v1.StopTaskRequest, v1.StopTaskResponse]
 }
 
 // Register calls saki.runtime.v1.AgentControl.Register.
@@ -72,9 +102,27 @@ func (c *agentControlClient) Register(ctx context.Context, req *connect.Request[
 	return c.register.CallUnary(ctx, req)
 }
 
+// Heartbeat calls saki.runtime.v1.AgentControl.Heartbeat.
+func (c *agentControlClient) Heartbeat(ctx context.Context, req *connect.Request[v1.HeartbeatRequest]) (*connect.Response[v1.HeartbeatResponse], error) {
+	return c.heartbeat.CallUnary(ctx, req)
+}
+
+// AssignTask calls saki.runtime.v1.AgentControl.AssignTask.
+func (c *agentControlClient) AssignTask(ctx context.Context, req *connect.Request[v1.AssignTaskRequest]) (*connect.Response[v1.AssignTaskResponse], error) {
+	return c.assignTask.CallUnary(ctx, req)
+}
+
+// StopTask calls saki.runtime.v1.AgentControl.StopTask.
+func (c *agentControlClient) StopTask(ctx context.Context, req *connect.Request[v1.StopTaskRequest]) (*connect.Response[v1.StopTaskResponse], error) {
+	return c.stopTask.CallUnary(ctx, req)
+}
+
 // AgentControlHandler is an implementation of the saki.runtime.v1.AgentControl service.
 type AgentControlHandler interface {
 	Register(context.Context, *connect.Request[v1.RegisterRequest]) (*connect.Response[v1.RegisterResponse], error)
+	Heartbeat(context.Context, *connect.Request[v1.HeartbeatRequest]) (*connect.Response[v1.HeartbeatResponse], error)
+	AssignTask(context.Context, *connect.Request[v1.AssignTaskRequest]) (*connect.Response[v1.AssignTaskResponse], error)
+	StopTask(context.Context, *connect.Request[v1.StopTaskRequest]) (*connect.Response[v1.StopTaskResponse], error)
 }
 
 // NewAgentControlHandler builds an HTTP handler from the service implementation. It returns the
@@ -90,10 +138,34 @@ func NewAgentControlHandler(svc AgentControlHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(agentControlMethods.ByName("Register")),
 		connect.WithHandlerOptions(opts...),
 	)
+	agentControlHeartbeatHandler := connect.NewUnaryHandler(
+		AgentControlHeartbeatProcedure,
+		svc.Heartbeat,
+		connect.WithSchema(agentControlMethods.ByName("Heartbeat")),
+		connect.WithHandlerOptions(opts...),
+	)
+	agentControlAssignTaskHandler := connect.NewUnaryHandler(
+		AgentControlAssignTaskProcedure,
+		svc.AssignTask,
+		connect.WithSchema(agentControlMethods.ByName("AssignTask")),
+		connect.WithHandlerOptions(opts...),
+	)
+	agentControlStopTaskHandler := connect.NewUnaryHandler(
+		AgentControlStopTaskProcedure,
+		svc.StopTask,
+		connect.WithSchema(agentControlMethods.ByName("StopTask")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/saki.runtime.v1.AgentControl/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case AgentControlRegisterProcedure:
 			agentControlRegisterHandler.ServeHTTP(w, r)
+		case AgentControlHeartbeatProcedure:
+			agentControlHeartbeatHandler.ServeHTTP(w, r)
+		case AgentControlAssignTaskProcedure:
+			agentControlAssignTaskHandler.ServeHTTP(w, r)
+		case AgentControlStopTaskProcedure:
+			agentControlStopTaskHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -105,4 +177,16 @@ type UnimplementedAgentControlHandler struct{}
 
 func (UnimplementedAgentControlHandler) Register(context.Context, *connect.Request[v1.RegisterRequest]) (*connect.Response[v1.RegisterResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("saki.runtime.v1.AgentControl.Register is not implemented"))
+}
+
+func (UnimplementedAgentControlHandler) Heartbeat(context.Context, *connect.Request[v1.HeartbeatRequest]) (*connect.Response[v1.HeartbeatResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("saki.runtime.v1.AgentControl.Heartbeat is not implemented"))
+}
+
+func (UnimplementedAgentControlHandler) AssignTask(context.Context, *connect.Request[v1.AssignTaskRequest]) (*connect.Response[v1.AssignTaskResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("saki.runtime.v1.AgentControl.AssignTask is not implemented"))
+}
+
+func (UnimplementedAgentControlHandler) StopTask(context.Context, *connect.Request[v1.StopTaskRequest]) (*connect.Response[v1.StopTaskResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("saki.runtime.v1.AgentControl.StopTask is not implemented"))
 }

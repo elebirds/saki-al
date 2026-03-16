@@ -109,6 +109,94 @@ func (x *CreateDownloadTicketResponse) GetUrl() string {
 	return ""
 }
 
+type CreateUploadTicketRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ArtifactId    string                 `protobuf:"bytes,1,opt,name=artifact_id,json=artifactId,proto3" json:"artifact_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateUploadTicketRequest) Reset() {
+	*x = CreateUploadTicketRequest{}
+	mi := &file_runtime_v1_artifact_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateUploadTicketRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateUploadTicketRequest) ProtoMessage() {}
+
+func (x *CreateUploadTicketRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_v1_artifact_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateUploadTicketRequest.ProtoReflect.Descriptor instead.
+func (*CreateUploadTicketRequest) Descriptor() ([]byte, []int) {
+	return file_runtime_v1_artifact_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *CreateUploadTicketRequest) GetArtifactId() string {
+	if x != nil {
+		return x.ArtifactId
+	}
+	return ""
+}
+
+type CreateUploadTicketResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Url           string                 `protobuf:"bytes,1,opt,name=url,proto3" json:"url,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateUploadTicketResponse) Reset() {
+	*x = CreateUploadTicketResponse{}
+	mi := &file_runtime_v1_artifact_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateUploadTicketResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateUploadTicketResponse) ProtoMessage() {}
+
+func (x *CreateUploadTicketResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_v1_artifact_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateUploadTicketResponse.ProtoReflect.Descriptor instead.
+func (*CreateUploadTicketResponse) Descriptor() ([]byte, []int) {
+	return file_runtime_v1_artifact_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *CreateUploadTicketResponse) GetUrl() string {
+	if x != nil {
+		return x.Url
+	}
+	return ""
+}
+
 var File_runtime_v1_artifact_proto protoreflect.FileDescriptor
 
 const file_runtime_v1_artifact_proto_rawDesc = "" +
@@ -118,9 +206,15 @@ const file_runtime_v1_artifact_proto_rawDesc = "" +
 	"\vartifact_id\x18\x01 \x01(\tR\n" +
 	"artifactId\"0\n" +
 	"\x1cCreateDownloadTicketResponse\x12\x10\n" +
-	"\x03url\x18\x01 \x01(\tR\x03url2\x86\x01\n" +
+	"\x03url\x18\x01 \x01(\tR\x03url\"<\n" +
+	"\x19CreateUploadTicketRequest\x12\x1f\n" +
+	"\vartifact_id\x18\x01 \x01(\tR\n" +
+	"artifactId\".\n" +
+	"\x1aCreateUploadTicketResponse\x12\x10\n" +
+	"\x03url\x18\x01 \x01(\tR\x03url2\xf5\x01\n" +
 	"\x0fArtifactService\x12s\n" +
-	"\x14CreateDownloadTicket\x12,.saki.runtime.v1.CreateDownloadTicketRequest\x1a-.saki.runtime.v1.CreateDownloadTicketResponseBTZRgithub.com/elebirds/saki/saki-controlplane/internal/gen/proto/runtime/v1;runtimev1b\x06proto3"
+	"\x14CreateDownloadTicket\x12,.saki.runtime.v1.CreateDownloadTicketRequest\x1a-.saki.runtime.v1.CreateDownloadTicketResponse\x12m\n" +
+	"\x12CreateUploadTicket\x12*.saki.runtime.v1.CreateUploadTicketRequest\x1a+.saki.runtime.v1.CreateUploadTicketResponseBTZRgithub.com/elebirds/saki/saki-controlplane/internal/gen/proto/runtime/v1;runtimev1b\x06proto3"
 
 var (
 	file_runtime_v1_artifact_proto_rawDescOnce sync.Once
@@ -134,16 +228,20 @@ func file_runtime_v1_artifact_proto_rawDescGZIP() []byte {
 	return file_runtime_v1_artifact_proto_rawDescData
 }
 
-var file_runtime_v1_artifact_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_runtime_v1_artifact_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_runtime_v1_artifact_proto_goTypes = []any{
 	(*CreateDownloadTicketRequest)(nil),  // 0: saki.runtime.v1.CreateDownloadTicketRequest
 	(*CreateDownloadTicketResponse)(nil), // 1: saki.runtime.v1.CreateDownloadTicketResponse
+	(*CreateUploadTicketRequest)(nil),    // 2: saki.runtime.v1.CreateUploadTicketRequest
+	(*CreateUploadTicketResponse)(nil),   // 3: saki.runtime.v1.CreateUploadTicketResponse
 }
 var file_runtime_v1_artifact_proto_depIdxs = []int32{
 	0, // 0: saki.runtime.v1.ArtifactService.CreateDownloadTicket:input_type -> saki.runtime.v1.CreateDownloadTicketRequest
-	1, // 1: saki.runtime.v1.ArtifactService.CreateDownloadTicket:output_type -> saki.runtime.v1.CreateDownloadTicketResponse
-	1, // [1:2] is the sub-list for method output_type
-	0, // [0:1] is the sub-list for method input_type
+	2, // 1: saki.runtime.v1.ArtifactService.CreateUploadTicket:input_type -> saki.runtime.v1.CreateUploadTicketRequest
+	1, // 2: saki.runtime.v1.ArtifactService.CreateDownloadTicket:output_type -> saki.runtime.v1.CreateDownloadTicketResponse
+	3, // 3: saki.runtime.v1.ArtifactService.CreateUploadTicket:output_type -> saki.runtime.v1.CreateUploadTicketResponse
+	2, // [2:4] is the sub-list for method output_type
+	0, // [0:2] is the sub-list for method input_type
 	0, // [0:0] is the sub-list for extension type_name
 	0, // [0:0] is the sub-list for extension extendee
 	0, // [0:0] is the sub-list for field type_name
@@ -160,7 +258,7 @@ func file_runtime_v1_artifact_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_runtime_v1_artifact_proto_rawDesc), len(file_runtime_v1_artifact_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   2,
+			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

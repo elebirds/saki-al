@@ -13,6 +13,9 @@ import (
 	"strings"
 	"testing"
 
+	appdb "github.com/elebirds/saki/saki-controlplane/internal/app/db"
+	annotationrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/repo"
+	"github.com/google/uuid"
 	"github.com/elebirds/saki/saki-controlplane/internal/app/bootstrap"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
@@ -39,6 +42,22 @@ func TestPublicAPISmoke(t *testing.T) {
 	goose.SetDialect("postgres")
 	if err := goose.Up(sqlDB, smokeMigrationsDir(t)); err != nil {
 		t.Fatalf("run migrations: %v", err)
+	}
+
+	pool, err := appdb.NewPool(ctx, dsn)
+	if err != nil {
+		t.Fatalf("create pgx pool: %v", err)
+	}
+	defer pool.Close()
+
+	sampleRepo := annotationrepo.NewSampleRepo(pool)
+	sample, err := sampleRepo.Create(ctx, annotationrepo.CreateSampleParams{
+		ProjectID:   uuid.MustParse("00000000-0000-0000-0000-000000000100"),
+		DatasetType: "single-view",
+		Meta:        []byte(`{}`),
+	})
+	if err != nil {
+		t.Fatalf("create smoke sample: %v", err)
 	}
 
 	t.Setenv("DATABASE_DSN", dsn)
@@ -91,6 +110,44 @@ func TestPublicAPISmoke(t *testing.T) {
 	}
 	if _, ok := summary["pending_tasks"]; !ok {
 		t.Fatalf("unexpected runtime summary body: %+v", summary)
+	}
+
+	createAnnotationResp, err := http.Post(
+		httpServer.URL+"/samples/"+sample.ID.String()+"/annotations",
+		"application/json",
+		bytes.NewBufferString(`{"group_id":"smoke-group","label_id":"smoke-label","view":"rgb","annotation_type":"rect","geometry":{"x":1,"y":2,"w":3,"h":4},"attrs":{"score":0.5},"source":"manual"}`),
+	)
+	if err != nil {
+		t.Fatalf("post sample annotations: %v", err)
+	}
+	defer createAnnotationResp.Body.Close()
+	if createAnnotationResp.StatusCode != http.StatusCreated {
+		t.Fatalf("unexpected create annotation status: %d", createAnnotationResp.StatusCode)
+	}
+
+	var created []map[string]any
+	if err := json.NewDecoder(createAnnotationResp.Body).Decode(&created); err != nil {
+		t.Fatalf("decode create annotation response: %v", err)
+	}
+	if len(created) != 1 || created[0]["sample_id"] != sample.ID.String() {
+		t.Fatalf("unexpected create annotation body: %+v", created)
+	}
+
+	listAnnotationResp, err := http.Get(httpServer.URL + "/samples/" + sample.ID.String() + "/annotations")
+	if err != nil {
+		t.Fatalf("get sample annotations: %v", err)
+	}
+	defer listAnnotationResp.Body.Close()
+	if listAnnotationResp.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected list annotation status: %d", listAnnotationResp.StatusCode)
+	}
+
+	var listed []map[string]any
+	if err := json.NewDecoder(listAnnotationResp.Body).Decode(&listed); err != nil {
+		t.Fatalf("decode list annotation response: %v", err)
+	}
+	if len(listed) != 1 || listed[0]["view"] != "rgb" || listed[0]["annotation_type"] != "rect" {
+		t.Fatalf("unexpected list annotation body: %+v", listed)
 	}
 }
 

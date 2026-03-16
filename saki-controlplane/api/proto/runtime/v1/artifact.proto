@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package saki.runtime.v1;
+
+option go_package = "github.com/elebirds/saki/saki-controlplane/internal/gen/proto/runtime/v1;runtimev1";
+
+service ArtifactService {
+  rpc CreateDownloadTicket(CreateDownloadTicketRequest) returns (CreateDownloadTicketResponse);
+}
+
+message CreateDownloadTicketRequest {
+  string artifact_id = 1;
+}
+
+message CreateDownloadTicketResponse {
+  string url = 1;
+}

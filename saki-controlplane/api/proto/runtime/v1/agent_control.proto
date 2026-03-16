@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package saki.runtime.v1;
+
+option go_package = "github.com/elebirds/saki/saki-controlplane/internal/gen/proto/runtime/v1;runtimev1";
+
+service AgentControl {
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+}
+
+message RegisterRequest {
+  string executor_id = 1;
+  string version = 2;
+}
+
+message RegisterResponse {
+  bool accepted = 1;
+}

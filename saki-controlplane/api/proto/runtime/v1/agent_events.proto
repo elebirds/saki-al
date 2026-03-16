@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package saki.runtime.v1;
+
+option go_package = "github.com/elebirds/saki/saki-controlplane/internal/gen/proto/runtime/v1;runtimev1";
+
+message TaskEvent {
+  string task_id = 1;
+  string event_type = 2;
+  string message = 3;
+}

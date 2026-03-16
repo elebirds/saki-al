@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package saki.worker.v1;
+
+option go_package = "github.com/elebirds/saki/saki-controlplane/internal/gen/proto/worker/v1;workerv1";
+
+service Worker {
+  rpc Run(RunRequest) returns (RunResponse);
+}
+
+message RunRequest {
+  string task_type = 1;
+  bytes payload = 2;
+}
+
+message RunResponse {
+  bytes result = 1;
+}

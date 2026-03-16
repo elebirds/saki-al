@@ -6,7 +6,7 @@ OGEN_VERSION ?= v1.20.1
 BUF_VERSION ?= v1.66.1
 SQLC_VERSION ?= v1.30.0
 
-.PHONY: test fmt vet build-public-api build-runtime run-public-api run-runtime gen gen-openapi gen-proto gen-sqlc
+.PHONY: test fmt vet build-public-api build-runtime run-public-api run-runtime gen gen-openapi gen-proto gen-sqlc check-gen ci
 
 test:
 	$(GO) test ./...
@@ -44,3 +44,9 @@ gen-proto:
 gen-sqlc:
 	mkdir -p internal/gen/sqlc
 	GOWORK=off GOPROXY=$(GOPROXY) $(GO) run github.com/sqlc-dev/sqlc/cmd/sqlc@$(SQLC_VERSION) generate -f db/sqlc.yaml
+
+check-gen:
+	$(MAKE) gen
+	git diff --exit-code -- internal/gen
+
+ci: check-gen test vet

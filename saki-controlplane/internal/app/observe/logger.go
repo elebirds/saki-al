@@ -1,6 +1,7 @@
 package observe
 
 import (
+	"io"
 	"log/slog"
 	"os"
 	"strings"
@@ -20,6 +21,21 @@ func ParseLevel(level string) slog.Level {
 }
 
 func NewLogger(service string, level slog.Leveler) *slog.Logger {
-	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level})
-	return slog.New(handler).With("service", service)
+	return newLogger(os.Stdout, service, "", level, true)
+}
+
+func newLogger(w io.Writer, service, module string, level slog.Leveler, json bool) *slog.Logger {
+	var handler slog.Handler
+	options := &slog.HandlerOptions{Level: level}
+	if json {
+		handler = slog.NewJSONHandler(w, options)
+	} else {
+		handler = slog.NewTextHandler(w, options)
+	}
+
+	logger := slog.New(handler).With("service", service)
+	if module != "" {
+		logger = logger.With("module", module)
+	}
+	return logger
 }

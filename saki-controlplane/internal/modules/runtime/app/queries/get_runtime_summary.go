@@ -4,6 +4,8 @@ import (
 	"context"
 	"sync"
 	"time"
+
+	runtimerepo "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/repo"
 )
 
 type RuntimeSummary struct {
@@ -21,7 +23,6 @@ type RuntimeExecutor struct {
 type AdminStore interface {
 	GetRuntimeSummary(ctx context.Context) (RuntimeSummary, error)
 	ListRuntimeExecutors(ctx context.Context) ([]RuntimeExecutor, error)
-	CancelRuntimeTask(ctx context.Context, taskID string) error
 }
 
 type MemoryAdminStore struct {
@@ -51,10 +52,6 @@ func (s *MemoryAdminStore) ListRuntimeExecutors(context.Context) ([]RuntimeExecu
 	return executors, nil
 }
 
-func (s *MemoryAdminStore) CancelRuntimeTask(context.Context, string) error {
-	return nil
-}
-
 type GetRuntimeSummaryQuery struct {
 	store AdminStore
 }
@@ -65,4 +62,47 @@ func NewGetRuntimeSummaryQuery(store AdminStore) *GetRuntimeSummaryQuery {
 
 func (q *GetRuntimeSummaryQuery) Execute(ctx context.Context) (RuntimeSummary, error) {
 	return q.store.GetRuntimeSummary(ctx)
+}
+
+type RepoAdminStore struct {
+	tasks     *runtimerepo.TaskRepo
+	executors *runtimerepo.ExecutorRepo
+}
+
+func NewRepoAdminStore(tasks *runtimerepo.TaskRepo, executors *runtimerepo.ExecutorRepo) *RepoAdminStore {
+	return &RepoAdminStore{
+		tasks:     tasks,
+		executors: executors,
+	}
+}
+
+func (s *RepoAdminStore) GetRuntimeSummary(ctx context.Context) (RuntimeSummary, error) {
+	summary, err := s.tasks.GetSummary(ctx)
+	if err != nil {
+		return RuntimeSummary{}, err
+	}
+
+	return RuntimeSummary{
+		PendingTasks: summary.PendingTasks,
+		RunningTasks: summary.RunningTasks,
+		LeaderEpoch:  summary.LeaderEpoch,
+	}, nil
+}
+
+func (s *RepoAdminStore) ListRuntimeExecutors(ctx context.Context) ([]RuntimeExecutor, error) {
+	executors, err := s.executors.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]RuntimeExecutor, 0, len(executors))
+	for _, executor := range executors {
+		result = append(result, RuntimeExecutor{
+			ID:         executor.ID,
+			Version:    executor.Version,
+			LastSeenAt: executor.LastSeenAt,
+		})
+	}
+
+	return result, nil
 }

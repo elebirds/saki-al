@@ -2,6 +2,7 @@ package apihttp_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,7 @@ import (
 
 	accessapp "github.com/elebirds/saki/saki-controlplane/internal/modules/access/app"
 	projectapp "github.com/elebirds/saki/saki-controlplane/internal/modules/project/app"
+	runtimecommands "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/commands"
 	runtimequeries "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/queries"
 	systemapi "github.com/elebirds/saki/saki-controlplane/internal/modules/system/apihttp"
 )
@@ -123,8 +125,15 @@ func loginAndExtractToken(t *testing.T, handler http.Handler, userID string, per
 
 func newTestHTTPHandler() (http.Handler, error) {
 	return systemapi.NewHTTPHandler(systemapi.Dependencies{
-		Authenticator: accessapp.NewAuthenticator("test-secret", time.Hour),
-		ProjectStore:  projectapp.NewMemoryStore(),
-		RuntimeStore:  runtimequeries.NewMemoryAdminStore(),
+		Authenticator:       accessapp.NewAuthenticator("test-secret", time.Hour),
+		ProjectStore:        projectapp.NewMemoryStore(),
+		RuntimeStore:        runtimequeries.NewMemoryAdminStore(),
+		RuntimeTaskCanceler: fakeRuntimeTaskCanceler{},
 	})
+}
+
+type fakeRuntimeTaskCanceler struct{}
+
+func (fakeRuntimeTaskCanceler) Handle(context.Context, runtimecommands.CancelTaskCommand) (*runtimecommands.TaskRecord, error) {
+	return &runtimecommands.TaskRecord{}, nil
 }

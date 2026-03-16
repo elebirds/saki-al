@@ -12,7 +12,9 @@ import (
 	accessapp "github.com/elebirds/saki/saki-controlplane/internal/modules/access/app"
 	projectapp "github.com/elebirds/saki/saki-controlplane/internal/modules/project/app"
 	projectrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/project/repo"
+	runtimecommands "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/commands"
 	runtimequeries "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/queries"
+	runtimerepo "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/repo"
 	systemapi "github.com/elebirds/saki/saki-controlplane/internal/modules/system/apihttp"
 )
 
@@ -33,10 +35,13 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 		return nil, nil, err
 	}
 
+	taskRepo := runtimerepo.NewTaskRepo(pool)
+
 	handler, err := systemapi.NewHTTPHandler(systemapi.Dependencies{
-		Authenticator: accessapp.NewAuthenticator(cfg.AuthTokenSecret, tokenTTL),
-		ProjectStore:  projectapp.NewRepoStore(projectrepo.NewProjectRepo(pool)),
-		RuntimeStore:  runtimequeries.NewMemoryAdminStore(),
+		Authenticator:       accessapp.NewAuthenticator(cfg.AuthTokenSecret, tokenTTL),
+		ProjectStore:        projectapp.NewRepoStore(projectrepo.NewProjectRepo(pool)),
+		RuntimeStore:        runtimequeries.NewRepoAdminStore(taskRepo, runtimerepo.NewExecutorRepo(pool)),
+		RuntimeTaskCanceler: runtimecommands.NewCancelTaskHandler(taskRepo, runtimerepo.NewCommandOutboxWriter(pool)),
 	})
 	if err != nil {
 		pool.Close()

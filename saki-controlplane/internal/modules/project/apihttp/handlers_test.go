@@ -18,6 +18,7 @@ import (
 	appbootstrap "github.com/elebirds/saki/saki-controlplane/internal/app/bootstrap"
 	accessapp "github.com/elebirds/saki/saki-controlplane/internal/modules/access/app"
 	projectapp "github.com/elebirds/saki/saki-controlplane/internal/modules/project/app"
+	runtimecommands "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/commands"
 	runtimequeries "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/queries"
 	systemapi "github.com/elebirds/saki/saki-controlplane/internal/modules/system/apihttp"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -146,10 +147,17 @@ func TestProjectPersistsAcrossPublicAPIInstances(t *testing.T) {
 
 func newTestHTTPHandler() (http.Handler, error) {
 	return systemapi.NewHTTPHandler(systemapi.Dependencies{
-		Authenticator: accessapp.NewAuthenticator("test-secret", time.Hour),
-		ProjectStore:  projectapp.NewMemoryStore(),
-		RuntimeStore:  runtimequeries.NewMemoryAdminStore(),
+		Authenticator:       accessapp.NewAuthenticator("test-secret", time.Hour),
+		ProjectStore:        projectapp.NewMemoryStore(),
+		RuntimeStore:        runtimequeries.NewMemoryAdminStore(),
+		RuntimeTaskCanceler: fakeRuntimeTaskCanceler{},
 	})
+}
+
+type fakeRuntimeTaskCanceler struct{}
+
+func (fakeRuntimeTaskCanceler) Handle(context.Context, runtimecommands.CancelTaskCommand) (*runtimecommands.TaskRecord, error) {
+	return &runtimecommands.TaskRecord{}, nil
 }
 
 func freeAddr(t *testing.T) string {

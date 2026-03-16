@@ -1,6 +1,7 @@
 package apihttp
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,7 @@ import (
 
 	accessapp "github.com/elebirds/saki/saki-controlplane/internal/modules/access/app"
 	projectapp "github.com/elebirds/saki/saki-controlplane/internal/modules/project/app"
+	runtimecommands "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/commands"
 	runtimequeries "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/queries"
 )
 
@@ -63,8 +65,15 @@ func TestServerReturnsStructuredErrorResponse(t *testing.T) {
 
 func newTestHTTPHandler() (http.Handler, error) {
 	return NewHTTPHandler(Dependencies{
-		Authenticator: accessapp.NewAuthenticator("test-secret", time.Hour),
-		ProjectStore:  projectapp.NewMemoryStore(),
-		RuntimeStore:  runtimequeries.NewMemoryAdminStore(),
+		Authenticator:       accessapp.NewAuthenticator("test-secret", time.Hour),
+		ProjectStore:        projectapp.NewMemoryStore(),
+		RuntimeStore:        runtimequeries.NewMemoryAdminStore(),
+		RuntimeTaskCanceler: fakeRuntimeTaskCanceler{},
 	})
+}
+
+type fakeRuntimeTaskCanceler struct{}
+
+func (fakeRuntimeTaskCanceler) Handle(context.Context, runtimecommands.CancelTaskCommand) (*runtimecommands.TaskRecord, error) {
+	return &runtimecommands.TaskRecord{}, nil
 }

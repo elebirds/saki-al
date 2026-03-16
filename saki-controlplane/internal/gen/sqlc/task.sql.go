@@ -78,3 +78,72 @@ func (q *Queries) CreateRuntimeTask(ctx context.Context, arg CreateRuntimeTaskPa
 	)
 	return i, err
 }
+
+const getRuntimeSummary = `-- name: GetRuntimeSummary :one
+select
+    count(*) filter (where status = 'pending')::integer as pending_tasks,
+    count(*) filter (where status in ('dispatching', 'running'))::integer as running_tasks,
+    coalesce((select max(epoch) from runtime_lease), 0)::bigint as leader_epoch
+from runtime_task
+`
+
+type GetRuntimeSummaryRow struct {
+	PendingTasks int32 `json:"pending_tasks"`
+	RunningTasks int32 `json:"running_tasks"`
+	LeaderEpoch  int64 `json:"leader_epoch"`
+}
+
+func (q *Queries) GetRuntimeSummary(ctx context.Context) (GetRuntimeSummaryRow, error) {
+	row := q.db.QueryRow(ctx, getRuntimeSummary)
+	var i GetRuntimeSummaryRow
+	err := row.Scan(&i.PendingTasks, &i.RunningTasks, &i.LeaderEpoch)
+	return i, err
+}
+
+const getRuntimeTask = `-- name: GetRuntimeTask :one
+select id, task_type, status, claimed_by, claimed_at, leader_epoch, created_at, updated_at
+from runtime_task
+where id = $1
+`
+
+func (q *Queries) GetRuntimeTask(ctx context.Context, id uuid.UUID) (RuntimeTask, error) {
+	row := q.db.QueryRow(ctx, getRuntimeTask, id)
+	var i RuntimeTask
+	err := row.Scan(
+		&i.ID,
+		&i.TaskType,
+		&i.Status,
+		&i.ClaimedBy,
+		&i.ClaimedAt,
+		&i.LeaderEpoch,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateRuntimeTask = `-- name: UpdateRuntimeTask :exec
+update runtime_task
+set status = $1,
+    claimed_by = $2,
+    leader_epoch = $3,
+    updated_at = now()
+where id = $4
+`
+
+type UpdateRuntimeTaskParams struct {
+	Status      string      `json:"status"`
+	ClaimedBy   pgtype.Text `json:"claimed_by"`
+	LeaderEpoch pgtype.Int8 `json:"leader_epoch"`
+	ID          uuid.UUID   `json:"id"`
+}
+
+func (q *Queries) UpdateRuntimeTask(ctx context.Context, arg UpdateRuntimeTaskParams) error {
+	_, err := q.db.Exec(ctx, updateRuntimeTask,
+		arg.Status,
+		arg.ClaimedBy,
+		arg.LeaderEpoch,
+		arg.ID,
+	)
+	return err
+}

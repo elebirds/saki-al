@@ -1,65 +1,225 @@
 package apihttp_test
 
 import (
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
+	"context"
+	"database/sql"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
+	"time"
 
-	systemapi "github.com/elebirds/saki/saki-controlplane/internal/modules/system/apihttp"
+	appdb "github.com/elebirds/saki/saki-controlplane/internal/app/db"
+	openapi "github.com/elebirds/saki/saki-controlplane/internal/gen/openapi"
+	"github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/apihttp"
+	"github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/commands"
+	runtimequeries "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/queries"
+	runtimerepo "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/repo"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
+	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/pressly/goose/v3"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/modules/postgres"
+	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-func TestRuntimeAdminEndpoints(t *testing.T) {
-	handler, err := systemapi.NewHTTPHandler()
+func TestRuntimeAdminQueriesReadPersistedState(t *testing.T) {
+	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+
+	ctx := context.Background()
+	container, dsn := startRuntimePostgres(t, ctx)
+	defer func() {
+		_ = testcontainers.TerminateContainer(container)
+	}()
+
+	pool := openRuntimePool(t, ctx, dsn)
+	defer pool.Close()
+
+	leaseRepo := runtimerepo.NewLeaseRepo(pool)
+	lease, err := leaseRepo.AcquireOrRenew(ctx, runtimerepo.AcquireLeaseParams{
+		Name:       "runtime-scheduler",
+		Holder:     "runtime-1",
+		LeaseUntil: time.Now().Add(time.Minute),
+	})
 	if err != nil {
-		t.Fatalf("new http handler: %v", err)
+		t.Fatalf("acquire lease: %v", err)
 	}
 
-	summaryReq := httptest.NewRequest(http.MethodGet, "/runtime/summary", nil)
-	summaryRec := httptest.NewRecorder()
-	handler.ServeHTTP(summaryRec, summaryReq)
-
-	if summaryRec.Code != http.StatusOK {
-		t.Fatalf("unexpected summary status: %d body=%s", summaryRec.Code, summaryRec.Body.String())
+	taskRepo := runtimerepo.NewTaskRepo(pool)
+	if err := taskRepo.CreateTask(ctx, runtimerepo.CreateTaskParams{
+		ID:       uuid.New(),
+		TaskType: "predict",
+	}); err != nil {
+		t.Fatalf("create pending task: %v", err)
+	}
+	if err := taskRepo.CreateTask(ctx, runtimerepo.CreateTaskParams{
+		ID:       uuid.New(),
+		TaskType: "predict",
+	}); err != nil {
+		t.Fatalf("create claimable task: %v", err)
+	}
+	if _, err := taskRepo.ClaimPendingTask(ctx, runtimerepo.ClaimTaskParams{
+		ClaimedBy:   "runtime-1",
+		LeaderEpoch: lease.Epoch,
+	}); err != nil {
+		t.Fatalf("claim task: %v", err)
 	}
 
-	var summary map[string]any
-	if err := json.Unmarshal(summaryRec.Body.Bytes(), &summary); err != nil {
-		t.Fatalf("decode summary response: %v", err)
-	}
-	if _, ok := summary["pending_tasks"]; !ok {
-		t.Fatalf("unexpected summary body: %+v", summary)
-	}
-
-	executorsReq := httptest.NewRequest(http.MethodGet, "/runtime/executors", nil)
-	executorsRec := httptest.NewRecorder()
-	handler.ServeHTTP(executorsRec, executorsReq)
-
-	if executorsRec.Code != http.StatusOK {
-		t.Fatalf("unexpected executors status: %d body=%s", executorsRec.Code, executorsRec.Body.String())
+	executorRepo := runtimerepo.NewExecutorRepo(pool)
+	if _, err := executorRepo.Register(ctx, commands.ExecutorRecord{
+		ID:           "executor-a",
+		Version:      "1.2.3",
+		Capabilities: []string{"gpu"},
+		LastSeenAt:   time.UnixMilli(123456789),
+	}); err != nil {
+		t.Fatalf("register executor: %v", err)
 	}
 
-	var executors []map[string]any
-	if err := json.Unmarshal(executorsRec.Body.Bytes(), &executors); err != nil {
-		t.Fatalf("decode executors response: %v", err)
+	handlers := apihttp.NewHandlers(
+		apihttp.Dependencies{
+			Store:    runtimequeries.NewRepoAdminStore(taskRepo, executorRepo),
+			Commands: runtimequeries.NewIssueRuntimeCommandUseCase(&fakeRuntimeCanceler{}),
+		},
+	)
+
+	summary, err := handlers.GetRuntimeSummary(ctx)
+	if err != nil {
+		t.Fatalf("get runtime summary: %v", err)
 	}
-	if len(executors) != 0 {
-		t.Fatalf("expected empty executors list, got %+v", executors)
+	if summary.PendingTasks != 1 || summary.RunningTasks != 1 || summary.LeaderEpoch != lease.Epoch {
+		t.Fatalf("unexpected runtime summary: %+v", summary)
 	}
 
-	commandReq := httptest.NewRequest(http.MethodPost, "/runtime/tasks/task-1/cancel", nil)
-	commandRec := httptest.NewRecorder()
-	handler.ServeHTTP(commandRec, commandReq)
+	executors, err := handlers.ListRuntimeExecutors(ctx)
+	if err != nil {
+		t.Fatalf("list executors: %v", err)
+	}
+	if len(executors) != 1 || executors[0].ID != "executor-a" || executors[0].Version != "1.2.3" {
+		t.Fatalf("unexpected executors: %+v", executors)
+	}
+}
 
-	if commandRec.Code != http.StatusAccepted {
-		t.Fatalf("unexpected command status: %d body=%s", commandRec.Code, commandRec.Body.String())
+func TestRuntimeAdminCancelTaskTransitionsTask(t *testing.T) {
+	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+
+	ctx := context.Background()
+	container, dsn := startRuntimePostgres(t, ctx)
+	defer func() {
+		_ = testcontainers.TerminateContainer(container)
+	}()
+
+	pool := openRuntimePool(t, ctx, dsn)
+	defer pool.Close()
+
+	taskRepo := runtimerepo.NewTaskRepo(pool)
+	taskID := uuid.New()
+	if err := taskRepo.CreateTask(ctx, runtimerepo.CreateTaskParams{
+		ID:       taskID,
+		TaskType: "predict",
+	}); err != nil {
+		t.Fatalf("create task: %v", err)
 	}
 
-	var commandResp map[string]any
-	if err := json.Unmarshal(commandRec.Body.Bytes(), &commandResp); err != nil {
-		t.Fatalf("decode command response: %v", err)
+	handlers := apihttp.NewHandlers(
+		apihttp.Dependencies{
+			Store: runtimequeries.NewRepoAdminStore(taskRepo, runtimerepo.NewExecutorRepo(pool)),
+			Commands: runtimequeries.NewIssueRuntimeCommandUseCase(
+				commands.NewCancelTaskHandler(taskRepo, runtimerepo.NewCommandOutboxWriter(pool)),
+			),
+		},
+	)
+
+	resp, err := handlers.CancelRuntimeTask(ctx, openapi.CancelRuntimeTaskParams{TaskID: taskID.String()})
+	if err != nil {
+		t.Fatalf("cancel runtime task: %v", err)
 	}
-	if commandResp["accepted"] != true {
-		t.Fatalf("unexpected command response: %+v", commandResp)
+	if !resp.Accepted {
+		t.Fatalf("unexpected cancel response: %+v", resp)
 	}
+
+	task, err := taskRepo.GetTask(ctx, taskID)
+	if err != nil {
+		t.Fatalf("load task: %v", err)
+	}
+	if task == nil || task.Status != "canceled" {
+		t.Fatalf("unexpected canceled task: %+v", task)
+	}
+}
+
+type fakeRuntimeCanceler struct{}
+
+func (f *fakeRuntimeCanceler) Handle(context.Context, commands.CancelTaskCommand) (*commands.TaskRecord, error) {
+	return &commands.TaskRecord{}, nil
+}
+
+func startRuntimePostgres(t *testing.T, ctx context.Context) (*postgres.PostgresContainer, string) {
+	t.Helper()
+
+	container, err := postgres.Run(
+		ctx,
+		runtimePostgresImageRef(),
+		postgres.WithDatabase("saki"),
+		postgres.WithUsername("postgres"),
+		postgres.WithPassword("postgres"),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("database system is ready to accept connections").WithOccurrence(2),
+		),
+	)
+	if err != nil {
+		t.Fatalf("start postgres container: %v", err)
+	}
+
+	dsn, err := container.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		t.Fatalf("build postgres dsn: %v", err)
+	}
+
+	return container, dsn
+}
+
+func openRuntimePool(t *testing.T, ctx context.Context, dsn string) *pgxpool.Pool {
+	t.Helper()
+
+	sqlDB, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("open sql db: %v", err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+
+	goose.SetDialect("postgres")
+	if err := goose.Up(sqlDB, runtimeMigrationsDir(t)); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+
+	pool, err := appdb.NewPool(ctx, dsn)
+	if err != nil {
+		t.Fatalf("create pool: %v", err)
+	}
+	return pool
+}
+
+func runtimeMigrationsDir(t *testing.T) string {
+	t.Helper()
+
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("resolve caller")
+	}
+
+	return filepath.Join(filepath.Dir(file), "..", "..", "..", "..", "db", "migrations")
+}
+
+func runtimePostgresImageRef() string {
+	cmd := exec.Command("docker", "image", "inspect", "postgres:16-alpine", "--format", "{{.Id}}")
+	output, err := cmd.Output()
+	if err != nil {
+		return "postgres:16-alpine"
+	}
+
+	if imageID := strings.TrimSpace(string(output)); imageID != "" {
+		return imageID
+	}
+	return "postgres:16-alpine"
 }

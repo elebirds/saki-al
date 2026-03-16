@@ -13,11 +13,16 @@ type Handlers struct {
 	commands  *runtimequeries.IssueRuntimeCommandUseCase
 }
 
-func NewHandlers(store runtimequeries.AdminStore) *Handlers {
+type Dependencies struct {
+	Store    runtimequeries.AdminStore
+	Commands *runtimequeries.IssueRuntimeCommandUseCase
+}
+
+func NewHandlers(deps Dependencies) *Handlers {
 	return &Handlers{
-		summary:   runtimequeries.NewGetRuntimeSummaryQuery(store),
-		executors: runtimequeries.NewListExecutorsQuery(store),
-		commands:  runtimequeries.NewIssueRuntimeCommandUseCase(store),
+		summary:   runtimequeries.NewGetRuntimeSummaryQuery(deps.Store),
+		executors: runtimequeries.NewListExecutorsQuery(deps.Store),
+		commands:  deps.Commands,
 	}
 }
 

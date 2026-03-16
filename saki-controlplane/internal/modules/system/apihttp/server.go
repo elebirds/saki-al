@@ -16,9 +16,10 @@ import (
 )
 
 type Dependencies struct {
-	Authenticator *accessapp.Authenticator
-	ProjectStore  projectapp.Store
-	RuntimeStore  runtimequeries.AdminStore
+	Authenticator       *accessapp.Authenticator
+	ProjectStore        projectapp.Store
+	RuntimeStore        runtimequeries.AdminStore
+	RuntimeTaskCanceler runtimequeries.RuntimeTaskCanceler
 }
 
 type Server struct {
@@ -39,10 +40,16 @@ func NewHandler(deps Dependencies) (*Server, error) {
 	if deps.RuntimeStore == nil {
 		return nil, errors.New("runtime store is required")
 	}
+	if deps.RuntimeTaskCanceler == nil {
+		return nil, errors.New("runtime task canceler is required")
+	}
 	return &Server{
 		access:  accessapi.NewHandlers(deps.Authenticator),
 		project: projectapi.NewHandlers(deps.ProjectStore),
-		runtime: runtimeapi.NewHandlers(deps.RuntimeStore),
+		runtime: runtimeapi.NewHandlers(runtimeapi.Dependencies{
+			Store:    deps.RuntimeStore,
+			Commands: runtimequeries.NewIssueRuntimeCommandUseCase(deps.RuntimeTaskCanceler),
+		}),
 	}, nil
 }
 

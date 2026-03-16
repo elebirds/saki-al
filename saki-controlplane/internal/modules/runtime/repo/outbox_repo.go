@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	sqlcdb "github.com/elebirds/saki/saki-controlplane/internal/gen/sqlc"
+	"github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/commands"
 )
 
 type OutboxEntry struct {
@@ -51,6 +52,23 @@ func (r *OutboxRepo) Append(ctx context.Context, params AppendOutboxParams) (*Ou
 		CreatedAt:   row.CreatedAt.Time,
 		PublishedAt: optionalPublishedAt(row.PublishedAt),
 	}, nil
+}
+
+type CommandOutboxWriter struct {
+	repo *OutboxRepo
+}
+
+func NewCommandOutboxWriter(pool *pgxpool.Pool) *CommandOutboxWriter {
+	return &CommandOutboxWriter{repo: NewOutboxRepo(pool)}
+}
+
+func (w *CommandOutboxWriter) Append(ctx context.Context, event commands.OutboxEvent) error {
+	_, err := w.repo.Append(ctx, AppendOutboxParams{
+		Topic:       event.Topic,
+		AggregateID: event.AggregateID,
+		Payload:     event.Payload,
+	})
+	return err
 }
 
 func optionalPublishedAt(value pgtype.Timestamptz) *time.Time {

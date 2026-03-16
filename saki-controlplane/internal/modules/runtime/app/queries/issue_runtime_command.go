@@ -1,15 +1,31 @@
 package queries
 
-import "context"
+import (
+	"context"
 
-type IssueRuntimeCommandUseCase struct {
-	store AdminStore
+	"github.com/google/uuid"
+
+	"github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/commands"
+)
+
+type RuntimeTaskCanceler interface {
+	Handle(ctx context.Context, cmd commands.CancelTaskCommand) (*commands.TaskRecord, error)
 }
 
-func NewIssueRuntimeCommandUseCase(store AdminStore) *IssueRuntimeCommandUseCase {
-	return &IssueRuntimeCommandUseCase{store: store}
+type IssueRuntimeCommandUseCase struct {
+	canceler RuntimeTaskCanceler
+}
+
+func NewIssueRuntimeCommandUseCase(canceler RuntimeTaskCanceler) *IssueRuntimeCommandUseCase {
+	return &IssueRuntimeCommandUseCase{canceler: canceler}
 }
 
 func (u *IssueRuntimeCommandUseCase) CancelTask(ctx context.Context, taskID string) error {
-	return u.store.CancelRuntimeTask(ctx, taskID)
+	id, err := uuid.Parse(taskID)
+	if err != nil {
+		return err
+	}
+
+	_, err = u.canceler.Handle(ctx, commands.CancelTaskCommand{TaskID: id})
+	return err
 }

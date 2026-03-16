@@ -94,7 +94,10 @@ type MatchedAnnotationEntry struct {
 	AnnotationID      string          `json:"annotation_id"`
 	ResolvedSampleID  uuid.UUID       `json:"resolved_sample_id"`
 	SampleRef         string          `json:"sample_ref"`
+	GroupID           string          `json:"group_id"`
+	LabelID           string          `json:"label_id"`
 	LabelName         string          `json:"label_name"`
+	View              string          `json:"view"`
 	AnnotationType    string          `json:"annotation_type"`
 	Geometry          json.RawMessage `json:"geometry"`
 	Source            string          `json:"source"`
@@ -233,7 +236,10 @@ func (u *PrepareProjectAnnotationsUseCase) Execute(ctx context.Context, input Pr
 			AnnotationID:      parsedAnnotation.AnnotationID,
 			ResolvedSampleID:  decision.SampleID,
 			SampleRef:         parsedAnnotation.PrimarySampleRef.NormalizedValue,
+			GroupID:           parsedAnnotation.AnnotationID,
+			LabelID:           labelNamesByID[record.GetLabelId()],
 			LabelName:         labelNamesByID[record.GetLabelId()],
+			View:              "default",
 			AnnotationType:    annotationTypeFromGeometry(record.GetGeometry()),
 			Geometry:          geometryJSON,
 			Source:            "imported",

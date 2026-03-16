@@ -25,7 +25,11 @@ func TestRegisterRequestCodec(t *testing.T) {
 	}
 
 	if decoded.ExecutorId != "executor-a" || len(decoded.Capabilities) != 2 {
-		t.Fatalf("unexpected decoded register request: %+v", decoded)
+		t.Fatalf(
+			"unexpected decoded register request executor_id=%q capabilities=%d",
+			decoded.ExecutorId,
+			len(decoded.Capabilities),
+		)
 	}
 }
 
@@ -48,7 +52,11 @@ func TestHeartbeatRequestCodec(t *testing.T) {
 	}
 
 	if decoded.ExecutorId != "executor-a" || decoded.SentAtUnixMs != 123456789 {
-		t.Fatalf("unexpected decoded heartbeat request: %+v", decoded)
+		t.Fatalf(
+			"unexpected decoded heartbeat request executor_id=%q sent_at_unix_ms=%d",
+			decoded.ExecutorId,
+			decoded.SentAtUnixMs,
+		)
 	}
 }
 
@@ -78,6 +86,10 @@ func TestTaskEventEnvelopeCodec(t *testing.T) {
 
 	logPayload := decoded.GetLog()
 	if logPayload == nil || logPayload.Message != "task started" {
-		t.Fatalf("unexpected decoded task event envelope: %+v", decoded)
+		t.Fatalf(
+			"unexpected decoded task event envelope phase=%s log=%v",
+			decoded.Phase.String(),
+			logPayload,
+		)
 	}
 }

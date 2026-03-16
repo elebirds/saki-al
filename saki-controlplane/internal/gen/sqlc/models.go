@@ -10,8 +10,10 @@ import (
 )
 
 type Project struct {
-	ID   uuid.UUID `json:"id"`
-	Name string    `json:"name"`
+	ID        uuid.UUID          `json:"id"`
+	Name      string             `json:"name"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
 type RuntimeLease struct {

@@ -12,12 +12,17 @@ import (
 const createProject = `-- name: CreateProject :one
 insert into project (id, name)
 values (gen_random_uuid(), $1)
-returning id, name
+returning id, name, created_at, updated_at
 `
 
 func (q *Queries) CreateProject(ctx context.Context, name string) (Project, error) {
 	row := q.db.QueryRow(ctx, createProject, name)
 	var i Project
-	err := row.Scan(&i.ID, &i.Name)
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
 	return i, err
 }

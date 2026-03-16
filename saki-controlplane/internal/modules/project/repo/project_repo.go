@@ -2,6 +2,7 @@ package repo
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -10,8 +11,10 @@ import (
 )
 
 type Project struct {
-	ID   uuid.UUID
-	Name string
+	ID        uuid.UUID
+	Name      string
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 type CreateProjectParams struct {
@@ -33,8 +36,10 @@ func (r *ProjectRepo) CreateProject(ctx context.Context, params CreateProjectPar
 	}
 
 	return &Project{
-		ID:   row.ID,
-		Name: row.Name,
+		ID:        row.ID,
+		Name:      row.Name,
+		CreatedAt: row.CreatedAt.Time,
+		UpdatedAt: row.UpdatedAt.Time,
 	}, nil
 }
 
@@ -47,8 +52,10 @@ func (r *ProjectRepo) ListProjects(ctx context.Context) ([]Project, error) {
 	projects := make([]Project, 0, len(rows))
 	for _, row := range rows {
 		projects = append(projects, Project{
-			ID:   row.ID,
-			Name: row.Name,
+			ID:        row.ID,
+			Name:      row.Name,
+			CreatedAt: row.CreatedAt.Time,
+			UpdatedAt: row.UpdatedAt.Time,
 		})
 	}
 
@@ -62,7 +69,9 @@ func (r *ProjectRepo) GetProject(ctx context.Context, id uuid.UUID) (*Project, e
 	}
 
 	return &Project{
-		ID:   row.ID,
-		Name: row.Name,
+		ID:        row.ID,
+		Name:      row.Name,
+		CreatedAt: row.CreatedAt.Time,
+		UpdatedAt: row.UpdatedAt.Time,
 	}, nil
 }

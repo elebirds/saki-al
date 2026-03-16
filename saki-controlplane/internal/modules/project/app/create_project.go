@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -10,8 +11,10 @@ import (
 )
 
 type Project struct {
-	ID   uuid.UUID
-	Name string
+	ID        uuid.UUID
+	Name      string
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 type Store interface {
@@ -49,8 +52,10 @@ func (s *MemoryStore) CreateProject(_ context.Context, name string) (*Project, e
 	defer s.mu.Unlock()
 
 	project := Project{
-		ID:   uuid.New(),
-		Name: name,
+		ID:        uuid.New(),
+		Name:      name,
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
 	}
 	s.projects[project.ID] = project
 	s.order = append(s.order, project.ID)
@@ -98,8 +103,10 @@ func (s *RepoStore) CreateProject(ctx context.Context, name string) (*Project, e
 	}
 
 	return &Project{
-		ID:   project.ID,
-		Name: project.Name,
+		ID:        project.ID,
+		Name:      project.Name,
+		CreatedAt: project.CreatedAt,
+		UpdatedAt: project.UpdatedAt,
 	}, nil
 }
 
@@ -112,8 +119,10 @@ func (s *RepoStore) ListProjects(ctx context.Context) ([]Project, error) {
 	result := make([]Project, 0, len(projects))
 	for _, project := range projects {
 		result = append(result, Project{
-			ID:   project.ID,
-			Name: project.Name,
+			ID:        project.ID,
+			Name:      project.Name,
+			CreatedAt: project.CreatedAt,
+			UpdatedAt: project.UpdatedAt,
 		})
 	}
 
@@ -127,7 +136,9 @@ func (s *RepoStore) GetProject(ctx context.Context, id uuid.UUID) (*Project, err
 	}
 
 	return &Project{
-		ID:   project.ID,
-		Name: project.Name,
+		ID:        project.ID,
+		Name:      project.Name,
+		CreatedAt: project.CreatedAt,
+		UpdatedAt: project.UpdatedAt,
 	}, nil
 }

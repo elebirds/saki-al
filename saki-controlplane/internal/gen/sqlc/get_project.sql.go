@@ -12,7 +12,7 @@ import (
 )
 
 const getProject = `-- name: GetProject :one
-select id, name
+select id, name, created_at, updated_at
 from project
 where id = $1
 `
@@ -20,6 +20,11 @@ where id = $1
 func (q *Queries) GetProject(ctx context.Context, id uuid.UUID) (Project, error) {
 	row := q.db.QueryRow(ctx, getProject, id)
 	var i Project
-	err := row.Scan(&i.ID, &i.Name)
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
 	return i, err
 }

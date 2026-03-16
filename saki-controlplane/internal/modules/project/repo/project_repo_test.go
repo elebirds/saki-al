@@ -58,6 +58,12 @@ func TestProjectRepoCreateProject(t *testing.T) {
 	if project.Name != "foundation-project" {
 		t.Fatalf("unexpected project name: %s", project.Name)
 	}
+	if project.CreatedAt.IsZero() {
+		t.Fatal("expected created_at to be populated")
+	}
+	if project.UpdatedAt.IsZero() {
+		t.Fatal("expected updated_at to be populated")
+	}
 }
 
 func startPostgres(t *testing.T, ctx context.Context) (*postgres.PostgresContainer, string) {

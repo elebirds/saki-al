@@ -7,14 +7,16 @@ import (
 	"time"
 
 	"github.com/elebirds/saki/saki-controlplane/internal/app/config"
+	appdb "github.com/elebirds/saki/saki-controlplane/internal/app/db"
 	"github.com/elebirds/saki/saki-controlplane/internal/app/observe"
 	accessapp "github.com/elebirds/saki/saki-controlplane/internal/modules/access/app"
 	projectapp "github.com/elebirds/saki/saki-controlplane/internal/modules/project/app"
+	projectrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/project/repo"
 	runtimequeries "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/queries"
 	systemapi "github.com/elebirds/saki/saki-controlplane/internal/modules/system/apihttp"
 )
 
-func NewPublicAPI(_ context.Context) (*http.Server, *slog.Logger, error) {
+func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 	cfg, err := config.Load()
 	if err != nil {
 		return nil, nil, err
@@ -26,20 +28,31 @@ func NewPublicAPI(_ context.Context) (*http.Server, *slog.Logger, error) {
 		return nil, nil, err
 	}
 
-	handler, err := systemapi.NewHTTPHandler(systemapi.Dependencies{
-		Authenticator: accessapp.NewAuthenticator(cfg.AuthTokenSecret, tokenTTL),
-		ProjectStore:  projectapp.NewMemoryStore(),
-		RuntimeStore:  runtimequeries.NewMemoryAdminStore(),
-	})
+	pool, err := appdb.NewPool(ctx, cfg.DatabaseDSN)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	return &http.Server{
+	handler, err := systemapi.NewHTTPHandler(systemapi.Dependencies{
+		Authenticator: accessapp.NewAuthenticator(cfg.AuthTokenSecret, tokenTTL),
+		ProjectStore:  projectapp.NewRepoStore(projectrepo.NewProjectRepo(pool)),
+		RuntimeStore:  runtimequeries.NewMemoryAdminStore(),
+	})
+	if err != nil {
+		pool.Close()
+		return nil, nil, err
+	}
+
+	server := &http.Server{
 		Addr:              cfg.PublicAPIBind,
 		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
-	}, logger, nil
+	}
+	server.RegisterOnShutdown(func() {
+		pool.Close()
+	})
+
+	return server, logger, nil
 }
 
 func NewRuntime(_ context.Context) (*http.Server, *slog.Logger, error) {

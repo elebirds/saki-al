@@ -10,7 +10,7 @@ import (
 )
 
 const listProjects = `-- name: ListProjects :many
-select id, name
+select id, name, created_at, updated_at
 from project
 order by name
 `
@@ -24,7 +24,12 @@ func (q *Queries) ListProjects(ctx context.Context) ([]Project, error) {
 	var items []Project
 	for rows.Next() {
 		var i Project
-		if err := rows.Scan(&i.ID, &i.Name); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

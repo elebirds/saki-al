@@ -8,6 +8,9 @@ import (
 
 	"github.com/elebirds/saki/saki-controlplane/internal/app/config"
 	"github.com/elebirds/saki/saki-controlplane/internal/app/observe"
+	accessapp "github.com/elebirds/saki/saki-controlplane/internal/modules/access/app"
+	projectapp "github.com/elebirds/saki/saki-controlplane/internal/modules/project/app"
+	runtimequeries "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/queries"
 	systemapi "github.com/elebirds/saki/saki-controlplane/internal/modules/system/apihttp"
 )
 
@@ -18,7 +21,16 @@ func NewPublicAPI(_ context.Context) (*http.Server, *slog.Logger, error) {
 	}
 
 	logger := observe.NewLogger("public-api", observe.ParseLevel(cfg.LogLevel))
-	handler, err := systemapi.NewHTTPHandler()
+	tokenTTL, err := time.ParseDuration(cfg.AuthTokenTTL)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	handler, err := systemapi.NewHTTPHandler(systemapi.Dependencies{
+		Authenticator: accessapp.NewAuthenticator(cfg.AuthTokenSecret, tokenTTL),
+		ProjectStore:  projectapp.NewMemoryStore(),
+		RuntimeStore:  runtimequeries.NewMemoryAdminStore(),
+	})
 	if err != nil {
 		return nil, nil, err
 	}

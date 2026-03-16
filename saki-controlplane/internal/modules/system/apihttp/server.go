@@ -2,8 +2,8 @@ package apihttp
 
 import (
 	"context"
+	"errors"
 	"net/http"
-	"time"
 
 	authctx "github.com/elebirds/saki/saki-controlplane/internal/app/auth"
 	openapi "github.com/elebirds/saki/saki-controlplane/internal/gen/openapi"
@@ -15,6 +15,12 @@ import (
 	runtimequeries "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/queries"
 )
 
+type Dependencies struct {
+	Authenticator *accessapp.Authenticator
+	ProjectStore  projectapp.Store
+	RuntimeStore  runtimequeries.AdminStore
+}
+
 type Server struct {
 	openapi.UnimplementedHandler
 
@@ -23,25 +29,35 @@ type Server struct {
 	runtime *runtimeapi.Handlers
 }
 
-func NewHandler() *Server {
-	authenticator := accessapp.NewAuthenticator("dev-secret", 24*time.Hour)
-	projectStore := projectapp.NewMemoryStore()
-	runtimeStore := runtimequeries.NewMemoryAdminStore()
-	return &Server{
-		access:  accessapi.NewHandlers(authenticator),
-		project: projectapi.NewHandlers(projectStore),
-		runtime: runtimeapi.NewHandlers(runtimeStore),
+func NewHandler(deps Dependencies) (*Server, error) {
+	if deps.Authenticator == nil {
+		return nil, errors.New("authenticator is required")
 	}
+	if deps.ProjectStore == nil {
+		return nil, errors.New("project store is required")
+	}
+	if deps.RuntimeStore == nil {
+		return nil, errors.New("runtime store is required")
+	}
+	return &Server{
+		access:  accessapi.NewHandlers(deps.Authenticator),
+		project: projectapi.NewHandlers(deps.ProjectStore),
+		runtime: runtimeapi.NewHandlers(deps.RuntimeStore),
+	}, nil
 }
 
-func NewHTTPHandler() (http.Handler, error) {
-	handler := NewHandler()
+func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
+	handler, err := NewHandler(deps)
+	if err != nil {
+		return nil, err
+	}
+
 	server, err := openapi.NewServer(handler, openapi.WithErrorHandler(writeMappedError))
 	if err != nil {
 		return nil, err
 	}
 
-	return authctx.Middleware(accessapp.NewAuthenticator("dev-secret", 24*time.Hour))(server), nil
+	return authctx.Middleware(deps.Authenticator)(server), nil
 }
 
 func (s *Server) Healthz(context.Context) (*openapi.HealthResponse, error) {

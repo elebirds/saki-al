@@ -6,12 +6,16 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
+	accessapp "github.com/elebirds/saki/saki-controlplane/internal/modules/access/app"
+	projectapp "github.com/elebirds/saki/saki-controlplane/internal/modules/project/app"
+	runtimequeries "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/queries"
 	systemapi "github.com/elebirds/saki/saki-controlplane/internal/modules/system/apihttp"
 )
 
 func TestLoginReturnsToken(t *testing.T) {
-	handler, err := systemapi.NewHTTPHandler()
+	handler, err := newTestHTTPHandler()
 	if err != nil {
 		t.Fatalf("new http handler: %v", err)
 	}
@@ -35,7 +39,7 @@ func TestLoginReturnsToken(t *testing.T) {
 }
 
 func TestCurrentUserUsesBearerToken(t *testing.T) {
-	handler, err := systemapi.NewHTTPHandler()
+	handler, err := newTestHTTPHandler()
 	if err != nil {
 		t.Fatalf("new http handler: %v", err)
 	}
@@ -60,7 +64,7 @@ func TestCurrentUserUsesBearerToken(t *testing.T) {
 }
 
 func TestPermissionDeniedReturnsForbidden(t *testing.T) {
-	handler, err := systemapi.NewHTTPHandler()
+	handler, err := newTestHTTPHandler()
 	if err != nil {
 		t.Fatalf("new http handler: %v", err)
 	}
@@ -115,4 +119,12 @@ func loginAndExtractToken(t *testing.T, handler http.Handler, userID string, per
 	}
 
 	return body.Token
+}
+
+func newTestHTTPHandler() (http.Handler, error) {
+	return systemapi.NewHTTPHandler(systemapi.Dependencies{
+		Authenticator: accessapp.NewAuthenticator("test-secret", time.Hour),
+		ProjectStore:  projectapp.NewMemoryStore(),
+		RuntimeStore:  runtimequeries.NewMemoryAdminStore(),
+	})
 }

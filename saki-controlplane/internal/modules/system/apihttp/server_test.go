@@ -5,10 +5,15 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
+
+	accessapp "github.com/elebirds/saki/saki-controlplane/internal/modules/access/app"
+	projectapp "github.com/elebirds/saki/saki-controlplane/internal/modules/project/app"
+	runtimequeries "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/queries"
 )
 
 func TestServerHealthzReturnsJSON(t *testing.T) {
-	handler, err := NewHTTPHandler()
+	handler, err := newTestHTTPHandler()
 	if err != nil {
 		t.Fatalf("new http handler: %v", err)
 	}
@@ -31,7 +36,7 @@ func TestServerHealthzReturnsJSON(t *testing.T) {
 }
 
 func TestServerReturnsStructuredErrorResponse(t *testing.T) {
-	handler, err := NewHTTPHandler()
+	handler, err := newTestHTTPHandler()
 	if err != nil {
 		t.Fatalf("new http handler: %v", err)
 	}
@@ -54,4 +59,12 @@ func TestServerReturnsStructuredErrorResponse(t *testing.T) {
 	if body["message"] == "" {
 		t.Fatalf("expected error message, got %v", body)
 	}
+}
+
+func newTestHTTPHandler() (http.Handler, error) {
+	return NewHTTPHandler(Dependencies{
+		Authenticator: accessapp.NewAuthenticator("test-secret", time.Hour),
+		ProjectStore:  projectapp.NewMemoryStore(),
+		RuntimeStore:  runtimequeries.NewMemoryAdminStore(),
+	})
 }

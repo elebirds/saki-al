@@ -382,6 +382,21 @@ func (s *ErrorResponseStatusCode) SetResponse(val ErrorResponse) {
 	s.Response = val
 }
 
+// Ref: #/components/schemas/ExecuteProjectAnnotationImportRequest
+type ExecuteProjectAnnotationImportRequest struct {
+	PreviewToken string `json:"preview_token"`
+}
+
+// GetPreviewToken returns the value of PreviewToken.
+func (s *ExecuteProjectAnnotationImportRequest) GetPreviewToken() string {
+	return s.PreviewToken
+}
+
+// SetPreviewToken sets the value of PreviewToken.
+func (s *ExecuteProjectAnnotationImportRequest) SetPreviewToken(val string) {
+	s.PreviewToken = val
+}
+
 // Ref: #/components/schemas/HealthResponse
 type HealthResponse struct {
 	Status string `json:"status"`
@@ -395,6 +410,834 @@ func (s *HealthResponse) GetStatus() string {
 // SetStatus sets the value of Status.
 func (s *HealthResponse) SetStatus(val string) {
 	s.Status = val
+}
+
+// Ref: #/components/schemas/ImportIssue
+type ImportIssue struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+// GetCode returns the value of Code.
+func (s *ImportIssue) GetCode() string {
+	return s.Code
+}
+
+// GetMessage returns the value of Message.
+func (s *ImportIssue) GetMessage() string {
+	return s.Message
+}
+
+// SetCode sets the value of Code.
+func (s *ImportIssue) SetCode(val string) {
+	s.Code = val
+}
+
+// SetMessage sets the value of Message.
+func (s *ImportIssue) SetMessage(val string) {
+	s.Message = val
+}
+
+// Ref: #/components/schemas/ImportPrepareGeometryCapabilities
+type ImportPrepareGeometryCapabilities struct {
+	DetectedGeometryKinds    []string                                                 `json:"detected_geometry_kinds"`
+	UnsupportedGeometryKinds []string                                                 `json:"unsupported_geometry_kinds"`
+	ConvertedGeometryCounts  ImportPrepareGeometryCapabilitiesConvertedGeometryCounts `json:"converted_geometry_counts"`
+}
+
+// GetDetectedGeometryKinds returns the value of DetectedGeometryKinds.
+func (s *ImportPrepareGeometryCapabilities) GetDetectedGeometryKinds() []string {
+	return s.DetectedGeometryKinds
+}
+
+// GetUnsupportedGeometryKinds returns the value of UnsupportedGeometryKinds.
+func (s *ImportPrepareGeometryCapabilities) GetUnsupportedGeometryKinds() []string {
+	return s.UnsupportedGeometryKinds
+}
+
+// GetConvertedGeometryCounts returns the value of ConvertedGeometryCounts.
+func (s *ImportPrepareGeometryCapabilities) GetConvertedGeometryCounts() ImportPrepareGeometryCapabilitiesConvertedGeometryCounts {
+	return s.ConvertedGeometryCounts
+}
+
+// SetDetectedGeometryKinds sets the value of DetectedGeometryKinds.
+func (s *ImportPrepareGeometryCapabilities) SetDetectedGeometryKinds(val []string) {
+	s.DetectedGeometryKinds = val
+}
+
+// SetUnsupportedGeometryKinds sets the value of UnsupportedGeometryKinds.
+func (s *ImportPrepareGeometryCapabilities) SetUnsupportedGeometryKinds(val []string) {
+	s.UnsupportedGeometryKinds = val
+}
+
+// SetConvertedGeometryCounts sets the value of ConvertedGeometryCounts.
+func (s *ImportPrepareGeometryCapabilities) SetConvertedGeometryCounts(val ImportPrepareGeometryCapabilitiesConvertedGeometryCounts) {
+	s.ConvertedGeometryCounts = val
+}
+
+type ImportPrepareGeometryCapabilitiesConvertedGeometryCounts map[string]int32
+
+func (s *ImportPrepareGeometryCapabilitiesConvertedGeometryCounts) init() ImportPrepareGeometryCapabilitiesConvertedGeometryCounts {
+	m := *s
+	if m == nil {
+		m = map[string]int32{}
+		*s = m
+	}
+	return m
+}
+
+// Ref: #/components/schemas/ImportPrepareLabelPlan
+type ImportPrepareLabelPlan struct {
+	PlannedNewLabels []string `json:"planned_new_labels"`
+}
+
+// GetPlannedNewLabels returns the value of PlannedNewLabels.
+func (s *ImportPrepareLabelPlan) GetPlannedNewLabels() []string {
+	return s.PlannedNewLabels
+}
+
+// SetPlannedNewLabels sets the value of PlannedNewLabels.
+func (s *ImportPrepareLabelPlan) SetPlannedNewLabels(val []string) {
+	s.PlannedNewLabels = val
+}
+
+// Ref: #/components/schemas/ImportPrepareMatching
+type ImportPrepareMatching struct {
+	MatchedSampleCount    int32    `json:"matched_sample_count"`
+	BasenameFallbackCount int32    `json:"basename_fallback_count"`
+	AmbiguousMatchCount   int32    `json:"ambiguous_match_count"`
+	UnmatchedSampleKeys   []string `json:"unmatched_sample_keys"`
+}
+
+// GetMatchedSampleCount returns the value of MatchedSampleCount.
+func (s *ImportPrepareMatching) GetMatchedSampleCount() int32 {
+	return s.MatchedSampleCount
+}
+
+// GetBasenameFallbackCount returns the value of BasenameFallbackCount.
+func (s *ImportPrepareMatching) GetBasenameFallbackCount() int32 {
+	return s.BasenameFallbackCount
+}
+
+// GetAmbiguousMatchCount returns the value of AmbiguousMatchCount.
+func (s *ImportPrepareMatching) GetAmbiguousMatchCount() int32 {
+	return s.AmbiguousMatchCount
+}
+
+// GetUnmatchedSampleKeys returns the value of UnmatchedSampleKeys.
+func (s *ImportPrepareMatching) GetUnmatchedSampleKeys() []string {
+	return s.UnmatchedSampleKeys
+}
+
+// SetMatchedSampleCount sets the value of MatchedSampleCount.
+func (s *ImportPrepareMatching) SetMatchedSampleCount(val int32) {
+	s.MatchedSampleCount = val
+}
+
+// SetBasenameFallbackCount sets the value of BasenameFallbackCount.
+func (s *ImportPrepareMatching) SetBasenameFallbackCount(val int32) {
+	s.BasenameFallbackCount = val
+}
+
+// SetAmbiguousMatchCount sets the value of AmbiguousMatchCount.
+func (s *ImportPrepareMatching) SetAmbiguousMatchCount(val int32) {
+	s.AmbiguousMatchCount = val
+}
+
+// SetUnmatchedSampleKeys sets the value of UnmatchedSampleKeys.
+func (s *ImportPrepareMatching) SetUnmatchedSampleKeys(val []string) {
+	s.UnmatchedSampleKeys = val
+}
+
+// Ref: #/components/schemas/ImportPrepareSummary
+type ImportPrepareSummary struct {
+	FormatProfile          string `json:"format_profile"`
+	TotalAnnotations       int32  `json:"total_annotations"`
+	MatchedAnnotations     int32  `json:"matched_annotations"`
+	UnmatchedAnnotations   int32  `json:"unmatched_annotations"`
+	MatchedSamples         int32  `json:"matched_samples"`
+	UnsupportedAnnotations int32  `json:"unsupported_annotations"`
+}
+
+// GetFormatProfile returns the value of FormatProfile.
+func (s *ImportPrepareSummary) GetFormatProfile() string {
+	return s.FormatProfile
+}
+
+// GetTotalAnnotations returns the value of TotalAnnotations.
+func (s *ImportPrepareSummary) GetTotalAnnotations() int32 {
+	return s.TotalAnnotations
+}
+
+// GetMatchedAnnotations returns the value of MatchedAnnotations.
+func (s *ImportPrepareSummary) GetMatchedAnnotations() int32 {
+	return s.MatchedAnnotations
+}
+
+// GetUnmatchedAnnotations returns the value of UnmatchedAnnotations.
+func (s *ImportPrepareSummary) GetUnmatchedAnnotations() int32 {
+	return s.UnmatchedAnnotations
+}
+
+// GetMatchedSamples returns the value of MatchedSamples.
+func (s *ImportPrepareSummary) GetMatchedSamples() int32 {
+	return s.MatchedSamples
+}
+
+// GetUnsupportedAnnotations returns the value of UnsupportedAnnotations.
+func (s *ImportPrepareSummary) GetUnsupportedAnnotations() int32 {
+	return s.UnsupportedAnnotations
+}
+
+// SetFormatProfile sets the value of FormatProfile.
+func (s *ImportPrepareSummary) SetFormatProfile(val string) {
+	s.FormatProfile = val
+}
+
+// SetTotalAnnotations sets the value of TotalAnnotations.
+func (s *ImportPrepareSummary) SetTotalAnnotations(val int32) {
+	s.TotalAnnotations = val
+}
+
+// SetMatchedAnnotations sets the value of MatchedAnnotations.
+func (s *ImportPrepareSummary) SetMatchedAnnotations(val int32) {
+	s.MatchedAnnotations = val
+}
+
+// SetUnmatchedAnnotations sets the value of UnmatchedAnnotations.
+func (s *ImportPrepareSummary) SetUnmatchedAnnotations(val int32) {
+	s.UnmatchedAnnotations = val
+}
+
+// SetMatchedSamples sets the value of MatchedSamples.
+func (s *ImportPrepareSummary) SetMatchedSamples(val int32) {
+	s.MatchedSamples = val
+}
+
+// SetUnsupportedAnnotations sets the value of UnsupportedAnnotations.
+func (s *ImportPrepareSummary) SetUnsupportedAnnotations(val int32) {
+	s.UnsupportedAnnotations = val
+}
+
+// Ref: #/components/schemas/ImportTaskCreateResponse
+type ImportTaskCreateResponse struct {
+	TaskID    string `json:"task_id"`
+	Status    string `json:"status"`
+	StatusURL string `json:"status_url"`
+	ResultURL string `json:"result_url"`
+	StreamURL string `json:"stream_url"`
+}
+
+// GetTaskID returns the value of TaskID.
+func (s *ImportTaskCreateResponse) GetTaskID() string {
+	return s.TaskID
+}
+
+// GetStatus returns the value of Status.
+func (s *ImportTaskCreateResponse) GetStatus() string {
+	return s.Status
+}
+
+// GetStatusURL returns the value of StatusURL.
+func (s *ImportTaskCreateResponse) GetStatusURL() string {
+	return s.StatusURL
+}
+
+// GetResultURL returns the value of ResultURL.
+func (s *ImportTaskCreateResponse) GetResultURL() string {
+	return s.ResultURL
+}
+
+// GetStreamURL returns the value of StreamURL.
+func (s *ImportTaskCreateResponse) GetStreamURL() string {
+	return s.StreamURL
+}
+
+// SetTaskID sets the value of TaskID.
+func (s *ImportTaskCreateResponse) SetTaskID(val string) {
+	s.TaskID = val
+}
+
+// SetStatus sets the value of Status.
+func (s *ImportTaskCreateResponse) SetStatus(val string) {
+	s.Status = val
+}
+
+// SetStatusURL sets the value of StatusURL.
+func (s *ImportTaskCreateResponse) SetStatusURL(val string) {
+	s.StatusURL = val
+}
+
+// SetResultURL sets the value of ResultURL.
+func (s *ImportTaskCreateResponse) SetResultURL(val string) {
+	s.ResultURL = val
+}
+
+// SetStreamURL sets the value of StreamURL.
+func (s *ImportTaskCreateResponse) SetStreamURL(val string) {
+	s.StreamURL = val
+}
+
+// Ref: #/components/schemas/ImportTaskResultResponse
+type ImportTaskResultResponse struct {
+	TaskID string                         `json:"task_id"`
+	Status string                         `json:"status"`
+	Result ImportTaskResultResponseResult `json:"result"`
+}
+
+// GetTaskID returns the value of TaskID.
+func (s *ImportTaskResultResponse) GetTaskID() string {
+	return s.TaskID
+}
+
+// GetStatus returns the value of Status.
+func (s *ImportTaskResultResponse) GetStatus() string {
+	return s.Status
+}
+
+// GetResult returns the value of Result.
+func (s *ImportTaskResultResponse) GetResult() ImportTaskResultResponseResult {
+	return s.Result
+}
+
+// SetTaskID sets the value of TaskID.
+func (s *ImportTaskResultResponse) SetTaskID(val string) {
+	s.TaskID = val
+}
+
+// SetStatus sets the value of Status.
+func (s *ImportTaskResultResponse) SetStatus(val string) {
+	s.Status = val
+}
+
+// SetResult sets the value of Result.
+func (s *ImportTaskResultResponse) SetResult(val ImportTaskResultResponseResult) {
+	s.Result = val
+}
+
+type ImportTaskResultResponseResult map[string]jx.Raw
+
+func (s *ImportTaskResultResponseResult) init() ImportTaskResultResponseResult {
+	m := *s
+	if m == nil {
+		m = map[string]jx.Raw{}
+		*s = m
+	}
+	return m
+}
+
+// Ref: #/components/schemas/ImportTaskStatusResponse
+type ImportTaskStatusResponse struct {
+	TaskID       string    `json:"task_id"`
+	Status       string    `json:"status"`
+	Mode         string    `json:"mode"`
+	ResourceType string    `json:"resource_type"`
+	ResourceID   string    `json:"resource_id"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+// GetTaskID returns the value of TaskID.
+func (s *ImportTaskStatusResponse) GetTaskID() string {
+	return s.TaskID
+}
+
+// GetStatus returns the value of Status.
+func (s *ImportTaskStatusResponse) GetStatus() string {
+	return s.Status
+}
+
+// GetMode returns the value of Mode.
+func (s *ImportTaskStatusResponse) GetMode() string {
+	return s.Mode
+}
+
+// GetResourceType returns the value of ResourceType.
+func (s *ImportTaskStatusResponse) GetResourceType() string {
+	return s.ResourceType
+}
+
+// GetResourceID returns the value of ResourceID.
+func (s *ImportTaskStatusResponse) GetResourceID() string {
+	return s.ResourceID
+}
+
+// GetCreatedAt returns the value of CreatedAt.
+func (s *ImportTaskStatusResponse) GetCreatedAt() time.Time {
+	return s.CreatedAt
+}
+
+// GetUpdatedAt returns the value of UpdatedAt.
+func (s *ImportTaskStatusResponse) GetUpdatedAt() time.Time {
+	return s.UpdatedAt
+}
+
+// SetTaskID sets the value of TaskID.
+func (s *ImportTaskStatusResponse) SetTaskID(val string) {
+	s.TaskID = val
+}
+
+// SetStatus sets the value of Status.
+func (s *ImportTaskStatusResponse) SetStatus(val string) {
+	s.Status = val
+}
+
+// SetMode sets the value of Mode.
+func (s *ImportTaskStatusResponse) SetMode(val string) {
+	s.Mode = val
+}
+
+// SetResourceType sets the value of ResourceType.
+func (s *ImportTaskStatusResponse) SetResourceType(val string) {
+	s.ResourceType = val
+}
+
+// SetResourceID sets the value of ResourceID.
+func (s *ImportTaskStatusResponse) SetResourceID(val string) {
+	s.ResourceID = val
+}
+
+// SetCreatedAt sets the value of CreatedAt.
+func (s *ImportTaskStatusResponse) SetCreatedAt(val time.Time) {
+	s.CreatedAt = val
+}
+
+// SetUpdatedAt sets the value of UpdatedAt.
+func (s *ImportTaskStatusResponse) SetUpdatedAt(val time.Time) {
+	s.UpdatedAt = val
+}
+
+// Ref: #/components/schemas/ImportUploadAbortResponse
+type ImportUploadAbortResponse struct {
+	SessionID string `json:"session_id"`
+	Status    string `json:"status"`
+}
+
+// GetSessionID returns the value of SessionID.
+func (s *ImportUploadAbortResponse) GetSessionID() string {
+	return s.SessionID
+}
+
+// GetStatus returns the value of Status.
+func (s *ImportUploadAbortResponse) GetStatus() string {
+	return s.Status
+}
+
+// SetSessionID sets the value of SessionID.
+func (s *ImportUploadAbortResponse) SetSessionID(val string) {
+	s.SessionID = val
+}
+
+// SetStatus sets the value of Status.
+func (s *ImportUploadAbortResponse) SetStatus(val string) {
+	s.Status = val
+}
+
+// Ref: #/components/schemas/ImportUploadCompleteRequest
+type ImportUploadCompleteRequest struct {
+	Size  int64                       `json:"size"`
+	Parts []ImportUploadCompletedPart `json:"parts"`
+}
+
+// GetSize returns the value of Size.
+func (s *ImportUploadCompleteRequest) GetSize() int64 {
+	return s.Size
+}
+
+// GetParts returns the value of Parts.
+func (s *ImportUploadCompleteRequest) GetParts() []ImportUploadCompletedPart {
+	return s.Parts
+}
+
+// SetSize sets the value of Size.
+func (s *ImportUploadCompleteRequest) SetSize(val int64) {
+	s.Size = val
+}
+
+// SetParts sets the value of Parts.
+func (s *ImportUploadCompleteRequest) SetParts(val []ImportUploadCompletedPart) {
+	s.Parts = val
+}
+
+// Ref: #/components/schemas/ImportUploadCompletedPart
+type ImportUploadCompletedPart struct {
+	PartNumber int32  `json:"part_number"`
+	Etag       string `json:"etag"`
+}
+
+// GetPartNumber returns the value of PartNumber.
+func (s *ImportUploadCompletedPart) GetPartNumber() int32 {
+	return s.PartNumber
+}
+
+// GetEtag returns the value of Etag.
+func (s *ImportUploadCompletedPart) GetEtag() string {
+	return s.Etag
+}
+
+// SetPartNumber sets the value of PartNumber.
+func (s *ImportUploadCompletedPart) SetPartNumber(val int32) {
+	s.PartNumber = val
+}
+
+// SetEtag sets the value of Etag.
+func (s *ImportUploadCompletedPart) SetEtag(val string) {
+	s.Etag = val
+}
+
+// Ref: #/components/schemas/ImportUploadHeaders
+type ImportUploadHeaders map[string]string
+
+func (s *ImportUploadHeaders) init() ImportUploadHeaders {
+	m := *s
+	if m == nil {
+		m = map[string]string{}
+		*s = m
+	}
+	return m
+}
+
+// Ref: #/components/schemas/ImportUploadInitRequest
+type ImportUploadInitRequest struct {
+	Mode         string `json:"mode"`
+	ResourceType string `json:"resource_type"`
+	ResourceID   string `json:"resource_id"`
+	Filename     string `json:"filename"`
+	Size         int64  `json:"size"`
+	ContentType  string `json:"content_type"`
+}
+
+// GetMode returns the value of Mode.
+func (s *ImportUploadInitRequest) GetMode() string {
+	return s.Mode
+}
+
+// GetResourceType returns the value of ResourceType.
+func (s *ImportUploadInitRequest) GetResourceType() string {
+	return s.ResourceType
+}
+
+// GetResourceID returns the value of ResourceID.
+func (s *ImportUploadInitRequest) GetResourceID() string {
+	return s.ResourceID
+}
+
+// GetFilename returns the value of Filename.
+func (s *ImportUploadInitRequest) GetFilename() string {
+	return s.Filename
+}
+
+// GetSize returns the value of Size.
+func (s *ImportUploadInitRequest) GetSize() int64 {
+	return s.Size
+}
+
+// GetContentType returns the value of ContentType.
+func (s *ImportUploadInitRequest) GetContentType() string {
+	return s.ContentType
+}
+
+// SetMode sets the value of Mode.
+func (s *ImportUploadInitRequest) SetMode(val string) {
+	s.Mode = val
+}
+
+// SetResourceType sets the value of ResourceType.
+func (s *ImportUploadInitRequest) SetResourceType(val string) {
+	s.ResourceType = val
+}
+
+// SetResourceID sets the value of ResourceID.
+func (s *ImportUploadInitRequest) SetResourceID(val string) {
+	s.ResourceID = val
+}
+
+// SetFilename sets the value of Filename.
+func (s *ImportUploadInitRequest) SetFilename(val string) {
+	s.Filename = val
+}
+
+// SetSize sets the value of Size.
+func (s *ImportUploadInitRequest) SetSize(val int64) {
+	s.Size = val
+}
+
+// SetContentType sets the value of ContentType.
+func (s *ImportUploadInitRequest) SetContentType(val string) {
+	s.ContentType = val
+}
+
+// Ref: #/components/schemas/ImportUploadInitResponse
+type ImportUploadInitResponse struct {
+	SessionID string              `json:"session_id"`
+	Strategy  string              `json:"strategy"`
+	Status    string              `json:"status"`
+	ObjectKey string              `json:"object_key"`
+	URL       string              `json:"url"`
+	Headers   ImportUploadHeaders `json:"headers"`
+}
+
+// GetSessionID returns the value of SessionID.
+func (s *ImportUploadInitResponse) GetSessionID() string {
+	return s.SessionID
+}
+
+// GetStrategy returns the value of Strategy.
+func (s *ImportUploadInitResponse) GetStrategy() string {
+	return s.Strategy
+}
+
+// GetStatus returns the value of Status.
+func (s *ImportUploadInitResponse) GetStatus() string {
+	return s.Status
+}
+
+// GetObjectKey returns the value of ObjectKey.
+func (s *ImportUploadInitResponse) GetObjectKey() string {
+	return s.ObjectKey
+}
+
+// GetURL returns the value of URL.
+func (s *ImportUploadInitResponse) GetURL() string {
+	return s.URL
+}
+
+// GetHeaders returns the value of Headers.
+func (s *ImportUploadInitResponse) GetHeaders() ImportUploadHeaders {
+	return s.Headers
+}
+
+// SetSessionID sets the value of SessionID.
+func (s *ImportUploadInitResponse) SetSessionID(val string) {
+	s.SessionID = val
+}
+
+// SetStrategy sets the value of Strategy.
+func (s *ImportUploadInitResponse) SetStrategy(val string) {
+	s.Strategy = val
+}
+
+// SetStatus sets the value of Status.
+func (s *ImportUploadInitResponse) SetStatus(val string) {
+	s.Status = val
+}
+
+// SetObjectKey sets the value of ObjectKey.
+func (s *ImportUploadInitResponse) SetObjectKey(val string) {
+	s.ObjectKey = val
+}
+
+// SetURL sets the value of URL.
+func (s *ImportUploadInitResponse) SetURL(val string) {
+	s.URL = val
+}
+
+// SetHeaders sets the value of Headers.
+func (s *ImportUploadInitResponse) SetHeaders(val ImportUploadHeaders) {
+	s.Headers = val
+}
+
+// Ref: #/components/schemas/ImportUploadPartSignRequest
+type ImportUploadPartSignRequest struct {
+	PartNumbers []int32 `json:"part_numbers"`
+}
+
+// GetPartNumbers returns the value of PartNumbers.
+func (s *ImportUploadPartSignRequest) GetPartNumbers() []int32 {
+	return s.PartNumbers
+}
+
+// SetPartNumbers sets the value of PartNumbers.
+func (s *ImportUploadPartSignRequest) SetPartNumbers(val []int32) {
+	s.PartNumbers = val
+}
+
+// Ref: #/components/schemas/ImportUploadPartSignResponse
+type ImportUploadPartSignResponse struct {
+	SessionID string                       `json:"session_id"`
+	UploadID  string                       `json:"upload_id"`
+	Parts     []ImportUploadPartSignedItem `json:"parts"`
+}
+
+// GetSessionID returns the value of SessionID.
+func (s *ImportUploadPartSignResponse) GetSessionID() string {
+	return s.SessionID
+}
+
+// GetUploadID returns the value of UploadID.
+func (s *ImportUploadPartSignResponse) GetUploadID() string {
+	return s.UploadID
+}
+
+// GetParts returns the value of Parts.
+func (s *ImportUploadPartSignResponse) GetParts() []ImportUploadPartSignedItem {
+	return s.Parts
+}
+
+// SetSessionID sets the value of SessionID.
+func (s *ImportUploadPartSignResponse) SetSessionID(val string) {
+	s.SessionID = val
+}
+
+// SetUploadID sets the value of UploadID.
+func (s *ImportUploadPartSignResponse) SetUploadID(val string) {
+	s.UploadID = val
+}
+
+// SetParts sets the value of Parts.
+func (s *ImportUploadPartSignResponse) SetParts(val []ImportUploadPartSignedItem) {
+	s.Parts = val
+}
+
+// Ref: #/components/schemas/ImportUploadPartSignedItem
+type ImportUploadPartSignedItem struct {
+	PartNumber int32               `json:"part_number"`
+	URL        string              `json:"url"`
+	Headers    ImportUploadHeaders `json:"headers"`
+}
+
+// GetPartNumber returns the value of PartNumber.
+func (s *ImportUploadPartSignedItem) GetPartNumber() int32 {
+	return s.PartNumber
+}
+
+// GetURL returns the value of URL.
+func (s *ImportUploadPartSignedItem) GetURL() string {
+	return s.URL
+}
+
+// GetHeaders returns the value of Headers.
+func (s *ImportUploadPartSignedItem) GetHeaders() ImportUploadHeaders {
+	return s.Headers
+}
+
+// SetPartNumber sets the value of PartNumber.
+func (s *ImportUploadPartSignedItem) SetPartNumber(val int32) {
+	s.PartNumber = val
+}
+
+// SetURL sets the value of URL.
+func (s *ImportUploadPartSignedItem) SetURL(val string) {
+	s.URL = val
+}
+
+// SetHeaders sets the value of Headers.
+func (s *ImportUploadPartSignedItem) SetHeaders(val ImportUploadHeaders) {
+	s.Headers = val
+}
+
+// Ref: #/components/schemas/ImportUploadSession
+type ImportUploadSession struct {
+	SessionID   string      `json:"session_id"`
+	Mode        string      `json:"mode"`
+	FileName    string      `json:"file_name"`
+	ObjectKey   string      `json:"object_key"`
+	ContentType string      `json:"content_type"`
+	Status      string      `json:"status"`
+	Strategy    string      `json:"strategy"`
+	URL         string      `json:"url"`
+	CompletedAt OptDateTime `json:"completed_at"`
+	AbortedAt   OptDateTime `json:"aborted_at"`
+}
+
+// GetSessionID returns the value of SessionID.
+func (s *ImportUploadSession) GetSessionID() string {
+	return s.SessionID
+}
+
+// GetMode returns the value of Mode.
+func (s *ImportUploadSession) GetMode() string {
+	return s.Mode
+}
+
+// GetFileName returns the value of FileName.
+func (s *ImportUploadSession) GetFileName() string {
+	return s.FileName
+}
+
+// GetObjectKey returns the value of ObjectKey.
+func (s *ImportUploadSession) GetObjectKey() string {
+	return s.ObjectKey
+}
+
+// GetContentType returns the value of ContentType.
+func (s *ImportUploadSession) GetContentType() string {
+	return s.ContentType
+}
+
+// GetStatus returns the value of Status.
+func (s *ImportUploadSession) GetStatus() string {
+	return s.Status
+}
+
+// GetStrategy returns the value of Strategy.
+func (s *ImportUploadSession) GetStrategy() string {
+	return s.Strategy
+}
+
+// GetURL returns the value of URL.
+func (s *ImportUploadSession) GetURL() string {
+	return s.URL
+}
+
+// GetCompletedAt returns the value of CompletedAt.
+func (s *ImportUploadSession) GetCompletedAt() OptDateTime {
+	return s.CompletedAt
+}
+
+// GetAbortedAt returns the value of AbortedAt.
+func (s *ImportUploadSession) GetAbortedAt() OptDateTime {
+	return s.AbortedAt
+}
+
+// SetSessionID sets the value of SessionID.
+func (s *ImportUploadSession) SetSessionID(val string) {
+	s.SessionID = val
+}
+
+// SetMode sets the value of Mode.
+func (s *ImportUploadSession) SetMode(val string) {
+	s.Mode = val
+}
+
+// SetFileName sets the value of FileName.
+func (s *ImportUploadSession) SetFileName(val string) {
+	s.FileName = val
+}
+
+// SetObjectKey sets the value of ObjectKey.
+func (s *ImportUploadSession) SetObjectKey(val string) {
+	s.ObjectKey = val
+}
+
+// SetContentType sets the value of ContentType.
+func (s *ImportUploadSession) SetContentType(val string) {
+	s.ContentType = val
+}
+
+// SetStatus sets the value of Status.
+func (s *ImportUploadSession) SetStatus(val string) {
+	s.Status = val
+}
+
+// SetStrategy sets the value of Strategy.
+func (s *ImportUploadSession) SetStrategy(val string) {
+	s.Strategy = val
+}
+
+// SetURL sets the value of URL.
+func (s *ImportUploadSession) SetURL(val string) {
+	s.URL = val
+}
+
+// SetCompletedAt sets the value of CompletedAt.
+func (s *ImportUploadSession) SetCompletedAt(val OptDateTime) {
+	s.CompletedAt = val
+}
+
+// SetAbortedAt sets the value of AbortedAt.
+func (s *ImportUploadSession) SetAbortedAt(val OptDateTime) {
+	s.AbortedAt = val
 }
 
 // Ref: #/components/schemas/LoginRequest
@@ -469,6 +1312,52 @@ func (o OptCreateAnnotationRequestAttrs) Or(d CreateAnnotationRequestAttrs) Crea
 	return d
 }
 
+// NewOptDateTime returns new OptDateTime with value set to v.
+func NewOptDateTime(v time.Time) OptDateTime {
+	return OptDateTime{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptDateTime is optional time.Time.
+type OptDateTime struct {
+	Value time.Time
+	Set   bool
+}
+
+// IsSet returns true if OptDateTime was set.
+func (o OptDateTime) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptDateTime) Reset() {
+	var v time.Time
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptDateTime) SetTo(v time.Time) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptDateTime) Get() (v time.Time, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptDateTime) Or(d time.Time) time.Time {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptString returns new OptString with value set to v.
 func NewOptString(v string) OptString {
 	return OptString{
@@ -513,6 +1402,124 @@ func (o OptString) Or(d string) string {
 		return v
 	}
 	return d
+}
+
+// Ref: #/components/schemas/PrepareProjectAnnotationImportRequest
+type PrepareProjectAnnotationImportRequest struct {
+	UploadSessionID string    `json:"upload_session_id"`
+	FormatProfile   string    `json:"format_profile"`
+	Split           OptString `json:"split"`
+}
+
+// GetUploadSessionID returns the value of UploadSessionID.
+func (s *PrepareProjectAnnotationImportRequest) GetUploadSessionID() string {
+	return s.UploadSessionID
+}
+
+// GetFormatProfile returns the value of FormatProfile.
+func (s *PrepareProjectAnnotationImportRequest) GetFormatProfile() string {
+	return s.FormatProfile
+}
+
+// GetSplit returns the value of Split.
+func (s *PrepareProjectAnnotationImportRequest) GetSplit() OptString {
+	return s.Split
+}
+
+// SetUploadSessionID sets the value of UploadSessionID.
+func (s *PrepareProjectAnnotationImportRequest) SetUploadSessionID(val string) {
+	s.UploadSessionID = val
+}
+
+// SetFormatProfile sets the value of FormatProfile.
+func (s *PrepareProjectAnnotationImportRequest) SetFormatProfile(val string) {
+	s.FormatProfile = val
+}
+
+// SetSplit sets the value of Split.
+func (s *PrepareProjectAnnotationImportRequest) SetSplit(val OptString) {
+	s.Split = val
+}
+
+// Ref: #/components/schemas/PrepareProjectAnnotationImportResponse
+type PrepareProjectAnnotationImportResponse struct {
+	Summary              ImportPrepareSummary              `json:"summary"`
+	Matching             ImportPrepareMatching             `json:"matching"`
+	LabelPlan            ImportPrepareLabelPlan            `json:"label_plan"`
+	GeometryCapabilities ImportPrepareGeometryCapabilities `json:"geometry_capabilities"`
+	Warnings             []ImportIssue                     `json:"warnings"`
+	Errors               []ImportIssue                     `json:"errors"`
+	PreviewToken         string                            `json:"preview_token"`
+}
+
+// GetSummary returns the value of Summary.
+func (s *PrepareProjectAnnotationImportResponse) GetSummary() ImportPrepareSummary {
+	return s.Summary
+}
+
+// GetMatching returns the value of Matching.
+func (s *PrepareProjectAnnotationImportResponse) GetMatching() ImportPrepareMatching {
+	return s.Matching
+}
+
+// GetLabelPlan returns the value of LabelPlan.
+func (s *PrepareProjectAnnotationImportResponse) GetLabelPlan() ImportPrepareLabelPlan {
+	return s.LabelPlan
+}
+
+// GetGeometryCapabilities returns the value of GeometryCapabilities.
+func (s *PrepareProjectAnnotationImportResponse) GetGeometryCapabilities() ImportPrepareGeometryCapabilities {
+	return s.GeometryCapabilities
+}
+
+// GetWarnings returns the value of Warnings.
+func (s *PrepareProjectAnnotationImportResponse) GetWarnings() []ImportIssue {
+	return s.Warnings
+}
+
+// GetErrors returns the value of Errors.
+func (s *PrepareProjectAnnotationImportResponse) GetErrors() []ImportIssue {
+	return s.Errors
+}
+
+// GetPreviewToken returns the value of PreviewToken.
+func (s *PrepareProjectAnnotationImportResponse) GetPreviewToken() string {
+	return s.PreviewToken
+}
+
+// SetSummary sets the value of Summary.
+func (s *PrepareProjectAnnotationImportResponse) SetSummary(val ImportPrepareSummary) {
+	s.Summary = val
+}
+
+// SetMatching sets the value of Matching.
+func (s *PrepareProjectAnnotationImportResponse) SetMatching(val ImportPrepareMatching) {
+	s.Matching = val
+}
+
+// SetLabelPlan sets the value of LabelPlan.
+func (s *PrepareProjectAnnotationImportResponse) SetLabelPlan(val ImportPrepareLabelPlan) {
+	s.LabelPlan = val
+}
+
+// SetGeometryCapabilities sets the value of GeometryCapabilities.
+func (s *PrepareProjectAnnotationImportResponse) SetGeometryCapabilities(val ImportPrepareGeometryCapabilities) {
+	s.GeometryCapabilities = val
+}
+
+// SetWarnings sets the value of Warnings.
+func (s *PrepareProjectAnnotationImportResponse) SetWarnings(val []ImportIssue) {
+	s.Warnings = val
+}
+
+// SetErrors sets the value of Errors.
+func (s *PrepareProjectAnnotationImportResponse) SetErrors(val []ImportIssue) {
+	s.Errors = val
+}
+
+// SetPreviewToken sets the value of PreviewToken.
+func (s *PrepareProjectAnnotationImportResponse) SetPreviewToken(val string) {
+	s.PreviewToken = val
 }
 
 // Ref: #/components/schemas/Project

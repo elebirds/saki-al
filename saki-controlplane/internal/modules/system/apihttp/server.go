@@ -11,10 +11,12 @@ import (
 	accessapp "github.com/elebirds/saki/saki-controlplane/internal/modules/access/app"
 	annotationapi "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/apihttp"
 	annotationapp "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/app"
+	importingapi "github.com/elebirds/saki/saki-controlplane/internal/modules/importing/apihttp"
 	projectapi "github.com/elebirds/saki/saki-controlplane/internal/modules/project/apihttp"
 	projectapp "github.com/elebirds/saki/saki-controlplane/internal/modules/project/app"
 	runtimeapi "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/apihttp"
 	runtimequeries "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/queries"
+	ogenhttp "github.com/ogen-go/ogen/http"
 )
 
 type Dependencies struct {
@@ -25,6 +27,7 @@ type Dependencies struct {
 	AnnotationSamples   annotationapp.SampleStore
 	AnnotationStore     annotationapp.AnnotationStore
 	AnnotationMapper    annotationapp.Mapper
+	Importing           importingapi.Dependencies
 }
 
 type Server struct {
@@ -32,6 +35,7 @@ type Server struct {
 
 	access     *accessapi.Handlers
 	annotation *annotationapi.Handlers
+	importing  *importingapi.Handlers
 	project    *projectapi.Handlers
 	runtime    *runtimeapi.Handlers
 }
@@ -62,6 +66,7 @@ func NewHandler(deps Dependencies) (*Server, error) {
 			deps.AnnotationStore,
 			deps.AnnotationMapper,
 		),
+		importing: importingapi.NewHandlers(deps.Importing),
 		project: projectapi.NewHandlers(deps.ProjectStore),
 		runtime: runtimeapi.NewHandlers(runtimeapi.Dependencies{
 			Store:    deps.RuntimeStore,
@@ -81,7 +86,17 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 		return nil, err
 	}
 
-	return authctx.Middleware(deps.Authenticator)(server), nil
+	baseHandler := http.Handler(server)
+	if handler.importing != nil && handler.importing.Enabled() {
+		baseHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if handler.importing.TryServeHTTP(w, r) {
+				return
+			}
+			server.ServeHTTP(w, r)
+		})
+	}
+
+	return authctx.Middleware(deps.Authenticator)(baseHandler), nil
 }
 
 func (s *Server) Healthz(context.Context) (*openapi.HealthResponse, error) {
@@ -100,6 +115,69 @@ func (s *Server) Login(ctx context.Context, req *openapi.LoginRequest) (*openapi
 
 func (s *Server) CreateProject(ctx context.Context, req *openapi.CreateProjectRequest) (*openapi.Project, error) {
 	return s.project.CreateProject(ctx, req)
+}
+
+func (s *Server) InitImportUploadSession(ctx context.Context, req *openapi.ImportUploadInitRequest) (*openapi.ImportUploadInitResponse, error) {
+	if s.importing == nil || !s.importing.Enabled() {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	return s.importing.InitImportUploadSession(ctx, req)
+}
+
+func (s *Server) SignImportUploadParts(ctx context.Context, req *openapi.ImportUploadPartSignRequest, params openapi.SignImportUploadPartsParams) (*openapi.ImportUploadPartSignResponse, error) {
+	if s.importing == nil || !s.importing.Enabled() {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	return s.importing.SignImportUploadParts(ctx, req, params)
+}
+
+func (s *Server) CompleteImportUploadSession(ctx context.Context, req *openapi.ImportUploadCompleteRequest, params openapi.CompleteImportUploadSessionParams) (*openapi.ImportUploadSession, error) {
+	if s.importing == nil || !s.importing.Enabled() {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	return s.importing.CompleteImportUploadSession(ctx, req, params)
+}
+
+func (s *Server) AbortImportUploadSession(ctx context.Context, params openapi.AbortImportUploadSessionParams) (*openapi.ImportUploadAbortResponse, error) {
+	if s.importing == nil || !s.importing.Enabled() {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	return s.importing.AbortImportUploadSession(ctx, params)
+}
+
+func (s *Server) GetImportUploadSession(ctx context.Context, params openapi.GetImportUploadSessionParams) (*openapi.ImportUploadSession, error) {
+	if s.importing == nil || !s.importing.Enabled() {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	return s.importing.GetImportUploadSession(ctx, params)
+}
+
+func (s *Server) PrepareProjectAnnotationImport(ctx context.Context, req *openapi.PrepareProjectAnnotationImportRequest, params openapi.PrepareProjectAnnotationImportParams) (*openapi.PrepareProjectAnnotationImportResponse, error) {
+	if s.importing == nil || !s.importing.Enabled() {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	return s.importing.PrepareProjectAnnotationImport(ctx, req, params)
+}
+
+func (s *Server) ExecuteProjectAnnotationImport(ctx context.Context, req *openapi.ExecuteProjectAnnotationImportRequest, params openapi.ExecuteProjectAnnotationImportParams) (*openapi.ImportTaskCreateResponse, error) {
+	if s.importing == nil || !s.importing.Enabled() {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	return s.importing.ExecuteProjectAnnotationImport(ctx, req, params)
+}
+
+func (s *Server) GetImportTask(ctx context.Context, params openapi.GetImportTaskParams) (*openapi.ImportTaskStatusResponse, error) {
+	if s.importing == nil || !s.importing.Enabled() {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	return s.importing.GetImportTask(ctx, params)
+}
+
+func (s *Server) GetImportTaskResult(ctx context.Context, params openapi.GetImportTaskResultParams) (*openapi.ImportTaskResultResponse, error) {
+	if s.importing == nil || !s.importing.Enabled() {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	return s.importing.GetImportTaskResult(ctx, params)
 }
 
 func (s *Server) CancelRuntimeTask(ctx context.Context, params openapi.CancelRuntimeTaskParams) (*openapi.RuntimeCommandResponse, error) {

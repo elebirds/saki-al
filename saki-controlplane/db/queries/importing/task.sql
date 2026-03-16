@@ -26,6 +26,26 @@ select id, user_id, mode, resource_type, resource_id, status, payload, result, c
 from import_task
 where id = sqlc.arg(id);
 
+-- name: MarkImportTaskRunning :exec
+update import_task
+set status = 'running',
+    updated_at = now()
+where id = sqlc.arg(id);
+
+-- name: MarkImportTaskCompleted :exec
+update import_task
+set status = 'completed',
+    result = sqlc.arg(result),
+    updated_at = now()
+where id = sqlc.arg(id);
+
+-- name: MarkImportTaskFailed :exec
+update import_task
+set status = 'failed',
+    result = sqlc.arg(result),
+    updated_at = now()
+where id = sqlc.arg(id);
+
 -- name: AppendImportTaskEvent :one
 insert into import_task_event (
     task_id,

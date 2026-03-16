@@ -8,10 +8,18 @@ import (
 
 // Handler handles operations described by OpenAPI v3 specification.
 type Handler interface {
+	// AbortImportUploadSession implements abortImportUploadSession operation.
+	//
+	// POST /imports/uploads/{session_id}:abort
+	AbortImportUploadSession(ctx context.Context, params AbortImportUploadSessionParams) (*ImportUploadAbortResponse, error)
 	// CancelRuntimeTask implements cancelRuntimeTask operation.
 	//
 	// POST /runtime/tasks/{task_id}/cancel
 	CancelRuntimeTask(ctx context.Context, params CancelRuntimeTaskParams) (*RuntimeCommandResponse, error)
+	// CompleteImportUploadSession implements completeImportUploadSession operation.
+	//
+	// POST /imports/uploads/{session_id}:complete
+	CompleteImportUploadSession(ctx context.Context, req *ImportUploadCompleteRequest, params CompleteImportUploadSessionParams) (*ImportUploadSession, error)
 	// CreateProject implements createProject operation.
 	//
 	// POST /projects
@@ -20,10 +28,26 @@ type Handler interface {
 	//
 	// POST /samples/{sample_id}/annotations
 	CreateSampleAnnotations(ctx context.Context, req *CreateAnnotationRequest, params CreateSampleAnnotationsParams) ([]Annotation, error)
+	// ExecuteProjectAnnotationImport implements executeProjectAnnotationImport operation.
+	//
+	// POST /projects/{project_id}/imports/annotations:execute
+	ExecuteProjectAnnotationImport(ctx context.Context, req *ExecuteProjectAnnotationImportRequest, params ExecuteProjectAnnotationImportParams) (*ImportTaskCreateResponse, error)
 	// GetCurrentUser implements getCurrentUser operation.
 	//
 	// GET /auth/me
 	GetCurrentUser(ctx context.Context) (*CurrentUserResponse, error)
+	// GetImportTask implements getImportTask operation.
+	//
+	// GET /imports/tasks/{task_id}
+	GetImportTask(ctx context.Context, params GetImportTaskParams) (*ImportTaskStatusResponse, error)
+	// GetImportTaskResult implements getImportTaskResult operation.
+	//
+	// GET /imports/tasks/{task_id}/result
+	GetImportTaskResult(ctx context.Context, params GetImportTaskResultParams) (*ImportTaskResultResponse, error)
+	// GetImportUploadSession implements getImportUploadSession operation.
+	//
+	// GET /imports/uploads/{session_id}
+	GetImportUploadSession(ctx context.Context, params GetImportUploadSessionParams) (*ImportUploadSession, error)
 	// GetProject implements getProject operation.
 	//
 	// GET /projects/{project_id}
@@ -36,6 +60,10 @@ type Handler interface {
 	//
 	// GET /healthz
 	Healthz(ctx context.Context) (*HealthResponse, error)
+	// InitImportUploadSession implements initImportUploadSession operation.
+	//
+	// POST /imports/uploads:init
+	InitImportUploadSession(ctx context.Context, req *ImportUploadInitRequest) (*ImportUploadInitResponse, error)
 	// ListProjects implements listProjects operation.
 	//
 	// GET /projects
@@ -52,10 +80,18 @@ type Handler interface {
 	//
 	// POST /auth/login
 	Login(ctx context.Context, req *LoginRequest) (*AuthTokenResponse, error)
+	// PrepareProjectAnnotationImport implements prepareProjectAnnotationImport operation.
+	//
+	// POST /projects/{project_id}/imports/annotations:prepare
+	PrepareProjectAnnotationImport(ctx context.Context, req *PrepareProjectAnnotationImportRequest, params PrepareProjectAnnotationImportParams) (*PrepareProjectAnnotationImportResponse, error)
 	// RequirePermission implements requirePermission operation.
 	//
 	// GET /auth/permissions/{permission}
 	RequirePermission(ctx context.Context, params RequirePermissionParams) error
+	// SignImportUploadParts implements signImportUploadParts operation.
+	//
+	// POST /imports/uploads/{session_id}/parts:sign
+	SignImportUploadParts(ctx context.Context, req *ImportUploadPartSignRequest, params SignImportUploadPartsParams) (*ImportUploadPartSignResponse, error)
 	// NewError creates *ErrorResponseStatusCode from error returned by handler.
 	//
 	// Used for common default response.

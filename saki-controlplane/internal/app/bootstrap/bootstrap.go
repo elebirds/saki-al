@@ -12,6 +12,9 @@ import (
 	accessapp "github.com/elebirds/saki/saki-controlplane/internal/modules/access/app"
 	annotationmapping "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/app/mapping"
 	annotationrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/repo"
+	importapi "github.com/elebirds/saki/saki-controlplane/internal/modules/importing/apihttp"
+	importapp "github.com/elebirds/saki/saki-controlplane/internal/modules/importing/app"
+	importrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/importing/repo"
 	projectapp "github.com/elebirds/saki/saki-controlplane/internal/modules/project/app"
 	projectrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/project/repo"
 	runtimecommands "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/commands"
@@ -40,10 +43,28 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 	taskRepo := runtimerepo.NewTaskRepo(pool)
 	sampleRepo := annotationrepo.NewSampleRepo(pool)
 	annotationRepo := annotationrepo.NewAnnotationRepo(pool)
+	projectRepo := projectrepo.NewProjectRepo(pool)
+	projectStore := projectapp.NewRepoStore(projectRepo)
+	importUploadRepo := importrepo.NewUploadRepo(pool)
+	importPreviewRepo := importrepo.NewPreviewRepo(pool)
+	importTaskRepo := importrepo.NewTaskRepo(pool)
+	importMatchRepo := importrepo.NewSampleMatchRefRepo(pool)
+	importPrepare := importapp.NewPrepareProjectAnnotationsUseCase(
+		projectRepo,
+		importUploadRepo,
+		importPreviewRepo,
+		importMatchRepo,
+		importapp.NewParserRegistry(),
+	)
+	importExecute := importapp.NewExecuteProjectAnnotationsUseCase(
+		importPreviewRepo,
+		importTaskRepo,
+		importapp.NewProjectAnnotationsTaskRunner(annotationRepo, importTaskRepo),
+	)
 
 	handler, err := systemapi.NewHTTPHandler(systemapi.Dependencies{
 		Authenticator:       accessapp.NewAuthenticator(cfg.AuthTokenSecret, tokenTTL),
-		ProjectStore:        projectapp.NewRepoStore(projectrepo.NewProjectRepo(pool)),
+		ProjectStore:        projectStore,
 		RuntimeStore:        runtimequeries.NewRepoAdminStore(taskRepo, runtimerepo.NewExecutorRepo(pool)),
 		RuntimeTaskCanceler: runtimecommands.NewCancelTaskHandler(taskRepo, runtimerepo.NewCommandOutboxWriter(pool)),
 		AnnotationSamples:   sampleRepo,
@@ -60,6 +81,12 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 			},
 			Timeout: 5 * time.Second,
 		}),
+		Importing: importapi.Dependencies{
+			Uploads: importUploadRepo,
+			Tasks:   importTaskRepo,
+			Prepare: importPrepare,
+			Execute: importExecute,
+		},
 	})
 	if err != nil {
 		pool.Close()

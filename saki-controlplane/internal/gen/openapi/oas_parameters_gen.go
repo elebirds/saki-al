@@ -14,6 +14,71 @@ import (
 	"github.com/ogen-go/ogen/validate"
 )
 
+// AbortImportUploadSessionParams is parameters of abortImportUploadSession operation.
+type AbortImportUploadSessionParams struct {
+	SessionID string
+}
+
+func unpackAbortImportUploadSessionParams(packed middleware.Parameters) (params AbortImportUploadSessionParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "session_id",
+			In:   "path",
+		}
+		params.SessionID = packed[key].(string)
+	}
+	return params
+}
+
+func decodeAbortImportUploadSessionParams(args [1]string, argsEscaped bool, r *http.Request) (params AbortImportUploadSessionParams, _ error) {
+	// Decode path: session_id.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "session_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.SessionID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "session_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
 // CancelRuntimeTaskParams is parameters of cancelRuntimeTask operation.
 type CancelRuntimeTaskParams struct {
 	TaskID string
@@ -79,6 +144,71 @@ func decodeCancelRuntimeTaskParams(args [1]string, argsEscaped bool, r *http.Req
 	return params, nil
 }
 
+// CompleteImportUploadSessionParams is parameters of completeImportUploadSession operation.
+type CompleteImportUploadSessionParams struct {
+	SessionID string
+}
+
+func unpackCompleteImportUploadSessionParams(packed middleware.Parameters) (params CompleteImportUploadSessionParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "session_id",
+			In:   "path",
+		}
+		params.SessionID = packed[key].(string)
+	}
+	return params
+}
+
+func decodeCompleteImportUploadSessionParams(args [1]string, argsEscaped bool, r *http.Request) (params CompleteImportUploadSessionParams, _ error) {
+	// Decode path: session_id.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "session_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.SessionID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "session_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
 // CreateSampleAnnotationsParams is parameters of createSampleAnnotations operation.
 type CreateSampleAnnotationsParams struct {
 	SampleID string
@@ -137,6 +267,266 @@ func decodeCreateSampleAnnotationsParams(args [1]string, argsEscaped bool, r *ht
 	}(); err != nil {
 		return params, &ogenerrors.DecodeParamError{
 			Name: "sample_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
+// ExecuteProjectAnnotationImportParams is parameters of executeProjectAnnotationImport operation.
+type ExecuteProjectAnnotationImportParams struct {
+	ProjectID string
+}
+
+func unpackExecuteProjectAnnotationImportParams(packed middleware.Parameters) (params ExecuteProjectAnnotationImportParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "project_id",
+			In:   "path",
+		}
+		params.ProjectID = packed[key].(string)
+	}
+	return params
+}
+
+func decodeExecuteProjectAnnotationImportParams(args [1]string, argsEscaped bool, r *http.Request) (params ExecuteProjectAnnotationImportParams, _ error) {
+	// Decode path: project_id.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "project_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.ProjectID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "project_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
+// GetImportTaskParams is parameters of getImportTask operation.
+type GetImportTaskParams struct {
+	TaskID string
+}
+
+func unpackGetImportTaskParams(packed middleware.Parameters) (params GetImportTaskParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "task_id",
+			In:   "path",
+		}
+		params.TaskID = packed[key].(string)
+	}
+	return params
+}
+
+func decodeGetImportTaskParams(args [1]string, argsEscaped bool, r *http.Request) (params GetImportTaskParams, _ error) {
+	// Decode path: task_id.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "task_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.TaskID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "task_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
+// GetImportTaskResultParams is parameters of getImportTaskResult operation.
+type GetImportTaskResultParams struct {
+	TaskID string
+}
+
+func unpackGetImportTaskResultParams(packed middleware.Parameters) (params GetImportTaskResultParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "task_id",
+			In:   "path",
+		}
+		params.TaskID = packed[key].(string)
+	}
+	return params
+}
+
+func decodeGetImportTaskResultParams(args [1]string, argsEscaped bool, r *http.Request) (params GetImportTaskResultParams, _ error) {
+	// Decode path: task_id.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "task_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.TaskID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "task_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
+// GetImportUploadSessionParams is parameters of getImportUploadSession operation.
+type GetImportUploadSessionParams struct {
+	SessionID string
+}
+
+func unpackGetImportUploadSessionParams(packed middleware.Parameters) (params GetImportUploadSessionParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "session_id",
+			In:   "path",
+		}
+		params.SessionID = packed[key].(string)
+	}
+	return params
+}
+
+func decodeGetImportUploadSessionParams(args [1]string, argsEscaped bool, r *http.Request) (params GetImportUploadSessionParams, _ error) {
+	// Decode path: session_id.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "session_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.SessionID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "session_id",
 			In:   "path",
 			Err:  err,
 		}
@@ -274,6 +664,71 @@ func decodeListSampleAnnotationsParams(args [1]string, argsEscaped bool, r *http
 	return params, nil
 }
 
+// PrepareProjectAnnotationImportParams is parameters of prepareProjectAnnotationImport operation.
+type PrepareProjectAnnotationImportParams struct {
+	ProjectID string
+}
+
+func unpackPrepareProjectAnnotationImportParams(packed middleware.Parameters) (params PrepareProjectAnnotationImportParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "project_id",
+			In:   "path",
+		}
+		params.ProjectID = packed[key].(string)
+	}
+	return params
+}
+
+func decodePrepareProjectAnnotationImportParams(args [1]string, argsEscaped bool, r *http.Request) (params PrepareProjectAnnotationImportParams, _ error) {
+	// Decode path: project_id.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "project_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.ProjectID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "project_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
 // RequirePermissionParams is parameters of requirePermission operation.
 type RequirePermissionParams struct {
 	Permission string
@@ -332,6 +787,71 @@ func decodeRequirePermissionParams(args [1]string, argsEscaped bool, r *http.Req
 	}(); err != nil {
 		return params, &ogenerrors.DecodeParamError{
 			Name: "permission",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
+// SignImportUploadPartsParams is parameters of signImportUploadParts operation.
+type SignImportUploadPartsParams struct {
+	SessionID string
+}
+
+func unpackSignImportUploadPartsParams(packed middleware.Parameters) (params SignImportUploadPartsParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "session_id",
+			In:   "path",
+		}
+		params.SessionID = packed[key].(string)
+	}
+	return params
+}
+
+func decodeSignImportUploadPartsParams(args [1]string, argsEscaped bool, r *http.Request) (params SignImportUploadPartsParams, _ error) {
+	// Decode path: session_id.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "session_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.SessionID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "session_id",
 			In:   "path",
 			Err:  err,
 		}

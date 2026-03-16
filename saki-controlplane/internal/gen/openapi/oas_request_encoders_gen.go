@@ -10,6 +10,20 @@ import (
 	ht "github.com/ogen-go/ogen/http"
 )
 
+func encodeCompleteImportUploadSessionRequest(
+	req *ImportUploadCompleteRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
 func encodeCreateProjectRequest(
 	req *CreateProjectRequest,
 	r *http.Request,
@@ -38,8 +52,64 @@ func encodeCreateSampleAnnotationsRequest(
 	return nil
 }
 
+func encodeExecuteProjectAnnotationImportRequest(
+	req *ExecuteProjectAnnotationImportRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodeInitImportUploadSessionRequest(
+	req *ImportUploadInitRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
 func encodeLoginRequest(
 	req *LoginRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodePrepareProjectAnnotationImportRequest(
+	req *PrepareProjectAnnotationImportRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodeSignImportUploadPartsRequest(
+	req *ImportUploadPartSignRequest,
 	r *http.Request,
 ) error {
 	const contentType = "application/json"

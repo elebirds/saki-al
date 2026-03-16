@@ -13,10 +13,24 @@ type UnimplementedHandler struct{}
 
 var _ Handler = UnimplementedHandler{}
 
+// AbortImportUploadSession implements abortImportUploadSession operation.
+//
+// POST /imports/uploads/{session_id}:abort
+func (UnimplementedHandler) AbortImportUploadSession(ctx context.Context, params AbortImportUploadSessionParams) (r *ImportUploadAbortResponse, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // CancelRuntimeTask implements cancelRuntimeTask operation.
 //
 // POST /runtime/tasks/{task_id}/cancel
 func (UnimplementedHandler) CancelRuntimeTask(ctx context.Context, params CancelRuntimeTaskParams) (r *RuntimeCommandResponse, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// CompleteImportUploadSession implements completeImportUploadSession operation.
+//
+// POST /imports/uploads/{session_id}:complete
+func (UnimplementedHandler) CompleteImportUploadSession(ctx context.Context, req *ImportUploadCompleteRequest, params CompleteImportUploadSessionParams) (r *ImportUploadSession, _ error) {
 	return r, ht.ErrNotImplemented
 }
 
@@ -34,10 +48,38 @@ func (UnimplementedHandler) CreateSampleAnnotations(ctx context.Context, req *Cr
 	return r, ht.ErrNotImplemented
 }
 
+// ExecuteProjectAnnotationImport implements executeProjectAnnotationImport operation.
+//
+// POST /projects/{project_id}/imports/annotations:execute
+func (UnimplementedHandler) ExecuteProjectAnnotationImport(ctx context.Context, req *ExecuteProjectAnnotationImportRequest, params ExecuteProjectAnnotationImportParams) (r *ImportTaskCreateResponse, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // GetCurrentUser implements getCurrentUser operation.
 //
 // GET /auth/me
 func (UnimplementedHandler) GetCurrentUser(ctx context.Context) (r *CurrentUserResponse, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// GetImportTask implements getImportTask operation.
+//
+// GET /imports/tasks/{task_id}
+func (UnimplementedHandler) GetImportTask(ctx context.Context, params GetImportTaskParams) (r *ImportTaskStatusResponse, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// GetImportTaskResult implements getImportTaskResult operation.
+//
+// GET /imports/tasks/{task_id}/result
+func (UnimplementedHandler) GetImportTaskResult(ctx context.Context, params GetImportTaskResultParams) (r *ImportTaskResultResponse, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// GetImportUploadSession implements getImportUploadSession operation.
+//
+// GET /imports/uploads/{session_id}
+func (UnimplementedHandler) GetImportUploadSession(ctx context.Context, params GetImportUploadSessionParams) (r *ImportUploadSession, _ error) {
 	return r, ht.ErrNotImplemented
 }
 
@@ -59,6 +101,13 @@ func (UnimplementedHandler) GetRuntimeSummary(ctx context.Context) (r *RuntimeSu
 //
 // GET /healthz
 func (UnimplementedHandler) Healthz(ctx context.Context) (r *HealthResponse, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// InitImportUploadSession implements initImportUploadSession operation.
+//
+// POST /imports/uploads:init
+func (UnimplementedHandler) InitImportUploadSession(ctx context.Context, req *ImportUploadInitRequest) (r *ImportUploadInitResponse, _ error) {
 	return r, ht.ErrNotImplemented
 }
 
@@ -90,11 +139,25 @@ func (UnimplementedHandler) Login(ctx context.Context, req *LoginRequest) (r *Au
 	return r, ht.ErrNotImplemented
 }
 
+// PrepareProjectAnnotationImport implements prepareProjectAnnotationImport operation.
+//
+// POST /projects/{project_id}/imports/annotations:prepare
+func (UnimplementedHandler) PrepareProjectAnnotationImport(ctx context.Context, req *PrepareProjectAnnotationImportRequest, params PrepareProjectAnnotationImportParams) (r *PrepareProjectAnnotationImportResponse, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // RequirePermission implements requirePermission operation.
 //
 // GET /auth/permissions/{permission}
 func (UnimplementedHandler) RequirePermission(ctx context.Context, params RequirePermissionParams) error {
 	return ht.ErrNotImplemented
+}
+
+// SignImportUploadParts implements signImportUploadParts operation.
+//
+// POST /imports/uploads/{session_id}/parts:sign
+func (UnimplementedHandler) SignImportUploadParts(ctx context.Context, req *ImportUploadPartSignRequest, params SignImportUploadPartsParams) (r *ImportUploadPartSignResponse, _ error) {
+	return r, ht.ErrNotImplemented
 }
 
 // NewError creates *ErrorResponseStatusCode from error returned by handler.

@@ -11,13 +11,28 @@ import (
 )
 
 var (
-	rn17AllowedHeaders = map[string]string{
+	rn29AllowedHeaders = map[string]string{
 		"POST": "Content-Type",
 	}
-	rn5AllowedHeaders = map[string]string{
+	rn34AllowedHeaders = map[string]string{
 		"POST": "Content-Type",
 	}
-	rn8AllowedHeaders = map[string]string{
+	rn9AllowedHeaders = map[string]string{
+		"POST": "Content-Type",
+	}
+	rn26AllowedHeaders = map[string]string{
+		"POST": "Content-Type",
+	}
+	rn10AllowedHeaders = map[string]string{
+		"POST": "Content-Type",
+	}
+	rn16AllowedHeaders = map[string]string{
+		"POST": "Content-Type",
+	}
+	rn31AllowedHeaders = map[string]string{
+		"POST": "Content-Type",
+	}
+	rn13AllowedHeaders = map[string]string{
 		"POST": "Content-Type",
 	}
 )
@@ -101,7 +116,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 						default:
 							s.notAllowed(w, r, notAllowedParams{
 								allowedMethods: "POST",
-								allowedHeaders: rn17AllowedHeaders,
+								allowedHeaders: rn29AllowedHeaders,
 								acceptPost:     "application/json",
 								acceptPatch:    "",
 							})
@@ -198,6 +213,255 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 
+			case 'i': // Prefix: "imports/"
+
+				if l := len("imports/"); len(elem) >= l && elem[0:l] == "imports/" {
+					elem = elem[l:]
+				} else {
+					break
+				}
+
+				if len(elem) == 0 {
+					break
+				}
+				switch elem[0] {
+				case 't': // Prefix: "tasks/"
+
+					if l := len("tasks/"); len(elem) >= l && elem[0:l] == "tasks/" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					// Param: "task_id"
+					// Match until "/"
+					idx := strings.IndexByte(elem, '/')
+					if idx < 0 {
+						idx = len(elem)
+					}
+					args[0] = elem[:idx]
+					elem = elem[idx:]
+
+					if len(elem) == 0 {
+						switch r.Method {
+						case "GET":
+							s.handleGetImportTaskRequest([1]string{
+								args[0],
+							}, elemIsEscaped, w, r)
+						default:
+							s.notAllowed(w, r, notAllowedParams{
+								allowedMethods: "GET",
+								allowedHeaders: nil,
+								acceptPost:     "",
+								acceptPatch:    "",
+							})
+						}
+
+						return
+					}
+					switch elem[0] {
+					case '/': // Prefix: "/result"
+
+						if l := len("/result"); len(elem) >= l && elem[0:l] == "/result" {
+							elem = elem[l:]
+						} else {
+							break
+						}
+
+						if len(elem) == 0 {
+							// Leaf node.
+							switch r.Method {
+							case "GET":
+								s.handleGetImportTaskResultRequest([1]string{
+									args[0],
+								}, elemIsEscaped, w, r)
+							default:
+								s.notAllowed(w, r, notAllowedParams{
+									allowedMethods: "GET",
+									allowedHeaders: nil,
+									acceptPost:     "",
+									acceptPatch:    "",
+								})
+							}
+
+							return
+						}
+
+					}
+
+				case 'u': // Prefix: "uploads"
+
+					if l := len("uploads"); len(elem) >= l && elem[0:l] == "uploads" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					if len(elem) == 0 {
+						break
+					}
+					switch elem[0] {
+					case '/': // Prefix: "/"
+
+						if l := len("/"); len(elem) >= l && elem[0:l] == "/" {
+							elem = elem[l:]
+						} else {
+							break
+						}
+
+						// Param: "session_id"
+						// Match until one of "/:"
+						idx := strings.IndexAny(elem, "/:")
+						if idx < 0 {
+							idx = len(elem)
+						}
+						args[0] = elem[:idx]
+						elem = elem[idx:]
+
+						if len(elem) == 0 {
+							switch r.Method {
+							case "GET":
+								s.handleGetImportUploadSessionRequest([1]string{
+									args[0],
+								}, elemIsEscaped, w, r)
+							default:
+								s.notAllowed(w, r, notAllowedParams{
+									allowedMethods: "GET",
+									allowedHeaders: nil,
+									acceptPost:     "",
+									acceptPatch:    "",
+								})
+							}
+
+							return
+						}
+						switch elem[0] {
+						case '/': // Prefix: "/parts:sign"
+
+							if l := len("/parts:sign"); len(elem) >= l && elem[0:l] == "/parts:sign" {
+								elem = elem[l:]
+							} else {
+								break
+							}
+
+							if len(elem) == 0 {
+								// Leaf node.
+								switch r.Method {
+								case "POST":
+									s.handleSignImportUploadPartsRequest([1]string{
+										args[0],
+									}, elemIsEscaped, w, r)
+								default:
+									s.notAllowed(w, r, notAllowedParams{
+										allowedMethods: "POST",
+										allowedHeaders: rn34AllowedHeaders,
+										acceptPost:     "application/json",
+										acceptPatch:    "",
+									})
+								}
+
+								return
+							}
+
+						case ':': // Prefix: ":"
+
+							if l := len(":"); len(elem) >= l && elem[0:l] == ":" {
+								elem = elem[l:]
+							} else {
+								break
+							}
+
+							if len(elem) == 0 {
+								break
+							}
+							switch elem[0] {
+							case 'a': // Prefix: "abort"
+
+								if l := len("abort"); len(elem) >= l && elem[0:l] == "abort" {
+									elem = elem[l:]
+								} else {
+									break
+								}
+
+								if len(elem) == 0 {
+									// Leaf node.
+									switch r.Method {
+									case "POST":
+										s.handleAbortImportUploadSessionRequest([1]string{
+											args[0],
+										}, elemIsEscaped, w, r)
+									default:
+										s.notAllowed(w, r, notAllowedParams{
+											allowedMethods: "POST",
+											allowedHeaders: nil,
+											acceptPost:     "",
+											acceptPatch:    "",
+										})
+									}
+
+									return
+								}
+
+							case 'c': // Prefix: "complete"
+
+								if l := len("complete"); len(elem) >= l && elem[0:l] == "complete" {
+									elem = elem[l:]
+								} else {
+									break
+								}
+
+								if len(elem) == 0 {
+									// Leaf node.
+									switch r.Method {
+									case "POST":
+										s.handleCompleteImportUploadSessionRequest([1]string{
+											args[0],
+										}, elemIsEscaped, w, r)
+									default:
+										s.notAllowed(w, r, notAllowedParams{
+											allowedMethods: "POST",
+											allowedHeaders: rn9AllowedHeaders,
+											acceptPost:     "application/json",
+											acceptPatch:    "",
+										})
+									}
+
+									return
+								}
+
+							}
+
+						}
+
+					case ':': // Prefix: ":init"
+
+						if l := len(":init"); len(elem) >= l && elem[0:l] == ":init" {
+							elem = elem[l:]
+						} else {
+							break
+						}
+
+						if len(elem) == 0 {
+							// Leaf node.
+							switch r.Method {
+							case "POST":
+								s.handleInitImportUploadSessionRequest([0]string{}, elemIsEscaped, w, r)
+							default:
+								s.notAllowed(w, r, notAllowedParams{
+									allowedMethods: "POST",
+									allowedHeaders: rn26AllowedHeaders,
+									acceptPost:     "application/json",
+									acceptPatch:    "",
+								})
+							}
+
+							return
+						}
+
+					}
+
+				}
+
 			case 'p': // Prefix: "projects"
 
 				if l := len("projects"); len(elem) >= l && elem[0:l] == "projects" {
@@ -215,7 +479,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					default:
 						s.notAllowed(w, r, notAllowedParams{
 							allowedMethods: "GET,POST",
-							allowedHeaders: rn5AllowedHeaders,
+							allowedHeaders: rn10AllowedHeaders,
 							acceptPost:     "application/json",
 							acceptPatch:    "",
 						})
@@ -233,16 +497,15 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					}
 
 					// Param: "project_id"
-					// Leaf parameter, slashes are prohibited
+					// Match until "/"
 					idx := strings.IndexByte(elem, '/')
-					if idx >= 0 {
-						break
+					if idx < 0 {
+						idx = len(elem)
 					}
-					args[0] = elem
-					elem = ""
+					args[0] = elem[:idx]
+					elem = elem[idx:]
 
 					if len(elem) == 0 {
-						// Leaf node.
 						switch r.Method {
 						case "GET":
 							s.handleGetProjectRequest([1]string{
@@ -258,6 +521,76 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 						}
 
 						return
+					}
+					switch elem[0] {
+					case '/': // Prefix: "/imports/annotations:"
+
+						if l := len("/imports/annotations:"); len(elem) >= l && elem[0:l] == "/imports/annotations:" {
+							elem = elem[l:]
+						} else {
+							break
+						}
+
+						if len(elem) == 0 {
+							break
+						}
+						switch elem[0] {
+						case 'e': // Prefix: "execute"
+
+							if l := len("execute"); len(elem) >= l && elem[0:l] == "execute" {
+								elem = elem[l:]
+							} else {
+								break
+							}
+
+							if len(elem) == 0 {
+								// Leaf node.
+								switch r.Method {
+								case "POST":
+									s.handleExecuteProjectAnnotationImportRequest([1]string{
+										args[0],
+									}, elemIsEscaped, w, r)
+								default:
+									s.notAllowed(w, r, notAllowedParams{
+										allowedMethods: "POST",
+										allowedHeaders: rn16AllowedHeaders,
+										acceptPost:     "application/json",
+										acceptPatch:    "",
+									})
+								}
+
+								return
+							}
+
+						case 'p': // Prefix: "prepare"
+
+							if l := len("prepare"); len(elem) >= l && elem[0:l] == "prepare" {
+								elem = elem[l:]
+							} else {
+								break
+							}
+
+							if len(elem) == 0 {
+								// Leaf node.
+								switch r.Method {
+								case "POST":
+									s.handlePrepareProjectAnnotationImportRequest([1]string{
+										args[0],
+									}, elemIsEscaped, w, r)
+								default:
+									s.notAllowed(w, r, notAllowedParams{
+										allowedMethods: "POST",
+										allowedHeaders: rn31AllowedHeaders,
+										acceptPost:     "application/json",
+										acceptPatch:    "",
+									})
+								}
+
+								return
+							}
+
+						}
+
 					}
 
 				}
@@ -419,7 +752,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 						default:
 							s.notAllowed(w, r, notAllowedParams{
 								allowedMethods: "GET,POST",
-								allowedHeaders: rn8AllowedHeaders,
+								allowedHeaders: rn13AllowedHeaders,
 								acceptPost:     "application/json",
 								acceptPatch:    "",
 							})
@@ -653,6 +986,243 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 					}
 				}
 
+			case 'i': // Prefix: "imports/"
+
+				if l := len("imports/"); len(elem) >= l && elem[0:l] == "imports/" {
+					elem = elem[l:]
+				} else {
+					break
+				}
+
+				if len(elem) == 0 {
+					break
+				}
+				switch elem[0] {
+				case 't': // Prefix: "tasks/"
+
+					if l := len("tasks/"); len(elem) >= l && elem[0:l] == "tasks/" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					// Param: "task_id"
+					// Match until "/"
+					idx := strings.IndexByte(elem, '/')
+					if idx < 0 {
+						idx = len(elem)
+					}
+					args[0] = elem[:idx]
+					elem = elem[idx:]
+
+					if len(elem) == 0 {
+						switch method {
+						case "GET":
+							r.name = GetImportTaskOperation
+							r.summary = ""
+							r.operationID = "getImportTask"
+							r.operationGroup = ""
+							r.pathPattern = "/imports/tasks/{task_id}"
+							r.args = args
+							r.count = 1
+							return r, true
+						default:
+							return
+						}
+					}
+					switch elem[0] {
+					case '/': // Prefix: "/result"
+
+						if l := len("/result"); len(elem) >= l && elem[0:l] == "/result" {
+							elem = elem[l:]
+						} else {
+							break
+						}
+
+						if len(elem) == 0 {
+							// Leaf node.
+							switch method {
+							case "GET":
+								r.name = GetImportTaskResultOperation
+								r.summary = ""
+								r.operationID = "getImportTaskResult"
+								r.operationGroup = ""
+								r.pathPattern = "/imports/tasks/{task_id}/result"
+								r.args = args
+								r.count = 1
+								return r, true
+							default:
+								return
+							}
+						}
+
+					}
+
+				case 'u': // Prefix: "uploads"
+
+					if l := len("uploads"); len(elem) >= l && elem[0:l] == "uploads" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					if len(elem) == 0 {
+						break
+					}
+					switch elem[0] {
+					case '/': // Prefix: "/"
+
+						if l := len("/"); len(elem) >= l && elem[0:l] == "/" {
+							elem = elem[l:]
+						} else {
+							break
+						}
+
+						// Param: "session_id"
+						// Match until one of "/:"
+						idx := strings.IndexAny(elem, "/:")
+						if idx < 0 {
+							idx = len(elem)
+						}
+						args[0] = elem[:idx]
+						elem = elem[idx:]
+
+						if len(elem) == 0 {
+							switch method {
+							case "GET":
+								r.name = GetImportUploadSessionOperation
+								r.summary = ""
+								r.operationID = "getImportUploadSession"
+								r.operationGroup = ""
+								r.pathPattern = "/imports/uploads/{session_id}"
+								r.args = args
+								r.count = 1
+								return r, true
+							default:
+								return
+							}
+						}
+						switch elem[0] {
+						case '/': // Prefix: "/parts:sign"
+
+							if l := len("/parts:sign"); len(elem) >= l && elem[0:l] == "/parts:sign" {
+								elem = elem[l:]
+							} else {
+								break
+							}
+
+							if len(elem) == 0 {
+								// Leaf node.
+								switch method {
+								case "POST":
+									r.name = SignImportUploadPartsOperation
+									r.summary = ""
+									r.operationID = "signImportUploadParts"
+									r.operationGroup = ""
+									r.pathPattern = "/imports/uploads/{session_id}/parts:sign"
+									r.args = args
+									r.count = 1
+									return r, true
+								default:
+									return
+								}
+							}
+
+						case ':': // Prefix: ":"
+
+							if l := len(":"); len(elem) >= l && elem[0:l] == ":" {
+								elem = elem[l:]
+							} else {
+								break
+							}
+
+							if len(elem) == 0 {
+								break
+							}
+							switch elem[0] {
+							case 'a': // Prefix: "abort"
+
+								if l := len("abort"); len(elem) >= l && elem[0:l] == "abort" {
+									elem = elem[l:]
+								} else {
+									break
+								}
+
+								if len(elem) == 0 {
+									// Leaf node.
+									switch method {
+									case "POST":
+										r.name = AbortImportUploadSessionOperation
+										r.summary = ""
+										r.operationID = "abortImportUploadSession"
+										r.operationGroup = ""
+										r.pathPattern = "/imports/uploads/{session_id}:abort"
+										r.args = args
+										r.count = 1
+										return r, true
+									default:
+										return
+									}
+								}
+
+							case 'c': // Prefix: "complete"
+
+								if l := len("complete"); len(elem) >= l && elem[0:l] == "complete" {
+									elem = elem[l:]
+								} else {
+									break
+								}
+
+								if len(elem) == 0 {
+									// Leaf node.
+									switch method {
+									case "POST":
+										r.name = CompleteImportUploadSessionOperation
+										r.summary = ""
+										r.operationID = "completeImportUploadSession"
+										r.operationGroup = ""
+										r.pathPattern = "/imports/uploads/{session_id}:complete"
+										r.args = args
+										r.count = 1
+										return r, true
+									default:
+										return
+									}
+								}
+
+							}
+
+						}
+
+					case ':': // Prefix: ":init"
+
+						if l := len(":init"); len(elem) >= l && elem[0:l] == ":init" {
+							elem = elem[l:]
+						} else {
+							break
+						}
+
+						if len(elem) == 0 {
+							// Leaf node.
+							switch method {
+							case "POST":
+								r.name = InitImportUploadSessionOperation
+								r.summary = ""
+								r.operationID = "initImportUploadSession"
+								r.operationGroup = ""
+								r.pathPattern = "/imports/uploads:init"
+								r.args = args
+								r.count = 0
+								return r, true
+							default:
+								return
+							}
+						}
+
+					}
+
+				}
+
 			case 'p': // Prefix: "projects"
 
 				if l := len("projects"); len(elem) >= l && elem[0:l] == "projects" {
@@ -695,16 +1265,15 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 					}
 
 					// Param: "project_id"
-					// Leaf parameter, slashes are prohibited
+					// Match until "/"
 					idx := strings.IndexByte(elem, '/')
-					if idx >= 0 {
-						break
+					if idx < 0 {
+						idx = len(elem)
 					}
-					args[0] = elem
-					elem = ""
+					args[0] = elem[:idx]
+					elem = elem[idx:]
 
 					if len(elem) == 0 {
-						// Leaf node.
 						switch method {
 						case "GET":
 							r.name = GetProjectOperation
@@ -718,6 +1287,72 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 						default:
 							return
 						}
+					}
+					switch elem[0] {
+					case '/': // Prefix: "/imports/annotations:"
+
+						if l := len("/imports/annotations:"); len(elem) >= l && elem[0:l] == "/imports/annotations:" {
+							elem = elem[l:]
+						} else {
+							break
+						}
+
+						if len(elem) == 0 {
+							break
+						}
+						switch elem[0] {
+						case 'e': // Prefix: "execute"
+
+							if l := len("execute"); len(elem) >= l && elem[0:l] == "execute" {
+								elem = elem[l:]
+							} else {
+								break
+							}
+
+							if len(elem) == 0 {
+								// Leaf node.
+								switch method {
+								case "POST":
+									r.name = ExecuteProjectAnnotationImportOperation
+									r.summary = ""
+									r.operationID = "executeProjectAnnotationImport"
+									r.operationGroup = ""
+									r.pathPattern = "/projects/{project_id}/imports/annotations:execute"
+									r.args = args
+									r.count = 1
+									return r, true
+								default:
+									return
+								}
+							}
+
+						case 'p': // Prefix: "prepare"
+
+							if l := len("prepare"); len(elem) >= l && elem[0:l] == "prepare" {
+								elem = elem[l:]
+							} else {
+								break
+							}
+
+							if len(elem) == 0 {
+								// Leaf node.
+								switch method {
+								case "POST":
+									r.name = PrepareProjectAnnotationImportOperation
+									r.summary = ""
+									r.operationID = "prepareProjectAnnotationImport"
+									r.operationGroup = ""
+									r.pathPattern = "/projects/{project_id}/imports/annotations:prepare"
+									r.args = args
+									r.count = 1
+									return r, true
+								default:
+									return
+								}
+							}
+
+						}
+
 					}
 
 				}

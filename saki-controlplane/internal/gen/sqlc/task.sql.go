@@ -288,6 +288,54 @@ func (q *Queries) ListImportTaskEventsAfter(ctx context.Context, arg ListImportT
 	return items, nil
 }
 
+const markImportTaskCompleted = `-- name: MarkImportTaskCompleted :exec
+update import_task
+set status = 'completed',
+    result = $1,
+    updated_at = now()
+where id = $2
+`
+
+type MarkImportTaskCompletedParams struct {
+	Result []byte    `json:"result"`
+	ID     uuid.UUID `json:"id"`
+}
+
+func (q *Queries) MarkImportTaskCompleted(ctx context.Context, arg MarkImportTaskCompletedParams) error {
+	_, err := q.db.Exec(ctx, markImportTaskCompleted, arg.Result, arg.ID)
+	return err
+}
+
+const markImportTaskFailed = `-- name: MarkImportTaskFailed :exec
+update import_task
+set status = 'failed',
+    result = $1,
+    updated_at = now()
+where id = $2
+`
+
+type MarkImportTaskFailedParams struct {
+	Result []byte    `json:"result"`
+	ID     uuid.UUID `json:"id"`
+}
+
+func (q *Queries) MarkImportTaskFailed(ctx context.Context, arg MarkImportTaskFailedParams) error {
+	_, err := q.db.Exec(ctx, markImportTaskFailed, arg.Result, arg.ID)
+	return err
+}
+
+const markImportTaskRunning = `-- name: MarkImportTaskRunning :exec
+update import_task
+set status = 'running',
+    updated_at = now()
+where id = $1
+`
+
+func (q *Queries) MarkImportTaskRunning(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, markImportTaskRunning, id)
+	return err
+}
+
 const updateRuntimeTask = `-- name: UpdateRuntimeTask :exec
 update runtime_task
 set status = $1,

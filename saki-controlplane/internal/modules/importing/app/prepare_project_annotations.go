@@ -148,9 +148,15 @@ func (u *PrepareProjectAnnotationsUseCase) Execute(ctx context.Context, input Pr
 		return nil, errors.New("upload session is not completed")
 	}
 
+	sourcePath, cleanup, err := resolveImportSourcePath(input.FormatProfile, session.ObjectKey)
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
+
 	parsed, err := u.parsers.ParseProjectAnnotations(ctx, ParseProjectAnnotationsRequest{
 		FormatProfile: input.FormatProfile,
-		SourcePath:    session.ObjectKey,
+		SourcePath:    sourcePath,
 		Split:         input.Split,
 	})
 	if err != nil {

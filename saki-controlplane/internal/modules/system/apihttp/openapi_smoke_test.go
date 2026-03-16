@@ -1,6 +1,7 @@
 package apihttp_test
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"database/sql"
@@ -10,11 +11,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 
 	appdb "github.com/elebirds/saki/saki-controlplane/internal/app/db"
 	annotationrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/repo"
+	importrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/importing/repo"
+	projectrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/project/repo"
 	"github.com/google/uuid"
 	"github.com/elebirds/saki/saki-controlplane/internal/app/bootstrap"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -51,13 +55,28 @@ func TestPublicAPISmoke(t *testing.T) {
 	defer pool.Close()
 
 	sampleRepo := annotationrepo.NewSampleRepo(pool)
+	projectRepo := projectrepo.NewProjectRepo(pool)
+	matchRefRepo := importrepo.NewSampleMatchRefRepo(pool)
+	project, err := projectRepo.CreateProject(ctx, projectrepo.CreateProjectParams{Name: "smoke-project"})
+	if err != nil {
+		t.Fatalf("create smoke project: %v", err)
+	}
 	sample, err := sampleRepo.Create(ctx, annotationrepo.CreateSampleParams{
-		ProjectID:   uuid.MustParse("00000000-0000-0000-0000-000000000100"),
+		ProjectID:   project.ID,
 		DatasetType: "single-view",
 		Meta:        []byte(`{}`),
 	})
 	if err != nil {
 		t.Fatalf("create smoke sample: %v", err)
+	}
+	if _, err := matchRefRepo.Put(ctx, importrepo.PutSampleMatchRefParams{
+		ProjectID: project.ID,
+		SampleID:  sample.ID,
+		RefType:   "dataset_relpath",
+		RefValue:  "images/train/sample1.jpg",
+		IsPrimary: true,
+	}); err != nil {
+		t.Fatalf("create smoke sample match ref: %v", err)
 	}
 
 	t.Setenv("DATABASE_DSN", dsn)
@@ -82,10 +101,11 @@ func TestPublicAPISmoke(t *testing.T) {
 		t.Fatalf("unexpected healthz status: %d", resp.StatusCode)
 	}
 
+	importUserID := uuid.MustParse("00000000-0000-0000-0000-000000000200")
 	loginResp, err := http.Post(
 		httpServer.URL+"/auth/login",
 		"application/json",
-		bytes.NewBufferString(`{"user_id":"smoke-user","permissions":["projects:read"]}`),
+		bytes.NewBufferString(`{"user_id":"`+importUserID.String()+`","permissions":["projects:read","projects:write","imports:write","imports:read"]}`),
 	)
 	if err != nil {
 		t.Fatalf("post login: %v", err)
@@ -93,6 +113,14 @@ func TestPublicAPISmoke(t *testing.T) {
 	defer loginResp.Body.Close()
 	if loginResp.StatusCode != http.StatusOK {
 		t.Fatalf("unexpected login status: %d", loginResp.StatusCode)
+	}
+	var loginBody map[string]any
+	if err := json.NewDecoder(loginResp.Body).Decode(&loginBody); err != nil {
+		t.Fatalf("decode login response: %v", err)
+	}
+	token, _ := loginBody["token"].(string)
+	if token == "" {
+		t.Fatalf("missing auth token: %+v", loginBody)
 	}
 
 	summaryResp, err := http.Get(httpServer.URL + "/runtime/summary")
@@ -149,6 +177,223 @@ func TestPublicAPISmoke(t *testing.T) {
 	if len(listed) != 1 || listed[0]["view"] != "rgb" || listed[0]["annotation_type"] != "rect" {
 		t.Fatalf("unexpected list annotation body: %+v", listed)
 	}
+
+	importArchive := makeCOCOImportArchive(t)
+
+	initReq, err := http.NewRequest(
+		http.MethodPost,
+		httpServer.URL+"/imports/uploads:init",
+		bytes.NewBufferString(`{"mode":"project_annotations","resource_type":"project","resource_id":"`+project.ID.String()+`","filename":"annotations.zip","size":`+jsonNumber(len(importArchive))+`,"content_type":"application/zip"}`),
+	)
+	if err != nil {
+		t.Fatalf("new upload init request: %v", err)
+	}
+	initReq.Header.Set("Authorization", "Bearer "+token)
+	initReq.Header.Set("Content-Type", "application/json")
+	initResp, err := http.DefaultClient.Do(initReq)
+	if err != nil {
+		t.Fatalf("post upload init: %v", err)
+	}
+	defer initResp.Body.Close()
+	if initResp.StatusCode != http.StatusCreated {
+		t.Fatalf("unexpected upload init status: %d", initResp.StatusCode)
+	}
+
+	var initBody map[string]any
+	if err := json.NewDecoder(initResp.Body).Decode(&initBody); err != nil {
+		t.Fatalf("decode upload init response: %v", err)
+	}
+	sessionID, _ := initBody["session_id"].(string)
+	uploadURL, _ := initBody["url"].(string)
+	if sessionID == "" || uploadURL == "" {
+		t.Fatalf("unexpected upload init body: %+v", initBody)
+	}
+
+	uploadReq, err := http.NewRequest(http.MethodPut, httpServer.URL+uploadURL, bytes.NewReader(importArchive))
+	if err != nil {
+		t.Fatalf("new upload content request: %v", err)
+	}
+	uploadReq.Header.Set("Content-Type", "application/zip")
+	uploadResp, err := http.DefaultClient.Do(uploadReq)
+	if err != nil {
+		t.Fatalf("put upload content: %v", err)
+	}
+	defer uploadResp.Body.Close()
+	if uploadResp.StatusCode != http.StatusNoContent {
+		t.Fatalf("unexpected upload content status: %d", uploadResp.StatusCode)
+	}
+
+	completeReq, err := http.NewRequest(
+		http.MethodPost,
+		httpServer.URL+"/imports/uploads/"+sessionID+":complete",
+		bytes.NewBufferString(`{"size":`+jsonNumber(len(importArchive))+`,"parts":[]}`),
+	)
+	if err != nil {
+		t.Fatalf("new upload complete request: %v", err)
+	}
+	completeReq.Header.Set("Authorization", "Bearer "+token)
+	completeReq.Header.Set("Content-Type", "application/json")
+	completeResp, err := http.DefaultClient.Do(completeReq)
+	if err != nil {
+		t.Fatalf("post upload complete: %v", err)
+	}
+	defer completeResp.Body.Close()
+	if completeResp.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected upload complete status: %d", completeResp.StatusCode)
+	}
+
+	prepareReq, err := http.NewRequest(
+		http.MethodPost,
+		httpServer.URL+"/projects/"+project.ID.String()+"/imports/annotations:prepare",
+		bytes.NewBufferString(`{"upload_session_id":"`+sessionID+`","format_profile":"coco"}`),
+	)
+	if err != nil {
+		t.Fatalf("new prepare request: %v", err)
+	}
+	prepareReq.Header.Set("Authorization", "Bearer "+token)
+	prepareReq.Header.Set("Content-Type", "application/json")
+	prepareResp, err := http.DefaultClient.Do(prepareReq)
+	if err != nil {
+		t.Fatalf("post prepare: %v", err)
+	}
+	defer prepareResp.Body.Close()
+	if prepareResp.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected prepare status: %d", prepareResp.StatusCode)
+	}
+
+	var prepareBody map[string]any
+	if err := json.NewDecoder(prepareResp.Body).Decode(&prepareBody); err != nil {
+		t.Fatalf("decode prepare response: %v", err)
+	}
+	previewToken, _ := prepareBody["preview_token"].(string)
+	if previewToken == "" {
+		t.Fatalf("missing preview token: %+v", prepareBody)
+	}
+
+	executeReq, err := http.NewRequest(
+		http.MethodPost,
+		httpServer.URL+"/projects/"+project.ID.String()+"/imports/annotations:execute",
+		bytes.NewBufferString(`{"preview_token":"`+previewToken+`"}`),
+	)
+	if err != nil {
+		t.Fatalf("new execute request: %v", err)
+	}
+	executeReq.Header.Set("Authorization", "Bearer "+token)
+	executeReq.Header.Set("Content-Type", "application/json")
+	executeResp, err := http.DefaultClient.Do(executeReq)
+	if err != nil {
+		t.Fatalf("post execute: %v", err)
+	}
+	defer executeResp.Body.Close()
+	if executeResp.StatusCode != http.StatusAccepted {
+		t.Fatalf("unexpected execute status: %d", executeResp.StatusCode)
+	}
+
+	var executeBody map[string]any
+	if err := json.NewDecoder(executeResp.Body).Decode(&executeBody); err != nil {
+		t.Fatalf("decode execute response: %v", err)
+	}
+	taskID, _ := executeBody["task_id"].(string)
+	if taskID == "" {
+		t.Fatalf("missing task id: %+v", executeBody)
+	}
+
+	taskReq, err := http.NewRequest(http.MethodGet, httpServer.URL+"/imports/tasks/"+taskID, nil)
+	if err != nil {
+		t.Fatalf("new task status request: %v", err)
+	}
+	taskReq.Header.Set("Authorization", "Bearer "+token)
+	taskResp, err := http.DefaultClient.Do(taskReq)
+	if err != nil {
+		t.Fatalf("get import task: %v", err)
+	}
+	defer taskResp.Body.Close()
+	if taskResp.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected import task status: %d", taskResp.StatusCode)
+	}
+
+	resultReq, err := http.NewRequest(http.MethodGet, httpServer.URL+"/imports/tasks/"+taskID+"/result", nil)
+	if err != nil {
+		t.Fatalf("new task result request: %v", err)
+	}
+	resultReq.Header.Set("Authorization", "Bearer "+token)
+	resultResp, err := http.DefaultClient.Do(resultReq)
+	if err != nil {
+		t.Fatalf("get import task result: %v", err)
+	}
+	defer resultResp.Body.Close()
+	if resultResp.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected import task result status: %d", resultResp.StatusCode)
+	}
+	var resultBody map[string]any
+	if err := json.NewDecoder(resultResp.Body).Decode(&resultBody); err != nil {
+		t.Fatalf("decode import task result: %v", err)
+	}
+	if resultBody["status"] != "completed" {
+		t.Fatalf("unexpected import task result body: %+v", resultBody)
+	}
+
+	eventsReq, err := http.NewRequest(http.MethodGet, httpServer.URL+"/imports/tasks/"+taskID+"/events?after_seq=0", nil)
+	if err != nil {
+		t.Fatalf("new task events request: %v", err)
+	}
+	eventsReq.Header.Set("Authorization", "Bearer "+token)
+	eventsResp, err := http.DefaultClient.Do(eventsReq)
+	if err != nil {
+		t.Fatalf("get import task events: %v", err)
+	}
+	defer eventsResp.Body.Close()
+	if eventsResp.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected import task events status: %d", eventsResp.StatusCode)
+	}
+	if ct := eventsResp.Header.Get("Content-Type"); !strings.Contains(ct, "text/event-stream") {
+		t.Fatalf("unexpected import task events content-type: %s", ct)
+	}
+	eventBytes := new(bytes.Buffer)
+	if _, err := eventBytes.ReadFrom(eventsResp.Body); err != nil {
+		t.Fatalf("read import task events body: %v", err)
+	}
+	if !strings.Contains(eventBytes.String(), `"event":"complete"`) {
+		t.Fatalf("unexpected import task events body: %s", eventBytes.String())
+	}
+
+	importedListResp, err := http.Get(httpServer.URL + "/samples/" + sample.ID.String() + "/annotations")
+	if err != nil {
+		t.Fatalf("get imported sample annotations: %v", err)
+	}
+	defer importedListResp.Body.Close()
+	if importedListResp.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected imported annotation list status: %d", importedListResp.StatusCode)
+	}
+	var importedListed []map[string]any
+	if err := json.NewDecoder(importedListResp.Body).Decode(&importedListed); err != nil {
+		t.Fatalf("decode imported annotation list response: %v", err)
+	}
+	if len(importedListed) != 2 {
+		t.Fatalf("expected imported annotation to be persisted, got %+v", importedListed)
+	}
+}
+
+func makeCOCOImportArchive(t *testing.T) []byte {
+	t.Helper()
+
+	var buf bytes.Buffer
+	archive := zip.NewWriter(&buf)
+	writer, err := archive.Create("annotations.json")
+	if err != nil {
+		t.Fatalf("create annotations entry: %v", err)
+	}
+	if _, err := writer.Write([]byte(`{"images":[{"id":1,"file_name":"images/train/sample1.jpg","width":128,"height":96}],"categories":[{"id":1,"name":"car"}],"annotations":[{"id":1,"image_id":1,"category_id":1,"bbox":[10,20,30,40]}]}`)); err != nil {
+		t.Fatalf("write annotations entry: %v", err)
+	}
+	if err := archive.Close(); err != nil {
+		t.Fatalf("close archive: %v", err)
+	}
+	return buf.Bytes()
+}
+
+func jsonNumber(value int) string {
+	return strconv.Itoa(value)
 }
 
 func startSmokePostgres(t *testing.T, ctx context.Context) (*postgres.PostgresContainer, string) {

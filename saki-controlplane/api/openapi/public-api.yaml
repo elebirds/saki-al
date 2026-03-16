@@ -245,6 +245,228 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /imports/uploads:init:
+    post:
+      operationId: initImportUploadSession
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImportUploadInitRequest"
+      responses:
+        "201":
+          description: initialized upload session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportUploadInitResponse"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /imports/uploads/{session_id}/parts:sign:
+    post:
+      operationId: signImportUploadParts
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImportUploadPartSignRequest"
+      responses:
+        "200":
+          description: signed upload parts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportUploadPartSignResponse"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /imports/uploads/{session_id}:complete:
+    post:
+      operationId: completeImportUploadSession
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImportUploadCompleteRequest"
+      responses:
+        "200":
+          description: completed upload session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportUploadSession"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /imports/uploads/{session_id}:abort:
+    post:
+      operationId: abortImportUploadSession
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: aborted upload session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportUploadAbortResponse"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /imports/uploads/{session_id}:
+    get:
+      operationId: getImportUploadSession
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: upload session detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportUploadSession"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /projects/{project_id}/imports/annotations:prepare:
+    post:
+      operationId: prepareProjectAnnotationImport
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrepareProjectAnnotationImportRequest"
+      responses:
+        "200":
+          description: import preview result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrepareProjectAnnotationImportResponse"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /projects/{project_id}/imports/annotations:execute:
+    post:
+      operationId: executeProjectAnnotationImport
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExecuteProjectAnnotationImportRequest"
+      responses:
+        "202":
+          description: import task created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportTaskCreateResponse"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /imports/tasks/{task_id}:
+    get:
+      operationId: getImportTask
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: import task status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportTaskStatusResponse"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /imports/tasks/{task_id}/result:
+    get:
+      operationId: getImportTaskResult
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: import task result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportTaskResultResponse"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
     HealthResponse:
@@ -407,6 +629,356 @@ components:
           additionalProperties: true
         source:
           type: string
+    ImportUploadHeaders:
+      type: object
+      additionalProperties:
+        type: string
+    ImportUploadInitRequest:
+      type: object
+      required:
+        - mode
+        - resource_type
+        - resource_id
+        - filename
+        - size
+        - content_type
+      properties:
+        mode:
+          type: string
+        resource_type:
+          type: string
+        resource_id:
+          type: string
+        filename:
+          type: string
+        size:
+          type: integer
+          format: int64
+        content_type:
+          type: string
+    ImportUploadInitResponse:
+      type: object
+      required:
+        - session_id
+        - strategy
+        - status
+        - object_key
+        - url
+        - headers
+      properties:
+        session_id:
+          type: string
+        strategy:
+          type: string
+        status:
+          type: string
+        object_key:
+          type: string
+        url:
+          type: string
+        headers:
+          $ref: "#/components/schemas/ImportUploadHeaders"
+    ImportUploadPartSignRequest:
+      type: object
+      required:
+        - part_numbers
+      properties:
+        part_numbers:
+          type: array
+          items:
+            type: integer
+            format: int32
+    ImportUploadPartSignedItem:
+      type: object
+      required:
+        - part_number
+        - url
+        - headers
+      properties:
+        part_number:
+          type: integer
+          format: int32
+        url:
+          type: string
+        headers:
+          $ref: "#/components/schemas/ImportUploadHeaders"
+    ImportUploadPartSignResponse:
+      type: object
+      required:
+        - session_id
+        - upload_id
+        - parts
+      properties:
+        session_id:
+          type: string
+        upload_id:
+          type: string
+        parts:
+          type: array
+          items:
+            $ref: "#/components/schemas/ImportUploadPartSignedItem"
+    ImportUploadCompletedPart:
+      type: object
+      required:
+        - part_number
+        - etag
+      properties:
+        part_number:
+          type: integer
+          format: int32
+        etag:
+          type: string
+    ImportUploadCompleteRequest:
+      type: object
+      required:
+        - size
+      properties:
+        size:
+          type: integer
+          format: int64
+        parts:
+          type: array
+          items:
+            $ref: "#/components/schemas/ImportUploadCompletedPart"
+    ImportUploadSession:
+      type: object
+      required:
+        - session_id
+        - mode
+        - file_name
+        - object_key
+        - content_type
+        - status
+        - url
+        - strategy
+      properties:
+        session_id:
+          type: string
+        mode:
+          type: string
+        file_name:
+          type: string
+        object_key:
+          type: string
+        content_type:
+          type: string
+        status:
+          type: string
+        strategy:
+          type: string
+        url:
+          type: string
+        completed_at:
+          type: string
+          format: date-time
+        aborted_at:
+          type: string
+          format: date-time
+    ImportUploadAbortResponse:
+      type: object
+      required:
+        - session_id
+        - status
+      properties:
+        session_id:
+          type: string
+        status:
+          type: string
+    PrepareProjectAnnotationImportRequest:
+      type: object
+      required:
+        - upload_session_id
+        - format_profile
+      properties:
+        upload_session_id:
+          type: string
+        format_profile:
+          type: string
+        split:
+          type: string
+    ImportIssue:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+    ImportPrepareSummary:
+      type: object
+      required:
+        - format_profile
+        - total_annotations
+        - matched_annotations
+        - unmatched_annotations
+        - matched_samples
+        - unsupported_annotations
+      properties:
+        format_profile:
+          type: string
+        total_annotations:
+          type: integer
+          format: int32
+        matched_annotations:
+          type: integer
+          format: int32
+        unmatched_annotations:
+          type: integer
+          format: int32
+        matched_samples:
+          type: integer
+          format: int32
+        unsupported_annotations:
+          type: integer
+          format: int32
+    ImportPrepareMatching:
+      type: object
+      required:
+        - matched_sample_count
+        - basename_fallback_count
+        - ambiguous_match_count
+        - unmatched_sample_keys
+      properties:
+        matched_sample_count:
+          type: integer
+          format: int32
+        basename_fallback_count:
+          type: integer
+          format: int32
+        ambiguous_match_count:
+          type: integer
+          format: int32
+        unmatched_sample_keys:
+          type: array
+          items:
+            type: string
+    ImportPrepareLabelPlan:
+      type: object
+      required:
+        - planned_new_labels
+      properties:
+        planned_new_labels:
+          type: array
+          items:
+            type: string
+    ImportPrepareGeometryCapabilities:
+      type: object
+      required:
+        - detected_geometry_kinds
+        - unsupported_geometry_kinds
+        - converted_geometry_counts
+      properties:
+        detected_geometry_kinds:
+          type: array
+          items:
+            type: string
+        unsupported_geometry_kinds:
+          type: array
+          items:
+            type: string
+        converted_geometry_counts:
+          type: object
+          additionalProperties:
+            type: integer
+            format: int32
+    PrepareProjectAnnotationImportResponse:
+      type: object
+      required:
+        - summary
+        - matching
+        - label_plan
+        - geometry_capabilities
+        - warnings
+        - errors
+        - preview_token
+      properties:
+        summary:
+          $ref: "#/components/schemas/ImportPrepareSummary"
+        matching:
+          $ref: "#/components/schemas/ImportPrepareMatching"
+        label_plan:
+          $ref: "#/components/schemas/ImportPrepareLabelPlan"
+        geometry_capabilities:
+          $ref: "#/components/schemas/ImportPrepareGeometryCapabilities"
+        warnings:
+          type: array
+          items:
+            $ref: "#/components/schemas/ImportIssue"
+        errors:
+          type: array
+          items:
+            $ref: "#/components/schemas/ImportIssue"
+        preview_token:
+          type: string
+    ExecuteProjectAnnotationImportRequest:
+      type: object
+      required:
+        - preview_token
+      properties:
+        preview_token:
+          type: string
+    ImportTaskCreateResponse:
+      type: object
+      required:
+        - task_id
+        - status
+        - status_url
+        - result_url
+        - stream_url
+      properties:
+        task_id:
+          type: string
+        status:
+          type: string
+        status_url:
+          type: string
+        result_url:
+          type: string
+        stream_url:
+          type: string
+    ImportTaskStatusResponse:
+      type: object
+      required:
+        - task_id
+        - status
+        - mode
+        - resource_type
+        - resource_id
+        - created_at
+        - updated_at
+      properties:
+        task_id:
+          type: string
+        status:
+          type: string
+        mode:
+          type: string
+        resource_type:
+          type: string
+        resource_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ImportTaskResultResponse:
+      type: object
+      required:
+        - task_id
+        - status
+        - result
+      properties:
+        task_id:
+          type: string
+        status:
+          type: string
+        result:
+          type: object
+          additionalProperties: true
     ErrorResponse:
       type: object
       required:

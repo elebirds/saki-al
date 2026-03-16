@@ -27,10 +27,18 @@ func trimTrailingSlashes(u *url.URL) {
 
 // Invoker invokes operations described by OpenAPI v3 specification.
 type Invoker interface {
+	// AbortImportUploadSession invokes abortImportUploadSession operation.
+	//
+	// POST /imports/uploads/{session_id}:abort
+	AbortImportUploadSession(ctx context.Context, params AbortImportUploadSessionParams) (*ImportUploadAbortResponse, error)
 	// CancelRuntimeTask invokes cancelRuntimeTask operation.
 	//
 	// POST /runtime/tasks/{task_id}/cancel
 	CancelRuntimeTask(ctx context.Context, params CancelRuntimeTaskParams) (*RuntimeCommandResponse, error)
+	// CompleteImportUploadSession invokes completeImportUploadSession operation.
+	//
+	// POST /imports/uploads/{session_id}:complete
+	CompleteImportUploadSession(ctx context.Context, request *ImportUploadCompleteRequest, params CompleteImportUploadSessionParams) (*ImportUploadSession, error)
 	// CreateProject invokes createProject operation.
 	//
 	// POST /projects
@@ -39,10 +47,26 @@ type Invoker interface {
 	//
 	// POST /samples/{sample_id}/annotations
 	CreateSampleAnnotations(ctx context.Context, request *CreateAnnotationRequest, params CreateSampleAnnotationsParams) ([]Annotation, error)
+	// ExecuteProjectAnnotationImport invokes executeProjectAnnotationImport operation.
+	//
+	// POST /projects/{project_id}/imports/annotations:execute
+	ExecuteProjectAnnotationImport(ctx context.Context, request *ExecuteProjectAnnotationImportRequest, params ExecuteProjectAnnotationImportParams) (*ImportTaskCreateResponse, error)
 	// GetCurrentUser invokes getCurrentUser operation.
 	//
 	// GET /auth/me
 	GetCurrentUser(ctx context.Context) (*CurrentUserResponse, error)
+	// GetImportTask invokes getImportTask operation.
+	//
+	// GET /imports/tasks/{task_id}
+	GetImportTask(ctx context.Context, params GetImportTaskParams) (*ImportTaskStatusResponse, error)
+	// GetImportTaskResult invokes getImportTaskResult operation.
+	//
+	// GET /imports/tasks/{task_id}/result
+	GetImportTaskResult(ctx context.Context, params GetImportTaskResultParams) (*ImportTaskResultResponse, error)
+	// GetImportUploadSession invokes getImportUploadSession operation.
+	//
+	// GET /imports/uploads/{session_id}
+	GetImportUploadSession(ctx context.Context, params GetImportUploadSessionParams) (*ImportUploadSession, error)
 	// GetProject invokes getProject operation.
 	//
 	// GET /projects/{project_id}
@@ -55,6 +79,10 @@ type Invoker interface {
 	//
 	// GET /healthz
 	Healthz(ctx context.Context) (*HealthResponse, error)
+	// InitImportUploadSession invokes initImportUploadSession operation.
+	//
+	// POST /imports/uploads:init
+	InitImportUploadSession(ctx context.Context, request *ImportUploadInitRequest) (*ImportUploadInitResponse, error)
 	// ListProjects invokes listProjects operation.
 	//
 	// GET /projects
@@ -71,10 +99,18 @@ type Invoker interface {
 	//
 	// POST /auth/login
 	Login(ctx context.Context, request *LoginRequest) (*AuthTokenResponse, error)
+	// PrepareProjectAnnotationImport invokes prepareProjectAnnotationImport operation.
+	//
+	// POST /projects/{project_id}/imports/annotations:prepare
+	PrepareProjectAnnotationImport(ctx context.Context, request *PrepareProjectAnnotationImportRequest, params PrepareProjectAnnotationImportParams) (*PrepareProjectAnnotationImportResponse, error)
 	// RequirePermission invokes requirePermission operation.
 	//
 	// GET /auth/permissions/{permission}
 	RequirePermission(ctx context.Context, params RequirePermissionParams) error
+	// SignImportUploadParts invokes signImportUploadParts operation.
+	//
+	// POST /imports/uploads/{session_id}/parts:sign
+	SignImportUploadParts(ctx context.Context, request *ImportUploadPartSignRequest, params SignImportUploadPartsParams) (*ImportUploadPartSignResponse, error)
 }
 
 // Client implements OAS client.
@@ -114,6 +150,97 @@ func (c *Client) requestURL(ctx context.Context) *url.URL {
 		return c.serverURL
 	}
 	return u
+}
+
+// AbortImportUploadSession invokes abortImportUploadSession operation.
+//
+// POST /imports/uploads/{session_id}:abort
+func (c *Client) AbortImportUploadSession(ctx context.Context, params AbortImportUploadSessionParams) (*ImportUploadAbortResponse, error) {
+	res, err := c.sendAbortImportUploadSession(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendAbortImportUploadSession(ctx context.Context, params AbortImportUploadSessionParams) (res *ImportUploadAbortResponse, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("abortImportUploadSession"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/imports/uploads/{session_id}:abort"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, AbortImportUploadSessionOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/imports/uploads/"
+	{
+		// Encode "session_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "session_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.SessionID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = ":abort"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeAbortImportUploadSessionResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
 }
 
 // CancelRuntimeTask invokes cancelRuntimeTask operation.
@@ -200,6 +327,100 @@ func (c *Client) sendCancelRuntimeTask(ctx context.Context, params CancelRuntime
 
 	stage = "DecodeResponse"
 	result, err := decodeCancelRuntimeTaskResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// CompleteImportUploadSession invokes completeImportUploadSession operation.
+//
+// POST /imports/uploads/{session_id}:complete
+func (c *Client) CompleteImportUploadSession(ctx context.Context, request *ImportUploadCompleteRequest, params CompleteImportUploadSessionParams) (*ImportUploadSession, error) {
+	res, err := c.sendCompleteImportUploadSession(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendCompleteImportUploadSession(ctx context.Context, request *ImportUploadCompleteRequest, params CompleteImportUploadSessionParams) (res *ImportUploadSession, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("completeImportUploadSession"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/imports/uploads/{session_id}:complete"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, CompleteImportUploadSessionOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/imports/uploads/"
+	{
+		// Encode "session_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "session_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.SessionID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = ":complete"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeCompleteImportUploadSessionRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeCompleteImportUploadSessionResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -376,6 +597,100 @@ func (c *Client) sendCreateSampleAnnotations(ctx context.Context, request *Creat
 	return result, nil
 }
 
+// ExecuteProjectAnnotationImport invokes executeProjectAnnotationImport operation.
+//
+// POST /projects/{project_id}/imports/annotations:execute
+func (c *Client) ExecuteProjectAnnotationImport(ctx context.Context, request *ExecuteProjectAnnotationImportRequest, params ExecuteProjectAnnotationImportParams) (*ImportTaskCreateResponse, error) {
+	res, err := c.sendExecuteProjectAnnotationImport(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendExecuteProjectAnnotationImport(ctx context.Context, request *ExecuteProjectAnnotationImportRequest, params ExecuteProjectAnnotationImportParams) (res *ImportTaskCreateResponse, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("executeProjectAnnotationImport"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/projects/{project_id}/imports/annotations:execute"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, ExecuteProjectAnnotationImportOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/projects/"
+	{
+		// Encode "project_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "project_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.ProjectID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/imports/annotations:execute"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeExecuteProjectAnnotationImportRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeExecuteProjectAnnotationImportResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // GetCurrentUser invokes getCurrentUser operation.
 //
 // GET /auth/me
@@ -441,6 +756,277 @@ func (c *Client) sendGetCurrentUser(ctx context.Context) (res *CurrentUserRespon
 
 	stage = "DecodeResponse"
 	result, err := decodeGetCurrentUserResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// GetImportTask invokes getImportTask operation.
+//
+// GET /imports/tasks/{task_id}
+func (c *Client) GetImportTask(ctx context.Context, params GetImportTaskParams) (*ImportTaskStatusResponse, error) {
+	res, err := c.sendGetImportTask(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendGetImportTask(ctx context.Context, params GetImportTaskParams) (res *ImportTaskStatusResponse, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("getImportTask"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/imports/tasks/{task_id}"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, GetImportTaskOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [2]string
+	pathParts[0] = "/imports/tasks/"
+	{
+		// Encode "task_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "task_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.TaskID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeGetImportTaskResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// GetImportTaskResult invokes getImportTaskResult operation.
+//
+// GET /imports/tasks/{task_id}/result
+func (c *Client) GetImportTaskResult(ctx context.Context, params GetImportTaskResultParams) (*ImportTaskResultResponse, error) {
+	res, err := c.sendGetImportTaskResult(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendGetImportTaskResult(ctx context.Context, params GetImportTaskResultParams) (res *ImportTaskResultResponse, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("getImportTaskResult"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/imports/tasks/{task_id}/result"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, GetImportTaskResultOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/imports/tasks/"
+	{
+		// Encode "task_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "task_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.TaskID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/result"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeGetImportTaskResultResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// GetImportUploadSession invokes getImportUploadSession operation.
+//
+// GET /imports/uploads/{session_id}
+func (c *Client) GetImportUploadSession(ctx context.Context, params GetImportUploadSessionParams) (*ImportUploadSession, error) {
+	res, err := c.sendGetImportUploadSession(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendGetImportUploadSession(ctx context.Context, params GetImportUploadSessionParams) (res *ImportUploadSession, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("getImportUploadSession"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/imports/uploads/{session_id}"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, GetImportUploadSessionOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [2]string
+	pathParts[0] = "/imports/uploads/"
+	{
+		// Encode "session_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "session_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.SessionID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeGetImportUploadSessionResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -675,6 +1261,81 @@ func (c *Client) sendHealthz(ctx context.Context) (res *HealthResponse, err erro
 
 	stage = "DecodeResponse"
 	result, err := decodeHealthzResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// InitImportUploadSession invokes initImportUploadSession operation.
+//
+// POST /imports/uploads:init
+func (c *Client) InitImportUploadSession(ctx context.Context, request *ImportUploadInitRequest) (*ImportUploadInitResponse, error) {
+	res, err := c.sendInitImportUploadSession(ctx, request)
+	return res, err
+}
+
+func (c *Client) sendInitImportUploadSession(ctx context.Context, request *ImportUploadInitRequest) (res *ImportUploadInitResponse, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("initImportUploadSession"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/imports/uploads:init"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, InitImportUploadSessionOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/imports/uploads:init"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeInitImportUploadSessionRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeInitImportUploadSessionResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -992,6 +1653,100 @@ func (c *Client) sendLogin(ctx context.Context, request *LoginRequest) (res *Aut
 	return result, nil
 }
 
+// PrepareProjectAnnotationImport invokes prepareProjectAnnotationImport operation.
+//
+// POST /projects/{project_id}/imports/annotations:prepare
+func (c *Client) PrepareProjectAnnotationImport(ctx context.Context, request *PrepareProjectAnnotationImportRequest, params PrepareProjectAnnotationImportParams) (*PrepareProjectAnnotationImportResponse, error) {
+	res, err := c.sendPrepareProjectAnnotationImport(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendPrepareProjectAnnotationImport(ctx context.Context, request *PrepareProjectAnnotationImportRequest, params PrepareProjectAnnotationImportParams) (res *PrepareProjectAnnotationImportResponse, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("prepareProjectAnnotationImport"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/projects/{project_id}/imports/annotations:prepare"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, PrepareProjectAnnotationImportOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/projects/"
+	{
+		// Encode "project_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "project_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.ProjectID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/imports/annotations:prepare"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodePrepareProjectAnnotationImportRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodePrepareProjectAnnotationImportResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // RequirePermission invokes requirePermission operation.
 //
 // GET /auth/permissions/{permission}
@@ -1075,6 +1830,100 @@ func (c *Client) sendRequirePermission(ctx context.Context, params RequirePermis
 
 	stage = "DecodeResponse"
 	result, err := decodeRequirePermissionResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// SignImportUploadParts invokes signImportUploadParts operation.
+//
+// POST /imports/uploads/{session_id}/parts:sign
+func (c *Client) SignImportUploadParts(ctx context.Context, request *ImportUploadPartSignRequest, params SignImportUploadPartsParams) (*ImportUploadPartSignResponse, error) {
+	res, err := c.sendSignImportUploadParts(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendSignImportUploadParts(ctx context.Context, request *ImportUploadPartSignRequest, params SignImportUploadPartsParams) (res *ImportUploadPartSignResponse, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("signImportUploadParts"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/imports/uploads/{session_id}/parts:sign"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, SignImportUploadPartsOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/imports/uploads/"
+	{
+		// Encode "session_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "session_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.SessionID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/parts:sign"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeSignImportUploadPartsRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeSignImportUploadPartsResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}

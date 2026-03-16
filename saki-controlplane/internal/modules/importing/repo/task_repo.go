@@ -83,6 +83,24 @@ func (r *TaskRepo) Get(ctx context.Context, id uuid.UUID) (*ImportTask, error) {
 	return mapImportTask(row), nil
 }
 
+func (r *TaskRepo) MarkRunning(ctx context.Context, taskID uuid.UUID) error {
+	return r.q.MarkImportTaskRunning(ctx, taskID)
+}
+
+func (r *TaskRepo) MarkCompleted(ctx context.Context, taskID uuid.UUID, result []byte) error {
+	return r.q.MarkImportTaskCompleted(ctx, sqlcdb.MarkImportTaskCompletedParams{
+		ID:     taskID,
+		Result: result,
+	})
+}
+
+func (r *TaskRepo) MarkFailed(ctx context.Context, taskID uuid.UUID, result []byte) error {
+	return r.q.MarkImportTaskFailed(ctx, sqlcdb.MarkImportTaskFailedParams{
+		ID:     taskID,
+		Result: result,
+	})
+}
+
 func (r *TaskRepo) AppendEvent(ctx context.Context, params AppendTaskEventParams) (*ImportTaskEvent, error) {
 	row, err := r.q.AppendImportTaskEvent(ctx, sqlcdb.AppendImportTaskEventParams{
 		TaskID:  params.TaskID,

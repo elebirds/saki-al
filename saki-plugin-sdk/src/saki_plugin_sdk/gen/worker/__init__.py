@@ -1,0 +1,1 @@
+"""Generated worker bindings."""

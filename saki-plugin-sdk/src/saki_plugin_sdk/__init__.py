@@ -25,6 +25,15 @@ from saki_plugin_sdk.config import (
 )
 from saki_plugin_sdk.workspace import Workspace
 from saki_plugin_sdk.workspace_protocol import WorkspaceProtocol
+from saki_plugin_sdk.worker_main import main as run_worker_main
+from saki_plugin_sdk.worker_runtime import (
+    FRAME_EXECUTE_REQUEST,
+    FRAME_EXECUTE_RESULT,
+    FRAME_WORKER_EVENT,
+    read_framed_message,
+    run_worker_session,
+    write_framed_message,
+)
 from saki_plugin_sdk.reporter import TaskReporter
 from saki_plugin_sdk.manifest import PluginManifest
 from saki_plugin_sdk.logger import PluginLogger
@@ -86,6 +95,13 @@ __all__ = [
     # Workspace & reporting
     "Workspace",
     "WorkspaceProtocol",
+    "FRAME_EXECUTE_REQUEST",
+    "FRAME_WORKER_EVENT",
+    "FRAME_EXECUTE_RESULT",
+    "read_framed_message",
+    "write_framed_message",
+    "run_worker_session",
+    "run_worker_main",
     "TaskReporter",
     "PluginManifest",
     # Logging

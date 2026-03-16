@@ -46,3 +46,4 @@ data/
 saki.db
 TODO.md
 runs/
+.worktrees/

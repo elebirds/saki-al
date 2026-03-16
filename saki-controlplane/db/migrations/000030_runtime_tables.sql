@@ -18,6 +18,16 @@ create table runtime_task (
     updated_at timestamptz not null default now()
 );
 
+create table runtime_executor (
+    id text primary key,
+    version text not null,
+    capabilities text[] not null default '{}',
+    status text not null default 'online',
+    last_seen_at timestamptz not null,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
 create table runtime_outbox (
     id bigserial primary key,
     topic text not null,
@@ -29,5 +39,6 @@ create table runtime_outbox (
 
 -- +goose Down
 drop table if exists runtime_outbox;
+drop table if exists runtime_executor;
 drop table if exists runtime_task;
 drop table if exists runtime_lease;

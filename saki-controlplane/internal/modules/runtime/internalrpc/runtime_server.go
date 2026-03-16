@@ -54,9 +54,10 @@ func (s *RuntimeServer) Register(
 	req *connect.Request[runtimev1.RegisterRequest],
 ) (*connect.Response[runtimev1.RegisterResponse], error) {
 	if _, err := s.registers.Handle(ctx, commands.RegisterExecutorCommand{
-		ExecutorID: req.Msg.GetExecutorId(),
-		Version:    req.Msg.GetVersion(),
-		SeenAt:     time.Now(),
+		ExecutorID:   req.Msg.GetExecutorId(),
+		Version:      req.Msg.GetVersion(),
+		Capabilities: append([]string(nil), req.Msg.GetCapabilities()...),
+		SeenAt:       time.Now(),
 	}); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}

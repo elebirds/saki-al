@@ -6,11 +6,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	appdb "github.com/elebirds/saki/saki-controlplane/internal/app/db"
+	"github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/commands"
 	"github.com/google/uuid"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
@@ -89,6 +91,73 @@ func TestRuntimeReposClaimLeaseAndAppendOutbox(t *testing.T) {
 	}
 	if entry.ID == 0 {
 		t.Fatal("expected outbox id")
+	}
+}
+
+func TestExecutorRepoRegisterAndHeartbeat(t *testing.T) {
+	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+
+	ctx := context.Background()
+	container, dsn := startRuntimePostgres(t, ctx)
+	defer func() {
+		_ = testcontainers.TerminateContainer(container)
+	}()
+
+	sqlDB, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("open sql db: %v", err)
+	}
+	defer sqlDB.Close()
+
+	goose.SetDialect("postgres")
+	if err := goose.Up(sqlDB, runtimeMigrationsDir(t)); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+
+	pool, err := appdb.NewPool(ctx, dsn)
+	if err != nil {
+		t.Fatalf("create pool: %v", err)
+	}
+	defer pool.Close()
+
+	executorRepo := NewExecutorRepo(pool)
+	registerAt := time.UnixMilli(111)
+	record, err := executorRepo.Register(ctx, commands.ExecutorRecord{
+		ID:           "executor-a",
+		Version:      "1.2.3",
+		Capabilities: []string{"gpu", "cuda"},
+		LastSeenAt:   registerAt,
+	})
+	if err != nil {
+		t.Fatalf("register executor: %v", err)
+	}
+	if record.ID != "executor-a" || record.Version != "1.2.3" {
+		t.Fatalf("unexpected registered record: %+v", record)
+	}
+	if !slices.Equal(record.Capabilities, []string{"gpu", "cuda"}) {
+		t.Fatalf("unexpected registered capabilities: %+v", record.Capabilities)
+	}
+	if !record.LastSeenAt.Equal(registerAt) {
+		t.Fatalf("unexpected registered last seen: %s", record.LastSeenAt)
+	}
+
+	heartbeatAt := registerAt.Add(time.Minute)
+	if err := executorRepo.Heartbeat(ctx, "executor-a", heartbeatAt); err != nil {
+		t.Fatalf("heartbeat executor: %v", err)
+	}
+
+	executors, err := executorRepo.List(ctx)
+	if err != nil {
+		t.Fatalf("list executors: %v", err)
+	}
+	if len(executors) != 1 {
+		t.Fatalf("unexpected executor count: %d", len(executors))
+	}
+	if !executors[0].LastSeenAt.Equal(heartbeatAt) {
+		t.Fatalf("unexpected heartbeat timestamp: %s", executors[0].LastSeenAt)
+	}
+	if !slices.Equal(executors[0].Capabilities, []string{"gpu", "cuda"}) {
+		t.Fatalf("unexpected persisted capabilities: %+v", executors[0].Capabilities)
 	}
 }
 

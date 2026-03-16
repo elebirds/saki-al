@@ -16,6 +16,16 @@ type Project struct {
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
+type RuntimeExecutor struct {
+	ID           string             `json:"id"`
+	Version      string             `json:"version"`
+	Capabilities []string           `json:"capabilities"`
+	Status       string             `json:"status"`
+	LastSeenAt   pgtype.Timestamptz `json:"last_seen_at"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+}
+
 type RuntimeLease struct {
 	Name       string             `json:"name"`
 	Holder     string             `json:"holder"`

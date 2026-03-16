@@ -2,19 +2,22 @@ package commands
 
 import (
 	"context"
+	"slices"
 	"time"
 )
 
 type ExecutorRecord struct {
-	ID         string
-	Version    string
-	LastSeenAt time.Time
+	ID           string
+	Version      string
+	Capabilities []string
+	LastSeenAt   time.Time
 }
 
 type RegisterExecutorCommand struct {
-	ExecutorID string
-	Version    string
-	SeenAt     time.Time
+	ExecutorID   string
+	Version      string
+	Capabilities []string
+	SeenAt       time.Time
 }
 
 type ExecutorRegistry interface {
@@ -41,8 +44,9 @@ func (h *RegisterExecutorHandler) Handle(ctx context.Context, cmd RegisterExecut
 	}
 
 	return h.registry.Register(ctx, ExecutorRecord{
-		ID:         cmd.ExecutorID,
-		Version:    cmd.Version,
-		LastSeenAt: seenAt,
+		ID:           cmd.ExecutorID,
+		Version:      cmd.Version,
+		Capabilities: slices.Clone(cmd.Capabilities),
+		LastSeenAt:   seenAt,
 	})
 }

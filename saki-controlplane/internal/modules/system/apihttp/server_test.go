@@ -36,11 +36,11 @@ func TestServerReturnsStructuredErrorResponse(t *testing.T) {
 		t.Fatalf("new http handler: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/projects", nil)
+	req := httptest.NewRequest(http.MethodGet, "/auth/permissions/projects:read", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusNotImplemented {
+	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("unexpected status: %d", rec.Code)
 	}
 
@@ -48,7 +48,7 @@ func TestServerReturnsStructuredErrorResponse(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if body["code"] != "not_implemented" {
+	if body["code"] != "unauthorized" {
 		t.Fatalf("unexpected error code: %v", body)
 	}
 	if body["message"] == "" {

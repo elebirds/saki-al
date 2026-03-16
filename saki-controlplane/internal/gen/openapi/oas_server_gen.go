@@ -8,10 +8,18 @@ import (
 
 // Handler handles operations described by OpenAPI v3 specification.
 type Handler interface {
+	// CreateProject implements createProject operation.
+	//
+	// POST /projects
+	CreateProject(ctx context.Context, req *CreateProjectRequest) (*Project, error)
 	// GetCurrentUser implements getCurrentUser operation.
 	//
 	// GET /auth/me
 	GetCurrentUser(ctx context.Context) (*CurrentUserResponse, error)
+	// GetProject implements getProject operation.
+	//
+	// GET /projects/{project_id}
+	GetProject(ctx context.Context, params GetProjectParams) (*Project, error)
 	// Healthz implements healthz operation.
 	//
 	// GET /healthz

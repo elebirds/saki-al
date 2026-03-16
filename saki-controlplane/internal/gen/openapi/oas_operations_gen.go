@@ -6,7 +6,9 @@ package openapi
 type OperationName = string
 
 const (
+	CreateProjectOperation     OperationName = "CreateProject"
 	GetCurrentUserOperation    OperationName = "GetCurrentUser"
+	GetProjectOperation        OperationName = "GetProject"
 	HealthzOperation           OperationName = "Healthz"
 	ListProjectsOperation      OperationName = "ListProjects"
 	LoginOperation             OperationName = "Login"

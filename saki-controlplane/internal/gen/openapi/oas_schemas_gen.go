@@ -47,6 +47,21 @@ func (s *AuthTokenResponse) SetPermissions(val []string) {
 	s.Permissions = val
 }
 
+// Ref: #/components/schemas/CreateProjectRequest
+type CreateProjectRequest struct {
+	Name string `json:"name"`
+}
+
+// GetName returns the value of Name.
+func (s *CreateProjectRequest) GetName() string {
+	return s.Name
+}
+
+// SetName sets the value of Name.
+func (s *CreateProjectRequest) SetName(val string) {
+	s.Name = val
+}
+
 // Ref: #/components/schemas/CurrentUserResponse
 type CurrentUserResponse struct {
 	UserID      string   `json:"user_id"`

@@ -13,10 +13,24 @@ type UnimplementedHandler struct{}
 
 var _ Handler = UnimplementedHandler{}
 
+// CreateProject implements createProject operation.
+//
+// POST /projects
+func (UnimplementedHandler) CreateProject(ctx context.Context, req *CreateProjectRequest) (r *Project, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // GetCurrentUser implements getCurrentUser operation.
 //
 // GET /auth/me
 func (UnimplementedHandler) GetCurrentUser(ctx context.Context) (r *CurrentUserResponse, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// GetProject implements getProject operation.
+//
+// GET /projects/{project_id}
+func (UnimplementedHandler) GetProject(ctx context.Context, params GetProjectParams) (r *Project, _ error) {
 	return r, ht.ErrNotImplemented
 }
 

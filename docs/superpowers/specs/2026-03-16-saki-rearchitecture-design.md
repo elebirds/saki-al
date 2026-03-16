@@ -86,6 +86,53 @@
 2. 过早拆分只会把进程内复杂度升级为分布式一致性问题。
 3. 当前项目最需要的是硬边界和强约束，而不是更多 RPC。
 
+### 5.4 第一阶段 Go 技术栈定稿
+
+第一阶段推荐技术栈固定为：
+
+- `public-api`：`OpenAPI-first + ogen`
+- `runtime / agent RPC`：`Proto + Buf + connect-go`
+- `数据库访问`：`pgx/v5 + sqlc`
+- `migration`：`goose`
+- `配置`：`caarlos0/env`
+- `日志`：`slog`
+- `观测`：`OpenTelemetry + Prometheus`
+- `依赖注入`：手写构造函数
+
+#### 为什么 `public-api` 选 `ogen`
+
+`public-api` 最终选择 `ogen`，而不是 `oapi-codegen` 或手写 `chi` handler。
+
+原因如下：
+
+1. `ogen` 更符合本项目“强类型、少样板、合同优先、少运行时魔法”的目标。
+2. 相比裸 `chi`，它显著减少 request decode / response encode / 参数绑定 / 校验样板。
+3. 相比 `oapi-codegen`，它对请求校验、类型约束和 server/client 生成更一体化。
+4. `public-api` 本质是面向浏览器和管理端的人类交互型 API，更适合 OpenAPI-first。
+
+`oapi-codegen` 可作为备选，但不作为第一阶段主方案。
+
+#### 为什么日志选 `slog`
+
+日志层最终选择 `slog`，而不是继续沿用 `zerolog` 作为主日志抽象。
+
+原因如下：
+
+1. `slog` 是 Go 标准库结构化日志接口，长期维护成本更低。
+2. 新 controlplane 首要目标是统一日志门面，而不是追求极限日志性能。
+3. `slog` 更适合与 OpenTelemetry、JSON handler、trace correlation 做统一整合。
+4. `zerolog` 可保留为局部性能优化选项，但不再作为系统主日志接口。
+
+#### 为什么数据库层选 `pgx + sqlc`
+
+数据库层最终选择 SQL-first 路线，而不是 ORM-first。
+
+原因如下：
+
+1. runtime 调度、claim、lease、outbox、批量推进都需要显式 SQL。
+2. `sqlc` 可以把 SQL 变成编译期受约束的代码，而不是把复杂查询隐藏在 ORM 中。
+3. 当前项目需要的是明确事务边界和可推理的数据访问，而不是快速拼 CRUD。
+
 ## 6. Controlplane 边界
 
 ### 6.1 必须留在 controlplane 内的模块
@@ -118,6 +165,75 @@
 - `media-processing`
 
 这些模块更偏 I/O、计算、转换、投递或独立伸缩需求，适合最终一致性。
+
+### 6.3 包结构与反巨石约束
+
+推荐目录结构如下：
+
+```text
+saki-controlplane/
+├── cmd/
+│   ├── public-api/
+│   └── runtime/
+├── api/
+│   ├── openapi/
+│   │   └── public-api.yaml
+│   └── proto/
+│       ├── runtime/v1/
+│       └── worker/v1/
+├── db/
+│   ├── migrations/
+│   ├── queries/
+│   │   ├── access/
+│   │   ├── project/
+│   │   ├── annotation/
+│   │   ├── runtime/
+│   │   ├── artifact/
+│   │   └── system/
+│   └── sqlc.yaml
+└── internal/
+    ├── app/
+    │   ├── bootstrap/
+    │   ├── config/
+    │   ├── db/
+    │   ├── observe/
+    │   ├── auth/
+    │   └── outbox/
+    ├── gen/
+    │   ├── openapi/
+    │   ├── proto/
+    │   └── sqlc/
+    └── modules/
+        ├── access/
+        ├── project/
+        ├── annotation/
+        ├── artifact/
+        ├── system/
+        └── runtime/
+```
+
+模块内结构建议统一为：
+
+- `domain/`：领域对象与规则
+- `app/`：use case、command、query
+- `repo/`：持久化适配
+- `apihttp/`：OpenAPI handler 适配
+- `internalrpc/`：ConnectRPC handler 适配
+
+`runtime` 模块应额外包含：
+
+- `state/`：状态机
+- `effects/`：副作用与 outbox 消费
+- `scheduler/`：leader tick、dispatch scan、recovery scan
+- `ingress/`：agent 事件接入
+
+必须执行的反巨石约束：
+
+1. 禁止跨模块直接 import 对方 `repo`。
+2. `domain` 不得依赖 `apihttp`、`internalrpc`、`repo`、生成代码。
+3. `shared` 只允许放极少量基础设施，不允许堆放业务概念。
+4. `sqlc`、`ogen`、`proto` 生成代码统一放在 `internal/gen`，禁止渗透到 `domain`。
+5. SQL 文件按模块组织，禁止长期维持单个超大 query 文件。
 
 ## 7. 运行角色与部署拓扑
 
@@ -216,6 +332,52 @@
 3. 将副作用从状态迁移中剥离。
 4. 让每个状态机都能被穷举测试。
 
+### 9.4 Runtime 模块代码组织
+
+推荐将 `runtime` 模块拆成以下层次：
+
+```text
+runtime/
+├── domain/
+├── state/
+│   ├── task_machine.go
+│   ├── round_machine.go
+│   └── loop_machine.go
+├── app/
+│   ├── commands/
+│   ├── queries/
+│   ├── ingress/
+│   └── scheduler/
+├── repo/
+└── effects/
+```
+
+职责划分如下：
+
+1. `state/` 只做 `Decide + Evolve`，不发 RPC、不写数据库。
+2. `app/commands/` 负责事务、状态迁移、写快照、写 outbox。
+3. `app/scheduler/` 只负责发现“该发什么 command”，不直接随手改状态。
+4. `effects/` 负责真正执行 dispatch、stop、读模型投影、事件流推送等副作用。
+5. `Task / Round / Loop` 各自独立状态机，跨聚合推进由应用层协调而不是相互直接修改。
+
+### 9.5 幂等与恢复约束
+
+runtime 必须把重试、重扫、重放视为常态，而不是异常。
+
+建议在 runtime 核心链路中统一使用：
+
+- `command_id`
+- `request_id`
+- `leader_epoch`
+- `execution_id`
+- outbox 去重键
+
+这样可以保证：
+
+1. scheduler 多扫一次不会破坏状态。
+2. effect 重试一次不会重复产生副作用。
+3. 旧 leader 在 lease 失效后恢复也无法继续写入有效推进。
+
 ## 10. 协议治理与 Proto 重构原则
 
 ### 10.1 保留什么
@@ -242,11 +404,10 @@
 
 建议将协议重组为更清晰的边界，例如：
 
-- `agent.proto`
-- `runtime_events.proto`
-- `runtime_admin.proto`
+- `agent_control.proto`
+- `agent_events.proto`
 - `artifact.proto`
-- `controlplane_commands.proto`
+- `worker.proto`
 
 同时遵循以下规则：
 
@@ -254,6 +415,101 @@
 2. 仅在插件扩展点保留 `Struct`。
 3. 将运行时执行期必须同步调用 controlplane 的接口缩减到最低。
 4. 前端和 agent 统一消费生成代码，不再维护手写超大客户端。
+
+### 10.4 三套合同边界
+
+本系统最终只保留三套主要合同：
+
+1. `Public HTTP API`
+2. `Runtime / Agent RPC`
+3. `Local Worker Protocol`
+
+#### Public HTTP API
+
+面向：
+
+- 浏览器
+- 管理端
+- 用户态命令与查询
+
+技术形态：
+
+- `OpenAPI + ogen`
+
+负责：
+
+- 业务 CRUD
+- 列表与详情查询
+- 资源成员与权限管理
+- loop / round / task 的管理命令
+- import / export / settings
+
+不负责：
+
+- agent 长连接
+- 心跳与流式运行时事件
+- 本地 worker 通信
+
+#### Runtime / Agent RPC
+
+面向：
+
+- `saki-agent`
+
+技术形态：
+
+- `Proto + Buf + connect-go`
+
+负责：
+
+- register
+- heartbeat
+- assign / stop
+- task event stream
+- artifact ticket
+- runtime update command
+
+不负责：
+
+- 浏览器业务页面 API
+- 用户态复杂管理查询
+- 本地 worker 调用
+
+#### Local Worker Protocol
+
+面向：
+
+- `agent <-> python plugin worker`
+- `controlplane <-> annotation mapping engine`
+
+技术形态：
+
+- 第一阶段采用 `stdio + framed protobuf messages`
+
+负责：
+
+- 本地执行调用
+- 本地日志、进度、结果回传
+
+不负责：
+
+- 跨机服务通信
+- 浏览器访问
+
+### 10.5 生成代码策略
+
+生成代码统一组织如下：
+
+- OpenAPI 输入：`api/openapi/public-api.yaml`
+- Proto 输入：`api/proto/runtime/v1/*.proto`
+- Worker Protocol 输入：`api/proto/worker/v1/*.proto`
+- 生成产物统一放在 `internal/gen`
+
+必须执行的规则：
+
+1. 前端只消费生成 client，不再维护手写总网关。
+2. agent 只消费 runtime proto 与 worker proto。
+3. worker proto 不暴露给浏览器，也不混入 public API。
 
 ## 11. Annotation 语义与 Mapping Engine
 
@@ -284,6 +540,65 @@ annotation geometry 的真相应继续围绕 `saki-ir` 建立，包括：
 1. 当前算法依赖 NumPy/OpenCV，Python 生态更成熟。
 2. 重构的首要目标是收敛系统边界，而不是同时重写成熟算法。
 3. 先把算法从业务层剥离并用强类型契约包起来，再决定是否需要语言迁移，风险更低。
+
+### 11.4 Agent 与 Plugin Worker 模型
+
+执行面最终收敛为：
+
+- `controlplane` 只和 `agent` 通信
+- `agent` 负责管理 Python plugin worker
+- plugin worker 不直接写数据库、不直接连接 controlplane、不拥有 runtime 真相
+
+推荐执行链路：
+
+```text
+controlplane(runtime role)
+        |
+        | ConnectRPC / Proto
+        v
+    saki-agent (Go)
+        |
+        | stdio framed protocol
+        v
+python plugin worker
+```
+
+`agent` 负责：
+
+- 注册自身能力
+- 心跳
+- 接收任务
+- 准备 workspace、cache、artifact
+- 启停和监控 worker
+- 转发日志、指标、进度与结果
+
+plugin worker 负责：
+
+- 只执行算法逻辑
+- 接收标准化输入
+- 输出标准化事件与结果
+
+第一阶段 worker 生命周期建议：
+
+- 默认 `ephemeral worker`
+- 按需支持 `warm worker`
+- 暂不实现复杂 worker pool
+
+### 11.5 Mapping Engine 的宿主位置
+
+`annotation mapping engine` 不属于执行面插件，不应放进 `agent`，也不应嵌入 controlplane 主进程。
+
+第一阶段推荐形态：
+
+- 作为 controlplane 调用的本地 sidecar / 子进程
+- 使用独立 `worker proto`
+- 输出统一对齐 `saki-ir geometry`
+
+原因：
+
+1. mapping 属于控制面算法子系统，而不是训练/推理执行子系统。
+2. 若嵌入 controlplane 主进程，会把 OpenCV/NumPy 依赖重新污染控制面。
+3. 若放进 agent，会重新模糊控制面与执行面的边界。
 
 ## 12. 命名建议
 
@@ -335,6 +650,7 @@ annotation geometry 的真相应继续围绕 `saki-ir` 建立，包括：
 
 - 建立 Go 代码库结构、模块边界、配置体系、repo 层、事务与日志框架
 - 先打通 `public-api role` 与 `runtime role` 的最小骨架
+- 建立 `ogen`、`connect-go`、`sqlc`、`goose`、`slog` 的基础流水线
 
 ### 阶段 2：迁移 runtime 核心链路
 
@@ -362,6 +678,7 @@ annotation geometry 的真相应继续围绕 `saki-ir` 建立，包括：
 
 - 将 OpenCV / NumPy / LUT 映射逻辑从控制面业务层移出
 - 建立强类型调用契约
+- 建立 `controlplane <-> mapping engine` 的 worker 协议
 
 ### 阶段 5：重写 agent host
 
@@ -369,6 +686,7 @@ annotation geometry 的真相应继续围绕 `saki-ir` 建立，包括：
 
 - 将 executor 宿主迁移到 Go
 - 保留 Python plugin worker 作为算法执行层
+- 固化 `agent <-> plugin worker` 的本地执行协议与生命周期管理
 
 ### 阶段 6：清理前端契约层
 
@@ -380,7 +698,7 @@ annotation geometry 的真相应继续围绕 `saki-ir` 建立，包括：
 ## 15. 风险与待确认项
 
 1. runtime 执行前需物化哪些数据快照，需要进一步细化。
-2. annotation mapping engine 的调用方式，需要在 `进程内嵌入 / sidecar / 独立 worker` 中明确第一阶段选型。
+2. annotation mapping engine 的 sidecar / 子进程生命周期管理与资源隔离策略，需要进一步细化。
 3. proto 重构时是否保留旧 agent 兼容层，需要结合迁移节奏评估。
 4. 主库 schema 在 controlplane 合并后是否立刻重整，需要结合迁移成本决定。
 
@@ -396,3 +714,5 @@ annotation geometry 的真相应继续围绕 `saki-ir` 建立，包括：
 6. 保留 proto 的领域语义，不保留现有 wire format 细节。
 7. 将 annotation geometry 真相与 annotation mapping 算法引擎分层。
 8. 按阶段渐进迁移，先解决 runtime 核心耦合与可用性问题。
+9. `public-api` 采用 `ogen`，日志统一采用 `slog`，数据库访问统一采用 `pgx + sqlc + goose`。
+10. 合同层固定为 `OpenAPI / Runtime Proto / Worker Proto` 三套，不再混用。

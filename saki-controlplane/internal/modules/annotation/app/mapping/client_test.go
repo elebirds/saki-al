@@ -83,7 +83,7 @@ func runMappingHelperProcess() {
 		panic("unexpected time gap threshold")
 	}
 
-	if err := writeExecuteResult(os.Stdout, mapResponse{
+	if err := writeExecuteResult(os.Stdout, MapFedoOBBResponse{
 		MappedGeometries: []map[string]any{
 			{
 				"rect": map[string]any{

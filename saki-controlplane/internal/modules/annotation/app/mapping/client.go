@@ -22,15 +22,15 @@ func NewClient(cfg ClientConfig) *Client {
 	return &Client{cfg: cfg}
 }
 
-func (c *Client) MapFedoOBB(ctx context.Context, req MapFedoOBBRequest) (mapResponse, error) {
+func (c *Client) MapFedoOBB(ctx context.Context, req MapFedoOBBRequest) (MapFedoOBBResponse, error) {
 	if len(c.cfg.Command) == 0 {
-		return mapResponse{}, errors.New("mapping sidecar command is required")
+		return MapFedoOBBResponse{}, errors.New("mapping sidecar command is required")
 	}
 	if req.SourceView == "" || req.TargetView == "" {
-		return mapResponse{}, errors.New("mapping source_view and target_view are required")
+		return MapFedoOBBResponse{}, errors.New("mapping source_view and target_view are required")
 	}
 	if len(req.LookupTable) == 0 {
-		return mapResponse{}, errors.New("mapping lookup table is required")
+		return MapFedoOBBResponse{}, errors.New("mapping lookup table is required")
 	}
 
 	if c.cfg.Timeout > 0 {
@@ -41,12 +41,12 @@ func (c *Client) MapFedoOBB(ctx context.Context, req MapFedoOBBRequest) (mapResp
 
 	handle, err := startProcess(ctx, c.cfg.Command, c.cfg.Env)
 	if err != nil {
-		return mapResponse{}, err
+		return MapFedoOBBResponse{}, err
 	}
 
 	payload, err := encodeMapRequest(req)
 	if err != nil {
-		return mapResponse{}, err
+		return MapFedoOBBResponse{}, err
 	}
 
 	if err := writeExecuteRequest(handle.stdin, &workerv1.ExecuteRequest{
@@ -57,20 +57,20 @@ func (c *Client) MapFedoOBB(ctx context.Context, req MapFedoOBBRequest) (mapResp
 	}); err != nil {
 		_ = handle.stdin.Close()
 		_ = handle.cmd.Wait()
-		return mapResponse{}, err
+		return MapFedoOBBResponse{}, err
 	}
 	_ = handle.stdin.Close()
 
 	result, err := readExecuteResult(handle.stdout)
 	if err != nil {
 		_ = handle.cmd.Wait()
-		return mapResponse{}, err
+		return MapFedoOBBResponse{}, err
 	}
 	if err := handle.cmd.Wait(); err != nil {
-		return mapResponse{}, err
+		return MapFedoOBBResponse{}, err
 	}
 	if !result.GetOk() {
-		return mapResponse{}, errors.New(result.GetErrorMessage())
+		return MapFedoOBBResponse{}, errors.New(result.GetErrorMessage())
 	}
 
 	return decodeMapResponse(result.GetPayload())

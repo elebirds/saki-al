@@ -24,6 +24,7 @@ type Dependencies struct {
 	RuntimeTaskCanceler runtimequeries.RuntimeTaskCanceler
 	AnnotationSamples   annotationapp.SampleStore
 	AnnotationStore     annotationapp.AnnotationStore
+	AnnotationMapper    annotationapp.Mapper
 }
 
 type Server struct {
@@ -59,6 +60,7 @@ func NewHandler(deps Dependencies) (*Server, error) {
 		annotation: annotationapi.NewHandlers(
 			deps.AnnotationSamples,
 			deps.AnnotationStore,
+			deps.AnnotationMapper,
 		),
 		project: projectapi.NewHandlers(deps.ProjectStore),
 		runtime: runtimeapi.NewHandlers(runtimeapi.Dependencies{

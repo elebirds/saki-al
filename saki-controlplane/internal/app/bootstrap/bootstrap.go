@@ -10,6 +10,7 @@ import (
 	appdb "github.com/elebirds/saki/saki-controlplane/internal/app/db"
 	"github.com/elebirds/saki/saki-controlplane/internal/app/observe"
 	accessapp "github.com/elebirds/saki/saki-controlplane/internal/modules/access/app"
+	annotationmapping "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/app/mapping"
 	annotationrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/repo"
 	projectapp "github.com/elebirds/saki/saki-controlplane/internal/modules/project/app"
 	projectrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/project/repo"
@@ -47,6 +48,18 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 		RuntimeTaskCanceler: runtimecommands.NewCancelTaskHandler(taskRepo, runtimerepo.NewCommandOutboxWriter(pool)),
 		AnnotationSamples:   sampleRepo,
 		AnnotationStore:     annotationRepo,
+		AnnotationMapper: annotationmapping.NewClient(annotationmapping.ClientConfig{
+			Command: []string{
+				"uv",
+				"run",
+				"--project",
+				"../saki-mapping-engine",
+				"python",
+				"-m",
+				"saki_mapping_engine.worker_main",
+			},
+			Timeout: 5 * time.Second,
+		}),
 	})
 	if err != nil {
 		pool.Close()

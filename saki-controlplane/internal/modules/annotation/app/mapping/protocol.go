@@ -26,7 +26,7 @@ type MapFedoOBBRequest struct {
 	TimeGapThreshold int            `json:"-"`
 }
 
-type mapResponse struct {
+type MapFedoOBBResponse struct {
 	MappedGeometries []map[string]any `json:"mapped_geometries"`
 }
 
@@ -48,8 +48,8 @@ func encodeMapRequest(req MapFedoOBBRequest) ([]byte, error) {
 	})
 }
 
-func decodeMapResponse(payload []byte) (mapResponse, error) {
-	var response mapResponse
+func decodeMapResponse(payload []byte) (MapFedoOBBResponse, error) {
+	var response MapFedoOBBResponse
 	err := json.Unmarshal(payload, &response)
 	return response, err
 }
@@ -71,7 +71,7 @@ func readExecuteRequest(r io.Reader) (*workerv1.ExecuteRequest, error) {
 	return &req, nil
 }
 
-func writeExecuteResult(w io.Writer, response mapResponse) error {
+func writeExecuteResult(w io.Writer, response MapFedoOBBResponse) error {
 	payload, err := json.Marshal(response)
 	if err != nil {
 		return err

@@ -17,9 +17,9 @@ type Handlers struct {
 	list   *annotationapp.ListAnnotationsUseCase
 }
 
-func NewHandlers(samples annotationapp.SampleStore, annotations annotationapp.AnnotationStore) *Handlers {
+func NewHandlers(samples annotationapp.SampleStore, annotations annotationapp.AnnotationStore, mapper annotationapp.Mapper) *Handlers {
 	return &Handlers{
-		create: annotationapp.NewCreateAnnotationUseCase(samples, annotations),
+		create: annotationapp.NewCreateAnnotationUseCase(samples, annotations, mapper),
 		list:   annotationapp.NewListAnnotationsUseCase(annotations),
 	}
 }

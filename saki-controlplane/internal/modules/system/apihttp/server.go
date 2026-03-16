@@ -11,6 +11,8 @@ import (
 	accessapp "github.com/elebirds/saki/saki-controlplane/internal/modules/access/app"
 	projectapi "github.com/elebirds/saki/saki-controlplane/internal/modules/project/apihttp"
 	projectapp "github.com/elebirds/saki/saki-controlplane/internal/modules/project/app"
+	runtimeapi "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/apihttp"
+	runtimequeries "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/queries"
 )
 
 type Server struct {
@@ -18,14 +20,17 @@ type Server struct {
 
 	access  *accessapi.Handlers
 	project *projectapi.Handlers
+	runtime *runtimeapi.Handlers
 }
 
 func NewHandler() *Server {
 	authenticator := accessapp.NewAuthenticator("dev-secret", 24*time.Hour)
 	projectStore := projectapp.NewMemoryStore()
+	runtimeStore := runtimequeries.NewMemoryAdminStore()
 	return &Server{
 		access:  accessapi.NewHandlers(authenticator),
 		project: projectapi.NewHandlers(projectStore),
+		runtime: runtimeapi.NewHandlers(runtimeStore),
 	}
 }
 
@@ -57,6 +62,10 @@ func (s *Server) CreateProject(ctx context.Context, req *openapi.CreateProjectRe
 	return s.project.CreateProject(ctx, req)
 }
 
+func (s *Server) CancelRuntimeTask(ctx context.Context, params openapi.CancelRuntimeTaskParams) (*openapi.RuntimeCommandResponse, error) {
+	return s.runtime.CancelRuntimeTask(ctx, params)
+}
+
 func (s *Server) GetCurrentUser(ctx context.Context) (*openapi.CurrentUserResponse, error) {
 	return s.access.GetCurrentUser(ctx)
 }
@@ -65,8 +74,16 @@ func (s *Server) GetProject(ctx context.Context, params openapi.GetProjectParams
 	return s.project.GetProject(ctx, params)
 }
 
+func (s *Server) GetRuntimeSummary(ctx context.Context) (*openapi.RuntimeSummaryResponse, error) {
+	return s.runtime.GetRuntimeSummary(ctx)
+}
+
 func (s *Server) ListProjects(ctx context.Context) ([]openapi.Project, error) {
 	return s.project.ListProjects(ctx)
+}
+
+func (s *Server) ListRuntimeExecutors(ctx context.Context) ([]openapi.RuntimeExecutor, error) {
+	return s.runtime.ListRuntimeExecutors(ctx)
 }
 
 func (s *Server) RequirePermission(ctx context.Context, params openapi.RequirePermissionParams) error {

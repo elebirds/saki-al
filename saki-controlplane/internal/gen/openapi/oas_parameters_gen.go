@@ -14,6 +14,71 @@ import (
 	"github.com/ogen-go/ogen/validate"
 )
 
+// CancelRuntimeTaskParams is parameters of cancelRuntimeTask operation.
+type CancelRuntimeTaskParams struct {
+	TaskID string
+}
+
+func unpackCancelRuntimeTaskParams(packed middleware.Parameters) (params CancelRuntimeTaskParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "task_id",
+			In:   "path",
+		}
+		params.TaskID = packed[key].(string)
+	}
+	return params
+}
+
+func decodeCancelRuntimeTaskParams(args [1]string, argsEscaped bool, r *http.Request) (params CancelRuntimeTaskParams, _ error) {
+	// Decode path: task_id.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "task_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.TaskID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "task_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
 // GetProjectParams is parameters of getProject operation.
 type GetProjectParams struct {
 	ProjectID string

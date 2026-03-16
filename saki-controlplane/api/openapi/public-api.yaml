@@ -136,6 +136,62 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /runtime/summary:
+    get:
+      operationId: getRuntimeSummary
+      responses:
+        "200":
+          description: runtime summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RuntimeSummaryResponse"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /runtime/executors:
+    get:
+      operationId: listRuntimeExecutors
+      responses:
+        "200":
+          description: runtime executors
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RuntimeExecutor"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /runtime/tasks/{task_id}/cancel:
+    post:
+      operationId: cancelRuntimeTask
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "202":
+          description: runtime command accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RuntimeCommandResponse"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
     HealthResponse:
@@ -200,6 +256,43 @@ components:
           type: array
           items:
             type: string
+    RuntimeSummaryResponse:
+      type: object
+      required:
+        - pending_tasks
+        - running_tasks
+        - leader_epoch
+      properties:
+        pending_tasks:
+          type: integer
+          format: int32
+        running_tasks:
+          type: integer
+          format: int32
+        leader_epoch:
+          type: integer
+          format: int64
+    RuntimeExecutor:
+      type: object
+      required:
+        - id
+        - version
+        - last_seen_at
+      properties:
+        id:
+          type: string
+        version:
+          type: string
+        last_seen_at:
+          type: string
+          format: date-time
+    RuntimeCommandResponse:
+      type: object
+      required:
+        - accepted
+      properties:
+        accepted:
+          type: boolean
     ErrorResponse:
       type: object
       required:

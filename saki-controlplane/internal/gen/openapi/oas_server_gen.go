@@ -8,6 +8,10 @@ import (
 
 // Handler handles operations described by OpenAPI v3 specification.
 type Handler interface {
+	// CancelRuntimeTask implements cancelRuntimeTask operation.
+	//
+	// POST /runtime/tasks/{task_id}/cancel
+	CancelRuntimeTask(ctx context.Context, params CancelRuntimeTaskParams) (*RuntimeCommandResponse, error)
 	// CreateProject implements createProject operation.
 	//
 	// POST /projects
@@ -20,6 +24,10 @@ type Handler interface {
 	//
 	// GET /projects/{project_id}
 	GetProject(ctx context.Context, params GetProjectParams) (*Project, error)
+	// GetRuntimeSummary implements getRuntimeSummary operation.
+	//
+	// GET /runtime/summary
+	GetRuntimeSummary(ctx context.Context) (*RuntimeSummaryResponse, error)
 	// Healthz implements healthz operation.
 	//
 	// GET /healthz
@@ -28,6 +36,10 @@ type Handler interface {
 	//
 	// GET /projects
 	ListProjects(ctx context.Context) ([]Project, error)
+	// ListRuntimeExecutors implements listRuntimeExecutors operation.
+	//
+	// GET /runtime/executors
+	ListRuntimeExecutors(ctx context.Context) ([]RuntimeExecutor, error)
 	// Login implements login operation.
 	//
 	// POST /auth/login

@@ -4,6 +4,7 @@ package openapi
 
 import (
 	"fmt"
+	"time"
 )
 
 func (s *ErrorResponseStatusCode) Error() string {
@@ -209,3 +210,92 @@ func (s *Project) SetName(val string) {
 
 // RequirePermissionNoContent is response for RequirePermission operation.
 type RequirePermissionNoContent struct{}
+
+// Ref: #/components/schemas/RuntimeCommandResponse
+type RuntimeCommandResponse struct {
+	Accepted bool `json:"accepted"`
+}
+
+// GetAccepted returns the value of Accepted.
+func (s *RuntimeCommandResponse) GetAccepted() bool {
+	return s.Accepted
+}
+
+// SetAccepted sets the value of Accepted.
+func (s *RuntimeCommandResponse) SetAccepted(val bool) {
+	s.Accepted = val
+}
+
+// Ref: #/components/schemas/RuntimeExecutor
+type RuntimeExecutor struct {
+	ID         string    `json:"id"`
+	Version    string    `json:"version"`
+	LastSeenAt time.Time `json:"last_seen_at"`
+}
+
+// GetID returns the value of ID.
+func (s *RuntimeExecutor) GetID() string {
+	return s.ID
+}
+
+// GetVersion returns the value of Version.
+func (s *RuntimeExecutor) GetVersion() string {
+	return s.Version
+}
+
+// GetLastSeenAt returns the value of LastSeenAt.
+func (s *RuntimeExecutor) GetLastSeenAt() time.Time {
+	return s.LastSeenAt
+}
+
+// SetID sets the value of ID.
+func (s *RuntimeExecutor) SetID(val string) {
+	s.ID = val
+}
+
+// SetVersion sets the value of Version.
+func (s *RuntimeExecutor) SetVersion(val string) {
+	s.Version = val
+}
+
+// SetLastSeenAt sets the value of LastSeenAt.
+func (s *RuntimeExecutor) SetLastSeenAt(val time.Time) {
+	s.LastSeenAt = val
+}
+
+// Ref: #/components/schemas/RuntimeSummaryResponse
+type RuntimeSummaryResponse struct {
+	PendingTasks int32 `json:"pending_tasks"`
+	RunningTasks int32 `json:"running_tasks"`
+	LeaderEpoch  int64 `json:"leader_epoch"`
+}
+
+// GetPendingTasks returns the value of PendingTasks.
+func (s *RuntimeSummaryResponse) GetPendingTasks() int32 {
+	return s.PendingTasks
+}
+
+// GetRunningTasks returns the value of RunningTasks.
+func (s *RuntimeSummaryResponse) GetRunningTasks() int32 {
+	return s.RunningTasks
+}
+
+// GetLeaderEpoch returns the value of LeaderEpoch.
+func (s *RuntimeSummaryResponse) GetLeaderEpoch() int64 {
+	return s.LeaderEpoch
+}
+
+// SetPendingTasks sets the value of PendingTasks.
+func (s *RuntimeSummaryResponse) SetPendingTasks(val int32) {
+	s.PendingTasks = val
+}
+
+// SetRunningTasks sets the value of RunningTasks.
+func (s *RuntimeSummaryResponse) SetRunningTasks(val int32) {
+	s.RunningTasks = val
+}
+
+// SetLeaderEpoch sets the value of LeaderEpoch.
+func (s *RuntimeSummaryResponse) SetLeaderEpoch(val int64) {
+	s.LeaderEpoch = val
+}

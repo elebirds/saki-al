@@ -13,6 +13,13 @@ type UnimplementedHandler struct{}
 
 var _ Handler = UnimplementedHandler{}
 
+// CancelRuntimeTask implements cancelRuntimeTask operation.
+//
+// POST /runtime/tasks/{task_id}/cancel
+func (UnimplementedHandler) CancelRuntimeTask(ctx context.Context, params CancelRuntimeTaskParams) (r *RuntimeCommandResponse, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // CreateProject implements createProject operation.
 //
 // POST /projects
@@ -34,6 +41,13 @@ func (UnimplementedHandler) GetProject(ctx context.Context, params GetProjectPar
 	return r, ht.ErrNotImplemented
 }
 
+// GetRuntimeSummary implements getRuntimeSummary operation.
+//
+// GET /runtime/summary
+func (UnimplementedHandler) GetRuntimeSummary(ctx context.Context) (r *RuntimeSummaryResponse, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // Healthz implements healthz operation.
 //
 // GET /healthz
@@ -45,6 +59,13 @@ func (UnimplementedHandler) Healthz(ctx context.Context) (r *HealthResponse, _ e
 //
 // GET /projects
 func (UnimplementedHandler) ListProjects(ctx context.Context) (r []Project, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// ListRuntimeExecutors implements listRuntimeExecutors operation.
+//
+// GET /runtime/executors
+func (UnimplementedHandler) ListRuntimeExecutors(ctx context.Context) (r []RuntimeExecutor, _ error) {
 	return r, ht.ErrNotImplemented
 }
 

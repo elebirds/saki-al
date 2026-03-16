@@ -9,6 +9,20 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type Annotation struct {
+	ID             uuid.UUID          `json:"id"`
+	SampleID       uuid.UUID          `json:"sample_id"`
+	GroupID        string             `json:"group_id"`
+	LabelID        string             `json:"label_id"`
+	View           string             `json:"view"`
+	AnnotationType string             `json:"annotation_type"`
+	Geometry       []byte             `json:"geometry"`
+	Attrs          []byte             `json:"attrs"`
+	Source         string             `json:"source"`
+	IsGenerated    bool               `json:"is_generated"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
 type Project struct {
 	ID        uuid.UUID          `json:"id"`
 	Name      string             `json:"name"`
@@ -52,4 +66,12 @@ type RuntimeTask struct {
 	LeaderEpoch pgtype.Int8        `json:"leader_epoch"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+type Sample struct {
+	ID          uuid.UUID          `json:"id"`
+	ProjectID   uuid.UUID          `json:"project_id"`
+	DatasetType string             `json:"dataset_type"`
+	Meta        []byte             `json:"meta"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 }

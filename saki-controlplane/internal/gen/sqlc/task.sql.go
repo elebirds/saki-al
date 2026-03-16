@@ -12,6 +12,48 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const appendImportTaskEvent = `-- name: AppendImportTaskEvent :one
+insert into import_task_event (
+    task_id,
+    event,
+    phase,
+    payload
+)
+values (
+    $1,
+    $2,
+    $3,
+    $4
+)
+returning seq, task_id, event, phase, payload, created_at
+`
+
+type AppendImportTaskEventParams struct {
+	TaskID  uuid.UUID `json:"task_id"`
+	Event   string    `json:"event"`
+	Phase   string    `json:"phase"`
+	Payload []byte    `json:"payload"`
+}
+
+func (q *Queries) AppendImportTaskEvent(ctx context.Context, arg AppendImportTaskEventParams) (ImportTaskEvent, error) {
+	row := q.db.QueryRow(ctx, appendImportTaskEvent,
+		arg.TaskID,
+		arg.Event,
+		arg.Phase,
+		arg.Payload,
+	)
+	var i ImportTaskEvent
+	err := row.Scan(
+		&i.Seq,
+		&i.TaskID,
+		&i.Event,
+		&i.Phase,
+		&i.Payload,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const claimPendingTask = `-- name: ClaimPendingTask :one
 with candidate as (
     select id
@@ -52,6 +94,64 @@ func (q *Queries) ClaimPendingTask(ctx context.Context, arg ClaimPendingTaskPara
 	return i, err
 }
 
+const createImportTask = `-- name: CreateImportTask :one
+insert into import_task (
+    id,
+    user_id,
+    mode,
+    resource_type,
+    resource_id,
+    status,
+    payload,
+    result
+)
+values (
+    $1,
+    $2,
+    $3,
+    $4,
+    $5,
+    'queued',
+    $6,
+    '{}'::jsonb
+)
+returning id, user_id, mode, resource_type, resource_id, status, payload, result, created_at, updated_at
+`
+
+type CreateImportTaskParams struct {
+	ID           uuid.UUID `json:"id"`
+	UserID       uuid.UUID `json:"user_id"`
+	Mode         string    `json:"mode"`
+	ResourceType string    `json:"resource_type"`
+	ResourceID   uuid.UUID `json:"resource_id"`
+	Payload      []byte    `json:"payload"`
+}
+
+func (q *Queries) CreateImportTask(ctx context.Context, arg CreateImportTaskParams) (ImportTask, error) {
+	row := q.db.QueryRow(ctx, createImportTask,
+		arg.ID,
+		arg.UserID,
+		arg.Mode,
+		arg.ResourceType,
+		arg.ResourceID,
+		arg.Payload,
+	)
+	var i ImportTask
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Mode,
+		&i.ResourceType,
+		&i.ResourceID,
+		&i.Status,
+		&i.Payload,
+		&i.Result,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const createRuntimeTask = `-- name: CreateRuntimeTask :one
 insert into runtime_task (id, task_type, status)
 values ($1, $2, 'pending')
@@ -73,6 +173,30 @@ func (q *Queries) CreateRuntimeTask(ctx context.Context, arg CreateRuntimeTaskPa
 		&i.ClaimedBy,
 		&i.ClaimedAt,
 		&i.LeaderEpoch,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getImportTask = `-- name: GetImportTask :one
+select id, user_id, mode, resource_type, resource_id, status, payload, result, created_at, updated_at
+from import_task
+where id = $1
+`
+
+func (q *Queries) GetImportTask(ctx context.Context, id uuid.UUID) (ImportTask, error) {
+	row := q.db.QueryRow(ctx, getImportTask, id)
+	var i ImportTask
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Mode,
+		&i.ResourceType,
+		&i.ResourceID,
+		&i.Status,
+		&i.Payload,
+		&i.Result,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -120,6 +244,48 @@ func (q *Queries) GetRuntimeTask(ctx context.Context, id uuid.UUID) (RuntimeTask
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const listImportTaskEventsAfter = `-- name: ListImportTaskEventsAfter :many
+select seq, task_id, event, phase, payload, created_at
+from import_task_event
+where task_id = $1
+  and seq > $2
+order by seq
+limit $3
+`
+
+type ListImportTaskEventsAfterParams struct {
+	TaskID     uuid.UUID `json:"task_id"`
+	AfterSeq   int64     `json:"after_seq"`
+	LimitCount int32     `json:"limit_count"`
+}
+
+func (q *Queries) ListImportTaskEventsAfter(ctx context.Context, arg ListImportTaskEventsAfterParams) ([]ImportTaskEvent, error) {
+	rows, err := q.db.Query(ctx, listImportTaskEventsAfter, arg.TaskID, arg.AfterSeq, arg.LimitCount)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ImportTaskEvent
+	for rows.Next() {
+		var i ImportTaskEvent
+		if err := rows.Scan(
+			&i.Seq,
+			&i.TaskID,
+			&i.Event,
+			&i.Phase,
+			&i.Payload,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const updateRuntimeTask = `-- name: UpdateRuntimeTask :exec

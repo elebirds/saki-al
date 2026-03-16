@@ -23,6 +23,53 @@ type Annotation struct {
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 }
 
+type ImportPreviewManifest struct {
+	Token           string             `json:"token"`
+	Mode            string             `json:"mode"`
+	ProjectID       uuid.UUID          `json:"project_id"`
+	UploadSessionID uuid.UUID          `json:"upload_session_id"`
+	Manifest        []byte             `json:"manifest"`
+	ParamsHash      string             `json:"params_hash"`
+	ExpiresAt       pgtype.Timestamptz `json:"expires_at"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+}
+
+type ImportTask struct {
+	ID           uuid.UUID          `json:"id"`
+	UserID       uuid.UUID          `json:"user_id"`
+	Mode         string             `json:"mode"`
+	ResourceType string             `json:"resource_type"`
+	ResourceID   uuid.UUID          `json:"resource_id"`
+	Status       string             `json:"status"`
+	Payload      []byte             `json:"payload"`
+	Result       []byte             `json:"result"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+}
+
+type ImportTaskEvent struct {
+	Seq       int64              `json:"seq"`
+	TaskID    uuid.UUID          `json:"task_id"`
+	Event     string             `json:"event"`
+	Phase     string             `json:"phase"`
+	Payload   []byte             `json:"payload"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type ImportUploadSession struct {
+	ID          uuid.UUID          `json:"id"`
+	UserID      uuid.UUID          `json:"user_id"`
+	Mode        string             `json:"mode"`
+	FileName    string             `json:"file_name"`
+	ObjectKey   string             `json:"object_key"`
+	ContentType string             `json:"content_type"`
+	Status      string             `json:"status"`
+	CompletedAt pgtype.Timestamptz `json:"completed_at"`
+	AbortedAt   pgtype.Timestamptz `json:"aborted_at"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
 type Project struct {
 	ID        uuid.UUID          `json:"id"`
 	Name      string             `json:"name"`
@@ -74,4 +121,14 @@ type Sample struct {
 	DatasetType string             `json:"dataset_type"`
 	Meta        []byte             `json:"meta"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
+type SampleMatchRef struct {
+	ID        int64              `json:"id"`
+	ProjectID uuid.UUID          `json:"project_id"`
+	SampleID  uuid.UUID          `json:"sample_id"`
+	RefType   string             `json:"ref_type"`
+	RefValue  string             `json:"ref_value"`
+	IsPrimary bool               `json:"is_primary"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }

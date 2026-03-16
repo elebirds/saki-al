@@ -31,6 +31,9 @@ jobs:
       - name: Check generation drift
         run: make check-gen
 
+      - name: Run public API smoke test
+        run: make smoke-public-api
+
       - name: Run tests
         run: go test ./...
 

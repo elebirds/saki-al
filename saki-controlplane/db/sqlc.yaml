@@ -2,7 +2,9 @@ version: "2"
 sql:
   - engine: "postgresql"
     schema: "migrations"
-    queries: "queries/project"
+    queries:
+      - "queries/project"
+      - "queries/runtime"
     gen:
       go:
         package: "sqlcdb"

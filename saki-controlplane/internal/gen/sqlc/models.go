@@ -6,9 +6,38 @@ package sqlcdb
 
 import (
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Project struct {
 	ID   uuid.UUID `json:"id"`
 	Name string    `json:"name"`
+}
+
+type RuntimeLease struct {
+	Name       string             `json:"name"`
+	Holder     string             `json:"holder"`
+	Epoch      int64              `json:"epoch"`
+	LeaseUntil pgtype.Timestamptz `json:"lease_until"`
+	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
+}
+
+type RuntimeOutbox struct {
+	ID          int64              `json:"id"`
+	Topic       string             `json:"topic"`
+	AggregateID string             `json:"aggregate_id"`
+	Payload     []byte             `json:"payload"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	PublishedAt pgtype.Timestamptz `json:"published_at"`
+}
+
+type RuntimeTask struct {
+	ID          uuid.UUID          `json:"id"`
+	TaskType    string             `json:"task_type"`
+	Status      string             `json:"status"`
+	ClaimedBy   pgtype.Text        `json:"claimed_by"`
+	ClaimedAt   pgtype.Timestamptz `json:"claimed_at"`
+	LeaderEpoch pgtype.Int8        `json:"leader_epoch"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }

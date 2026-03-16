@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	appdb "github.com/elebirds/saki/saki-controlplane/internal/app/db"
 	"github.com/google/uuid"
@@ -18,11 +19,11 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-func TestProjectRepoCreateProject(t *testing.T) {
+func TestRuntimeReposClaimLeaseAndAppendOutbox(t *testing.T) {
 	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
 
 	ctx := context.Background()
-	container, dsn := startPostgres(t, ctx)
+	container, dsn := startRuntimePostgres(t, ctx)
 	defer func() {
 		_ = testcontainers.TerminateContainer(container)
 	}()
@@ -34,7 +35,7 @@ func TestProjectRepoCreateProject(t *testing.T) {
 	defer sqlDB.Close()
 
 	goose.SetDialect("postgres")
-	if err := goose.Up(sqlDB, migrationsDir(t)); err != nil {
+	if err := goose.Up(sqlDB, runtimeMigrationsDir(t)); err != nil {
 		t.Fatalf("run migrations: %v", err)
 	}
 
@@ -44,34 +45,64 @@ func TestProjectRepoCreateProject(t *testing.T) {
 	}
 	defer pool.Close()
 
-	projectRepo := NewProjectRepo(pool)
-	project, err := projectRepo.CreateProject(ctx, CreateProjectParams{
-		Name: "foundation-project",
+	leaseRepo := NewLeaseRepo(pool)
+	lease, err := leaseRepo.AcquireOrRenew(ctx, AcquireLeaseParams{
+		Name:       "runtime-scheduler",
+		Holder:     "runtime-1",
+		LeaseUntil: time.Now().Add(time.Minute),
 	})
 	if err != nil {
-		t.Fatalf("create project: %v", err)
+		t.Fatalf("acquire lease: %v", err)
+	}
+	if lease.Epoch == 0 {
+		t.Fatal("expected lease epoch to be assigned")
 	}
 
-	if project.ID == uuid.Nil {
-		t.Fatal("expected generated project id")
+	taskRepo := NewTaskRepo(pool)
+	taskID := uuid.New()
+	if err := taskRepo.CreateTask(ctx, CreateTaskParams{
+		ID:       taskID,
+		TaskType: "predict",
+	}); err != nil {
+		t.Fatalf("seed runtime task: %v", err)
 	}
-	if project.Name != "foundation-project" {
-		t.Fatalf("unexpected project name: %s", project.Name)
+
+	claimed, err := taskRepo.ClaimPendingTask(ctx, ClaimTaskParams{
+		ClaimedBy:   "runtime-1",
+		LeaderEpoch: lease.Epoch,
+	})
+	if err != nil {
+		t.Fatalf("claim task: %v", err)
+	}
+	if claimed.ID != taskID {
+		t.Fatalf("unexpected claimed task id: %s", claimed.ID)
+	}
+
+	outboxRepo := NewOutboxRepo(pool)
+	entry, err := outboxRepo.Append(ctx, AppendOutboxParams{
+		Topic:       "runtime.task.assigned",
+		AggregateID: taskID.String(),
+		Payload:     []byte(`{"task_id":"` + taskID.String() + `"}`),
+	})
+	if err != nil {
+		t.Fatalf("append outbox: %v", err)
+	}
+	if entry.ID == 0 {
+		t.Fatal("expected outbox id")
 	}
 }
 
-func startPostgres(t *testing.T, ctx context.Context) (*postgres.PostgresContainer, string) {
+func startRuntimePostgres(t *testing.T, ctx context.Context) (*postgres.PostgresContainer, string) {
 	t.Helper()
 
 	container, err := postgres.Run(
 		ctx,
-		postgresImageRef(),
+		runtimePostgresImageRef(),
 		postgres.WithDatabase("saki"),
 		postgres.WithUsername("postgres"),
 		postgres.WithPassword("postgres"),
 		testcontainers.WithWaitStrategy(
-			wait.ForLog("database system is ready to accept connections").
-				WithOccurrence(2),
+			wait.ForLog("database system is ready to accept connections").WithOccurrence(2),
 		),
 	)
 	if err != nil {
@@ -86,7 +117,7 @@ func startPostgres(t *testing.T, ctx context.Context) (*postgres.PostgresContain
 	return container, dsn
 }
 
-func migrationsDir(t *testing.T) string {
+func runtimeMigrationsDir(t *testing.T) string {
 	t.Helper()
 
 	_, file, _, ok := runtime.Caller(0)
@@ -97,7 +128,7 @@ func migrationsDir(t *testing.T) string {
 	return filepath.Join(filepath.Dir(file), "..", "..", "..", "..", "db", "migrations")
 }
 
-func postgresImageRef() string {
+func runtimePostgresImageRef() string {
 	cmd := exec.Command("docker", "image", "inspect", "postgres:16-alpine", "--format", "{{.Id}}")
 	output, err := cmd.Output()
 	if err != nil {

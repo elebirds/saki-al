@@ -7,11 +7,28 @@ import (
 	"net/http"
 
 	openapi "github.com/elebirds/saki/saki-controlplane/internal/gen/openapi"
+	accessapp "github.com/elebirds/saki/saki-controlplane/internal/modules/access/app"
 	ogenhttp "github.com/ogen-go/ogen/http"
 )
 
 func mapError(err error) *openapi.ErrorResponseStatusCode {
 	switch {
+	case errors.Is(err, accessapp.ErrUnauthorized):
+		return &openapi.ErrorResponseStatusCode{
+			StatusCode: http.StatusUnauthorized,
+			Response: openapi.ErrorResponse{
+				Code:    "unauthorized",
+				Message: "authentication required",
+			},
+		}
+	case errors.Is(err, accessapp.ErrForbidden):
+		return &openapi.ErrorResponseStatusCode{
+			StatusCode: http.StatusForbidden,
+			Response: openapi.ErrorResponse{
+				Code:    "forbidden",
+				Message: "permission denied",
+			},
+		}
 	case errors.Is(err, ogenhttp.ErrNotImplemented):
 		return &openapi.ErrorResponseStatusCode{
 			StatusCode: http.StatusNotImplemented,

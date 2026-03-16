@@ -13,6 +13,13 @@ type UnimplementedHandler struct{}
 
 var _ Handler = UnimplementedHandler{}
 
+// GetCurrentUser implements getCurrentUser operation.
+//
+// GET /auth/me
+func (UnimplementedHandler) GetCurrentUser(ctx context.Context) (r *CurrentUserResponse, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // Healthz implements healthz operation.
 //
 // GET /healthz
@@ -25,6 +32,20 @@ func (UnimplementedHandler) Healthz(ctx context.Context) (r *HealthResponse, _ e
 // GET /projects
 func (UnimplementedHandler) ListProjects(ctx context.Context) (r []Project, _ error) {
 	return r, ht.ErrNotImplemented
+}
+
+// Login implements login operation.
+//
+// POST /auth/login
+func (UnimplementedHandler) Login(ctx context.Context, req *LoginRequest) (r *AuthTokenResponse, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// RequirePermission implements requirePermission operation.
+//
+// GET /auth/permissions/{permission}
+func (UnimplementedHandler) RequirePermission(ctx context.Context, params RequirePermissionParams) error {
+	return ht.ErrNotImplemented
 }
 
 // NewError creates *ErrorResponseStatusCode from error returned by handler.

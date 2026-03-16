@@ -37,6 +37,62 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /auth/login:
+    post:
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: login result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthTokenResponse"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /auth/me:
+    get:
+      operationId: getCurrentUser
+      responses:
+        "200":
+          description: current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CurrentUserResponse"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /auth/permissions/{permission}:
+    get:
+      operationId: requirePermission
+      parameters:
+        - name: permission
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: permission granted
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
     HealthResponse:
@@ -56,6 +112,44 @@ components:
           type: string
         name:
           type: string
+    LoginRequest:
+      type: object
+      required:
+        - user_id
+      properties:
+        user_id:
+          type: string
+        permissions:
+          type: array
+          items:
+            type: string
+    AuthTokenResponse:
+      type: object
+      required:
+        - token
+        - user_id
+        - permissions
+      properties:
+        token:
+          type: string
+        user_id:
+          type: string
+        permissions:
+          type: array
+          items:
+            type: string
+    CurrentUserResponse:
+      type: object
+      required:
+        - user_id
+        - permissions
+      properties:
+        user_id:
+          type: string
+        permissions:
+          type: array
+          items:
+            type: string
     ErrorResponse:
       type: object
       required:

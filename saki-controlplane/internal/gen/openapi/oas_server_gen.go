@@ -8,6 +8,10 @@ import (
 
 // Handler handles operations described by OpenAPI v3 specification.
 type Handler interface {
+	// GetCurrentUser implements getCurrentUser operation.
+	//
+	// GET /auth/me
+	GetCurrentUser(ctx context.Context) (*CurrentUserResponse, error)
 	// Healthz implements healthz operation.
 	//
 	// GET /healthz
@@ -16,6 +20,14 @@ type Handler interface {
 	//
 	// GET /projects
 	ListProjects(ctx context.Context) ([]Project, error)
+	// Login implements login operation.
+	//
+	// POST /auth/login
+	Login(ctx context.Context, req *LoginRequest) (*AuthTokenResponse, error)
+	// RequirePermission implements requirePermission operation.
+	//
+	// GET /auth/permissions/{permission}
+	RequirePermission(ctx context.Context, params RequirePermissionParams) error
 	// NewError creates *ErrorResponseStatusCode from error returned by handler.
 	//
 	// Used for common default response.

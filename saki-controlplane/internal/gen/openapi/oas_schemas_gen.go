@@ -10,6 +10,69 @@ func (s *ErrorResponseStatusCode) Error() string {
 	return fmt.Sprintf("code %d: %+v", s.StatusCode, s.Response)
 }
 
+// Ref: #/components/schemas/AuthTokenResponse
+type AuthTokenResponse struct {
+	Token       string   `json:"token"`
+	UserID      string   `json:"user_id"`
+	Permissions []string `json:"permissions"`
+}
+
+// GetToken returns the value of Token.
+func (s *AuthTokenResponse) GetToken() string {
+	return s.Token
+}
+
+// GetUserID returns the value of UserID.
+func (s *AuthTokenResponse) GetUserID() string {
+	return s.UserID
+}
+
+// GetPermissions returns the value of Permissions.
+func (s *AuthTokenResponse) GetPermissions() []string {
+	return s.Permissions
+}
+
+// SetToken sets the value of Token.
+func (s *AuthTokenResponse) SetToken(val string) {
+	s.Token = val
+}
+
+// SetUserID sets the value of UserID.
+func (s *AuthTokenResponse) SetUserID(val string) {
+	s.UserID = val
+}
+
+// SetPermissions sets the value of Permissions.
+func (s *AuthTokenResponse) SetPermissions(val []string) {
+	s.Permissions = val
+}
+
+// Ref: #/components/schemas/CurrentUserResponse
+type CurrentUserResponse struct {
+	UserID      string   `json:"user_id"`
+	Permissions []string `json:"permissions"`
+}
+
+// GetUserID returns the value of UserID.
+func (s *CurrentUserResponse) GetUserID() string {
+	return s.UserID
+}
+
+// GetPermissions returns the value of Permissions.
+func (s *CurrentUserResponse) GetPermissions() []string {
+	return s.Permissions
+}
+
+// SetUserID sets the value of UserID.
+func (s *CurrentUserResponse) SetUserID(val string) {
+	s.UserID = val
+}
+
+// SetPermissions sets the value of Permissions.
+func (s *CurrentUserResponse) SetPermissions(val []string) {
+	s.Permissions = val
+}
+
 // Ref: #/components/schemas/ErrorResponse
 type ErrorResponse struct {
 	Code    string `json:"code"`
@@ -77,6 +140,32 @@ func (s *HealthResponse) SetStatus(val string) {
 	s.Status = val
 }
 
+// Ref: #/components/schemas/LoginRequest
+type LoginRequest struct {
+	UserID      string   `json:"user_id"`
+	Permissions []string `json:"permissions"`
+}
+
+// GetUserID returns the value of UserID.
+func (s *LoginRequest) GetUserID() string {
+	return s.UserID
+}
+
+// GetPermissions returns the value of Permissions.
+func (s *LoginRequest) GetPermissions() []string {
+	return s.Permissions
+}
+
+// SetUserID sets the value of UserID.
+func (s *LoginRequest) SetUserID(val string) {
+	s.UserID = val
+}
+
+// SetPermissions sets the value of Permissions.
+func (s *LoginRequest) SetPermissions(val []string) {
+	s.Permissions = val
+}
+
 // Ref: #/components/schemas/Project
 type Project struct {
 	ID   string `json:"id"`
@@ -102,3 +191,6 @@ func (s *Project) SetID(val string) {
 func (s *Project) SetName(val string) {
 	s.Name = val
 }
+
+// RequirePermissionNoContent is response for RequirePermission operation.
+type RequirePermissionNoContent struct{}

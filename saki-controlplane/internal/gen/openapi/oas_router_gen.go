@@ -10,6 +10,12 @@ import (
 	"github.com/ogen-go/ogen/uri"
 )
 
+var (
+	rn6AllowedHeaders = map[string]string{
+		"POST": "Content-Type",
+	}
+)
+
 func (s *Server) cutPrefix(path string) (string, bool) {
 	prefix := s.cfg.Prefix
 	if prefix == "" {
@@ -40,6 +46,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.notFound(w, r)
 		return
 	}
+	args := [1]string{}
 
 	// Static code generated router with unwrapped path search.
 	switch {
@@ -60,6 +67,106 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				break
 			}
 			switch elem[0] {
+			case 'a': // Prefix: "auth/"
+
+				if l := len("auth/"); len(elem) >= l && elem[0:l] == "auth/" {
+					elem = elem[l:]
+				} else {
+					break
+				}
+
+				if len(elem) == 0 {
+					break
+				}
+				switch elem[0] {
+				case 'l': // Prefix: "login"
+
+					if l := len("login"); len(elem) >= l && elem[0:l] == "login" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					if len(elem) == 0 {
+						// Leaf node.
+						switch r.Method {
+						case "POST":
+							s.handleLoginRequest([0]string{}, elemIsEscaped, w, r)
+						default:
+							s.notAllowed(w, r, notAllowedParams{
+								allowedMethods: "POST",
+								allowedHeaders: rn6AllowedHeaders,
+								acceptPost:     "application/json",
+								acceptPatch:    "",
+							})
+						}
+
+						return
+					}
+
+				case 'm': // Prefix: "me"
+
+					if l := len("me"); len(elem) >= l && elem[0:l] == "me" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					if len(elem) == 0 {
+						// Leaf node.
+						switch r.Method {
+						case "GET":
+							s.handleGetCurrentUserRequest([0]string{}, elemIsEscaped, w, r)
+						default:
+							s.notAllowed(w, r, notAllowedParams{
+								allowedMethods: "GET",
+								allowedHeaders: nil,
+								acceptPost:     "",
+								acceptPatch:    "",
+							})
+						}
+
+						return
+					}
+
+				case 'p': // Prefix: "permissions/"
+
+					if l := len("permissions/"); len(elem) >= l && elem[0:l] == "permissions/" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					// Param: "permission"
+					// Leaf parameter, slashes are prohibited
+					idx := strings.IndexByte(elem, '/')
+					if idx >= 0 {
+						break
+					}
+					args[0] = elem
+					elem = ""
+
+					if len(elem) == 0 {
+						// Leaf node.
+						switch r.Method {
+						case "GET":
+							s.handleRequirePermissionRequest([1]string{
+								args[0],
+							}, elemIsEscaped, w, r)
+						default:
+							s.notAllowed(w, r, notAllowedParams{
+								allowedMethods: "GET",
+								allowedHeaders: nil,
+								acceptPost:     "",
+								acceptPatch:    "",
+							})
+						}
+
+						return
+					}
+
+				}
+
 			case 'h': // Prefix: "healthz"
 
 				if l := len("healthz"); len(elem) >= l && elem[0:l] == "healthz" {
@@ -125,7 +232,7 @@ type Route struct {
 	operationGroup string
 	pathPattern    string
 	count          int
-	args           [0]string
+	args           [1]string
 }
 
 // Name returns ogen operation name.
@@ -210,6 +317,104 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 				break
 			}
 			switch elem[0] {
+			case 'a': // Prefix: "auth/"
+
+				if l := len("auth/"); len(elem) >= l && elem[0:l] == "auth/" {
+					elem = elem[l:]
+				} else {
+					break
+				}
+
+				if len(elem) == 0 {
+					break
+				}
+				switch elem[0] {
+				case 'l': // Prefix: "login"
+
+					if l := len("login"); len(elem) >= l && elem[0:l] == "login" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					if len(elem) == 0 {
+						// Leaf node.
+						switch method {
+						case "POST":
+							r.name = LoginOperation
+							r.summary = ""
+							r.operationID = "login"
+							r.operationGroup = ""
+							r.pathPattern = "/auth/login"
+							r.args = args
+							r.count = 0
+							return r, true
+						default:
+							return
+						}
+					}
+
+				case 'm': // Prefix: "me"
+
+					if l := len("me"); len(elem) >= l && elem[0:l] == "me" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					if len(elem) == 0 {
+						// Leaf node.
+						switch method {
+						case "GET":
+							r.name = GetCurrentUserOperation
+							r.summary = ""
+							r.operationID = "getCurrentUser"
+							r.operationGroup = ""
+							r.pathPattern = "/auth/me"
+							r.args = args
+							r.count = 0
+							return r, true
+						default:
+							return
+						}
+					}
+
+				case 'p': // Prefix: "permissions/"
+
+					if l := len("permissions/"); len(elem) >= l && elem[0:l] == "permissions/" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					// Param: "permission"
+					// Leaf parameter, slashes are prohibited
+					idx := strings.IndexByte(elem, '/')
+					if idx >= 0 {
+						break
+					}
+					args[0] = elem
+					elem = ""
+
+					if len(elem) == 0 {
+						// Leaf node.
+						switch method {
+						case "GET":
+							r.name = RequirePermissionOperation
+							r.summary = ""
+							r.operationID = "requirePermission"
+							r.operationGroup = ""
+							r.pathPattern = "/auth/permissions/{permission}"
+							r.args = args
+							r.count = 1
+							return r, true
+						default:
+							return
+						}
+					}
+
+				}
+
 			case 'h': // Prefix: "healthz"
 
 				if l := len("healthz"); len(elem) >= l && elem[0:l] == "healthz" {

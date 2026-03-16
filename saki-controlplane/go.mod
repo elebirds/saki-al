@@ -11,6 +11,7 @@ require (
 	github.com/jackc/pgx/v5 v5.8.0
 	github.com/ogen-go/ogen v1.20.1
 	github.com/pressly/goose/v3 v3.27.0
+	github.com/saki-ai/saki/shared/saki-ir/go v0.0.0
 	github.com/testcontainers/testcontainers-go v0.41.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.41.0
 	go.opentelemetry.io/otel v1.42.0
@@ -89,3 +90,5 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/saki-ai/saki/shared/saki-ir/go => ../shared/saki-ir/go

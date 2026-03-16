@@ -10,10 +10,25 @@ import (
 type ParseProjectAnnotationsResult struct {
 	Batch                    *annotationirv1.DataBatchIR
 	SampleRefs               []SampleRef
+	Samples                  []ParsedSample
+	Annotations              []ParsedAnnotation
 	Report                   ConversionReport
 	DetectedGeometryKinds    []GeometryKind
 	UnsupportedGeometryKinds []GeometryKind
 	Capabilities             []GeometryCapability
+}
+
+type ParsedSample struct {
+	SampleID string
+	Refs     []SampleRef
+}
+
+type ParsedAnnotation struct {
+	AnnotationID       string
+	SampleID           string
+	PrimarySampleRef   SampleRef
+	InputGeometryKind  GeometryKind
+	OutputGeometryKind GeometryKind
 }
 
 func (r ParseProjectAnnotationsResult) Validate() error {

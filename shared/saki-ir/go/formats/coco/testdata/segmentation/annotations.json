@@ -1,0 +1,25 @@
+{
+  "images": [
+    {
+      "id": 1,
+      "file_name": "images/train/sample-1.jpg",
+      "width": 1280,
+      "height": 720
+    }
+  ],
+  "categories": [
+    {
+      "id": 1,
+      "name": "car"
+    }
+  ],
+  "annotations": [
+    {
+      "id": 101,
+      "image_id": 1,
+      "category_id": 1,
+      "bbox": [10, 20, 100, 50],
+      "segmentation": [[10, 20, 110, 20, 110, 70, 10, 70]]
+    }
+  ]
+}

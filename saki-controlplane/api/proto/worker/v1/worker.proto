@@ -4,15 +4,24 @@ package saki.worker.v1;
 
 option go_package = "github.com/elebirds/saki/saki-controlplane/internal/gen/proto/worker/v1;workerv1";
 
-service Worker {
-  rpc Run(RunRequest) returns (RunResponse);
+message ExecuteRequest {
+  string request_id = 1;
+  string task_id = 2;
+  string action = 3;
+  bytes payload = 4;
 }
 
-message RunRequest {
-  string task_type = 1;
-  bytes payload = 2;
+message WorkerEvent {
+  string request_id = 1;
+  string task_id = 2;
+  string event_type = 3;
+  bytes payload = 4;
 }
 
-message RunResponse {
-  bytes result = 1;
+message ExecuteResult {
+  string request_id = 1;
+  bool ok = 2;
+  string error_code = 3;
+  string error_message = 4;
+  bytes payload = 5;
 }

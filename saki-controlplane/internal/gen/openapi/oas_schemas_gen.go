@@ -12,12 +12,23 @@ func (s *ErrorResponseStatusCode) Error() string {
 
 // Ref: #/components/schemas/ErrorResponse
 type ErrorResponse struct {
+	Code    string `json:"code"`
 	Message string `json:"message"`
+}
+
+// GetCode returns the value of Code.
+func (s *ErrorResponse) GetCode() string {
+	return s.Code
 }
 
 // GetMessage returns the value of Message.
 func (s *ErrorResponse) GetMessage() string {
 	return s.Message
+}
+
+// SetCode sets the value of Code.
+func (s *ErrorResponse) SetCode(val string) {
+	s.Code = val
 }
 
 // SetMessage sets the value of Message.

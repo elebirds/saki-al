@@ -8,6 +8,7 @@ import (
 
 	"github.com/elebirds/saki/saki-controlplane/internal/app/config"
 	"github.com/elebirds/saki/saki-controlplane/internal/app/observe"
+	systemapi "github.com/elebirds/saki/saki-controlplane/internal/modules/system/apihttp"
 )
 
 func NewPublicAPI(_ context.Context) (*http.Server, *slog.Logger, error) {
@@ -17,15 +18,14 @@ func NewPublicAPI(_ context.Context) (*http.Server, *slog.Logger, error) {
 	}
 
 	logger := observe.NewLogger("public-api", observe.ParseLevel(cfg.LogLevel))
-	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok"))
-	})
+	handler, err := systemapi.NewHTTPHandler()
+	if err != nil {
+		return nil, nil, err
+	}
 
 	return &http.Server{
 		Addr:              cfg.PublicAPIBind,
-		Handler:           mux,
+		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 	}, logger, nil
 }

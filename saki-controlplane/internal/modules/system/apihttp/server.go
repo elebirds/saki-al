@@ -9,6 +9,8 @@ import (
 	openapi "github.com/elebirds/saki/saki-controlplane/internal/gen/openapi"
 	accessapi "github.com/elebirds/saki/saki-controlplane/internal/modules/access/apihttp"
 	accessapp "github.com/elebirds/saki/saki-controlplane/internal/modules/access/app"
+	annotationapi "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/apihttp"
+	annotationapp "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/app"
 	projectapi "github.com/elebirds/saki/saki-controlplane/internal/modules/project/apihttp"
 	projectapp "github.com/elebirds/saki/saki-controlplane/internal/modules/project/app"
 	runtimeapi "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/apihttp"
@@ -20,14 +22,17 @@ type Dependencies struct {
 	ProjectStore        projectapp.Store
 	RuntimeStore        runtimequeries.AdminStore
 	RuntimeTaskCanceler runtimequeries.RuntimeTaskCanceler
+	AnnotationSamples   annotationapp.SampleStore
+	AnnotationStore     annotationapp.AnnotationStore
 }
 
 type Server struct {
 	openapi.UnimplementedHandler
 
-	access  *accessapi.Handlers
-	project *projectapi.Handlers
-	runtime *runtimeapi.Handlers
+	access     *accessapi.Handlers
+	annotation *annotationapi.Handlers
+	project    *projectapi.Handlers
+	runtime    *runtimeapi.Handlers
 }
 
 func NewHandler(deps Dependencies) (*Server, error) {
@@ -43,8 +48,18 @@ func NewHandler(deps Dependencies) (*Server, error) {
 	if deps.RuntimeTaskCanceler == nil {
 		return nil, errors.New("runtime task canceler is required")
 	}
+	if deps.AnnotationSamples == nil {
+		return nil, errors.New("annotation sample store is required")
+	}
+	if deps.AnnotationStore == nil {
+		return nil, errors.New("annotation store is required")
+	}
 	return &Server{
-		access:  accessapi.NewHandlers(deps.Authenticator),
+		access: accessapi.NewHandlers(deps.Authenticator),
+		annotation: annotationapi.NewHandlers(
+			deps.AnnotationSamples,
+			deps.AnnotationStore,
+		),
 		project: projectapi.NewHandlers(deps.ProjectStore),
 		runtime: runtimeapi.NewHandlers(runtimeapi.Dependencies{
 			Store:    deps.RuntimeStore,
@@ -89,6 +104,10 @@ func (s *Server) CancelRuntimeTask(ctx context.Context, params openapi.CancelRun
 	return s.runtime.CancelRuntimeTask(ctx, params)
 }
 
+func (s *Server) CreateSampleAnnotations(ctx context.Context, req *openapi.CreateAnnotationRequest, params openapi.CreateSampleAnnotationsParams) ([]openapi.Annotation, error) {
+	return s.annotation.CreateSampleAnnotations(ctx, req, params)
+}
+
 func (s *Server) GetCurrentUser(ctx context.Context) (*openapi.CurrentUserResponse, error) {
 	return s.access.GetCurrentUser(ctx)
 }
@@ -107,6 +126,10 @@ func (s *Server) ListProjects(ctx context.Context) ([]openapi.Project, error) {
 
 func (s *Server) ListRuntimeExecutors(ctx context.Context) ([]openapi.RuntimeExecutor, error) {
 	return s.runtime.ListRuntimeExecutors(ctx)
+}
+
+func (s *Server) ListSampleAnnotations(ctx context.Context, params openapi.ListSampleAnnotationsParams) ([]openapi.Annotation, error) {
+	return s.annotation.ListSampleAnnotations(ctx, params)
 }
 
 func (s *Server) RequirePermission(ctx context.Context, params openapi.RequirePermissionParams) error {

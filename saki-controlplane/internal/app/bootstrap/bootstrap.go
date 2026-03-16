@@ -10,6 +10,7 @@ import (
 	appdb "github.com/elebirds/saki/saki-controlplane/internal/app/db"
 	"github.com/elebirds/saki/saki-controlplane/internal/app/observe"
 	accessapp "github.com/elebirds/saki/saki-controlplane/internal/modules/access/app"
+	annotationrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/repo"
 	projectapp "github.com/elebirds/saki/saki-controlplane/internal/modules/project/app"
 	projectrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/project/repo"
 	runtimecommands "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/commands"
@@ -36,12 +37,16 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 	}
 
 	taskRepo := runtimerepo.NewTaskRepo(pool)
+	sampleRepo := annotationrepo.NewSampleRepo(pool)
+	annotationRepo := annotationrepo.NewAnnotationRepo(pool)
 
 	handler, err := systemapi.NewHTTPHandler(systemapi.Dependencies{
 		Authenticator:       accessapp.NewAuthenticator(cfg.AuthTokenSecret, tokenTTL),
 		ProjectStore:        projectapp.NewRepoStore(projectrepo.NewProjectRepo(pool)),
 		RuntimeStore:        runtimequeries.NewRepoAdminStore(taskRepo, runtimerepo.NewExecutorRepo(pool)),
 		RuntimeTaskCanceler: runtimecommands.NewCancelTaskHandler(taskRepo, runtimerepo.NewCommandOutboxWriter(pool)),
+		AnnotationSamples:   sampleRepo,
+		AnnotationStore:     annotationRepo,
 	})
 	if err != nil {
 		pool.Close()

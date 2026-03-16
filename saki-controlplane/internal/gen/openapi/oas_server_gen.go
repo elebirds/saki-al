@@ -16,6 +16,10 @@ type Handler interface {
 	//
 	// POST /projects
 	CreateProject(ctx context.Context, req *CreateProjectRequest) (*Project, error)
+	// CreateSampleAnnotations implements createSampleAnnotations operation.
+	//
+	// POST /samples/{sample_id}/annotations
+	CreateSampleAnnotations(ctx context.Context, req *CreateAnnotationRequest, params CreateSampleAnnotationsParams) ([]Annotation, error)
 	// GetCurrentUser implements getCurrentUser operation.
 	//
 	// GET /auth/me
@@ -40,6 +44,10 @@ type Handler interface {
 	//
 	// GET /runtime/executors
 	ListRuntimeExecutors(ctx context.Context) ([]RuntimeExecutor, error)
+	// ListSampleAnnotations implements listSampleAnnotations operation.
+	//
+	// GET /samples/{sample_id}/annotations
+	ListSampleAnnotations(ctx context.Context, params ListSampleAnnotationsParams) ([]Annotation, error)
 	// Login implements login operation.
 	//
 	// POST /auth/login

@@ -35,6 +35,10 @@ type Invoker interface {
 	//
 	// POST /projects
 	CreateProject(ctx context.Context, request *CreateProjectRequest) (*Project, error)
+	// CreateSampleAnnotations invokes createSampleAnnotations operation.
+	//
+	// POST /samples/{sample_id}/annotations
+	CreateSampleAnnotations(ctx context.Context, request *CreateAnnotationRequest, params CreateSampleAnnotationsParams) ([]Annotation, error)
 	// GetCurrentUser invokes getCurrentUser operation.
 	//
 	// GET /auth/me
@@ -59,6 +63,10 @@ type Invoker interface {
 	//
 	// GET /runtime/executors
 	ListRuntimeExecutors(ctx context.Context) ([]RuntimeExecutor, error)
+	// ListSampleAnnotations invokes listSampleAnnotations operation.
+	//
+	// GET /samples/{sample_id}/annotations
+	ListSampleAnnotations(ctx context.Context, params ListSampleAnnotationsParams) ([]Annotation, error)
 	// Login invokes login operation.
 	//
 	// POST /auth/login
@@ -267,6 +275,100 @@ func (c *Client) sendCreateProject(ctx context.Context, request *CreateProjectRe
 
 	stage = "DecodeResponse"
 	result, err := decodeCreateProjectResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// CreateSampleAnnotations invokes createSampleAnnotations operation.
+//
+// POST /samples/{sample_id}/annotations
+func (c *Client) CreateSampleAnnotations(ctx context.Context, request *CreateAnnotationRequest, params CreateSampleAnnotationsParams) ([]Annotation, error) {
+	res, err := c.sendCreateSampleAnnotations(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendCreateSampleAnnotations(ctx context.Context, request *CreateAnnotationRequest, params CreateSampleAnnotationsParams) (res []Annotation, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("createSampleAnnotations"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/samples/{sample_id}/annotations"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, CreateSampleAnnotationsOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/samples/"
+	{
+		// Encode "sample_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "sample_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.SampleID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/annotations"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeCreateSampleAnnotationsRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeCreateSampleAnnotationsResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -717,6 +819,97 @@ func (c *Client) sendListRuntimeExecutors(ctx context.Context) (res []RuntimeExe
 
 	stage = "DecodeResponse"
 	result, err := decodeListRuntimeExecutorsResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// ListSampleAnnotations invokes listSampleAnnotations operation.
+//
+// GET /samples/{sample_id}/annotations
+func (c *Client) ListSampleAnnotations(ctx context.Context, params ListSampleAnnotationsParams) ([]Annotation, error) {
+	res, err := c.sendListSampleAnnotations(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendListSampleAnnotations(ctx context.Context, params ListSampleAnnotationsParams) (res []Annotation, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("listSampleAnnotations"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/samples/{sample_id}/annotations"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, ListSampleAnnotationsOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/samples/"
+	{
+		// Encode "sample_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "sample_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.SampleID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/annotations"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeListSampleAnnotationsResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}

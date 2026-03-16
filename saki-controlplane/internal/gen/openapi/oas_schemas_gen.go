@@ -5,10 +5,148 @@ package openapi
 import (
 	"fmt"
 	"time"
+
+	"github.com/go-faster/jx"
 )
 
 func (s *ErrorResponseStatusCode) Error() string {
 	return fmt.Sprintf("code %d: %+v", s.StatusCode, s.Response)
+}
+
+// Ref: #/components/schemas/Annotation
+type Annotation struct {
+	ID             string             `json:"id"`
+	SampleID       string             `json:"sample_id"`
+	GroupID        string             `json:"group_id"`
+	LabelID        string             `json:"label_id"`
+	View           string             `json:"view"`
+	AnnotationType string             `json:"annotation_type"`
+	Geometry       AnnotationGeometry `json:"geometry"`
+	Attrs          AnnotationAttrs    `json:"attrs"`
+	Source         string             `json:"source"`
+	IsGenerated    bool               `json:"is_generated"`
+}
+
+// GetID returns the value of ID.
+func (s *Annotation) GetID() string {
+	return s.ID
+}
+
+// GetSampleID returns the value of SampleID.
+func (s *Annotation) GetSampleID() string {
+	return s.SampleID
+}
+
+// GetGroupID returns the value of GroupID.
+func (s *Annotation) GetGroupID() string {
+	return s.GroupID
+}
+
+// GetLabelID returns the value of LabelID.
+func (s *Annotation) GetLabelID() string {
+	return s.LabelID
+}
+
+// GetView returns the value of View.
+func (s *Annotation) GetView() string {
+	return s.View
+}
+
+// GetAnnotationType returns the value of AnnotationType.
+func (s *Annotation) GetAnnotationType() string {
+	return s.AnnotationType
+}
+
+// GetGeometry returns the value of Geometry.
+func (s *Annotation) GetGeometry() AnnotationGeometry {
+	return s.Geometry
+}
+
+// GetAttrs returns the value of Attrs.
+func (s *Annotation) GetAttrs() AnnotationAttrs {
+	return s.Attrs
+}
+
+// GetSource returns the value of Source.
+func (s *Annotation) GetSource() string {
+	return s.Source
+}
+
+// GetIsGenerated returns the value of IsGenerated.
+func (s *Annotation) GetIsGenerated() bool {
+	return s.IsGenerated
+}
+
+// SetID sets the value of ID.
+func (s *Annotation) SetID(val string) {
+	s.ID = val
+}
+
+// SetSampleID sets the value of SampleID.
+func (s *Annotation) SetSampleID(val string) {
+	s.SampleID = val
+}
+
+// SetGroupID sets the value of GroupID.
+func (s *Annotation) SetGroupID(val string) {
+	s.GroupID = val
+}
+
+// SetLabelID sets the value of LabelID.
+func (s *Annotation) SetLabelID(val string) {
+	s.LabelID = val
+}
+
+// SetView sets the value of View.
+func (s *Annotation) SetView(val string) {
+	s.View = val
+}
+
+// SetAnnotationType sets the value of AnnotationType.
+func (s *Annotation) SetAnnotationType(val string) {
+	s.AnnotationType = val
+}
+
+// SetGeometry sets the value of Geometry.
+func (s *Annotation) SetGeometry(val AnnotationGeometry) {
+	s.Geometry = val
+}
+
+// SetAttrs sets the value of Attrs.
+func (s *Annotation) SetAttrs(val AnnotationAttrs) {
+	s.Attrs = val
+}
+
+// SetSource sets the value of Source.
+func (s *Annotation) SetSource(val string) {
+	s.Source = val
+}
+
+// SetIsGenerated sets the value of IsGenerated.
+func (s *Annotation) SetIsGenerated(val bool) {
+	s.IsGenerated = val
+}
+
+type AnnotationAttrs map[string]jx.Raw
+
+func (s *AnnotationAttrs) init() AnnotationAttrs {
+	m := *s
+	if m == nil {
+		m = map[string]jx.Raw{}
+		*s = m
+	}
+	return m
+}
+
+type AnnotationGeometry map[string]jx.Raw
+
+func (s *AnnotationGeometry) init() AnnotationGeometry {
+	m := *s
+	if m == nil {
+		m = map[string]jx.Raw{}
+		*s = m
+	}
+	return m
 }
 
 // Ref: #/components/schemas/AuthTokenResponse
@@ -46,6 +184,109 @@ func (s *AuthTokenResponse) SetUserID(val string) {
 // SetPermissions sets the value of Permissions.
 func (s *AuthTokenResponse) SetPermissions(val []string) {
 	s.Permissions = val
+}
+
+// Ref: #/components/schemas/CreateAnnotationRequest
+type CreateAnnotationRequest struct {
+	GroupID        string                          `json:"group_id"`
+	LabelID        string                          `json:"label_id"`
+	View           string                          `json:"view"`
+	AnnotationType string                          `json:"annotation_type"`
+	Geometry       CreateAnnotationRequestGeometry `json:"geometry"`
+	Attrs          OptCreateAnnotationRequestAttrs `json:"attrs"`
+	Source         OptString                       `json:"source"`
+}
+
+// GetGroupID returns the value of GroupID.
+func (s *CreateAnnotationRequest) GetGroupID() string {
+	return s.GroupID
+}
+
+// GetLabelID returns the value of LabelID.
+func (s *CreateAnnotationRequest) GetLabelID() string {
+	return s.LabelID
+}
+
+// GetView returns the value of View.
+func (s *CreateAnnotationRequest) GetView() string {
+	return s.View
+}
+
+// GetAnnotationType returns the value of AnnotationType.
+func (s *CreateAnnotationRequest) GetAnnotationType() string {
+	return s.AnnotationType
+}
+
+// GetGeometry returns the value of Geometry.
+func (s *CreateAnnotationRequest) GetGeometry() CreateAnnotationRequestGeometry {
+	return s.Geometry
+}
+
+// GetAttrs returns the value of Attrs.
+func (s *CreateAnnotationRequest) GetAttrs() OptCreateAnnotationRequestAttrs {
+	return s.Attrs
+}
+
+// GetSource returns the value of Source.
+func (s *CreateAnnotationRequest) GetSource() OptString {
+	return s.Source
+}
+
+// SetGroupID sets the value of GroupID.
+func (s *CreateAnnotationRequest) SetGroupID(val string) {
+	s.GroupID = val
+}
+
+// SetLabelID sets the value of LabelID.
+func (s *CreateAnnotationRequest) SetLabelID(val string) {
+	s.LabelID = val
+}
+
+// SetView sets the value of View.
+func (s *CreateAnnotationRequest) SetView(val string) {
+	s.View = val
+}
+
+// SetAnnotationType sets the value of AnnotationType.
+func (s *CreateAnnotationRequest) SetAnnotationType(val string) {
+	s.AnnotationType = val
+}
+
+// SetGeometry sets the value of Geometry.
+func (s *CreateAnnotationRequest) SetGeometry(val CreateAnnotationRequestGeometry) {
+	s.Geometry = val
+}
+
+// SetAttrs sets the value of Attrs.
+func (s *CreateAnnotationRequest) SetAttrs(val OptCreateAnnotationRequestAttrs) {
+	s.Attrs = val
+}
+
+// SetSource sets the value of Source.
+func (s *CreateAnnotationRequest) SetSource(val OptString) {
+	s.Source = val
+}
+
+type CreateAnnotationRequestAttrs map[string]jx.Raw
+
+func (s *CreateAnnotationRequestAttrs) init() CreateAnnotationRequestAttrs {
+	m := *s
+	if m == nil {
+		m = map[string]jx.Raw{}
+		*s = m
+	}
+	return m
+}
+
+type CreateAnnotationRequestGeometry map[string]jx.Raw
+
+func (s *CreateAnnotationRequestGeometry) init() CreateAnnotationRequestGeometry {
+	m := *s
+	if m == nil {
+		m = map[string]jx.Raw{}
+		*s = m
+	}
+	return m
 }
 
 // Ref: #/components/schemas/CreateProjectRequest
@@ -180,6 +421,98 @@ func (s *LoginRequest) SetUserID(val string) {
 // SetPermissions sets the value of Permissions.
 func (s *LoginRequest) SetPermissions(val []string) {
 	s.Permissions = val
+}
+
+// NewOptCreateAnnotationRequestAttrs returns new OptCreateAnnotationRequestAttrs with value set to v.
+func NewOptCreateAnnotationRequestAttrs(v CreateAnnotationRequestAttrs) OptCreateAnnotationRequestAttrs {
+	return OptCreateAnnotationRequestAttrs{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptCreateAnnotationRequestAttrs is optional CreateAnnotationRequestAttrs.
+type OptCreateAnnotationRequestAttrs struct {
+	Value CreateAnnotationRequestAttrs
+	Set   bool
+}
+
+// IsSet returns true if OptCreateAnnotationRequestAttrs was set.
+func (o OptCreateAnnotationRequestAttrs) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptCreateAnnotationRequestAttrs) Reset() {
+	var v CreateAnnotationRequestAttrs
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptCreateAnnotationRequestAttrs) SetTo(v CreateAnnotationRequestAttrs) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptCreateAnnotationRequestAttrs) Get() (v CreateAnnotationRequestAttrs, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptCreateAnnotationRequestAttrs) Or(d CreateAnnotationRequestAttrs) CreateAnnotationRequestAttrs {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptString returns new OptString with value set to v.
+func NewOptString(v string) OptString {
+	return OptString{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptString is optional string.
+type OptString struct {
+	Value string
+	Set   bool
+}
+
+// IsSet returns true if OptString was set.
+func (o OptString) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptString) Reset() {
+	var v string
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptString) SetTo(v string) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptString) Get() (v string, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptString) Or(d string) string {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
 }
 
 // Ref: #/components/schemas/Project

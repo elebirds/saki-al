@@ -79,6 +79,71 @@ func decodeCancelRuntimeTaskParams(args [1]string, argsEscaped bool, r *http.Req
 	return params, nil
 }
 
+// CreateSampleAnnotationsParams is parameters of createSampleAnnotations operation.
+type CreateSampleAnnotationsParams struct {
+	SampleID string
+}
+
+func unpackCreateSampleAnnotationsParams(packed middleware.Parameters) (params CreateSampleAnnotationsParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "sample_id",
+			In:   "path",
+		}
+		params.SampleID = packed[key].(string)
+	}
+	return params
+}
+
+func decodeCreateSampleAnnotationsParams(args [1]string, argsEscaped bool, r *http.Request) (params CreateSampleAnnotationsParams, _ error) {
+	// Decode path: sample_id.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "sample_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.SampleID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "sample_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
 // GetProjectParams is parameters of getProject operation.
 type GetProjectParams struct {
 	ProjectID string
@@ -137,6 +202,71 @@ func decodeGetProjectParams(args [1]string, argsEscaped bool, r *http.Request) (
 	}(); err != nil {
 		return params, &ogenerrors.DecodeParamError{
 			Name: "project_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
+// ListSampleAnnotationsParams is parameters of listSampleAnnotations operation.
+type ListSampleAnnotationsParams struct {
+	SampleID string
+}
+
+func unpackListSampleAnnotationsParams(packed middleware.Parameters) (params ListSampleAnnotationsParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "sample_id",
+			In:   "path",
+		}
+		params.SampleID = packed[key].(string)
+	}
+	return params
+}
+
+func decodeListSampleAnnotationsParams(args [1]string, argsEscaped bool, r *http.Request) (params ListSampleAnnotationsParams, _ error) {
+	// Decode path: sample_id.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "sample_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.SampleID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "sample_id",
 			In:   "path",
 			Err:  err,
 		}

@@ -192,6 +192,59 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /samples/{sample_id}/annotations:
+    get:
+      operationId: listSampleAnnotations
+      parameters:
+        - name: sample_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: sample annotations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Annotation"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createSampleAnnotations
+      parameters:
+        - name: sample_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAnnotationRequest"
+      responses:
+        "201":
+          description: created annotations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Annotation"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
     HealthResponse:
@@ -293,6 +346,67 @@ components:
       properties:
         accepted:
           type: boolean
+    Annotation:
+      type: object
+      required:
+        - id
+        - sample_id
+        - group_id
+        - label_id
+        - view
+        - annotation_type
+        - geometry
+        - attrs
+        - source
+        - is_generated
+      properties:
+        id:
+          type: string
+        sample_id:
+          type: string
+        group_id:
+          type: string
+        label_id:
+          type: string
+        view:
+          type: string
+        annotation_type:
+          type: string
+        geometry:
+          type: object
+          additionalProperties: true
+        attrs:
+          type: object
+          additionalProperties: true
+        source:
+          type: string
+        is_generated:
+          type: boolean
+    CreateAnnotationRequest:
+      type: object
+      required:
+        - group_id
+        - label_id
+        - view
+        - annotation_type
+        - geometry
+      properties:
+        group_id:
+          type: string
+        label_id:
+          type: string
+        view:
+          type: string
+        annotation_type:
+          type: string
+        geometry:
+          type: object
+          additionalProperties: true
+        attrs:
+          type: object
+          additionalProperties: true
+        source:
+          type: string
     ErrorResponse:
       type: object
       required:

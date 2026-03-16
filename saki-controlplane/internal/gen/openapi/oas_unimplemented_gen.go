@@ -27,6 +27,13 @@ func (UnimplementedHandler) CreateProject(ctx context.Context, req *CreateProjec
 	return r, ht.ErrNotImplemented
 }
 
+// CreateSampleAnnotations implements createSampleAnnotations operation.
+//
+// POST /samples/{sample_id}/annotations
+func (UnimplementedHandler) CreateSampleAnnotations(ctx context.Context, req *CreateAnnotationRequest, params CreateSampleAnnotationsParams) (r []Annotation, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // GetCurrentUser implements getCurrentUser operation.
 //
 // GET /auth/me
@@ -66,6 +73,13 @@ func (UnimplementedHandler) ListProjects(ctx context.Context) (r []Project, _ er
 //
 // GET /runtime/executors
 func (UnimplementedHandler) ListRuntimeExecutors(ctx context.Context) (r []RuntimeExecutor, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// ListSampleAnnotations implements listSampleAnnotations operation.
+//
+// GET /samples/{sample_id}/annotations
+func (UnimplementedHandler) ListSampleAnnotations(ctx context.Context, params ListSampleAnnotationsParams) (r []Annotation, _ error) {
 	return r, ht.ErrNotImplemented
 }
 

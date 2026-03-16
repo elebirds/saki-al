@@ -17,10 +17,12 @@ import (
 
 	appbootstrap "github.com/elebirds/saki/saki-controlplane/internal/app/bootstrap"
 	accessapp "github.com/elebirds/saki/saki-controlplane/internal/modules/access/app"
+	annotationrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/repo"
 	projectapp "github.com/elebirds/saki/saki-controlplane/internal/modules/project/app"
 	runtimecommands "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/commands"
 	runtimequeries "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/queries"
 	systemapi "github.com/elebirds/saki/saki-controlplane/internal/modules/system/apihttp"
+	"github.com/google/uuid"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 	"github.com/testcontainers/testcontainers-go"
@@ -151,6 +153,8 @@ func newTestHTTPHandler() (http.Handler, error) {
 		ProjectStore:        projectapp.NewMemoryStore(),
 		RuntimeStore:        runtimequeries.NewMemoryAdminStore(),
 		RuntimeTaskCanceler: fakeRuntimeTaskCanceler{},
+		AnnotationSamples:   fakeAnnotationSampleStore{},
+		AnnotationStore:     fakeAnnotationStore{},
 	})
 }
 
@@ -158,6 +162,22 @@ type fakeRuntimeTaskCanceler struct{}
 
 func (fakeRuntimeTaskCanceler) Handle(context.Context, runtimecommands.CancelTaskCommand) (*runtimecommands.TaskRecord, error) {
 	return &runtimecommands.TaskRecord{}, nil
+}
+
+type fakeAnnotationSampleStore struct{}
+
+func (fakeAnnotationSampleStore) Get(context.Context, uuid.UUID) (*annotationrepo.Sample, error) {
+	return nil, nil
+}
+
+type fakeAnnotationStore struct{}
+
+func (fakeAnnotationStore) Create(context.Context, annotationrepo.CreateAnnotationParams) (*annotationrepo.Annotation, error) {
+	return nil, nil
+}
+
+func (fakeAnnotationStore) ListBySample(context.Context, uuid.UUID) ([]annotationrepo.Annotation, error) {
+	return nil, nil
 }
 
 func freeAddr(t *testing.T) string {

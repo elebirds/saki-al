@@ -11,10 +11,13 @@ import (
 )
 
 var (
-	rn14AllowedHeaders = map[string]string{
+	rn17AllowedHeaders = map[string]string{
 		"POST": "Content-Type",
 	}
 	rn5AllowedHeaders = map[string]string{
+		"POST": "Content-Type",
+	}
+	rn8AllowedHeaders = map[string]string{
 		"POST": "Content-Type",
 	}
 )
@@ -98,7 +101,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 						default:
 							s.notAllowed(w, r, notAllowedParams{
 								allowedMethods: "POST",
-								allowedHeaders: rn14AllowedHeaders,
+								allowedHeaders: rn17AllowedHeaders,
 								acceptPost:     "application/json",
 								acceptPatch:    "",
 							})
@@ -369,6 +372,60 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 							return
 						}
 
+					}
+
+				}
+
+			case 's': // Prefix: "samples/"
+
+				if l := len("samples/"); len(elem) >= l && elem[0:l] == "samples/" {
+					elem = elem[l:]
+				} else {
+					break
+				}
+
+				// Param: "sample_id"
+				// Match until "/"
+				idx := strings.IndexByte(elem, '/')
+				if idx < 0 {
+					idx = len(elem)
+				}
+				args[0] = elem[:idx]
+				elem = elem[idx:]
+
+				if len(elem) == 0 {
+					break
+				}
+				switch elem[0] {
+				case '/': // Prefix: "/annotations"
+
+					if l := len("/annotations"); len(elem) >= l && elem[0:l] == "/annotations" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					if len(elem) == 0 {
+						// Leaf node.
+						switch r.Method {
+						case "GET":
+							s.handleListSampleAnnotationsRequest([1]string{
+								args[0],
+							}, elemIsEscaped, w, r)
+						case "POST":
+							s.handleCreateSampleAnnotationsRequest([1]string{
+								args[0],
+							}, elemIsEscaped, w, r)
+						default:
+							s.notAllowed(w, r, notAllowedParams{
+								allowedMethods: "GET,POST",
+								allowedHeaders: rn8AllowedHeaders,
+								acceptPost:     "application/json",
+								acceptPatch:    "",
+							})
+						}
+
+						return
 					}
 
 				}
@@ -773,6 +830,63 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 							}
 						}
 
+					}
+
+				}
+
+			case 's': // Prefix: "samples/"
+
+				if l := len("samples/"); len(elem) >= l && elem[0:l] == "samples/" {
+					elem = elem[l:]
+				} else {
+					break
+				}
+
+				// Param: "sample_id"
+				// Match until "/"
+				idx := strings.IndexByte(elem, '/')
+				if idx < 0 {
+					idx = len(elem)
+				}
+				args[0] = elem[:idx]
+				elem = elem[idx:]
+
+				if len(elem) == 0 {
+					break
+				}
+				switch elem[0] {
+				case '/': // Prefix: "/annotations"
+
+					if l := len("/annotations"); len(elem) >= l && elem[0:l] == "/annotations" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					if len(elem) == 0 {
+						// Leaf node.
+						switch method {
+						case "GET":
+							r.name = ListSampleAnnotationsOperation
+							r.summary = ""
+							r.operationID = "listSampleAnnotations"
+							r.operationGroup = ""
+							r.pathPattern = "/samples/{sample_id}/annotations"
+							r.args = args
+							r.count = 1
+							return r, true
+						case "POST":
+							r.name = CreateSampleAnnotationsOperation
+							r.summary = ""
+							r.operationID = "createSampleAnnotations"
+							r.operationGroup = ""
+							r.pathPattern = "/samples/{sample_id}/annotations"
+							r.args = args
+							r.count = 1
+							return r, true
+						default:
+							return
+						}
 					}
 
 				}

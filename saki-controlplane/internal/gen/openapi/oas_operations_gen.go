@@ -6,14 +6,16 @@ package openapi
 type OperationName = string
 
 const (
-	CancelRuntimeTaskOperation    OperationName = "CancelRuntimeTask"
-	CreateProjectOperation        OperationName = "CreateProject"
-	GetCurrentUserOperation       OperationName = "GetCurrentUser"
-	GetProjectOperation           OperationName = "GetProject"
-	GetRuntimeSummaryOperation    OperationName = "GetRuntimeSummary"
-	HealthzOperation              OperationName = "Healthz"
-	ListProjectsOperation         OperationName = "ListProjects"
-	ListRuntimeExecutorsOperation OperationName = "ListRuntimeExecutors"
-	LoginOperation                OperationName = "Login"
-	RequirePermissionOperation    OperationName = "RequirePermission"
+	CancelRuntimeTaskOperation       OperationName = "CancelRuntimeTask"
+	CreateProjectOperation           OperationName = "CreateProject"
+	CreateSampleAnnotationsOperation OperationName = "CreateSampleAnnotations"
+	GetCurrentUserOperation          OperationName = "GetCurrentUser"
+	GetProjectOperation              OperationName = "GetProject"
+	GetRuntimeSummaryOperation       OperationName = "GetRuntimeSummary"
+	HealthzOperation                 OperationName = "Healthz"
+	ListProjectsOperation            OperationName = "ListProjects"
+	ListRuntimeExecutorsOperation    OperationName = "ListRuntimeExecutors"
+	ListSampleAnnotationsOperation   OperationName = "ListSampleAnnotations"
+	LoginOperation                   OperationName = "Login"
+	RequirePermissionOperation       OperationName = "RequirePermission"
 )

@@ -1,0 +1,17 @@
+package config
+
+import "github.com/caarlos0/env/v11"
+
+type Config struct {
+	PublicAPIBind string `env:"PUBLIC_API_BIND" envDefault:":8080"`
+	RuntimeBind   string `env:"RUNTIME_BIND" envDefault:":8081"`
+	LogLevel      string `env:"LOG_LEVEL" envDefault:"INFO"`
+}
+
+func Load() (Config, error) {
+	cfg := Config{}
+	if err := env.Parse(&cfg); err != nil {
+		return Config{}, err
+	}
+	return cfg, nil
+}

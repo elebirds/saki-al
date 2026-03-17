@@ -8,7 +8,7 @@ from saki_ir import list_format_profiles
 
 @dataclass(slots=True)
 class IOCapabilityProfile:
-    id: Literal["coco", "voc", "yolo", "yolo_obb", "dota"]
+    id: Literal["coco", "voc", "yolo", "yolo_obb", "dota", "predictions_json"]
     family: str
     supports_import: bool
     supports_export: bool

@@ -5,6 +5,7 @@ import re
 import uuid
 from collections import defaultdict
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
@@ -44,12 +45,18 @@ from saki_api.modules.project.api.export import (
     ProjectExportResolveRequest,
     ProjectExportResolveResponse,
     ProjectIOCapabilitiesRead,
+    PredictionsJSONOptions,
 )
 from saki_api.modules.project.domain.commit_sample_state import CommitSampleState
 from saki_api.modules.project.repo.branch import BranchRepository
 from saki_api.modules.project.repo.commit import CommitRepository
 from saki_api.modules.project.service.io_capability import IOCapabilityService
 from saki_api.modules.project.service.label import LabelService
+from saki_api.modules.project.service.predictions_json_export import (
+    PredictionsJSONEntryInput,
+    PredictionsJSONTraceContext,
+    build_predictions_json_entries,
+)
 from saki_api.modules.project.service.project import ProjectService
 from saki_api.modules.shared.modeling.enums import AnnotationSource as DBAnnotationSource, CommitSampleReviewState
 from saki_api.modules.storage.domain.asset import Asset
@@ -152,6 +159,7 @@ class ExportService:
         self._validate_format_options(
             format_profile=payload.format_profile,
             yolo_label_format=payload.yolo_label_format,
+            predictions_json_options=payload.predictions_json_options,
         )
 
         sample_stmt = self._build_sample_statement(
@@ -263,6 +271,7 @@ class ExportService:
         resolved_yolo_label_format = self._validate_format_options(
             format_profile=payload.format_profile,
             yolo_label_format=payload.yolo_label_format,
+            predictions_json_options=payload.predictions_json_options,
         )
 
         offset = max(0, int(payload.cursor or 0))
@@ -309,6 +318,7 @@ class ExportService:
                 dataset_name=dataset_name_by_id.get(sample.dataset_id),
                 bundle_layout=payload.bundle_layout,
                 selected_dataset_count=len(dataset_ids),
+                format_profile=payload.format_profile,
             )
             sample_ctx = self._build_sample_export_context(
                 sample=sample,
@@ -317,7 +327,7 @@ class ExportService:
                 primary_asset=primary_assets_by_sample.get(sample.id),
                 format_profile=payload.format_profile,
             )
-            if payload.format_profile != "coco":
+            if payload.format_profile not in {"coco", "predictions_json"}:
                 files.extend(
                     self._build_annotation_files_for_sample(
                         sample=sample,
@@ -351,6 +361,8 @@ class ExportService:
                 labels=labels,
                 class_to_index=yolo_class_to_index,
                 dataset_name_by_id=dataset_name_by_id,
+                predictions_json_options=payload.predictions_json_options,
+                project_id=project_id,
             )
             files.extend(final_files)
             issues.extend(final_issues)
@@ -442,7 +454,14 @@ class ExportService:
         dataset_name: str | None,
         bundle_layout: Literal["merged_zip", "per_dataset_zip"],
         selected_dataset_count: int,
+        format_profile: str | None = None,
     ) -> str:
+        if (
+            format_profile == "predictions_json"
+            and bundle_layout == "merged_zip"
+            and selected_dataset_count <= 1
+        ):
+            return ""
         if bundle_layout == "merged_zip":
             return f"datasets/{cls._sanitize_path_segment(dataset_name or str(dataset_id))}/"
         if selected_dataset_count <= 1:
@@ -839,10 +858,12 @@ class ExportService:
         labels: list,
         class_to_index: dict[str, int],
         dataset_name_by_id: dict[uuid.UUID, str],
+        predictions_json_options: PredictionsJSONOptions | None,
+        project_id: uuid.UUID,
     ) -> tuple[list[ProjectExportChunkFileRead], list[str]]:
         files: list[ProjectExportChunkFileRead] = []
         issues: list[str] = []
-        if format_profile in {"voc", "coco"}:
+        if format_profile in {"voc", "coco", "predictions_json"}:
             all_samples = await self._query_all_samples(
                 commit_id=commit_id,
                 dataset_ids=dataset_ids,
@@ -863,6 +884,7 @@ class ExportService:
                     dataset_name=dataset_name_by_id.get(dataset_id),
                     bundle_layout=bundle_layout,
                     selected_dataset_count=len(dataset_ids),
+                    format_profile=format_profile,
                 )
                 split_keys: list[str] = []
                 for sample in grouped_samples.get(dataset_id, []):
@@ -899,6 +921,7 @@ class ExportService:
                     dataset_name=dataset_name_by_id.get(dataset_id),
                     bundle_layout=bundle_layout,
                     selected_dataset_count=len(dataset_ids),
+                    format_profile=format_profile,
                 )
                 files.append(
                     ProjectExportChunkFileRead(
@@ -910,11 +933,78 @@ class ExportService:
                 )
             return files, issues
 
+        all_sample_ids = [sample.id for samples in grouped_samples.values() for sample in samples]
+
+        if format_profile == "predictions_json":
+            options = predictions_json_options or PredictionsJSONOptions()
+            annotations_by_sample = (
+                await self.annotation_gateway.get_annotations_by_commit_and_samples(
+                    commit_id=commit_id,
+                    sample_ids=all_sample_ids,
+                )
+                if all_sample_ids
+                else {}
+            )
+            branch_name = await self._resolve_export_branch_name(project_id=project_id, commit_id=commit_id)
+            trace_context = PredictionsJSONTraceContext(
+                annotation_commit_id=commit_id,
+                branch_name=branch_name,
+                exported_at=datetime.now(timezone.utc),
+            )
+            for dataset_id in dataset_ids:
+                root_prefix = self._build_dataset_root_prefix(
+                    dataset_id=dataset_id,
+                    dataset_name=dataset_name_by_id.get(dataset_id),
+                    bundle_layout=bundle_layout,
+                    selected_dataset_count=len(dataset_ids),
+                    format_profile=format_profile,
+                )
+                dataset_samples = grouped_samples.get(dataset_id, [])
+                entry_inputs: list[PredictionsJSONEntryInput] = []
+                for sample in dataset_samples:
+                    sample_ctx = self._build_sample_export_context(
+                        sample=sample,
+                        root_prefix="",
+                        assets=[],
+                        primary_asset=primary_assets_by_sample.get(sample.id),
+                        format_profile="predictions_json",
+                    )
+                    entry_inputs.append(
+                        PredictionsJSONEntryInput(
+                            sample_id=sample.id,
+                            dataset_id=sample.dataset_id,
+                            image_path=sample_ctx.image_export_path,
+                        )
+                    )
+                entries, dataset_issues = build_predictions_json_entries(
+                    entry_inputs=entry_inputs,
+                    annotations_by_sample=annotations_by_sample,
+                    labels=labels,
+                    options=options,
+                    trace_context=trace_context,
+                )
+                for message in dataset_issues:
+                    issues.append(
+                        self._format_issue(
+                            dataset_name=dataset_name_by_id.get(dataset_id),
+                            sample_id=None,
+                            message=message,
+                        )
+                    )
+                files.append(
+                    ProjectExportChunkFileRead(
+                        dataset_id=dataset_id,
+                        path=f"{root_prefix}predictions.json",
+                        source_type="text",
+                        text_content=json.dumps(entries, ensure_ascii=False, indent=2) + "\n",
+                    )
+                )
+            return files, issues
+
         if format_profile != "coco":
             return files, issues
 
         labels_ir = self._to_ir_labels(labels)
-        all_sample_ids = [sample.id for samples in grouped_samples.values() for sample in samples]
         annotations_by_sample = (
             await self.annotation_gateway.get_annotations_by_commit_and_samples(
                 commit_id=commit_id,
@@ -929,6 +1019,7 @@ class ExportService:
                 dataset_name=dataset_name_by_id.get(dataset_id),
                 bundle_layout=bundle_layout,
                 selected_dataset_count=len(dataset_ids),
+                format_profile=format_profile,
             )
             dataset_samples = grouped_samples.get(dataset_id, [])
             sample_records: list[SampleRecord] = []
@@ -1037,8 +1128,17 @@ class ExportService:
             raise BadRequestAppException("Commit not found in project")
 
     @staticmethod
-    def _validate_format_options(*, format_profile: str, yolo_label_format: str | None) -> str | None:
+    def _validate_format_options(
+        *,
+        format_profile: str,
+        yolo_label_format: str | None,
+        predictions_json_options: PredictionsJSONOptions | None,
+    ) -> str | None:
         profile = get_format_profile(format_profile)
+        if predictions_json_options is not None and format_profile != "predictions_json":
+            raise BadRequestAppException(
+                "predictions_json_options is only supported when format_profile=predictions_json"
+            )
         normalized = str(yolo_label_format or "").strip().lower() or None
         allowed = set(profile.yolo_label_options)
 
@@ -1056,6 +1156,17 @@ class ExportService:
                 f"format_profile={format_profile} does not support yolo_label_format={normalized}"
             )
         return normalized
+
+    async def _resolve_export_branch_name(self, *, project_id: uuid.UUID, commit_id: uuid.UUID) -> str | None:
+        branches = [
+            branch
+            for branch in await self.branch_repo.find_by_head_commit(commit_id)
+            if branch.project_id == project_id
+        ]
+        if not branches:
+            return None
+        branches.sort(key=lambda branch: (0 if branch.name == "master" else 1, str(branch.name), str(branch.id)))
+        return branches[0].name
 
     def _sample_id_subquery(
         self,

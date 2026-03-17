@@ -26,6 +26,11 @@ import {
     ExportBundleLayout,
     FormatProfileCapability,
     FormatProfileId,
+    PredictionsJSONDetectionTraceField,
+    PredictionsJSONEntryTraceField,
+    PredictionsJSONObbCompatField,
+    PredictionsJSONOptions,
+    PredictionsJSONRectCompatField,
     Project,
     ProjectBranch,
     ProjectExportResolveResponse,
@@ -36,6 +41,7 @@ import {
 import {useResourcePermission} from '../../hooks';
 
 const {Title, Text, Paragraph} = Typography;
+const {TextArea} = Input;
 
 const ASSET_CONCURRENCY = 4;
 const CHUNK_LIMIT = 200;
@@ -56,6 +62,7 @@ interface StreamZipParams {
     zipWriter: ZipWriter<unknown>;
     formatProfile: FormatProfileId;
     yoloLabelFormat?: YoloLabelFormat;
+    predictionsJsonOptions?: PredictionsJSONOptions;
     sampleScope: SampleScope;
     includeAssets: boolean;
     bundleLayout: ExportBundleLayout;
@@ -143,6 +150,7 @@ function getFormatLabel(id: FormatProfileId): string {
     if (id === 'voc') return 'VOC';
     if (id === 'yolo') return 'YOLO';
     if (id === 'dota') return 'DOTA';
+    if (id === 'predictions_json') return 'Predictions JSON';
     return 'YOLO OBB';
 }
 
@@ -154,6 +162,7 @@ async function streamZipByChunks(params: StreamZipParams): Promise<void> {
         zipWriter,
         formatProfile,
         yoloLabelFormat,
+        predictionsJsonOptions,
         sampleScope,
         includeAssets,
         bundleLayout,
@@ -174,6 +183,7 @@ async function streamZipByChunks(params: StreamZipParams): Promise<void> {
                 sampleScope,
                 formatProfile,
                 yoloLabelFormat,
+                predictionsJsonOptions,
                 bundleLayout,
                 includeAssets,
                 cursor: cursor ?? null,
@@ -290,6 +300,12 @@ const ProjectExportWorkspace: React.FC = () => {
     const [sampleScope, setSampleScope] = useState<SampleScope>('all');
     const [formatProfile, setFormatProfile] = useState<FormatProfileId>('coco');
     const [yoloLabelFormat, setYoloLabelFormat] = useState<YoloLabelFormat>('obb_rbox');
+    const [predictionsJsonIncludeEmptyEntries, setPredictionsJsonIncludeEmptyEntries] = useState(false);
+    const [predictionsJsonEntryTraceFields, setPredictionsJsonEntryTraceFields] = useState<PredictionsJSONEntryTraceField[]>([]);
+    const [predictionsJsonDetectionTraceFields, setPredictionsJsonDetectionTraceFields] = useState<PredictionsJSONDetectionTraceField[]>([]);
+    const [predictionsJsonRectCompatFields, setPredictionsJsonRectCompatFields] = useState<PredictionsJSONRectCompatField[]>(['xyxy', 'xywh']);
+    const [predictionsJsonObbCompatFields, setPredictionsJsonObbCompatFields] = useState<PredictionsJSONObbCompatField[]>(['xyxyxyxy', 'xywhr']);
+    const [predictionsJsonFilterText, setPredictionsJsonFilterText] = useState('');
     const [includeAssets, setIncludeAssets] = useState(true);
     const [bundleLayout, setBundleLayout] = useState<ExportBundleLayout>('merged_zip');
     const [failFast, setFailFast] = useState(false);
@@ -362,6 +378,7 @@ const ProjectExportWorkspace: React.FC = () => {
         () => (selectedFormatCapability?.yoloLabelOptions || []) as YoloLabelFormat[],
         [selectedFormatCapability],
     );
+    const isPredictionsJson = formatProfile === 'predictions_json';
 
     useEffect(() => {
         if (exportProfiles.length === 0) return;
@@ -382,6 +399,41 @@ const ProjectExportWorkspace: React.FC = () => {
             setYoloLabelFormat(selectedYoloLabelOptions[0]);
         }
     }, [formatProfile, selectedYoloLabelOptions, yoloLabelFormat]);
+
+    const buildPredictionsJsonOptions = useCallback((): PredictionsJSONOptions | undefined => {
+        if (formatProfile !== 'predictions_json') {
+            return undefined;
+        }
+
+        const rawFilter = predictionsJsonFilterText.trim();
+        let parsedFilter: PredictionsJSONOptions['filter'] = null;
+        if (rawFilter) {
+            try {
+                parsedFilter = JSON.parse(rawFilter) as PredictionsJSONOptions['filter'];
+            } catch (error) {
+                throw new Error(`predictions_json filter JSON 解析失败: ${error instanceof Error ? error.message : String(error)}`);
+            }
+        }
+
+        return {
+            includeEmptyEntries: predictionsJsonIncludeEmptyEntries,
+            includeEntryTraceFields: predictionsJsonEntryTraceFields,
+            includeDetectionTraceFields: predictionsJsonDetectionTraceFields,
+            geometryCompatFields: {
+                rect: predictionsJsonRectCompatFields,
+                obb: predictionsJsonObbCompatFields,
+            },
+            filter: parsedFilter,
+        };
+    }, [
+        formatProfile,
+        predictionsJsonFilterText,
+        predictionsJsonIncludeEmptyEntries,
+        predictionsJsonEntryTraceFields,
+        predictionsJsonDetectionTraceFields,
+        predictionsJsonRectCompatFields,
+        predictionsJsonObbCompatFields,
+    ]);
 
     const estimatedTotalBytes = resolveResult?.estimatedTotalAssetBytes || 0;
 
@@ -417,10 +469,23 @@ const ProjectExportWorkspace: React.FC = () => {
             sampleScope,
             formatProfile,
             yoloLabelFormat: formatProfile === 'yolo_obb' ? yoloLabelFormat : undefined,
+            predictionsJsonOptions: buildPredictionsJsonOptions(),
             includeAssets,
             bundleLayout,
         };
-    }, [projectId, formatProfile, yoloLabelFormat, snapshotType, branchName, commitId, selectedDatasetIds, sampleScope, includeAssets, bundleLayout]);
+    }, [
+        projectId,
+        formatProfile,
+        yoloLabelFormat,
+        snapshotType,
+        branchName,
+        commitId,
+        selectedDatasetIds,
+        sampleScope,
+        includeAssets,
+        bundleLayout,
+        buildPredictionsJsonOptions,
+    ]);
 
     const writeZipPayload = useCallback(async (args: {
         zipWriter: ZipWriter<unknown>;
@@ -438,6 +503,7 @@ const ProjectExportWorkspace: React.FC = () => {
             zipWriter,
             formatProfile,
             yoloLabelFormat: formatProfile === 'yolo_obb' ? yoloLabelFormat : undefined,
+            predictionsJsonOptions: buildPredictionsJsonOptions(),
             sampleScope,
             includeAssets,
             bundleLayout,
@@ -453,6 +519,7 @@ const ProjectExportWorkspace: React.FC = () => {
             title,
             formatProfile,
             yoloLabelFormat: formatProfile === 'yolo_obb' ? yoloLabelFormat : undefined,
+            predictionsJsonOptions: buildPredictionsJsonOptions(),
             includeAssets,
             sampleScope,
             datasetIds,
@@ -466,6 +533,7 @@ const ProjectExportWorkspace: React.FC = () => {
         includeAssets,
         bundleLayout,
         failFast,
+        buildPredictionsJsonOptions,
         appendReportIssue,
     ]);
 
@@ -539,7 +607,13 @@ const ProjectExportWorkspace: React.FC = () => {
             return;
         }
 
-        const payload = buildResolvePayload();
+        let payload: ReturnType<typeof buildResolvePayload>;
+        try {
+            payload = buildResolvePayload();
+        } catch (error) {
+            message.error(error instanceof Error ? error.message : t('export.project.startFailed'));
+            return;
+        }
         if (!payload) return;
 
         setReport([]);
@@ -843,6 +917,101 @@ const ProjectExportWorkspace: React.FC = () => {
                                     }))}
                                 />
                             </div>
+                        ) : null}
+                        {isPredictionsJson ? (
+                            <Card size="small" title="predictions_json 选项" className="!border-github-border !bg-github-panel">
+                                <Space direction="vertical" size={14} className="w-full">
+                                    <div>
+                                        <Text strong>保留空样本 entry</Text>
+                                        <div className="mt-2">
+                                            <Switch
+                                                checked={predictionsJsonIncludeEmptyEntries}
+                                                onChange={setPredictionsJsonIncludeEmptyEntries}
+                                                checkedChildren={t('common.yes')}
+                                                unCheckedChildren={t('common.no')}
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                        <div>
+                                            <Text strong>Entry 追踪字段</Text>
+                                            <Checkbox.Group
+                                                className="mt-2 w-full"
+                                                value={predictionsJsonEntryTraceFields}
+                                                onChange={(values) => setPredictionsJsonEntryTraceFields(
+                                                    values.map((value) => String(value) as PredictionsJSONEntryTraceField),
+                                                )}
+                                                options={[
+                                                    {label: 'sample_id', value: 'sample_id'},
+                                                    {label: 'dataset_id', value: 'dataset_id'},
+                                                    {label: 'annotation_commit_id', value: 'annotation_commit_id'},
+                                                    {label: 'branch_name', value: 'branch_name'},
+                                                    {label: 'exported_at', value: 'exported_at'},
+                                                ]}
+                                            />
+                                        </div>
+                                        <div>
+                                            <Text strong>Detection 追踪字段</Text>
+                                            <Checkbox.Group
+                                                className="mt-2 w-full"
+                                                value={predictionsJsonDetectionTraceFields}
+                                                onChange={(values) => setPredictionsJsonDetectionTraceFields(
+                                                    values.map((value) => String(value) as PredictionsJSONDetectionTraceField),
+                                                )}
+                                                options={[
+                                                    {label: 'annotation_id', value: 'annotation_id'},
+                                                    {label: 'label_id', value: 'label_id'},
+                                                    {label: 'source', value: 'source'},
+                                                    {label: 'attrs', value: 'attrs'},
+                                                ]}
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                        <div>
+                                            <Text strong>Rect 兼容几何字段</Text>
+                                            <Checkbox.Group
+                                                className="mt-2 w-full"
+                                                value={predictionsJsonRectCompatFields}
+                                                onChange={(values) => setPredictionsJsonRectCompatFields(
+                                                    values.map((value) => String(value) as PredictionsJSONRectCompatField),
+                                                )}
+                                                options={[
+                                                    {label: 'xyxy', value: 'xyxy'},
+                                                    {label: 'xywh', value: 'xywh'},
+                                                ]}
+                                            />
+                                        </div>
+                                        <div>
+                                            <Text strong>OBB 兼容几何字段</Text>
+                                            <Checkbox.Group
+                                                className="mt-2 w-full"
+                                                value={predictionsJsonObbCompatFields}
+                                                onChange={(values) => setPredictionsJsonObbCompatFields(
+                                                    values.map((value) => String(value) as PredictionsJSONObbCompatField),
+                                                )}
+                                                options={[
+                                                    {label: 'xyxyxyxy', value: 'xyxyxyxy'},
+                                                    {label: 'xywhr', value: 'xywhr'},
+                                                ]}
+                                            />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <Text strong>过滤条件 JSON</Text>
+                                        <Paragraph className="!mb-2 !mt-1 !text-github-muted">
+                                            留空表示不过滤。字段范围按后端契约，仅支持 `annotation.*` 与 `annotation.attrs.*`。
+                                        </Paragraph>
+                                        <TextArea
+                                            className="font-mono"
+                                            autoSize={{minRows: 6, maxRows: 14}}
+                                            value={predictionsJsonFilterText}
+                                            onChange={(event) => setPredictionsJsonFilterText(event.target.value)}
+                                            placeholder={'{\n  "op": "and",\n  "items": [\n    {\n      "field": "annotation.source",\n      "operator": "in",\n      "value": ["model", "confirmed_model"]\n    }\n  ]\n}'}
+                                        />
+                                    </div>
+                                </Space>
+                            </Card>
                         ) : null}
                         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                             <div>

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import uuid
 
 import pytest
@@ -184,8 +185,98 @@ async def _seed_project(
     return {
         "project_id": project.id,
         "dataset_id": dataset.id,
+        "dataset_name": dataset.name,
         "commit_id": commit.id,
+        "label_id": label.id,
         "sample_ids": sample_ids,
+    }
+
+
+async def _add_dataset_sample(
+    session: AsyncSession,
+    *,
+    project_id: uuid.UUID,
+    commit_id: uuid.UUID,
+    label_id: uuid.UUID,
+    annotation_type: AnnotationType = AnnotationType.RECT,
+    source: AnnotationSource = AnnotationSource.MANUAL,
+    attrs: dict | None = None,
+) -> dict[str, object]:
+    dataset = Dataset(
+        name=f"dataset-{uuid.uuid4()}",
+        owner_id=(await session.exec(select(Dataset.owner_id).limit(1))).one(),
+        type=DatasetType.CLASSIC,
+    )
+    session.add(dataset)
+    await session.flush()
+
+    session.add(ProjectDataset(project_id=project_id, dataset_id=dataset.id))
+
+    asset = Asset(
+        hash=f"asset-hash-{uuid.uuid4().hex}",
+        path=f"assets/{uuid.uuid4().hex}.jpg",
+        bucket="bucket",
+        original_filename="extra.jpg",
+        extension=".jpg",
+        mime_type="image/jpeg",
+        size=900,
+    )
+    session.add(asset)
+    await session.flush()
+
+    sample = Sample(
+        dataset_id=dataset.id,
+        name="group/extra.jpg",
+        primary_asset_id=asset.id,
+        asset_group={},
+        meta_info={"width": 120, "height": 90},
+    )
+    session.add(sample)
+    await session.flush()
+
+    geometry = (
+        {"obb": {"cx": 50, "cy": 40, "width": 30, "height": 20, "angle_deg_ccw": 10}}
+        if annotation_type == AnnotationType.OBB
+        else {"rect": {"x": 10, "y": 12, "width": 30, "height": 20}}
+    )
+    annotation = Annotation(
+        sample_id=sample.id,
+        label_id=label_id,
+        project_id=project_id,
+        group_id=uuid.uuid4(),
+        lineage_id=uuid.uuid4(),
+        geometry=geometry,
+        attrs=attrs or {},
+        source=source,
+        type=annotation_type,
+        confidence=0.88,
+    )
+    session.add(annotation)
+    await session.flush()
+
+    session.add(
+        CommitAnnotationMap(
+            commit_id=commit_id,
+            sample_id=sample.id,
+            annotation_id=annotation.id,
+            project_id=project_id,
+        )
+    )
+    session.add(
+        CommitSampleState(
+            commit_id=commit_id,
+            sample_id=sample.id,
+            project_id=project_id,
+            state=CommitSampleReviewState.LABELED,
+        )
+    )
+    await session.commit()
+
+    return {
+        "dataset_id": dataset.id,
+        "dataset_name": dataset.name,
+        "sample_id": sample.id,
+        "annotation_id": annotation.id,
     }
 
 
@@ -217,6 +308,7 @@ async def test_io_capabilities_respect_enabled_annotation_types(export_env):
             "yolo": True,
             "yolo_obb": True,
             "dota": True,
+            "predictions_json": True,
         }
         assert obb_available == {
             "coco": False,
@@ -224,6 +316,7 @@ async def test_io_capabilities_respect_enabled_annotation_types(export_env):
             "yolo": False,
             "yolo_obb": True,
             "dota": True,
+            "predictions_json": True,
         }
 
 
@@ -248,6 +341,7 @@ async def test_io_capabilities_export_profiles_require_full_project_annotation_p
             "yolo": False,
             "yolo_obb": True,
             "dota": True,
+            "predictions_json": True,
         }
         assert import_available == {
             "coco": True,
@@ -255,6 +349,7 @@ async def test_io_capabilities_export_profiles_require_full_project_annotation_p
             "yolo": True,
             "yolo_obb": True,
             "dota": True,
+            "predictions_json": False,
         }
 
 
@@ -638,3 +733,275 @@ async def test_resolve_export_enforces_project_annotation_policy_for_classic_dat
         allowed_result = await service.resolve_export(project_id=project_id, payload=allowed_payload)
         assert allowed_result.blocked is False
         assert allowed_result.format_compatibility == "ok"
+
+
+@pytest.mark.anyio
+async def test_predictions_json_resolve_available_for_rect_obb_project(export_env):
+    session_local = export_env
+    async with session_local() as session:
+        seeded = await _seed_project(
+            session,
+            enabled_annotation_types=[AnnotationType.RECT, AnnotationType.OBB],
+            include_obb_annotation=True,
+        )
+
+        service = ExportService(session)
+        result = await service.resolve_export(
+            project_id=seeded["project_id"],
+            payload=ProjectExportResolveRequest(
+                dataset_ids=[seeded["dataset_id"]],
+                snapshot={"type": "branch_head", "branch_name": "master"},
+                sample_scope="all",
+                format_profile="predictions_json",
+                include_assets=False,
+                bundle_layout="merged_zip",
+            ),
+        )
+
+        assert result.blocked is False
+        assert result.format_compatibility == "ok"
+        assert result.annotation_type_counts == {"obb": 1, "rect": 2}
+
+
+@pytest.mark.anyio
+async def test_predictions_json_chunk_emits_final_predictions_json(export_env):
+    session_local = export_env
+    async with session_local() as session:
+        seeded = await _seed_project(
+            session,
+            enabled_annotation_types=[AnnotationType.RECT, AnnotationType.OBB],
+            include_obb_annotation=True,
+        )
+
+        service = ExportService(session)
+        page = await service.get_export_chunk(
+            project_id=seeded["project_id"],
+            payload=ProjectExportChunkRequest(
+                resolved_commit_id=seeded["commit_id"],
+                dataset_ids=[seeded["dataset_id"]],
+                sample_scope="all",
+                format_profile="predictions_json",
+                predictions_json_options={
+                    "include_entry_trace_fields": ["sample_id"],
+                    "include_detection_trace_fields": ["annotation_id"],
+                },
+                bundle_layout="merged_zip",
+                include_assets=False,
+                cursor=0,
+                limit=10,
+            ),
+        )
+
+        assert page.next_cursor is None
+        assert page.sample_count == 3
+        assert [file.path for file in page.files] == ["predictions.json"]
+
+        payload = json.loads(page.files[0].text_content or "[]")
+        assert len(payload) == 3
+        assert all(item["image_path"].startswith("images/train/") for item in payload)
+        assert all(len(item["detections"]) == 1 for item in payload)
+        assert all("sample_id" in item for item in payload)
+        assert all("annotation_id" in item["detections"][0] for item in payload)
+
+
+@pytest.mark.anyio
+async def test_predictions_json_respects_include_empty_entries(export_env):
+    session_local = export_env
+    async with session_local() as session:
+        seeded = await _seed_project(
+            session,
+            enabled_annotation_types=[AnnotationType.RECT],
+            include_obb_annotation=False,
+        )
+
+        service = ExportService(session)
+        without_empty = await service.get_export_chunk(
+            project_id=seeded["project_id"],
+            payload=ProjectExportChunkRequest(
+                resolved_commit_id=seeded["commit_id"],
+                dataset_ids=[seeded["dataset_id"]],
+                sample_scope="all",
+                format_profile="predictions_json",
+                predictions_json_options={
+                    "filter": {
+                        "field": "annotation.source",
+                        "operator": "eq",
+                        "value": "model",
+                    }
+                },
+                bundle_layout="merged_zip",
+                include_assets=False,
+                cursor=0,
+                limit=10,
+            ),
+        )
+        with_empty = await service.get_export_chunk(
+            project_id=seeded["project_id"],
+            payload=ProjectExportChunkRequest(
+                resolved_commit_id=seeded["commit_id"],
+                dataset_ids=[seeded["dataset_id"]],
+                sample_scope="all",
+                format_profile="predictions_json",
+                predictions_json_options={
+                    "include_empty_entries": True,
+                    "filter": {
+                        "field": "annotation.source",
+                        "operator": "eq",
+                        "value": "model",
+                    },
+                },
+                bundle_layout="merged_zip",
+                include_assets=False,
+                cursor=0,
+                limit=10,
+            ),
+        )
+
+        assert json.loads(without_empty.files[0].text_content or "[]") == []
+        with_empty_payload = json.loads(with_empty.files[0].text_content or "[]")
+        assert len(with_empty_payload) == 3
+        assert all(item["detections"] == [] for item in with_empty_payload)
+
+
+@pytest.mark.anyio
+async def test_predictions_json_filter_limits_annotations_by_attrs(export_env):
+    session_local = export_env
+    async with session_local() as session:
+        seeded = await _seed_project(
+            session,
+            enabled_annotation_types=[AnnotationType.RECT],
+            include_obb_annotation=False,
+        )
+
+        annotations = list(
+            (
+                await session.exec(
+                    select(Annotation)
+                    .where(Annotation.project_id == seeded["project_id"])
+                    .order_by(Annotation.sample_id)
+                )
+            ).all()
+        )
+        annotations[0].attrs = {"export": {"tag": "partner_a"}}
+        annotations[1].attrs = {"export": {"tag": "partner_b"}}
+        annotations[2].attrs = {"export": {"tag": "partner_b"}}
+        for annotation in annotations:
+            session.add(annotation)
+        await session.commit()
+
+        service = ExportService(session)
+        page = await service.get_export_chunk(
+            project_id=seeded["project_id"],
+            payload=ProjectExportChunkRequest(
+                resolved_commit_id=seeded["commit_id"],
+                dataset_ids=[seeded["dataset_id"]],
+                sample_scope="all",
+                format_profile="predictions_json",
+                predictions_json_options={
+                    "include_entry_trace_fields": ["sample_id"],
+                    "include_detection_trace_fields": ["attrs"],
+                    "filter": {
+                        "field": "annotation.attrs.export.tag",
+                        "operator": "eq",
+                        "value": "partner_a",
+                    },
+                },
+                bundle_layout="merged_zip",
+                include_assets=False,
+                cursor=0,
+                limit=10,
+            ),
+        )
+
+        payload = json.loads(page.files[0].text_content or "[]")
+        assert len(payload) == 1
+        assert len(payload[0]["detections"]) == 1
+        assert payload[0]["detections"][0]["attrs"] == {"export": {"tag": "partner_a"}}
+
+
+@pytest.mark.anyio
+async def test_predictions_json_bundle_layout_paths(export_env):
+    session_local = export_env
+    async with session_local() as session:
+        seeded = await _seed_project(
+            session,
+            enabled_annotation_types=[AnnotationType.RECT],
+            include_obb_annotation=False,
+        )
+        extra = await _add_dataset_sample(
+            session,
+            project_id=seeded["project_id"],
+            commit_id=seeded["commit_id"],
+            label_id=seeded["label_id"],
+        )
+
+        service = ExportService(session)
+        page = await service.get_export_chunk(
+            project_id=seeded["project_id"],
+            payload=ProjectExportChunkRequest(
+                resolved_commit_id=seeded["commit_id"],
+                dataset_ids=[seeded["dataset_id"], extra["dataset_id"]],
+                sample_scope="all",
+                format_profile="predictions_json",
+                bundle_layout="merged_zip",
+                include_assets=False,
+                cursor=0,
+                limit=20,
+            ),
+        )
+
+        paths = sorted(file.path for file in page.files)
+        assert paths == sorted(
+            [
+                f"datasets/{seeded['dataset_name']}/predictions.json",
+                f"datasets/{extra['dataset_name']}/predictions.json",
+            ]
+        )
+        for file in page.files:
+            payload = json.loads(file.text_content or "[]")
+            assert payload
+            assert all(item["image_path"].startswith("images/train/") for item in payload)
+            assert all("/predictions.json" not in item["image_path"] for item in payload)
+
+
+@pytest.mark.anyio
+async def test_export_rejects_predictions_json_options_for_other_formats(export_env):
+    session_local = export_env
+    async with session_local() as session:
+        seeded = await _seed_project(
+            session,
+            enabled_annotation_types=[AnnotationType.RECT],
+            include_obb_annotation=False,
+        )
+
+        service = ExportService(session)
+
+        with pytest.raises(BadRequestAppException, match="predictions_json_options"):
+            await service.resolve_export(
+                project_id=seeded["project_id"],
+                payload=ProjectExportResolveRequest(
+                    dataset_ids=[seeded["dataset_id"]],
+                    snapshot={"type": "branch_head", "branch_name": "master"},
+                    sample_scope="all",
+                    format_profile="yolo",
+                    predictions_json_options={"include_empty_entries": True},
+                    include_assets=False,
+                    bundle_layout="merged_zip",
+                ),
+            )
+
+        with pytest.raises(BadRequestAppException, match="predictions_json_options"):
+            await service.get_export_chunk(
+                project_id=seeded["project_id"],
+                payload=ProjectExportChunkRequest(
+                    resolved_commit_id=seeded["commit_id"],
+                    dataset_ids=[seeded["dataset_id"]],
+                    sample_scope="all",
+                    format_profile="yolo",
+                    predictions_json_options={"include_empty_entries": True},
+                    include_assets=False,
+                    bundle_layout="merged_zip",
+                    cursor=0,
+                    limit=10,
+                ),
+            )

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable, Literal
 
-FormatProfileId = Literal["coco", "voc", "yolo", "yolo_obb", "dota"]
+FormatProfileId = Literal["coco", "voc", "yolo", "yolo_obb", "dota", "predictions_json"]
 AnnotationShape = Literal["rect", "obb"]
 YoloLabelOption = Literal["det", "obb_rbox", "obb_poly8"]
 
@@ -55,6 +55,14 @@ _FORMAT_PROFILES: tuple[FormatProfile, ...] = (
         id="dota",
         family="dota",
         supports_import=True,
+        supports_export=True,
+        supported_annotation_types=("rect", "obb"),
+        yolo_label_options=(),
+    ),
+    FormatProfile(
+        id="predictions_json",
+        family="prediction_json",
+        supports_import=False,
         supports_export=True,
         supported_annotation_types=("rect", "obb"),
         yolo_label_options=(),

@@ -6,6 +6,7 @@ type Config struct {
 	PublicAPIBind   string `env:"PUBLIC_API_BIND" envDefault:":8080"`
 	RuntimeBind     string `env:"RUNTIME_BIND" envDefault:":8081"`
 	LogLevel        string `env:"LOG_LEVEL" envDefault:"INFO"`
+	LogFormat       string `env:"LOG_FORMAT" envDefault:"AUTO"`
 	DatabaseDSN     string `env:"DATABASE_DSN"`
 	AuthTokenSecret string `env:"AUTH_TOKEN_SECRET" envDefault:"dev-secret"`
 	AuthTokenTTL    string `env:"AUTH_TOKEN_TTL" envDefault:"24h"`

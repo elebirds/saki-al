@@ -29,7 +29,7 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 		return nil, nil, err
 	}
 
-	logger := observe.NewLogger("public-api", observe.ParseLevel(cfg.LogLevel))
+	logger := observe.NewLogger("public-api", observe.ParseLevel(cfg.LogLevel), cfg.LogFormat)
 	tokenTTL, err := time.ParseDuration(cfg.AuthTokenTTL)
 	if err != nil {
 		return nil, nil, err
@@ -111,7 +111,7 @@ func NewRuntime(_ context.Context) (*http.Server, *slog.Logger, error) {
 		return nil, nil, err
 	}
 
-	logger := observe.NewLogger("runtime", observe.ParseLevel(cfg.LogLevel))
+	logger := observe.NewLogger("runtime", observe.ParseLevel(cfg.LogLevel), cfg.LogFormat)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)

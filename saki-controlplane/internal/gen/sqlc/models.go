@@ -96,23 +96,33 @@ type RuntimeLease struct {
 }
 
 type RuntimeOutbox struct {
-	ID          int64              `json:"id"`
-	Topic       string             `json:"topic"`
-	AggregateID string             `json:"aggregate_id"`
-	Payload     []byte             `json:"payload"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-	PublishedAt pgtype.Timestamptz `json:"published_at"`
+	ID             int64              `json:"id"`
+	Topic          string             `json:"topic"`
+	AggregateID    string             `json:"aggregate_id"`
+	Payload        []byte             `json:"payload"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	PublishedAt    pgtype.Timestamptz `json:"published_at"`
+	AggregateType  string             `json:"aggregate_type"`
+	IdempotencyKey string             `json:"idempotency_key"`
+	AvailableAt    pgtype.Timestamptz `json:"available_at"`
+	AttemptCount   int32              `json:"attempt_count"`
+	LastError      pgtype.Text        `json:"last_error"`
 }
 
 type RuntimeTask struct {
-	ID          uuid.UUID          `json:"id"`
-	TaskType    string             `json:"task_type"`
-	Status      string             `json:"status"`
-	ClaimedBy   pgtype.Text        `json:"claimed_by"`
-	ClaimedAt   pgtype.Timestamptz `json:"claimed_at"`
-	LeaderEpoch pgtype.Int8        `json:"leader_epoch"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	ID                 uuid.UUID          `json:"id"`
+	TaskType           string             `json:"task_type"`
+	Status             string             `json:"status"`
+	AssignedAgentID    pgtype.Text        `json:"assigned_agent_id"`
+	LeaderEpoch        pgtype.Int8        `json:"leader_epoch"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
+	TaskKind           string             `json:"task_kind"`
+	CurrentExecutionID pgtype.Text        `json:"current_execution_id"`
+	Attempt            int32              `json:"attempt"`
+	MaxAttempts        int32              `json:"max_attempts"`
+	ResolvedParams     []byte             `json:"resolved_params"`
+	DependsOnTaskIds   []uuid.UUID        `json:"depends_on_task_ids"`
 }
 
 type Sample struct {

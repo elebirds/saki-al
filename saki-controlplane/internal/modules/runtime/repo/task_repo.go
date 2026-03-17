@@ -3,7 +3,6 @@ package repo
 import (
 	"context"
 	"errors"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -15,17 +14,28 @@ import (
 )
 
 type RuntimeTask struct {
-	ID          uuid.UUID
-	TaskType    string
-	Status      string
-	ClaimedBy   *string
-	ClaimedAt   *time.Time
-	LeaderEpoch *int64
+	ID                 uuid.UUID
+	TaskKind           string
+	TaskType           string
+	Status             string
+	CurrentExecutionID *string
+	AssignedAgentID    *string
+	Attempt            int32
+	MaxAttempts        int32
+	ResolvedParams     []byte
+	DependsOnTaskIDs   []uuid.UUID
+	LeaderEpoch        *int64
 }
 
 type CreateTaskParams struct {
 	ID       uuid.UUID
+	TaskKind string
 	TaskType string
+}
+
+type AssignTaskParams struct {
+	AssignedAgentID string
+	LeaderEpoch     int64
 }
 
 type ClaimTaskParams struct {
@@ -50,28 +60,29 @@ func NewTaskRepo(pool *pgxpool.Pool) *TaskRepo {
 func (r *TaskRepo) CreateTask(ctx context.Context, params CreateTaskParams) error {
 	_, err := r.q.CreateRuntimeTask(ctx, sqlcdb.CreateRuntimeTaskParams{
 		ID:       params.ID,
+		TaskKind: taskKindOrDefault(params.TaskKind),
 		TaskType: params.TaskType,
 	})
 	return err
 }
 
-func (r *TaskRepo) ClaimPendingTask(ctx context.Context, params ClaimTaskParams) (*RuntimeTask, error) {
-	row, err := r.q.ClaimPendingTask(ctx, sqlcdb.ClaimPendingTaskParams{
-		ClaimedBy:   pgtype.Text{String: params.ClaimedBy, Valid: true},
-		LeaderEpoch: pgtype.Int8{Int64: params.LeaderEpoch, Valid: true},
+func (r *TaskRepo) AssignPendingTask(ctx context.Context, params AssignTaskParams) (*RuntimeTask, error) {
+	row, err := r.q.AssignPendingTask(ctx, sqlcdb.AssignPendingTaskParams{
+		AssignedAgentID: pgtype.Text{String: params.AssignedAgentID, Valid: true},
+		LeaderEpoch:     pgtype.Int8{Int64: params.LeaderEpoch, Valid: true},
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	return &RuntimeTask{
-		ID:          row.ID,
-		TaskType:    row.TaskType,
-		Status:      row.Status,
-		ClaimedBy:   optionalText(row.ClaimedBy),
-		ClaimedAt:   optionalTime(row.ClaimedAt),
-		LeaderEpoch: optionalInt64(row.LeaderEpoch),
-	}, nil
+	return runtimeTaskFromAssignedRow(row), nil
+}
+
+func (r *TaskRepo) ClaimPendingTask(ctx context.Context, params ClaimTaskParams) (*RuntimeTask, error) {
+	return r.AssignPendingTask(ctx, AssignTaskParams{
+		AssignedAgentID: params.ClaimedBy,
+		LeaderEpoch:     params.LeaderEpoch,
+	})
 }
 
 func (r *TaskRepo) GetTask(ctx context.Context, taskID uuid.UUID) (*commands.TaskRecord, error) {
@@ -87,17 +98,17 @@ func (r *TaskRepo) GetTask(ctx context.Context, taskID uuid.UUID) (*commands.Tas
 		ID:          row.ID,
 		TaskType:    row.TaskType,
 		Status:      row.Status,
-		ClaimedBy:   textValue(row.ClaimedBy),
+		ClaimedBy:   textValue(row.AssignedAgentID),
 		LeaderEpoch: int64Value(row.LeaderEpoch),
 	}, nil
 }
 
 func (r *TaskRepo) UpdateTask(ctx context.Context, update commands.TaskUpdate) error {
 	return r.q.UpdateRuntimeTask(ctx, sqlcdb.UpdateRuntimeTaskParams{
-		ID:          update.ID,
-		Status:      update.Status,
-		ClaimedBy:   nullableText(update.ClaimedBy),
-		LeaderEpoch: nullableInt64(update.LeaderEpoch),
+		ID:              update.ID,
+		Status:          update.Status,
+		AssignedAgentID: nullableText(update.ClaimedBy),
+		LeaderEpoch:     nullableInt64(update.LeaderEpoch),
 	})
 }
 
@@ -120,14 +131,6 @@ func optionalText(value pgtype.Text) *string {
 	}
 	text := value.String
 	return &text
-}
-
-func optionalTime(value pgtype.Timestamptz) *time.Time {
-	if !value.Valid {
-		return nil
-	}
-	ts := value.Time
-	return &ts
 }
 
 func optionalInt64(value pgtype.Int8) *int64 {
@@ -164,4 +167,43 @@ func nullableInt64(value int64) pgtype.Int8 {
 		return pgtype.Int8{}
 	}
 	return pgtype.Int8{Int64: value, Valid: true}
+}
+
+func taskKindOrDefault(taskKind string) string {
+	if taskKind == "" {
+		return "PREDICTION"
+	}
+	return taskKind
+}
+
+func runtimeTaskFromAssignedRow(row sqlcdb.AssignPendingTaskRow) *RuntimeTask {
+	return &RuntimeTask{
+		ID:                 row.ID,
+		TaskKind:           row.TaskKind,
+		TaskType:           row.TaskType,
+		Status:             row.Status,
+		CurrentExecutionID: optionalText(row.CurrentExecutionID),
+		AssignedAgentID:    optionalText(row.AssignedAgentID),
+		Attempt:            row.Attempt,
+		MaxAttempts:        row.MaxAttempts,
+		ResolvedParams:     row.ResolvedParams,
+		DependsOnTaskIDs:   row.DependsOnTaskIds,
+		LeaderEpoch:        optionalInt64(row.LeaderEpoch),
+	}
+}
+
+func runtimeTaskFromRow(row sqlcdb.RuntimeTask) *RuntimeTask {
+	return &RuntimeTask{
+		ID:                 row.ID,
+		TaskKind:           row.TaskKind,
+		TaskType:           row.TaskType,
+		Status:             row.Status,
+		CurrentExecutionID: optionalText(row.CurrentExecutionID),
+		AssignedAgentID:    optionalText(row.AssignedAgentID),
+		Attempt:            row.Attempt,
+		MaxAttempts:        row.MaxAttempts,
+		ResolvedParams:     row.ResolvedParams,
+		DependsOnTaskIDs:   row.DependsOnTaskIds,
+		LeaderEpoch:        optionalInt64(row.LeaderEpoch),
+	}
 }

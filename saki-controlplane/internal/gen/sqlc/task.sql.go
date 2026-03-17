@@ -54,7 +54,7 @@ func (q *Queries) AppendImportTaskEvent(ctx context.Context, arg AppendImportTas
 	return i, err
 }
 
-const claimPendingTask = `-- name: ClaimPendingTask :one
+const assignPendingTask = `-- name: AssignPendingTask :one
 with candidate as (
     select id
     from runtime_task
@@ -64,29 +64,64 @@ with candidate as (
     limit 1
 )
 update runtime_task
-set status = 'dispatching',
-    claimed_by = $1,
-    claimed_at = now(),
+set status = 'assigned',
+    current_execution_id = encode(gen_random_bytes(16), 'hex'),
+    assigned_agent_id = $1,
+    attempt = runtime_task.attempt + 1,
     leader_epoch = $2,
     updated_at = now()
 where id = (select id from candidate)
-returning id, task_type, status, claimed_by, claimed_at, leader_epoch, created_at, updated_at
+returning
+    id,
+    task_kind,
+    task_type,
+    status,
+    current_execution_id,
+    assigned_agent_id,
+    attempt,
+    max_attempts,
+    resolved_params,
+    depends_on_task_ids,
+    leader_epoch,
+    created_at,
+    updated_at
 `
 
-type ClaimPendingTaskParams struct {
-	ClaimedBy   pgtype.Text `json:"claimed_by"`
-	LeaderEpoch pgtype.Int8 `json:"leader_epoch"`
+type AssignPendingTaskParams struct {
+	AssignedAgentID pgtype.Text `json:"assigned_agent_id"`
+	LeaderEpoch     pgtype.Int8 `json:"leader_epoch"`
 }
 
-func (q *Queries) ClaimPendingTask(ctx context.Context, arg ClaimPendingTaskParams) (RuntimeTask, error) {
-	row := q.db.QueryRow(ctx, claimPendingTask, arg.ClaimedBy, arg.LeaderEpoch)
-	var i RuntimeTask
+type AssignPendingTaskRow struct {
+	ID                 uuid.UUID          `json:"id"`
+	TaskKind           string             `json:"task_kind"`
+	TaskType           string             `json:"task_type"`
+	Status             string             `json:"status"`
+	CurrentExecutionID pgtype.Text        `json:"current_execution_id"`
+	AssignedAgentID    pgtype.Text        `json:"assigned_agent_id"`
+	Attempt            int32              `json:"attempt"`
+	MaxAttempts        int32              `json:"max_attempts"`
+	ResolvedParams     []byte             `json:"resolved_params"`
+	DependsOnTaskIds   []uuid.UUID        `json:"depends_on_task_ids"`
+	LeaderEpoch        pgtype.Int8        `json:"leader_epoch"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
+}
+
+func (q *Queries) AssignPendingTask(ctx context.Context, arg AssignPendingTaskParams) (AssignPendingTaskRow, error) {
+	row := q.db.QueryRow(ctx, assignPendingTask, arg.AssignedAgentID, arg.LeaderEpoch)
+	var i AssignPendingTaskRow
 	err := row.Scan(
 		&i.ID,
+		&i.TaskKind,
 		&i.TaskType,
 		&i.Status,
-		&i.ClaimedBy,
-		&i.ClaimedAt,
+		&i.CurrentExecutionID,
+		&i.AssignedAgentID,
+		&i.Attempt,
+		&i.MaxAttempts,
+		&i.ResolvedParams,
+		&i.DependsOnTaskIds,
 		&i.LeaderEpoch,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -153,25 +188,60 @@ func (q *Queries) CreateImportTask(ctx context.Context, arg CreateImportTaskPara
 }
 
 const createRuntimeTask = `-- name: CreateRuntimeTask :one
-insert into runtime_task (id, task_type, status)
-values ($1, $2, 'pending')
-returning id, task_type, status, claimed_by, claimed_at, leader_epoch, created_at, updated_at
+insert into runtime_task (id, task_kind, task_type, status)
+values ($1, $2, $3, 'pending')
+returning
+    id,
+    task_kind,
+    task_type,
+    status,
+    current_execution_id,
+    assigned_agent_id,
+    attempt,
+    max_attempts,
+    resolved_params,
+    depends_on_task_ids,
+    leader_epoch,
+    created_at,
+    updated_at
 `
 
 type CreateRuntimeTaskParams struct {
 	ID       uuid.UUID `json:"id"`
+	TaskKind string    `json:"task_kind"`
 	TaskType string    `json:"task_type"`
 }
 
-func (q *Queries) CreateRuntimeTask(ctx context.Context, arg CreateRuntimeTaskParams) (RuntimeTask, error) {
-	row := q.db.QueryRow(ctx, createRuntimeTask, arg.ID, arg.TaskType)
-	var i RuntimeTask
+type CreateRuntimeTaskRow struct {
+	ID                 uuid.UUID          `json:"id"`
+	TaskKind           string             `json:"task_kind"`
+	TaskType           string             `json:"task_type"`
+	Status             string             `json:"status"`
+	CurrentExecutionID pgtype.Text        `json:"current_execution_id"`
+	AssignedAgentID    pgtype.Text        `json:"assigned_agent_id"`
+	Attempt            int32              `json:"attempt"`
+	MaxAttempts        int32              `json:"max_attempts"`
+	ResolvedParams     []byte             `json:"resolved_params"`
+	DependsOnTaskIds   []uuid.UUID        `json:"depends_on_task_ids"`
+	LeaderEpoch        pgtype.Int8        `json:"leader_epoch"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
+}
+
+func (q *Queries) CreateRuntimeTask(ctx context.Context, arg CreateRuntimeTaskParams) (CreateRuntimeTaskRow, error) {
+	row := q.db.QueryRow(ctx, createRuntimeTask, arg.ID, arg.TaskKind, arg.TaskType)
+	var i CreateRuntimeTaskRow
 	err := row.Scan(
 		&i.ID,
+		&i.TaskKind,
 		&i.TaskType,
 		&i.Status,
-		&i.ClaimedBy,
-		&i.ClaimedAt,
+		&i.CurrentExecutionID,
+		&i.AssignedAgentID,
+		&i.Attempt,
+		&i.MaxAttempts,
+		&i.ResolvedParams,
+		&i.DependsOnTaskIds,
 		&i.LeaderEpoch,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -206,7 +276,7 @@ func (q *Queries) GetImportTask(ctx context.Context, id uuid.UUID) (ImportTask, 
 const getRuntimeSummary = `-- name: GetRuntimeSummary :one
 select
     count(*) filter (where status = 'pending')::integer as pending_tasks,
-    count(*) filter (where status in ('dispatching', 'running'))::integer as running_tasks,
+    count(*) filter (where status in ('assigned', 'running'))::integer as running_tasks,
     coalesce((select max(epoch) from runtime_lease), 0)::bigint as leader_epoch
 from runtime_task
 `
@@ -225,20 +295,54 @@ func (q *Queries) GetRuntimeSummary(ctx context.Context) (GetRuntimeSummaryRow, 
 }
 
 const getRuntimeTask = `-- name: GetRuntimeTask :one
-select id, task_type, status, claimed_by, claimed_at, leader_epoch, created_at, updated_at
+select
+    id,
+    task_kind,
+    task_type,
+    status,
+    current_execution_id,
+    assigned_agent_id,
+    attempt,
+    max_attempts,
+    resolved_params,
+    depends_on_task_ids,
+    leader_epoch,
+    created_at,
+    updated_at
 from runtime_task
 where id = $1
 `
 
-func (q *Queries) GetRuntimeTask(ctx context.Context, id uuid.UUID) (RuntimeTask, error) {
+type GetRuntimeTaskRow struct {
+	ID                 uuid.UUID          `json:"id"`
+	TaskKind           string             `json:"task_kind"`
+	TaskType           string             `json:"task_type"`
+	Status             string             `json:"status"`
+	CurrentExecutionID pgtype.Text        `json:"current_execution_id"`
+	AssignedAgentID    pgtype.Text        `json:"assigned_agent_id"`
+	Attempt            int32              `json:"attempt"`
+	MaxAttempts        int32              `json:"max_attempts"`
+	ResolvedParams     []byte             `json:"resolved_params"`
+	DependsOnTaskIds   []uuid.UUID        `json:"depends_on_task_ids"`
+	LeaderEpoch        pgtype.Int8        `json:"leader_epoch"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
+}
+
+func (q *Queries) GetRuntimeTask(ctx context.Context, id uuid.UUID) (GetRuntimeTaskRow, error) {
 	row := q.db.QueryRow(ctx, getRuntimeTask, id)
-	var i RuntimeTask
+	var i GetRuntimeTaskRow
 	err := row.Scan(
 		&i.ID,
+		&i.TaskKind,
 		&i.TaskType,
 		&i.Status,
-		&i.ClaimedBy,
-		&i.ClaimedAt,
+		&i.CurrentExecutionID,
+		&i.AssignedAgentID,
+		&i.Attempt,
+		&i.MaxAttempts,
+		&i.ResolvedParams,
+		&i.DependsOnTaskIds,
 		&i.LeaderEpoch,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -339,23 +443,23 @@ func (q *Queries) MarkImportTaskRunning(ctx context.Context, id uuid.UUID) error
 const updateRuntimeTask = `-- name: UpdateRuntimeTask :exec
 update runtime_task
 set status = $1,
-    claimed_by = $2,
+    assigned_agent_id = $2,
     leader_epoch = $3,
     updated_at = now()
 where id = $4
 `
 
 type UpdateRuntimeTaskParams struct {
-	Status      string      `json:"status"`
-	ClaimedBy   pgtype.Text `json:"claimed_by"`
-	LeaderEpoch pgtype.Int8 `json:"leader_epoch"`
-	ID          uuid.UUID   `json:"id"`
+	Status          string      `json:"status"`
+	AssignedAgentID pgtype.Text `json:"assigned_agent_id"`
+	LeaderEpoch     pgtype.Int8 `json:"leader_epoch"`
+	ID              uuid.UUID   `json:"id"`
 }
 
 func (q *Queries) UpdateRuntimeTask(ctx context.Context, arg UpdateRuntimeTaskParams) error {
 	_, err := q.db.Exec(ctx, updateRuntimeTask,
 		arg.Status,
-		arg.ClaimedBy,
+		arg.AssignedAgentID,
 		arg.LeaderEpoch,
 		arg.ID,
 	)

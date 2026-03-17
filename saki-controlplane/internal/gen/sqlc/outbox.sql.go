@@ -7,30 +7,197 @@ package sqlcdb
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const appendRuntimeOutbox = `-- name: AppendRuntimeOutbox :one
-insert into runtime_outbox (topic, aggregate_id, payload)
-values ($1, $2, $3)
-returning id, topic, aggregate_id, payload, created_at, published_at
+insert into runtime_outbox (
+    topic,
+    aggregate_type,
+    aggregate_id,
+    idempotency_key,
+    payload,
+    available_at
+)
+values (
+    $1,
+    $2,
+    $3,
+    $4,
+    $5,
+    $6
+)
+returning
+    id,
+    topic,
+    aggregate_type,
+    aggregate_id,
+    idempotency_key,
+    payload,
+    available_at,
+    attempt_count,
+    created_at,
+    published_at,
+    last_error
 `
 
 type AppendRuntimeOutboxParams struct {
-	Topic       string `json:"topic"`
-	AggregateID string `json:"aggregate_id"`
-	Payload     []byte `json:"payload"`
+	Topic          string             `json:"topic"`
+	AggregateType  string             `json:"aggregate_type"`
+	AggregateID    string             `json:"aggregate_id"`
+	IdempotencyKey string             `json:"idempotency_key"`
+	Payload        []byte             `json:"payload"`
+	AvailableAt    pgtype.Timestamptz `json:"available_at"`
 }
 
-func (q *Queries) AppendRuntimeOutbox(ctx context.Context, arg AppendRuntimeOutboxParams) (RuntimeOutbox, error) {
-	row := q.db.QueryRow(ctx, appendRuntimeOutbox, arg.Topic, arg.AggregateID, arg.Payload)
-	var i RuntimeOutbox
+type AppendRuntimeOutboxRow struct {
+	ID             int64              `json:"id"`
+	Topic          string             `json:"topic"`
+	AggregateType  string             `json:"aggregate_type"`
+	AggregateID    string             `json:"aggregate_id"`
+	IdempotencyKey string             `json:"idempotency_key"`
+	Payload        []byte             `json:"payload"`
+	AvailableAt    pgtype.Timestamptz `json:"available_at"`
+	AttemptCount   int32              `json:"attempt_count"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	PublishedAt    pgtype.Timestamptz `json:"published_at"`
+	LastError      pgtype.Text        `json:"last_error"`
+}
+
+func (q *Queries) AppendRuntimeOutbox(ctx context.Context, arg AppendRuntimeOutboxParams) (AppendRuntimeOutboxRow, error) {
+	row := q.db.QueryRow(ctx, appendRuntimeOutbox,
+		arg.Topic,
+		arg.AggregateType,
+		arg.AggregateID,
+		arg.IdempotencyKey,
+		arg.Payload,
+		arg.AvailableAt,
+	)
+	var i AppendRuntimeOutboxRow
 	err := row.Scan(
 		&i.ID,
 		&i.Topic,
+		&i.AggregateType,
 		&i.AggregateID,
+		&i.IdempotencyKey,
 		&i.Payload,
+		&i.AvailableAt,
+		&i.AttemptCount,
 		&i.CreatedAt,
 		&i.PublishedAt,
+		&i.LastError,
 	)
 	return i, err
+}
+
+const claimDueRuntimeOutbox = `-- name: ClaimDueRuntimeOutbox :many
+with due as (
+    select id
+    from runtime_outbox
+    where published_at is null
+      and available_at <= now()
+    order by available_at, id
+    for update skip locked
+    limit $2
+)
+update runtime_outbox
+set available_at = $1,
+    attempt_count = runtime_outbox.attempt_count + 1,
+    last_error = null
+from due
+where runtime_outbox.id = due.id
+returning
+    runtime_outbox.id,
+    runtime_outbox.topic,
+    runtime_outbox.aggregate_type,
+    runtime_outbox.aggregate_id,
+    runtime_outbox.idempotency_key,
+    runtime_outbox.payload,
+    runtime_outbox.available_at,
+    runtime_outbox.attempt_count,
+    runtime_outbox.created_at,
+    runtime_outbox.published_at,
+    runtime_outbox.last_error
+`
+
+type ClaimDueRuntimeOutboxParams struct {
+	ClaimUntil pgtype.Timestamptz `json:"claim_until"`
+	LimitCount int32              `json:"limit_count"`
+}
+
+type ClaimDueRuntimeOutboxRow struct {
+	ID             int64              `json:"id"`
+	Topic          string             `json:"topic"`
+	AggregateType  string             `json:"aggregate_type"`
+	AggregateID    string             `json:"aggregate_id"`
+	IdempotencyKey string             `json:"idempotency_key"`
+	Payload        []byte             `json:"payload"`
+	AvailableAt    pgtype.Timestamptz `json:"available_at"`
+	AttemptCount   int32              `json:"attempt_count"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	PublishedAt    pgtype.Timestamptz `json:"published_at"`
+	LastError      pgtype.Text        `json:"last_error"`
+}
+
+func (q *Queries) ClaimDueRuntimeOutbox(ctx context.Context, arg ClaimDueRuntimeOutboxParams) ([]ClaimDueRuntimeOutboxRow, error) {
+	rows, err := q.db.Query(ctx, claimDueRuntimeOutbox, arg.ClaimUntil, arg.LimitCount)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ClaimDueRuntimeOutboxRow
+	for rows.Next() {
+		var i ClaimDueRuntimeOutboxRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Topic,
+			&i.AggregateType,
+			&i.AggregateID,
+			&i.IdempotencyKey,
+			&i.Payload,
+			&i.AvailableAt,
+			&i.AttemptCount,
+			&i.CreatedAt,
+			&i.PublishedAt,
+			&i.LastError,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const markRuntimeOutboxPublished = `-- name: MarkRuntimeOutboxPublished :exec
+update runtime_outbox
+set published_at = now(),
+    last_error = null
+where id = $1
+`
+
+func (q *Queries) MarkRuntimeOutboxPublished(ctx context.Context, id int64) error {
+	_, err := q.db.Exec(ctx, markRuntimeOutboxPublished, id)
+	return err
+}
+
+const markRuntimeOutboxRetry = `-- name: MarkRuntimeOutboxRetry :exec
+update runtime_outbox
+set available_at = $1,
+    last_error = $2
+where id = $3
+`
+
+type MarkRuntimeOutboxRetryParams struct {
+	NextAvailableAt pgtype.Timestamptz `json:"next_available_at"`
+	LastError       pgtype.Text        `json:"last_error"`
+	ID              int64              `json:"id"`
+}
+
+func (q *Queries) MarkRuntimeOutboxRetry(ctx context.Context, arg MarkRuntimeOutboxRetryParams) error {
+	_, err := q.db.Exec(ctx, markRuntimeOutboxRetry, arg.NextAvailableAt, arg.LastError, arg.ID)
+	return err
 }

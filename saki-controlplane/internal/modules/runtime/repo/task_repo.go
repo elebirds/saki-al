@@ -32,6 +32,7 @@ type TaskRepo struct {
 }
 
 var _ commands.TaskClaimer = (*TaskRepo)(nil)
+var _ commands.ExecutionScopedTaskStore = (*TaskRepo)(nil)
 
 func NewTaskRepo(pool *pgxpool.Pool) *TaskRepo {
 	return newTaskRepo(sqlcdb.New(pool))
@@ -67,6 +68,35 @@ func (r *TaskRepo) AssignPendingTask(ctx context.Context, params AssignTaskParam
 
 func (r *TaskRepo) GetTask(ctx context.Context, taskID uuid.UUID) (*commands.TaskRecord, error) {
 	row, err := r.q.GetRuntimeTask(ctx, taskID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return &commands.TaskRecord{
+		ID:                 row.ID,
+		TaskKind:           row.TaskKind,
+		TaskType:           row.TaskType,
+		Status:             row.Status,
+		CurrentExecutionID: textValue(row.CurrentExecutionID),
+		AssignedAgentID:    textValue(row.AssignedAgentID),
+		Attempt:            row.Attempt,
+		MaxAttempts:        row.MaxAttempts,
+		ResolvedParams:     append([]byte(nil), row.ResolvedParams...),
+		DependsOnTaskIDs:   append([]uuid.UUID(nil), row.DependsOnTaskIds...),
+		LeaderEpoch:        int64Value(row.LeaderEpoch),
+	}, nil
+}
+
+func (r *TaskRepo) AdvanceTaskByExecution(ctx context.Context, params commands.AdvanceTaskByExecutionParams) (*commands.TaskRecord, error) {
+	row, err := r.q.AdvanceRuntimeTaskByExecution(ctx, sqlcdb.AdvanceRuntimeTaskByExecutionParams{
+		ToStatus:     params.ToStatus,
+		ID:           params.ID,
+		ExecutionID:  nullableText(params.ExecutionID),
+		FromStatuses: append([]string(nil), params.FromStatuses...),
+	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil

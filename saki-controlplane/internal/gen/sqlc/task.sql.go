@@ -12,6 +12,78 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const advanceRuntimeTaskByExecution = `-- name: AdvanceRuntimeTaskByExecution :one
+update runtime_task
+set status = $1,
+    updated_at = now()
+where id = $2
+  and current_execution_id = $3
+  and status = any($4::text[])
+returning
+    id,
+    task_kind,
+    task_type,
+    status,
+    current_execution_id,
+    assigned_agent_id,
+    attempt,
+    max_attempts,
+    resolved_params,
+    depends_on_task_ids,
+    leader_epoch,
+    created_at,
+    updated_at
+`
+
+type AdvanceRuntimeTaskByExecutionParams struct {
+	ToStatus     string      `json:"to_status"`
+	ID           uuid.UUID   `json:"id"`
+	ExecutionID  pgtype.Text `json:"execution_id"`
+	FromStatuses []string    `json:"from_statuses"`
+}
+
+type AdvanceRuntimeTaskByExecutionRow struct {
+	ID                 uuid.UUID          `json:"id"`
+	TaskKind           string             `json:"task_kind"`
+	TaskType           string             `json:"task_type"`
+	Status             string             `json:"status"`
+	CurrentExecutionID pgtype.Text        `json:"current_execution_id"`
+	AssignedAgentID    pgtype.Text        `json:"assigned_agent_id"`
+	Attempt            int32              `json:"attempt"`
+	MaxAttempts        int32              `json:"max_attempts"`
+	ResolvedParams     []byte             `json:"resolved_params"`
+	DependsOnTaskIds   []uuid.UUID        `json:"depends_on_task_ids"`
+	LeaderEpoch        pgtype.Int8        `json:"leader_epoch"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
+}
+
+func (q *Queries) AdvanceRuntimeTaskByExecution(ctx context.Context, arg AdvanceRuntimeTaskByExecutionParams) (AdvanceRuntimeTaskByExecutionRow, error) {
+	row := q.db.QueryRow(ctx, advanceRuntimeTaskByExecution,
+		arg.ToStatus,
+		arg.ID,
+		arg.ExecutionID,
+		arg.FromStatuses,
+	)
+	var i AdvanceRuntimeTaskByExecutionRow
+	err := row.Scan(
+		&i.ID,
+		&i.TaskKind,
+		&i.TaskType,
+		&i.Status,
+		&i.CurrentExecutionID,
+		&i.AssignedAgentID,
+		&i.Attempt,
+		&i.MaxAttempts,
+		&i.ResolvedParams,
+		&i.DependsOnTaskIds,
+		&i.LeaderEpoch,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const appendImportTaskEvent = `-- name: AppendImportTaskEvent :one
 insert into import_task_event (
     task_id,

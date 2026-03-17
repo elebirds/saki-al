@@ -10,16 +10,19 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/google/uuid"
 
 	appdb "github.com/elebirds/saki/saki-controlplane/internal/app/db"
 	"github.com/elebirds/saki/saki-controlplane/internal/gen/proto/runtime/v1"
 	"github.com/elebirds/saki/saki-controlplane/internal/gen/proto/runtime/v1/runtimev1connect"
 	"github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/commands"
 	runtimerepo "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/repo"
+	"github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/state"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 	"github.com/testcontainers/testcontainers-go"
@@ -35,7 +38,14 @@ func TestRuntimeServerRegisterTranslatesToCommand(t *testing.T) {
 			LastSeenAt: time.UnixMilli(123456789),
 		},
 	}
-	server := NewRuntimeServer(registrar, &fakeHeartbeatExecutorHandler{}, &fakeCompleteTaskHandler{})
+	server := NewRuntimeServer(
+		registrar,
+		&fakeHeartbeatExecutorHandler{},
+		&fakeStartTaskHandler{},
+		&fakeCompleteTaskHandler{},
+		&fakeFailTaskHandler{},
+		&fakeConfirmCanceledTaskHandler{},
+	)
 
 	mux := http.NewServeMux()
 	path, handler := runtimev1connect.NewAgentIngressHandler(server)
@@ -67,7 +77,14 @@ func TestRuntimeServerRegisterTranslatesToCommand(t *testing.T) {
 
 func TestRuntimeServerHeartbeatTranslatesToCommand(t *testing.T) {
 	heartbeats := &fakeHeartbeatExecutorHandler{}
-	server := NewRuntimeServer(&fakeRegisterExecutorHandler{}, heartbeats, &fakeCompleteTaskHandler{})
+	server := NewRuntimeServer(
+		&fakeRegisterExecutorHandler{},
+		heartbeats,
+		&fakeStartTaskHandler{},
+		&fakeCompleteTaskHandler{},
+		&fakeFailTaskHandler{},
+		&fakeConfirmCanceledTaskHandler{},
+	)
 
 	mux := http.NewServeMux()
 	path, handler := runtimev1connect.NewAgentIngressHandler(server)
@@ -95,8 +112,15 @@ func TestRuntimeServerHeartbeatTranslatesToCommand(t *testing.T) {
 }
 
 func TestRuntimeServerPushTaskEventCompletesTask(t *testing.T) {
-	completer := &fakeCompleteTaskHandler{}
-	server := NewRuntimeServer(&fakeRegisterExecutorHandler{}, &fakeHeartbeatExecutorHandler{}, completer)
+	taskID := uuid.MustParse("550e8400-e29b-41d4-a716-446655440000")
+	store := newRuntimeTaskEventStore(&commands.TaskRecord{
+		ID:                 taskID,
+		Status:             string(state.TaskStatusRunning),
+		CurrentExecutionID: "exec-1",
+		AssignedAgentID:    "agent-a",
+		LeaderEpoch:        7,
+	})
+	server := newTaskEventRuntimeServer(store)
 
 	mux := http.NewServeMux()
 	path, handler := runtimev1connect.NewAgentIngressHandler(server)
@@ -120,9 +144,137 @@ func TestRuntimeServerPushTaskEventCompletesTask(t *testing.T) {
 	if !resp.Msg.Accepted {
 		t.Fatalf("unexpected push task event response: %+v", resp.Msg)
 	}
+	if got := store.mustGet(t, taskID); got.Status != string(state.TaskStatusSucceeded) {
+		t.Fatalf("expected task to be succeeded, got %+v", got)
+	}
+}
 
-	if completer.last.TaskID.String() != "550e8400-e29b-41d4-a716-446655440000" {
-		t.Fatalf("unexpected complete task command: %+v", completer.last)
+func TestAgentIngressRunningEventStartsAssignedTask(t *testing.T) {
+	taskID := uuid.New()
+	store := newRuntimeTaskEventStore(&commands.TaskRecord{
+		ID:                 taskID,
+		Status:             string(state.TaskStatusAssigned),
+		CurrentExecutionID: "exec-running-1",
+		AssignedAgentID:    "agent-a",
+		LeaderEpoch:        7,
+	})
+	server := newTaskEventRuntimeServer(store)
+
+	if err := server.IngestTaskEvent(context.Background(), &runtimev1.TaskEventEnvelope{
+		AgentId:     "agent-a",
+		TaskId:      taskID.String(),
+		ExecutionId: "exec-running-1",
+		Phase:       runtimev1.TaskEventPhase_TASK_EVENT_PHASE_RUNNING,
+	}); err != nil {
+		t.Fatalf("ingest running event: %v", err)
+	}
+
+	if got := store.mustGet(t, taskID); got.Status != string(state.TaskStatusRunning) {
+		t.Fatalf("expected task to be running, got %+v", got)
+	}
+}
+
+func TestAgentIngressIgnoresStaleExecutionID(t *testing.T) {
+	taskID := uuid.New()
+	store := newRuntimeTaskEventStore(&commands.TaskRecord{
+		ID:                 taskID,
+		Status:             string(state.TaskStatusRunning),
+		CurrentExecutionID: "exec-current",
+		AssignedAgentID:    "agent-a",
+		LeaderEpoch:        7,
+	})
+	server := newTaskEventRuntimeServer(store)
+
+	if err := server.IngestTaskEvent(context.Background(), &runtimev1.TaskEventEnvelope{
+		AgentId:     "agent-a",
+		TaskId:      taskID.String(),
+		ExecutionId: "exec-stale",
+		Phase:       runtimev1.TaskEventPhase_TASK_EVENT_PHASE_SUCCEEDED,
+	}); err != nil {
+		t.Fatalf("ingest stale task event: %v", err)
+	}
+
+	got := store.mustGet(t, taskID)
+	if got.Status != string(state.TaskStatusRunning) {
+		t.Fatalf("expected stale execution to be ignored, got %+v", got)
+	}
+	if store.lastOutbox != nil {
+		t.Fatalf("expected no outbox side effect for stale execution, got %+v", store.lastOutbox)
+	}
+}
+
+func TestAgentIngressIgnoresLateRunningEventAfterSucceeded(t *testing.T) {
+	taskID := uuid.New()
+	store := newRuntimeTaskEventStore(&commands.TaskRecord{
+		ID:                 taskID,
+		Status:             string(state.TaskStatusSucceeded),
+		CurrentExecutionID: "exec-current",
+		AssignedAgentID:    "agent-a",
+		LeaderEpoch:        7,
+	})
+	server := newTaskEventRuntimeServer(store)
+
+	if err := server.IngestTaskEvent(context.Background(), &runtimev1.TaskEventEnvelope{
+		AgentId:     "agent-a",
+		TaskId:      taskID.String(),
+		ExecutionId: "exec-current",
+		Phase:       runtimev1.TaskEventPhase_TASK_EVENT_PHASE_RUNNING,
+	}); err != nil {
+		t.Fatalf("ingest late running event: %v", err)
+	}
+
+	if got := store.mustGet(t, taskID); got.Status != string(state.TaskStatusSucceeded) {
+		t.Fatalf("expected late running event to be ignored, got %+v", got)
+	}
+}
+
+func TestAgentIngressFailedEventMarksTaskFailed(t *testing.T) {
+	taskID := uuid.New()
+	store := newRuntimeTaskEventStore(&commands.TaskRecord{
+		ID:                 taskID,
+		Status:             string(state.TaskStatusRunning),
+		CurrentExecutionID: "exec-failed-1",
+		AssignedAgentID:    "agent-a",
+		LeaderEpoch:        7,
+	})
+	server := newTaskEventRuntimeServer(store)
+
+	if err := server.IngestTaskEvent(context.Background(), &runtimev1.TaskEventEnvelope{
+		AgentId:     "agent-a",
+		TaskId:      taskID.String(),
+		ExecutionId: "exec-failed-1",
+		Phase:       runtimev1.TaskEventPhase_TASK_EVENT_PHASE_FAILED,
+	}); err != nil {
+		t.Fatalf("ingest failed event: %v", err)
+	}
+
+	if got := store.mustGet(t, taskID); got.Status != string(state.TaskStatusFailed) {
+		t.Fatalf("expected task to be failed, got %+v", got)
+	}
+}
+
+func TestAgentIngressCanceledEventMarksTaskCanceled(t *testing.T) {
+	taskID := uuid.New()
+	store := newRuntimeTaskEventStore(&commands.TaskRecord{
+		ID:                 taskID,
+		Status:             string(state.TaskStatusCancelRequested),
+		CurrentExecutionID: "exec-canceled-1",
+		AssignedAgentID:    "agent-a",
+		LeaderEpoch:        7,
+	})
+	server := newTaskEventRuntimeServer(store)
+
+	if err := server.IngestTaskEvent(context.Background(), &runtimev1.TaskEventEnvelope{
+		AgentId:     "agent-a",
+		TaskId:      taskID.String(),
+		ExecutionId: "exec-canceled-1",
+		Phase:       runtimev1.TaskEventPhase_TASK_EVENT_PHASE_CANCELED,
+	}); err != nil {
+		t.Fatalf("ingest canceled event: %v", err)
+	}
+
+	if got := store.mustGet(t, taskID); got.Status != string(state.TaskStatusCanceled) {
+		t.Fatalf("expected task to be canceled, got %+v", got)
 	}
 }
 
@@ -156,7 +308,10 @@ func TestRuntimeServerRegisterAndHeartbeatPersistExecutor(t *testing.T) {
 	server := NewRuntimeServer(
 		commands.NewRegisterExecutorHandler(executorRepo),
 		commands.NewHeartbeatExecutorHandler(executorRepo),
+		&fakeStartTaskHandler{},
 		&fakeCompleteTaskHandler{},
+		&fakeFailTaskHandler{},
+		&fakeConfirmCanceledTaskHandler{},
 	)
 
 	mux := http.NewServeMux()
@@ -231,6 +386,15 @@ func (f *fakeHeartbeatExecutorHandler) Handle(_ context.Context, cmd commands.He
 	return nil
 }
 
+type fakeStartTaskHandler struct {
+	last commands.StartTaskCommand
+}
+
+func (f *fakeStartTaskHandler) Handle(_ context.Context, cmd commands.StartTaskCommand) (*commands.TaskRecord, error) {
+	f.last = cmd
+	return &commands.TaskRecord{}, nil
+}
+
 type fakeCompleteTaskHandler struct {
 	last commands.CompleteTaskCommand
 }
@@ -238,6 +402,107 @@ type fakeCompleteTaskHandler struct {
 func (f *fakeCompleteTaskHandler) Handle(_ context.Context, cmd commands.CompleteTaskCommand) (*commands.TaskRecord, error) {
 	f.last = cmd
 	return &commands.TaskRecord{}, nil
+}
+
+type fakeFailTaskHandler struct {
+	last commands.FailTaskCommand
+}
+
+func (f *fakeFailTaskHandler) Handle(_ context.Context, cmd commands.FailTaskCommand) (*commands.TaskRecord, error) {
+	f.last = cmd
+	return &commands.TaskRecord{}, nil
+}
+
+type fakeConfirmCanceledTaskHandler struct {
+	last commands.ConfirmTaskCanceledCommand
+}
+
+func (f *fakeConfirmCanceledTaskHandler) Handle(_ context.Context, cmd commands.ConfirmTaskCanceledCommand) (*commands.TaskRecord, error) {
+	f.last = cmd
+	return &commands.TaskRecord{}, nil
+}
+
+type runtimeTaskEventStore struct {
+	mu         sync.Mutex
+	tasks      map[uuid.UUID]*commands.TaskRecord
+	lastOutbox *commands.OutboxEvent
+}
+
+func newRuntimeTaskEventStore(tasks ...*commands.TaskRecord) *runtimeTaskEventStore {
+	store := &runtimeTaskEventStore{
+		tasks: make(map[uuid.UUID]*commands.TaskRecord, len(tasks)),
+	}
+	for _, task := range tasks {
+		copied := *task
+		store.tasks[task.ID] = &copied
+	}
+	return store
+}
+
+func newTaskEventRuntimeServer(store *runtimeTaskEventStore) *RuntimeServer {
+	return NewRuntimeServer(
+		&fakeRegisterExecutorHandler{},
+		&fakeHeartbeatExecutorHandler{},
+		commands.NewStartTaskHandler(store),
+		commands.NewCompleteTaskHandler(store, store),
+		commands.NewFailTaskHandler(store),
+		commands.NewConfirmTaskCanceledHandler(store),
+	)
+}
+
+func (s *runtimeTaskEventStore) GetTask(_ context.Context, taskID uuid.UUID) (*commands.TaskRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	task, ok := s.tasks[taskID]
+	if !ok {
+		return nil, nil
+	}
+	copied := *task
+	return &copied, nil
+}
+
+func (s *runtimeTaskEventStore) AdvanceTaskByExecution(_ context.Context, params commands.AdvanceTaskByExecutionParams) (*commands.TaskRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	task, ok := s.tasks[params.ID]
+	if !ok {
+		return nil, nil
+	}
+	if task.CurrentExecutionID != params.ExecutionID {
+		return nil, nil
+	}
+	if !slices.Contains(params.FromStatuses, task.Status) {
+		return nil, nil
+	}
+
+	task.Status = params.ToStatus
+	copied := *task
+	return &copied, nil
+}
+
+func (s *runtimeTaskEventStore) Append(_ context.Context, event commands.OutboxEvent) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	copied := event
+	copied.Payload = append([]byte(nil), event.Payload...)
+	s.lastOutbox = &copied
+	return nil
+}
+
+func (s *runtimeTaskEventStore) mustGet(t *testing.T, taskID uuid.UUID) *commands.TaskRecord {
+	t.Helper()
+
+	task, err := s.GetTask(context.Background(), taskID)
+	if err != nil {
+		t.Fatalf("get task: %v", err)
+	}
+	if task == nil {
+		t.Fatalf("task %s not found", taskID)
+	}
+	return task
 }
 
 func startRuntimePostgres(t *testing.T, ctx context.Context) (*postgres.PostgresContainer, string) {

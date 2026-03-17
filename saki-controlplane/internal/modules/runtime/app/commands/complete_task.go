@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 
 	"github.com/google/uuid"
-
-	"github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/state"
 )
 
 type TaskLoader interface {
@@ -14,21 +12,16 @@ type TaskLoader interface {
 }
 
 type CompleteTaskCommand struct {
-	TaskID uuid.UUID
+	TaskID      uuid.UUID
+	ExecutionID string
 }
 
 type CompleteTaskHandler struct {
-	tasks interface {
-		TaskLoader
-		UpdateTask(ctx context.Context, update TaskUpdate) error
-	}
+	tasks  ExecutionScopedTaskStore
 	outbox OutboxWriter
 }
 
-func NewCompleteTaskHandler(tasks interface {
-	TaskLoader
-	UpdateTask(ctx context.Context, update TaskUpdate) error
-}, outbox OutboxWriter) *CompleteTaskHandler {
+func NewCompleteTaskHandler(tasks ExecutionScopedTaskStore, outbox OutboxWriter) *CompleteTaskHandler {
 	return &CompleteTaskHandler{
 		tasks:  tasks,
 		outbox: outbox,
@@ -36,41 +29,27 @@ func NewCompleteTaskHandler(tasks interface {
 }
 
 func (h *CompleteTaskHandler) Handle(ctx context.Context, cmd CompleteTaskCommand) (*TaskRecord, error) {
-	task, err := h.tasks.GetTask(ctx, cmd.TaskID)
+	task, applied, err := advanceTaskByExecution(ctx, h.tasks, AdvanceTaskByExecutionParams{
+		ID:           cmd.TaskID,
+		ExecutionID:  cmd.ExecutionID,
+		FromStatuses: []string{"running", "cancel_requested"},
+		ToStatus:     "succeeded",
+	})
 	if err != nil || task == nil {
 		return task, err
 	}
-
-	snapshot := state.TaskSnapshot{Status: state.TaskStatus(task.Status)}
-	if snapshot.Status != state.TaskStatusRunning {
-		return nil, state.ErrInvalidTransition
-	}
-
-	events, err := state.DecideTask(snapshot, state.FinishTask{})
-	if err != nil {
-		return nil, err
-	}
-
-	for _, event := range events {
-		snapshot = state.EvolveTask(snapshot, event)
-	}
-
-	update := TaskUpdate{
-		ID:              task.ID,
-		Status:          string(snapshot.Status),
-		AssignedAgentID: task.AssignedAgentID,
-		LeaderEpoch:     task.LeaderEpoch,
-	}
-	if err := h.tasks.UpdateTask(ctx, update); err != nil {
-		return nil, err
+	if !applied {
+		return task, nil
 	}
 
 	payload, err := json.Marshal(struct {
-		TaskID uuid.UUID `json:"task_id"`
-		Status string    `json:"status"`
+		TaskID      uuid.UUID `json:"task_id"`
+		ExecutionID string    `json:"execution_id"`
+		Status      string    `json:"status"`
 	}{
-		TaskID: task.ID,
-		Status: update.Status,
+		TaskID:      task.ID,
+		ExecutionID: task.CurrentExecutionID,
+		Status:      task.Status,
 	})
 	if err != nil {
 		return nil, err
@@ -84,7 +63,5 @@ func (h *CompleteTaskHandler) Handle(ctx context.Context, cmd CompleteTaskComman
 		return nil, err
 	}
 
-	completed := *task
-	completed.Status = update.Status
-	return &completed, nil
+	return task, nil
 }

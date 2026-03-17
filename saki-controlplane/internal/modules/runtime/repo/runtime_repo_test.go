@@ -250,6 +250,165 @@ where id = $1
 	}
 }
 
+func TestTaskRepoAdvanceTaskByExecutionUpdatesMatchingExecutionAndStatus(t *testing.T) {
+	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+
+	ctx := context.Background()
+	container, dsn := startRuntimePostgres(t, ctx)
+	defer func() {
+		_ = testcontainers.TerminateContainer(container)
+	}()
+
+	sqlDB, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("open sql db: %v", err)
+	}
+	defer sqlDB.Close()
+
+	goose.SetDialect("postgres")
+	if err := goose.Up(sqlDB, runtimeMigrationsDir(t)); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+
+	pool, err := appdb.NewPool(ctx, dsn)
+	if err != nil {
+		t.Fatalf("create pool: %v", err)
+	}
+	defer pool.Close()
+
+	leaseRepo := NewLeaseRepo(pool)
+	lease, err := leaseRepo.AcquireOrRenew(ctx, AcquireLeaseParams{
+		Name:       "runtime-scheduler",
+		Holder:     "runtime-1",
+		LeaseUntil: time.Now().Add(time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("acquire lease: %v", err)
+	}
+
+	taskRepo := NewTaskRepo(pool)
+	taskID := uuid.New()
+	if err := taskRepo.CreateTask(ctx, CreateTaskParams{
+		ID:       taskID,
+		TaskType: "predict",
+	}); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	assigned, err := taskRepo.AssignPendingTask(ctx, AssignTaskParams{
+		AssignedAgentID: "agent-start-1",
+		LeaderEpoch:     lease.Epoch,
+	})
+	if err != nil {
+		t.Fatalf("assign task: %v", err)
+	}
+
+	advanced, err := taskRepo.AdvanceTaskByExecution(ctx, commands.AdvanceTaskByExecutionParams{
+		ID:           taskID,
+		ExecutionID:  assigned.CurrentExecutionID,
+		FromStatuses: []string{"assigned"},
+		ToStatus:     "running",
+	})
+	if err != nil {
+		t.Fatalf("advance task by execution: %v", err)
+	}
+	if advanced == nil || advanced.Status != "running" {
+		t.Fatalf("expected running task, got %+v", advanced)
+	}
+
+	persisted, err := taskRepo.GetTask(ctx, taskID)
+	if err != nil {
+		t.Fatalf("get task: %v", err)
+	}
+	if persisted == nil || persisted.Status != "running" {
+		t.Fatalf("expected persisted running task, got %+v", persisted)
+	}
+}
+
+func TestTaskRepoAdvanceTaskByExecutionLeavesTaskUnchangedWhenStatusDrifts(t *testing.T) {
+	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+
+	ctx := context.Background()
+	container, dsn := startRuntimePostgres(t, ctx)
+	defer func() {
+		_ = testcontainers.TerminateContainer(container)
+	}()
+
+	sqlDB, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("open sql db: %v", err)
+	}
+	defer sqlDB.Close()
+
+	goose.SetDialect("postgres")
+	if err := goose.Up(sqlDB, runtimeMigrationsDir(t)); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+
+	pool, err := appdb.NewPool(ctx, dsn)
+	if err != nil {
+		t.Fatalf("create pool: %v", err)
+	}
+	defer pool.Close()
+
+	leaseRepo := NewLeaseRepo(pool)
+	lease, err := leaseRepo.AcquireOrRenew(ctx, AcquireLeaseParams{
+		Name:       "runtime-scheduler",
+		Holder:     "runtime-1",
+		LeaseUntil: time.Now().Add(time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("acquire lease: %v", err)
+	}
+
+	taskRepo := NewTaskRepo(pool)
+	taskID := uuid.New()
+	if err := taskRepo.CreateTask(ctx, CreateTaskParams{
+		ID:       taskID,
+		TaskType: "predict",
+	}); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	assigned, err := taskRepo.AssignPendingTask(ctx, AssignTaskParams{
+		AssignedAgentID: "agent-start-rollback-1",
+		LeaderEpoch:     lease.Epoch,
+	})
+	if err != nil {
+		t.Fatalf("assign task: %v", err)
+	}
+
+	if err := taskRepo.UpdateTask(ctx, commands.TaskUpdate{
+		ID:              taskID,
+		Status:          "cancel_requested",
+		AssignedAgentID: assigned.AssignedAgentID,
+		LeaderEpoch:     lease.Epoch,
+	}); err != nil {
+		t.Fatalf("prepare status drift: %v", err)
+	}
+
+	advanced, err := taskRepo.AdvanceTaskByExecution(ctx, commands.AdvanceTaskByExecutionParams{
+		ID:           taskID,
+		ExecutionID:  assigned.CurrentExecutionID,
+		FromStatuses: []string{"assigned"},
+		ToStatus:     "running",
+	})
+	if err != nil {
+		t.Fatalf("advance task by execution after drift: %v", err)
+	}
+	if advanced != nil {
+		t.Fatalf("expected no update after status drift, got %+v", advanced)
+	}
+
+	persisted, err := taskRepo.GetTask(ctx, taskID)
+	if err != nil {
+		t.Fatalf("get task: %v", err)
+	}
+	if persisted == nil || persisted.Status != "cancel_requested" {
+		t.Fatalf("expected cancel_requested task to be preserved, got %+v", persisted)
+	}
+}
+
 func TestAssignTaskHandlerUsesTaskRepoClaimAndAppendsFrozenOutbox(t *testing.T) {
 	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
 

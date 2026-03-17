@@ -74,6 +74,28 @@ set status = sqlc.arg(status),
     updated_at = now()
 where id = sqlc.arg(id);
 
+-- name: AdvanceRuntimeTaskByExecution :one
+update runtime_task
+set status = sqlc.arg(to_status),
+    updated_at = now()
+where id = sqlc.arg(id)
+  and current_execution_id = sqlc.arg(execution_id)
+  and status = any(sqlc.arg(from_statuses)::text[])
+returning
+    id,
+    task_kind,
+    task_type,
+    status,
+    current_execution_id,
+    assigned_agent_id,
+    attempt,
+    max_attempts,
+    resolved_params,
+    depends_on_task_ids,
+    leader_epoch,
+    created_at,
+    updated_at;
+
 -- name: GetRuntimeSummary :one
 select
     count(*) filter (where status = 'pending')::integer as pending_tasks,

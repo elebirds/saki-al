@@ -22,8 +22,20 @@ type heartbeatExecutorHandler interface {
 	Handle(ctx context.Context, cmd commands.HeartbeatExecutorCommand) error
 }
 
+type startTaskHandler interface {
+	Handle(ctx context.Context, cmd commands.StartTaskCommand) (*commands.TaskRecord, error)
+}
+
 type completeTaskHandler interface {
 	Handle(ctx context.Context, cmd commands.CompleteTaskCommand) (*commands.TaskRecord, error)
+}
+
+type failTaskHandler interface {
+	Handle(ctx context.Context, cmd commands.FailTaskCommand) (*commands.TaskRecord, error)
+}
+
+type confirmCanceledTaskHandler interface {
+	Handle(ctx context.Context, cmd commands.ConfirmTaskCanceledCommand) (*commands.TaskRecord, error)
 }
 
 type RuntimeServer struct {
@@ -31,19 +43,28 @@ type RuntimeServer struct {
 
 	registers         registerExecutorHandler
 	heartbeats        heartbeatExecutorHandler
+	starts            startTaskHandler
 	completes         completeTaskHandler
+	fails             failTaskHandler
+	confirmsCanceled  confirmCanceledTaskHandler
 	heartbeatInterval time.Duration
 }
 
 func NewRuntimeServer(
 	registers registerExecutorHandler,
 	heartbeats heartbeatExecutorHandler,
+	starts startTaskHandler,
 	completes completeTaskHandler,
+	fails failTaskHandler,
+	confirmsCanceled confirmCanceledTaskHandler,
 ) *RuntimeServer {
 	return &RuntimeServer{
 		registers:         registers,
 		heartbeats:        heartbeats,
+		starts:            starts,
 		completes:         completes,
+		fails:             fails,
+		confirmsCanceled:  confirmsCanceled,
 		heartbeatInterval: defaultHeartbeatInterval,
 	}
 }
@@ -103,13 +124,35 @@ func (s *RuntimeServer) IngestTaskEvent(ctx context.Context, envelope *runtimev1
 		return nil
 	}
 
+	taskID, err := uuid.Parse(envelope.GetTaskId())
+	if err != nil {
+		return err
+	}
+
 	switch envelope.GetPhase() {
+	case runtimev1.TaskEventPhase_TASK_EVENT_PHASE_RUNNING:
+		_, err = s.starts.Handle(ctx, commands.StartTaskCommand{
+			TaskID:      taskID,
+			ExecutionID: envelope.GetExecutionId(),
+		})
+		return err
 	case runtimev1.TaskEventPhase_TASK_EVENT_PHASE_SUCCEEDED:
-		taskID, err := uuid.Parse(envelope.GetTaskId())
-		if err != nil {
-			return err
-		}
-		_, err = s.completes.Handle(ctx, commands.CompleteTaskCommand{TaskID: taskID})
+		_, err = s.completes.Handle(ctx, commands.CompleteTaskCommand{
+			TaskID:      taskID,
+			ExecutionID: envelope.GetExecutionId(),
+		})
+		return err
+	case runtimev1.TaskEventPhase_TASK_EVENT_PHASE_FAILED:
+		_, err = s.fails.Handle(ctx, commands.FailTaskCommand{
+			TaskID:      taskID,
+			ExecutionID: envelope.GetExecutionId(),
+		})
+		return err
+	case runtimev1.TaskEventPhase_TASK_EVENT_PHASE_CANCELED:
+		_, err = s.confirmsCanceled.Handle(ctx, commands.ConfirmTaskCanceledCommand{
+			TaskID:      taskID,
+			ExecutionID: envelope.GetExecutionId(),
+		})
 		return err
 	default:
 		return nil

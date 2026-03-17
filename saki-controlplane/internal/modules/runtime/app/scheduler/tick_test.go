@@ -35,6 +35,30 @@ func TestLeaderTickAcquiresLeaseAndDispatchesAssignCommand(t *testing.T) {
 	}
 }
 
+func TestLeaderTickSkipsWhenLeaseNotOwned(t *testing.T) {
+	leases := &fakeLeaseManager{
+		lease: &repo.RuntimeLease{
+			Name:       "runtime-scheduler",
+			Holder:     "runtime-2",
+			Epoch:      9,
+			LeaseUntil: time.Now().Add(time.Minute),
+		},
+	}
+	assigner := &fakeAssigner{}
+
+	ticker := NewLeaderTicker(leases, assigner, "runtime-scheduler", "runtime-1", time.Minute)
+	if err := ticker.Tick(context.Background()); err != nil {
+		t.Fatalf("tick: %v", err)
+	}
+
+	if leases.calls != 1 {
+		t.Fatalf("expected one lease call, got %d", leases.calls)
+	}
+	if assigner.calls != 0 {
+		t.Fatalf("expected no dispatch when lease not owned, got %d", assigner.calls)
+	}
+}
+
 type fakeLeaseManager struct {
 	lease *repo.RuntimeLease
 	calls int

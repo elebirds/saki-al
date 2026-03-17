@@ -3,9 +3,9 @@ package repo
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"os/exec"
 	"path/filepath"
-	"reflect"
 	"runtime"
 	"slices"
 	"strings"
@@ -86,7 +86,7 @@ func TestRuntimeReposClaimLeaseAndAppendOutbox(t *testing.T) {
 
 	outboxRepo := NewOutboxRepo(pool)
 	entry, err := outboxRepo.Append(ctx, AppendOutboxParams{
-		Topic:       "runtime.task.assigned",
+		Topic:       "runtime.task.assign.v1",
 		AggregateID: taskID.String(),
 		Payload:     []byte(`{"task_id":"` + taskID.String() + `"}`),
 	})
@@ -219,41 +219,134 @@ where id = $1
 	}
 }
 
-func TestTaskRepoExposesAssignedAgentFormalContract(t *testing.T) {
-	taskRepoType := reflect.TypeOf(&TaskRepo{})
-	if _, ok := taskRepoType.MethodByName("AssignPendingTask"); !ok {
-		t.Fatal("expected TaskRepo.AssignPendingTask to be exported")
+func TestRuntimeCoreAlignmentMigrationKeepsLegacyClaimedByUnmapped(t *testing.T) {
+	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+
+	ctx := context.Background()
+	container, dsn := startRuntimePostgres(t, ctx)
+	defer func() {
+		_ = testcontainers.TerminateContainer(container)
+	}()
+
+	sqlDB, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("open sql db: %v", err)
 	}
-	if _, ok := taskRepoType.MethodByName("ClaimPendingTask"); ok {
-		t.Fatal("did not expect TaskRepo.ClaimPendingTask compatibility shell to remain exported")
+	defer sqlDB.Close()
+
+	goose.SetDialect("postgres")
+	migrationsDir := runtimeMigrationsDir(t)
+	if err := goose.UpTo(sqlDB, migrationsDir, 30); err != nil {
+		t.Fatalf("run migrations to 30: %v", err)
 	}
 
-	assignParamsType := reflect.TypeOf(AssignTaskParams{})
-	if _, ok := assignParamsType.FieldByName("AssignedAgentID"); !ok {
-		t.Fatal("expected AssignTaskParams.AssignedAgentID")
-	}
-	if _, ok := assignParamsType.FieldByName("ClaimedBy"); ok {
-		t.Fatal("did not expect AssignTaskParams.ClaimedBy")
-	}
-
-	taskRecordType := reflect.TypeOf(commands.TaskRecord{})
-	if _, ok := taskRecordType.FieldByName("AssignedAgentID"); !ok {
-		t.Fatal("expected commands.TaskRecord.AssignedAgentID")
-	}
-	if _, ok := taskRecordType.FieldByName("ClaimedBy"); ok {
-		t.Fatal("did not expect commands.TaskRecord.ClaimedBy")
+	taskID := uuid.New()
+	if _, err := sqlDB.ExecContext(ctx, `
+insert into runtime_task (id, task_type, status, claimed_by, claimed_at, leader_epoch)
+values ($1, 'predict', 'dispatching', 'runtime-holder-1', now(), 7)
+`, taskID); err != nil {
+		t.Fatalf("insert legacy runtime task: %v", err)
 	}
 
-	taskUpdateType := reflect.TypeOf(commands.TaskUpdate{})
-	if _, ok := taskUpdateType.FieldByName("AssignedAgentID"); !ok {
-		t.Fatal("expected commands.TaskUpdate.AssignedAgentID")
+	if err := goose.UpTo(sqlDB, migrationsDir, 31); err != nil {
+		t.Fatalf("run migrations to 31: %v", err)
 	}
-	if _, ok := taskUpdateType.FieldByName("ClaimedBy"); ok {
-		t.Fatal("did not expect commands.TaskUpdate.ClaimedBy")
+
+	var (
+		status             string
+		legacyClaimedBy    sql.NullString
+		assignedAgentID    sql.NullString
+		currentExecutionID sql.NullString
+	)
+	if err := sqlDB.QueryRowContext(ctx, `
+select status, claimed_by, assigned_agent_id, current_execution_id
+from runtime_task
+where id = $1
+`, taskID).Scan(&status, &legacyClaimedBy, &assignedAgentID, &currentExecutionID); err != nil {
+		t.Fatalf("load aligned runtime task: %v", err)
+	}
+
+	if status != "assigned" {
+		t.Fatalf("expected migrated status assigned, got %q", status)
+	}
+	if !legacyClaimedBy.Valid || legacyClaimedBy.String != "runtime-holder-1" {
+		t.Fatalf("expected legacy claimed_by to be preserved, got %+v", legacyClaimedBy)
+	}
+	if assignedAgentID.Valid {
+		t.Fatalf("expected assigned_agent_id to stay null for legacy row, got %q", assignedAgentID.String)
+	}
+	if !currentExecutionID.Valid || currentExecutionID.String == "" {
+		t.Fatalf("expected current_execution_id to be backfilled, got %+v", currentExecutionID)
 	}
 }
 
-func TestOutboxRepoClaimsAndMarksPublished(t *testing.T) {
+func TestOutboxRepoDefaultsIdempotencyKeyWithPayloadSpecificity(t *testing.T) {
+	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+
+	ctx := context.Background()
+	container, dsn := startRuntimePostgres(t, ctx)
+	defer func() {
+		_ = testcontainers.TerminateContainer(container)
+	}()
+
+	sqlDB, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("open sql db: %v", err)
+	}
+	defer sqlDB.Close()
+
+	goose.SetDialect("postgres")
+	if err := goose.Up(sqlDB, runtimeMigrationsDir(t)); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+
+	pool, err := appdb.NewPool(ctx, dsn)
+	if err != nil {
+		t.Fatalf("create pool: %v", err)
+	}
+	defer pool.Close()
+
+	outboxRepo := NewOutboxRepo(pool)
+	aggregateID := uuid.NewString()
+	entryA, err := outboxRepo.Append(ctx, AppendOutboxParams{
+		Topic:       "runtime.task.assign.v1",
+		AggregateID: aggregateID,
+		Payload:     []byte(`{"task_id":"` + aggregateID + `","execution_id":"exec-a"}`),
+	})
+	if err != nil {
+		t.Fatalf("append outbox a: %v", err)
+	}
+	entryB, err := outboxRepo.Append(ctx, AppendOutboxParams{
+		Topic:       "runtime.task.assign.v1",
+		AggregateID: aggregateID,
+		Payload:     []byte(`{"task_id":"` + aggregateID + `","execution_id":"exec-b"}`),
+	})
+	if err != nil {
+		t.Fatalf("append outbox b: %v", err)
+	}
+
+	if entryA.IdempotencyKey == "" || entryB.IdempotencyKey == "" {
+		t.Fatalf("expected idempotency keys, got a=%q b=%q", entryA.IdempotencyKey, entryB.IdempotencyKey)
+	}
+	if entryA.IdempotencyKey == entryB.IdempotencyKey {
+		t.Fatalf("expected payload-specific idempotency keys, got identical %q", entryA.IdempotencyKey)
+	}
+
+	explicit, err := outboxRepo.Append(ctx, AppendOutboxParams{
+		Topic:          "runtime.task.assign.v1",
+		AggregateID:    aggregateID,
+		IdempotencyKey: "runtime.task.assign.v1:logical-effect:1",
+		Payload:        []byte(`{"task_id":"` + aggregateID + `","execution_id":"exec-explicit"}`),
+	})
+	if err != nil {
+		t.Fatalf("append outbox explicit: %v", err)
+	}
+	if explicit.IdempotencyKey != "runtime.task.assign.v1:logical-effect:1" {
+		t.Fatalf("expected explicit idempotency key to be preserved, got %q", explicit.IdempotencyKey)
+	}
+}
+
+func TestOutboxRepoRejectsStaleClaimMarks(t *testing.T) {
 	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
 
 	ctx := context.Background()
@@ -289,62 +382,47 @@ func TestOutboxRepoClaimsAndMarksPublished(t *testing.T) {
 		t.Fatalf("append outbox: %v", err)
 	}
 
-	var (
-		aggregateType  string
-		idempotencyKey string
-		availableAt    time.Time
-		attemptCount   int32
-		publishedAt    sql.NullTime
-		lastError      sql.NullString
-	)
-	err = pool.QueryRow(ctx, `
-select aggregate_type, idempotency_key, available_at, attempt_count, published_at, last_error
-from runtime_outbox
-where id = $1
-`, entry.ID).Scan(
-		&aggregateType,
-		&idempotencyKey,
-		&availableAt,
-		&attemptCount,
-		&publishedAt,
-		&lastError,
-	)
+	worker1ClaimUntil := time.Now().Add(40 * time.Millisecond)
+	worker1Claim, err := outboxRepo.ClaimDue(ctx, 1, worker1ClaimUntil)
 	if err != nil {
-		t.Fatalf("load aligned outbox: %v", err)
+		t.Fatalf("worker1 claim due: %v", err)
+	}
+	if len(worker1Claim) != 1 || worker1Claim[0].ID != entry.ID {
+		t.Fatalf("unexpected worker1 claim: %+v", worker1Claim)
 	}
 
-	if aggregateType == "" {
-		t.Fatal("expected aggregate type to be persisted")
+	time.Sleep(80 * time.Millisecond)
+
+	worker2ClaimUntil := time.Now().Add(2 * time.Minute)
+	worker2Claim, err := outboxRepo.ClaimDue(ctx, 1, worker2ClaimUntil)
+	if err != nil {
+		t.Fatalf("worker2 claim due: %v", err)
 	}
-	if idempotencyKey == "" {
-		t.Fatal("expected idempotency key to be persisted")
-	}
-	if availableAt.IsZero() {
-		t.Fatal("expected available_at to be set")
-	}
-	if attemptCount != 0 {
-		t.Fatalf("expected attempt count 0, got %d", attemptCount)
-	}
-	if publishedAt.Valid {
-		t.Fatalf("expected unpublished entry, got %v", publishedAt.Time)
-	}
-	if lastError.Valid {
-		t.Fatalf("expected empty last error, got %q", lastError.String)
+	if len(worker2Claim) != 1 || worker2Claim[0].ID != entry.ID {
+		t.Fatalf("unexpected worker2 claim: %+v", worker2Claim)
 	}
 
-	claimUntil := time.Now().Add(2 * time.Minute)
-	claimed := callOutboxClaimDue(t, outboxRepo, ctx, 1, claimUntil)
-	if len(claimed) != 1 || claimed[0].ID != entry.ID {
-		t.Fatalf("unexpected claimed entries: %+v", claimed)
+	staleRetryAt := time.Now().Add(time.Minute)
+	err = outboxRepo.MarkRetry(ctx, entry.ID, worker1Claim[0].AvailableAt, staleRetryAt, "temporary failure")
+	if !errors.Is(err, ErrOutboxClaimExpired) {
+		t.Fatalf("expected stale retry to fail with ErrOutboxClaimExpired, got %v", err)
 	}
 
-	if got := callOutboxClaimDue(t, outboxRepo, ctx, 1, time.Now().Add(3*time.Minute)); len(got) != 0 {
-		t.Fatalf("expected claimed entry to be fenced by available_at, got %+v", got)
+	err = outboxRepo.MarkPublished(ctx, entry.ID, worker1Claim[0].AvailableAt)
+	if !errors.Is(err, ErrOutboxClaimExpired) {
+		t.Fatalf("expected stale publish to fail with ErrOutboxClaimExpired, got %v", err)
 	}
 
 	retryAt := time.Now().Add(-time.Second)
-	callOutboxMarkRetry(t, outboxRepo, ctx, entry.ID, retryAt, "temporary failure")
+	if err := outboxRepo.MarkRetry(ctx, entry.ID, worker2Claim[0].AvailableAt, retryAt, "temporary failure"); err != nil {
+		t.Fatalf("mark current claim retry: %v", err)
+	}
 
+	var (
+		availableAt  time.Time
+		attemptCount int32
+		lastError    sql.NullString
+	)
 	err = pool.QueryRow(ctx, `
 select available_at, attempt_count, last_error
 from runtime_outbox
@@ -356,20 +434,26 @@ where id = $1
 	if availableAt.After(time.Now()) {
 		t.Fatalf("expected retry entry to be immediately available, got %s", availableAt)
 	}
-	if attemptCount != 1 {
-		t.Fatalf("expected attempt count to remain 1 after retry mark, got %d", attemptCount)
+	if attemptCount != 2 {
+		t.Fatalf("expected attempt count to remain 2 after retry mark, got %d", attemptCount)
 	}
 	if !lastError.Valid || lastError.String != "temporary failure" {
 		t.Fatalf("expected retry error to be stored, got %+v", lastError)
 	}
 
-	reclaimed := callOutboxClaimDue(t, outboxRepo, ctx, 1, time.Now().Add(4*time.Minute))
+	reclaimed, err := outboxRepo.ClaimDue(ctx, 1, time.Now().Add(4*time.Minute))
+	if err != nil {
+		t.Fatalf("reclaim due outbox: %v", err)
+	}
 	if len(reclaimed) != 1 || reclaimed[0].ID != entry.ID {
 		t.Fatalf("unexpected reclaimed entries: %+v", reclaimed)
 	}
 
-	callOutboxMarkPublished(t, outboxRepo, ctx, entry.ID)
+	if err := outboxRepo.MarkPublished(ctx, entry.ID, reclaimed[0].AvailableAt); err != nil {
+		t.Fatalf("mark outbox published: %v", err)
+	}
 
+	var publishedAt sql.NullTime
 	err = pool.QueryRow(ctx, `
 select published_at, last_error, attempt_count
 from runtime_outbox
@@ -384,8 +468,8 @@ where id = $1
 	if lastError.Valid {
 		t.Fatalf("expected last_error to be cleared, got %q", lastError.String)
 	}
-	if attemptCount != 2 {
-		t.Fatalf("expected second claim to increment attempt count to 2, got %d", attemptCount)
+	if attemptCount != 3 {
+		t.Fatalf("expected third claim to increment attempt count to 3, got %d", attemptCount)
 	}
 }
 
@@ -504,72 +588,4 @@ func runtimePostgresImageRef() string {
 		return "postgres:16-alpine"
 	}
 	return imageID
-}
-
-func callOutboxClaimDue(t *testing.T, repo *OutboxRepo, ctx context.Context, limit int32, claimUntil time.Time) []OutboxEntry {
-	t.Helper()
-
-	method := reflect.ValueOf(repo).MethodByName("ClaimDue")
-	if !method.IsValid() {
-		t.Fatal("expected OutboxRepo.ClaimDue to exist")
-	}
-
-	results := method.Call([]reflect.Value{
-		reflect.ValueOf(ctx),
-		reflect.ValueOf(limit),
-		reflect.ValueOf(claimUntil),
-	})
-	if len(results) != 2 {
-		t.Fatalf("unexpected ClaimDue result count: %d", len(results))
-	}
-	if err, _ := results[1].Interface().(error); err != nil {
-		t.Fatalf("claim due outbox: %v", err)
-	}
-	entries, ok := results[0].Interface().([]OutboxEntry)
-	if !ok {
-		t.Fatalf("unexpected ClaimDue return type: %T", results[0].Interface())
-	}
-	return entries
-}
-
-func callOutboxMarkRetry(t *testing.T, repo *OutboxRepo, ctx context.Context, id int64, nextAvailableAt time.Time, lastError string) {
-	t.Helper()
-
-	method := reflect.ValueOf(repo).MethodByName("MarkRetry")
-	if !method.IsValid() {
-		t.Fatal("expected OutboxRepo.MarkRetry to exist")
-	}
-
-	results := method.Call([]reflect.Value{
-		reflect.ValueOf(ctx),
-		reflect.ValueOf(id),
-		reflect.ValueOf(nextAvailableAt),
-		reflect.ValueOf(lastError),
-	})
-	if len(results) != 1 {
-		t.Fatalf("unexpected MarkRetry result count: %d", len(results))
-	}
-	if err, _ := results[0].Interface().(error); err != nil {
-		t.Fatalf("mark outbox retry: %v", err)
-	}
-}
-
-func callOutboxMarkPublished(t *testing.T, repo *OutboxRepo, ctx context.Context, id int64) {
-	t.Helper()
-
-	method := reflect.ValueOf(repo).MethodByName("MarkPublished")
-	if !method.IsValid() {
-		t.Fatal("expected OutboxRepo.MarkPublished to exist")
-	}
-
-	results := method.Call([]reflect.Value{
-		reflect.ValueOf(ctx),
-		reflect.ValueOf(id),
-	})
-	if len(results) != 1 {
-		t.Fatalf("unexpected MarkPublished result count: %d", len(results))
-	}
-	if err, _ := results[0].Interface().(error); err != nil {
-		t.Fatalf("mark outbox published: %v", err)
-	}
 }

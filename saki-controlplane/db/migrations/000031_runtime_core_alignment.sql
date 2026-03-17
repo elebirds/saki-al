@@ -1,6 +1,6 @@
 -- +goose Up
 alter table runtime_task
-    rename column claimed_by to assigned_agent_id;
+    add column assigned_agent_id text;
 
 alter table runtime_task
     add column task_kind text not null default 'PREDICTION',
@@ -63,14 +63,12 @@ alter table runtime_outbox
 alter table runtime_task
     add column claimed_at timestamptz;
 
-alter table runtime_task
-    rename column assigned_agent_id to claimed_by;
-
 update runtime_task
 set status = 'dispatching'
 where status = 'assigned';
 
 alter table runtime_task
+    drop column if exists assigned_agent_id,
     drop column if exists depends_on_task_ids,
     drop column if exists resolved_params,
     drop column if exists max_attempts,

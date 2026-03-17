@@ -57,14 +57,18 @@ returning
     runtime_outbox.published_at,
     runtime_outbox.last_error;
 
--- name: MarkRuntimeOutboxPublished :exec
+-- name: MarkRuntimeOutboxPublished :execrows
 update runtime_outbox
 set published_at = now(),
     last_error = null
-where id = sqlc.arg(id);
+where id = sqlc.arg(id)
+  and published_at is null
+  and available_at = sqlc.arg(claim_available_at);
 
--- name: MarkRuntimeOutboxRetry :exec
+-- name: MarkRuntimeOutboxRetry :execrows
 update runtime_outbox
 set available_at = sqlc.arg(next_available_at),
     last_error = sqlc.arg(last_error)
-where id = sqlc.arg(id);
+where id = sqlc.arg(id)
+  and published_at is null
+  and available_at = sqlc.arg(claim_available_at);

@@ -25,9 +25,10 @@ type TaskUpdate struct {
 }
 
 type OutboxEvent struct {
-	Topic       string
-	AggregateID string
-	Payload     []byte
+	Topic          string
+	AggregateID    string
+	IdempotencyKey string
+	Payload        []byte
 }
 
 type TaskStore interface {

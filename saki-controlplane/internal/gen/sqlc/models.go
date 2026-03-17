@@ -113,10 +113,11 @@ type RuntimeTask struct {
 	ID                 uuid.UUID          `json:"id"`
 	TaskType           string             `json:"task_type"`
 	Status             string             `json:"status"`
-	AssignedAgentID    pgtype.Text        `json:"assigned_agent_id"`
+	ClaimedBy          pgtype.Text        `json:"claimed_by"`
 	LeaderEpoch        pgtype.Int8        `json:"leader_epoch"`
 	CreatedAt          pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
+	AssignedAgentID    pgtype.Text        `json:"assigned_agent_id"`
 	TaskKind           string             `json:"task_kind"`
 	CurrentExecutionID pgtype.Text        `json:"current_execution_id"`
 	Attempt            int32              `json:"attempt"`

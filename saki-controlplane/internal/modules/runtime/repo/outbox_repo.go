@@ -2,6 +2,9 @@ package repo
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"time"
 
@@ -11,6 +14,8 @@ import (
 	sqlcdb "github.com/elebirds/saki/saki-controlplane/internal/gen/sqlc"
 	"github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/commands"
 )
+
+var ErrOutboxClaimExpired = errors.New("runtime outbox claim expired")
 
 type OutboxEntry struct {
 	ID             int64
@@ -45,7 +50,7 @@ func NewOutboxRepo(pool *pgxpool.Pool) *OutboxRepo {
 
 func (r *OutboxRepo) Append(ctx context.Context, params AppendOutboxParams) (*OutboxEntry, error) {
 	aggregateType := outboxAggregateTypeOrDefault(params.AggregateType)
-	idempotencyKey := outboxIdempotencyKey(params.Topic, aggregateType, params.AggregateID, params.IdempotencyKey)
+	idempotencyKey := outboxIdempotencyKey(params.Topic, aggregateType, params.AggregateID, params.Payload, params.IdempotencyKey)
 	availableAt := outboxAvailableAtOrNow(params.AvailableAt)
 
 	row, err := r.q.AppendRuntimeOutbox(ctx, sqlcdb.AppendRuntimeOutboxParams{
@@ -79,16 +84,34 @@ func (r *OutboxRepo) ClaimDue(ctx context.Context, limit int32, claimUntil time.
 	return entries, nil
 }
 
-func (r *OutboxRepo) MarkPublished(ctx context.Context, id int64) error {
-	return r.q.MarkRuntimeOutboxPublished(ctx, id)
+func (r *OutboxRepo) MarkPublished(ctx context.Context, id int64, claimAvailableAt time.Time) error {
+	rows, err := r.q.MarkRuntimeOutboxPublished(ctx, sqlcdb.MarkRuntimeOutboxPublishedParams{
+		ID:               id,
+		ClaimAvailableAt: pgtype.Timestamptz{Time: claimAvailableAt, Valid: true},
+	})
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return ErrOutboxClaimExpired
+	}
+	return nil
 }
 
-func (r *OutboxRepo) MarkRetry(ctx context.Context, id int64, nextAvailableAt time.Time, lastError string) error {
-	return r.q.MarkRuntimeOutboxRetry(ctx, sqlcdb.MarkRuntimeOutboxRetryParams{
-		ID:              id,
-		NextAvailableAt: pgtype.Timestamptz{Time: nextAvailableAt, Valid: true},
-		LastError:       pgtype.Text{String: lastError, Valid: lastError != ""},
+func (r *OutboxRepo) MarkRetry(ctx context.Context, id int64, claimAvailableAt, nextAvailableAt time.Time, lastError string) error {
+	rows, err := r.q.MarkRuntimeOutboxRetry(ctx, sqlcdb.MarkRuntimeOutboxRetryParams{
+		ID:               id,
+		ClaimAvailableAt: pgtype.Timestamptz{Time: claimAvailableAt, Valid: true},
+		NextAvailableAt:  pgtype.Timestamptz{Time: nextAvailableAt, Valid: true},
+		LastError:        pgtype.Text{String: lastError, Valid: lastError != ""},
 	})
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return ErrOutboxClaimExpired
+	}
+	return nil
 }
 
 type CommandOutboxWriter struct {
@@ -101,9 +124,10 @@ func NewCommandOutboxWriter(pool *pgxpool.Pool) *CommandOutboxWriter {
 
 func (w *CommandOutboxWriter) Append(ctx context.Context, event commands.OutboxEvent) error {
 	_, err := w.repo.Append(ctx, AppendOutboxParams{
-		Topic:       event.Topic,
-		AggregateID: event.AggregateID,
-		Payload:     event.Payload,
+		Topic:          event.Topic,
+		AggregateID:    event.AggregateID,
+		IdempotencyKey: event.IdempotencyKey,
+		Payload:        event.Payload,
 	})
 	return err
 }
@@ -163,11 +187,12 @@ func outboxAggregateTypeOrDefault(aggregateType string) string {
 	return aggregateType
 }
 
-func outboxIdempotencyKey(topic, aggregateType, aggregateID, override string) string {
+func outboxIdempotencyKey(topic, aggregateType, aggregateID string, payload []byte, override string) string {
 	if override != "" {
 		return override
 	}
-	return fmt.Sprintf("%s:%s:%s", topic, aggregateType, aggregateID)
+	payloadHash := sha256.Sum256(payload)
+	return fmt.Sprintf("%s:%s:%s:%s", topic, aggregateType, aggregateID, hex.EncodeToString(payloadHash[:8]))
 }
 
 func outboxAvailableAtOrNow(availableAt time.Time) time.Time {

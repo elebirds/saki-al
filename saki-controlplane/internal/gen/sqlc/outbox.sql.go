@@ -172,32 +172,53 @@ func (q *Queries) ClaimDueRuntimeOutbox(ctx context.Context, arg ClaimDueRuntime
 	return items, nil
 }
 
-const markRuntimeOutboxPublished = `-- name: MarkRuntimeOutboxPublished :exec
+const markRuntimeOutboxPublished = `-- name: MarkRuntimeOutboxPublished :execrows
 update runtime_outbox
 set published_at = now(),
     last_error = null
 where id = $1
+  and published_at is null
+  and available_at = $2
 `
 
-func (q *Queries) MarkRuntimeOutboxPublished(ctx context.Context, id int64) error {
-	_, err := q.db.Exec(ctx, markRuntimeOutboxPublished, id)
-	return err
+type MarkRuntimeOutboxPublishedParams struct {
+	ID               int64              `json:"id"`
+	ClaimAvailableAt pgtype.Timestamptz `json:"claim_available_at"`
 }
 
-const markRuntimeOutboxRetry = `-- name: MarkRuntimeOutboxRetry :exec
+func (q *Queries) MarkRuntimeOutboxPublished(ctx context.Context, arg MarkRuntimeOutboxPublishedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markRuntimeOutboxPublished, arg.ID, arg.ClaimAvailableAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const markRuntimeOutboxRetry = `-- name: MarkRuntimeOutboxRetry :execrows
 update runtime_outbox
 set available_at = $1,
     last_error = $2
 where id = $3
+  and published_at is null
+  and available_at = $4
 `
 
 type MarkRuntimeOutboxRetryParams struct {
-	NextAvailableAt pgtype.Timestamptz `json:"next_available_at"`
-	LastError       pgtype.Text        `json:"last_error"`
-	ID              int64              `json:"id"`
+	NextAvailableAt  pgtype.Timestamptz `json:"next_available_at"`
+	LastError        pgtype.Text        `json:"last_error"`
+	ID               int64              `json:"id"`
+	ClaimAvailableAt pgtype.Timestamptz `json:"claim_available_at"`
 }
 
-func (q *Queries) MarkRuntimeOutboxRetry(ctx context.Context, arg MarkRuntimeOutboxRetryParams) error {
-	_, err := q.db.Exec(ctx, markRuntimeOutboxRetry, arg.NextAvailableAt, arg.LastError, arg.ID)
-	return err
+func (q *Queries) MarkRuntimeOutboxRetry(ctx context.Context, arg MarkRuntimeOutboxRetryParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markRuntimeOutboxRetry,
+		arg.NextAvailableAt,
+		arg.LastError,
+		arg.ID,
+		arg.ClaimAvailableAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

@@ -9,84 +9,114 @@ import (
 	"github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/state"
 )
 
+const StopTaskOutboxTopic = "runtime.task.stop.v1"
+
+type StopTaskOutboxPayload struct {
+	TaskID      uuid.UUID `json:"task_id"`
+	ExecutionID string    `json:"execution_id"`
+	AgentID     string    `json:"agent_id"`
+	Reason      string    `json:"reason"`
+	LeaderEpoch int64     `json:"leader_epoch"`
+}
+
 type CancelTaskCommand struct {
 	TaskID uuid.UUID
 }
 
-type CancelTaskHandler struct {
-	tasks interface {
-		TaskLoader
-		UpdateTask(ctx context.Context, update TaskUpdate) error
-	}
-	outbox OutboxWriter
-}
-
-func NewCancelTaskHandler(tasks interface {
+type CancelTaskStore interface {
 	TaskLoader
 	UpdateTask(ctx context.Context, update TaskUpdate) error
-}, outbox OutboxWriter) *CancelTaskHandler {
+	OutboxWriter
+}
+
+type CancelTaskTxRunner interface {
+	InTx(ctx context.Context, fn func(store CancelTaskStore) error) error
+}
+
+type CancelTaskHandler struct {
+	tx CancelTaskTxRunner
+}
+
+func NewCancelTaskHandler(store CancelTaskStore) *CancelTaskHandler {
 	return &CancelTaskHandler{
-		tasks:  tasks,
-		outbox: outbox,
+		tx: inlineCancelTaskTxRunner{store: store},
+	}
+}
+
+func NewCancelTaskHandlerWithTx(tx CancelTaskTxRunner) *CancelTaskHandler {
+	return &CancelTaskHandler{
+		tx: tx,
 	}
 }
 
 func (h *CancelTaskHandler) Handle(ctx context.Context, cmd CancelTaskCommand) (*TaskRecord, error) {
-	task, err := h.tasks.GetTask(ctx, cmd.TaskID)
-	if err != nil || task == nil {
-		return task, err
-	}
+	var canceled *TaskRecord
+	if err := h.tx.InTx(ctx, func(store CancelTaskStore) error {
+		task, err := store.GetTask(ctx, cmd.TaskID)
+		if err != nil || task == nil {
+			canceled = task
+			return err
+		}
 
-	snapshot := state.TaskSnapshot{Status: state.TaskStatus(task.Status)}
-	events, err := state.DecideTask(snapshot, state.RequestTaskCancel{})
-	if err != nil {
-		return nil, err
-	}
+		snapshot := state.TaskSnapshot{Status: state.TaskStatus(task.Status)}
+		events, err := state.DecideTask(snapshot, state.RequestTaskCancel{})
+		if err != nil {
+			return err
+		}
 
-	for _, event := range events {
-		snapshot = state.EvolveTask(snapshot, event)
-	}
+		for _, event := range events {
+			snapshot = state.EvolveTask(snapshot, event)
+		}
 
-	update := TaskUpdate{
-		ID:              task.ID,
-		Status:          string(snapshot.Status),
-		AssignedAgentID: task.AssignedAgentID,
-		LeaderEpoch:     task.LeaderEpoch,
-	}
-	if err := h.tasks.UpdateTask(ctx, update); err != nil {
-		return nil, err
-	}
+		update := TaskUpdate{
+			ID:              task.ID,
+			Status:          string(snapshot.Status),
+			AssignedAgentID: task.AssignedAgentID,
+			LeaderEpoch:     task.LeaderEpoch,
+		}
+		if err := store.UpdateTask(ctx, update); err != nil {
+			return err
+		}
 
-	payload, err := json.Marshal(struct {
-		TaskID uuid.UUID `json:"task_id"`
-		Status string    `json:"status"`
-	}{
-		TaskID: task.ID,
-		Status: update.Status,
-	})
-	if err != nil {
-		return nil, err
-	}
+		switch snapshot.Status {
+		case state.TaskStatusCancelRequested:
+			payload, err := json.Marshal(StopTaskOutboxPayload{
+				TaskID:      task.ID,
+				ExecutionID: task.CurrentExecutionID,
+				AgentID:     task.AssignedAgentID,
+				Reason:      string(state.TaskStatusCancelRequested),
+				LeaderEpoch: task.LeaderEpoch,
+			})
+			if err != nil {
+				return err
+			}
+			if err := store.Append(ctx, OutboxEvent{
+				Topic:       StopTaskOutboxTopic,
+				AggregateID: task.ID.String(),
+				Payload:     payload,
+			}); err != nil {
+				return err
+			}
+		case state.TaskStatusCanceled:
+		default:
+			return state.ErrInvalidTransition
+		}
 
-	topic := "runtime.task.canceled"
-	switch snapshot.Status {
-	case state.TaskStatusCancelRequested:
-		topic = "runtime.task.stop.v1"
-	case state.TaskStatusCanceled:
-		topic = "runtime.task.canceled"
-	default:
-		return nil, state.ErrInvalidTransition
-	}
-
-	if err := h.outbox.Append(ctx, OutboxEvent{
-		Topic:       topic,
-		AggregateID: task.ID.String(),
-		Payload:     payload,
+		next := *task
+		next.Status = update.Status
+		canceled = &next
+		return nil
 	}); err != nil {
 		return nil, err
 	}
 
-	canceled := *task
-	canceled.Status = update.Status
-	return &canceled, nil
+	return canceled, nil
+}
+
+type inlineCancelTaskTxRunner struct {
+	store CancelTaskStore
+}
+
+func (r inlineCancelTaskTxRunner) InTx(_ context.Context, fn func(store CancelTaskStore) error) error {
+	return fn(r.store)
 }

@@ -66,7 +66,7 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 		Authenticator:       accessapp.NewAuthenticator(cfg.AuthTokenSecret, tokenTTL),
 		ProjectStore:        projectStore,
 		RuntimeStore:        runtimequeries.NewRepoAdminStore(taskRepo, runtimerepo.NewExecutorRepo(pool)),
-		RuntimeTaskCanceler: runtimecommands.NewCancelTaskHandler(taskRepo, runtimerepo.NewCommandOutboxWriter(pool)),
+		RuntimeTaskCanceler: runtimecommands.NewCancelTaskHandlerWithTx(runtimerepo.NewCancelTaskTxRunner(pool)),
 		AnnotationSamples:   sampleRepo,
 		AnnotationStore:     annotationRepo,
 		AnnotationMapper: annotationmapping.NewClient(annotationmapping.ClientConfig{

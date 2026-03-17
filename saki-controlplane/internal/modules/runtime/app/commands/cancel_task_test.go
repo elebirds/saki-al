@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/google/uuid"
@@ -13,15 +14,14 @@ func TestCancelTaskCommandRequestsCancelForRunningTaskAndAppendsOutbox(t *testin
 	taskID := uuid.New()
 	taskStore := &cancelTaskStore{
 		task: &TaskRecord{
-			ID:              taskID,
-			Status:          string(state.TaskStatusRunning),
-			AssignedAgentID: "agent-1",
-			LeaderEpoch:     7,
+			ID:                 taskID,
+			Status:             string(state.TaskStatusRunning),
+			CurrentExecutionID: "exec-running-1",
+			AssignedAgentID:    "agent-1",
+			LeaderEpoch:        7,
 		},
 	}
-	outbox := &fakeOutboxWriter{}
-
-	handler := NewCancelTaskHandler(taskStore, outbox)
+	handler := NewCancelTaskHandler(taskStore)
 	canceled, err := handler.Handle(context.Background(), CancelTaskCommand{TaskID: taskID})
 	if err != nil {
 		t.Fatalf("handle cancel task: %v", err)
@@ -33,8 +33,21 @@ func TestCancelTaskCommandRequestsCancelForRunningTaskAndAppendsOutbox(t *testin
 	if taskStore.updated == nil || taskStore.updated.Status != string(state.TaskStatusCancelRequested) {
 		t.Fatalf("expected cancel_requested status update, got %+v", taskStore.updated)
 	}
-	if outbox.last == nil || outbox.last.Topic != "runtime.task.stop.v1" {
-		t.Fatalf("expected runtime.task.stop.v1 outbox event, got %+v", outbox.last)
+	if taskStore.last == nil || taskStore.last.Topic != "runtime.task.stop.v1" {
+		t.Fatalf("expected runtime.task.stop.v1 outbox event, got %+v", taskStore.last)
+	}
+	var payload struct {
+		TaskID      uuid.UUID `json:"task_id"`
+		ExecutionID string    `json:"execution_id"`
+		AgentID     string    `json:"agent_id"`
+		Reason      string    `json:"reason"`
+		LeaderEpoch int64     `json:"leader_epoch"`
+	}
+	if err := json.Unmarshal(taskStore.last.Payload, &payload); err != nil {
+		t.Fatalf("unmarshal stop payload: %v", err)
+	}
+	if payload.TaskID != taskID || payload.ExecutionID != "exec-running-1" || payload.AgentID != "agent-1" || payload.Reason != "cancel_requested" || payload.LeaderEpoch != 7 {
+		t.Fatalf("unexpected stop payload: %+v", payload)
 	}
 }
 
@@ -42,15 +55,14 @@ func TestCancelTaskCommandRequestsCancelForAssignedTaskAndAppendsOutbox(t *testi
 	taskID := uuid.New()
 	taskStore := &cancelTaskStore{
 		task: &TaskRecord{
-			ID:              taskID,
-			Status:          string(state.TaskStatusAssigned),
-			AssignedAgentID: "agent-1",
-			LeaderEpoch:     7,
+			ID:                 taskID,
+			Status:             string(state.TaskStatusAssigned),
+			CurrentExecutionID: "exec-assigned-1",
+			AssignedAgentID:    "agent-1",
+			LeaderEpoch:        7,
 		},
 	}
-	outbox := &fakeOutboxWriter{}
-
-	handler := NewCancelTaskHandler(taskStore, outbox)
+	handler := NewCancelTaskHandler(taskStore)
 	canceled, err := handler.Handle(context.Background(), CancelTaskCommand{TaskID: taskID})
 	if err != nil {
 		t.Fatalf("handle cancel task: %v", err)
@@ -62,8 +74,21 @@ func TestCancelTaskCommandRequestsCancelForAssignedTaskAndAppendsOutbox(t *testi
 	if taskStore.updated == nil || taskStore.updated.Status != string(state.TaskStatusCancelRequested) {
 		t.Fatalf("expected cancel_requested status update, got %+v", taskStore.updated)
 	}
-	if outbox.last == nil || outbox.last.Topic != "runtime.task.stop.v1" {
-		t.Fatalf("expected runtime.task.stop.v1 outbox event, got %+v", outbox.last)
+	if taskStore.last == nil || taskStore.last.Topic != "runtime.task.stop.v1" {
+		t.Fatalf("expected runtime.task.stop.v1 outbox event, got %+v", taskStore.last)
+	}
+	var payload struct {
+		TaskID      uuid.UUID `json:"task_id"`
+		ExecutionID string    `json:"execution_id"`
+		AgentID     string    `json:"agent_id"`
+		Reason      string    `json:"reason"`
+		LeaderEpoch int64     `json:"leader_epoch"`
+	}
+	if err := json.Unmarshal(taskStore.last.Payload, &payload); err != nil {
+		t.Fatalf("unmarshal stop payload: %v", err)
+	}
+	if payload.TaskID != taskID || payload.ExecutionID != "exec-assigned-1" || payload.AgentID != "agent-1" || payload.Reason != "cancel_requested" || payload.LeaderEpoch != 7 {
+		t.Fatalf("unexpected stop payload: %+v", payload)
 	}
 }
 
@@ -77,9 +102,7 @@ func TestCancelTaskCommandCancelsPendingTaskAndAppendsOutbox(t *testing.T) {
 			LeaderEpoch:     7,
 		},
 	}
-	outbox := &fakeOutboxWriter{}
-
-	handler := NewCancelTaskHandler(taskStore, outbox)
+	handler := NewCancelTaskHandler(taskStore)
 	canceled, err := handler.Handle(context.Background(), CancelTaskCommand{TaskID: taskID})
 	if err != nil {
 		t.Fatalf("handle cancel task: %v", err)
@@ -91,14 +114,15 @@ func TestCancelTaskCommandCancelsPendingTaskAndAppendsOutbox(t *testing.T) {
 	if taskStore.updated == nil || taskStore.updated.Status != string(state.TaskStatusCanceled) {
 		t.Fatalf("expected canceled status update, got %+v", taskStore.updated)
 	}
-	if outbox.last == nil || outbox.last.Topic != "runtime.task.canceled" {
-		t.Fatalf("expected runtime.task.canceled outbox event, got %+v", outbox.last)
+	if taskStore.last != nil {
+		t.Fatalf("expected no outbox event for direct pending cancel, got %+v", taskStore.last)
 	}
 }
 
 type cancelTaskStore struct {
 	task    *TaskRecord
 	updated *TaskUpdate
+	last    *OutboxEvent
 }
 
 func (f *cancelTaskStore) GetTask(_ context.Context, _ uuid.UUID) (*TaskRecord, error) {
@@ -107,5 +131,10 @@ func (f *cancelTaskStore) GetTask(_ context.Context, _ uuid.UUID) (*TaskRecord, 
 
 func (f *cancelTaskStore) UpdateTask(_ context.Context, update TaskUpdate) error {
 	f.updated = &update
+	return nil
+}
+
+func (f *cancelTaskStore) Append(_ context.Context, event OutboxEvent) error {
+	f.last = &event
 	return nil
 }

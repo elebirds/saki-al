@@ -126,7 +126,7 @@ func TestRuntimeAdminCancelTaskTransitionsTask(t *testing.T) {
 		apihttp.Dependencies{
 			Store: runtimequeries.NewRepoAdminStore(taskRepo, runtimerepo.NewExecutorRepo(pool)),
 			Commands: runtimequeries.NewIssueRuntimeCommandUseCase(
-				commands.NewCancelTaskHandler(taskRepo, runtimerepo.NewCommandOutboxWriter(pool)),
+				commands.NewCancelTaskHandlerWithTx(runtimerepo.NewCancelTaskTxRunner(pool)),
 			),
 		},
 	)

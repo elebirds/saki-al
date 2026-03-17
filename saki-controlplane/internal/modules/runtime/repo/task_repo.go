@@ -75,11 +75,17 @@ func (r *TaskRepo) GetTask(ctx context.Context, taskID uuid.UUID) (*commands.Tas
 	}
 
 	return &commands.TaskRecord{
-		ID:              row.ID,
-		TaskType:        row.TaskType,
-		Status:          row.Status,
-		AssignedAgentID: textValue(row.AssignedAgentID),
-		LeaderEpoch:     int64Value(row.LeaderEpoch),
+		ID:                 row.ID,
+		TaskKind:           row.TaskKind,
+		TaskType:           row.TaskType,
+		Status:             row.Status,
+		CurrentExecutionID: textValue(row.CurrentExecutionID),
+		AssignedAgentID:    textValue(row.AssignedAgentID),
+		Attempt:            row.Attempt,
+		MaxAttempts:        row.MaxAttempts,
+		ResolvedParams:     append([]byte(nil), row.ResolvedParams...),
+		DependsOnTaskIDs:   append([]uuid.UUID(nil), row.DependsOnTaskIds...),
+		LeaderEpoch:        int64Value(row.LeaderEpoch),
 	}, nil
 }
 

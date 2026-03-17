@@ -486,6 +486,184 @@ where id = $1
 	}
 }
 
+func TestCancelTaskHandlerWritesFrozenStopOutboxForAssignedTask(t *testing.T) {
+	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+
+	ctx := context.Background()
+	container, dsn := startRuntimePostgres(t, ctx)
+	defer func() {
+		_ = testcontainers.TerminateContainer(container)
+	}()
+
+	sqlDB, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("open sql db: %v", err)
+	}
+	defer sqlDB.Close()
+
+	goose.SetDialect("postgres")
+	if err := goose.Up(sqlDB, runtimeMigrationsDir(t)); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+
+	pool, err := appdb.NewPool(ctx, dsn)
+	if err != nil {
+		t.Fatalf("create pool: %v", err)
+	}
+	defer pool.Close()
+
+	leaseRepo := NewLeaseRepo(pool)
+	lease, err := leaseRepo.AcquireOrRenew(ctx, AcquireLeaseParams{
+		Name:       "runtime-scheduler",
+		Holder:     "runtime-1",
+		LeaseUntil: time.Now().Add(time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("acquire lease: %v", err)
+	}
+
+	taskRepo := NewTaskRepo(pool)
+	taskID := uuid.New()
+	if err := taskRepo.CreateTask(ctx, CreateTaskParams{
+		ID:       taskID,
+		TaskType: "predict",
+	}); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	assigned, err := taskRepo.AssignPendingTask(ctx, AssignTaskParams{
+		AssignedAgentID: "agent-cancel-1",
+		LeaderEpoch:     lease.Epoch,
+	})
+	if err != nil {
+		t.Fatalf("assign task: %v", err)
+	}
+
+	handler := commands.NewCancelTaskHandlerWithTx(NewCancelTaskTxRunner(pool))
+	canceled, err := handler.Handle(ctx, commands.CancelTaskCommand{TaskID: taskID})
+	if err != nil {
+		t.Fatalf("cancel task: %v", err)
+	}
+	if canceled == nil || canceled.Status != "cancel_requested" {
+		t.Fatalf("expected cancel_requested result, got %+v", canceled)
+	}
+
+	var payloadBytes []byte
+	if err := pool.QueryRow(ctx, `
+select payload
+from runtime_outbox
+where aggregate_id = $1
+  and topic = $2
+`, taskID.String(), commands.StopTaskOutboxTopic).Scan(&payloadBytes); err != nil {
+		t.Fatalf("load stop outbox: %v", err)
+	}
+
+	var payload commands.StopTaskOutboxPayload
+	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
+		t.Fatalf("unmarshal stop payload: %v", err)
+	}
+	if payload.TaskID != taskID {
+		t.Fatalf("expected task id %s, got %s", taskID, payload.TaskID)
+	}
+	if payload.ExecutionID != assigned.CurrentExecutionID {
+		t.Fatalf("expected execution id %q, got %q", assigned.CurrentExecutionID, payload.ExecutionID)
+	}
+	if payload.AgentID != "agent-cancel-1" {
+		t.Fatalf("expected agent id agent-cancel-1, got %q", payload.AgentID)
+	}
+	if payload.Reason != "cancel_requested" {
+		t.Fatalf("expected reason cancel_requested, got %q", payload.Reason)
+	}
+	if payload.LeaderEpoch != lease.Epoch {
+		t.Fatalf("expected leader epoch %d, got %d", lease.Epoch, payload.LeaderEpoch)
+	}
+}
+
+func TestCancelTaskHandlerLeavesAssignedTaskUnchangedWhenStopOutboxAppendFails(t *testing.T) {
+	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+
+	ctx := context.Background()
+	container, dsn := startRuntimePostgres(t, ctx)
+	defer func() {
+		_ = testcontainers.TerminateContainer(container)
+	}()
+
+	sqlDB, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("open sql db: %v", err)
+	}
+	defer sqlDB.Close()
+
+	goose.SetDialect("postgres")
+	if err := goose.Up(sqlDB, runtimeMigrationsDir(t)); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+
+	pool, err := appdb.NewPool(ctx, dsn)
+	if err != nil {
+		t.Fatalf("create pool: %v", err)
+	}
+	defer pool.Close()
+
+	leaseRepo := NewLeaseRepo(pool)
+	lease, err := leaseRepo.AcquireOrRenew(ctx, AcquireLeaseParams{
+		Name:       "runtime-scheduler",
+		Holder:     "runtime-1",
+		LeaseUntil: time.Now().Add(time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("acquire lease: %v", err)
+	}
+
+	taskRepo := NewTaskRepo(pool)
+	taskID := uuid.New()
+	if err := taskRepo.CreateTask(ctx, CreateTaskParams{
+		ID:       taskID,
+		TaskType: "predict",
+	}); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	assigned, err := taskRepo.AssignPendingTask(ctx, AssignTaskParams{
+		AssignedAgentID: "agent-cancel-rollback-1",
+		LeaderEpoch:     lease.Epoch,
+	})
+	if err != nil {
+		t.Fatalf("assign task: %v", err)
+	}
+
+	handler := commands.NewCancelTaskHandlerWithTx(newFailingCancelTaskTxRunner(pool))
+	canceled, err := handler.Handle(ctx, commands.CancelTaskCommand{TaskID: taskID})
+	if err == nil {
+		t.Fatal("expected stop outbox append failure")
+	}
+	if canceled != nil {
+		t.Fatalf("expected nil task when append fails, got %+v", canceled)
+	}
+
+	var (
+		status             string
+		currentExecutionID string
+		assignedAgentID    string
+	)
+	if err := pool.QueryRow(ctx, `
+select status, current_execution_id, assigned_agent_id
+from runtime_task
+where id = $1
+`, taskID).Scan(&status, &currentExecutionID, &assignedAgentID); err != nil {
+		t.Fatalf("load runtime task: %v", err)
+	}
+	if status != "assigned" {
+		t.Fatalf("expected assigned status after rollback, got %q", status)
+	}
+	if currentExecutionID != assigned.CurrentExecutionID {
+		t.Fatalf("expected execution id %q to be preserved, got %q", assigned.CurrentExecutionID, currentExecutionID)
+	}
+	if assignedAgentID != "agent-cancel-rollback-1" {
+		t.Fatalf("expected assigned agent id agent-cancel-rollback-1, got %q", assignedAgentID)
+	}
+}
+
 func TestRuntimeCoreAlignmentMigrationKeepsLegacyClaimedByUnmapped(t *testing.T) {
 	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
 
@@ -862,6 +1040,38 @@ func (s failingAssignTaskTxStore) AssignPendingTask(ctx context.Context, params 
 }
 
 func (failingAssignTaskTxStore) Append(context.Context, commands.OutboxEvent) error {
+	return errors.New("append failed")
+}
+
+type failingCancelTaskTxRunner struct {
+	tx *appdb.TxRunner
+}
+
+func newFailingCancelTaskTxRunner(pool *pgxpool.Pool) *failingCancelTaskTxRunner {
+	return &failingCancelTaskTxRunner{tx: appdb.NewTxRunner(pool)}
+}
+
+func (r *failingCancelTaskTxRunner) InTx(ctx context.Context, fn func(store commands.CancelTaskStore) error) error {
+	return r.tx.InTx(ctx, func(tx pgx.Tx) error {
+		return fn(failingCancelTaskTxStore{
+			tasks: newTaskRepo(sqlcdb.New(tx)),
+		})
+	})
+}
+
+type failingCancelTaskTxStore struct {
+	tasks *TaskRepo
+}
+
+func (s failingCancelTaskTxStore) GetTask(ctx context.Context, taskID uuid.UUID) (*commands.TaskRecord, error) {
+	return s.tasks.GetTask(ctx, taskID)
+}
+
+func (s failingCancelTaskTxStore) UpdateTask(ctx context.Context, update commands.TaskUpdate) error {
+	return s.tasks.UpdateTask(ctx, update)
+}
+
+func (failingCancelTaskTxStore) Append(context.Context, commands.OutboxEvent) error {
 	return errors.New("append failed")
 }
 

@@ -68,8 +68,18 @@ func (h *CancelTaskHandler) Handle(ctx context.Context, cmd CancelTaskCommand) (
 		return nil, err
 	}
 
+	topic := "runtime.task.canceled"
+	switch snapshot.Status {
+	case state.TaskStatusCancelRequested:
+		topic = "runtime.task.cancel_requested"
+	case state.TaskStatusCanceled:
+		topic = "runtime.task.canceled"
+	default:
+		return nil, state.ErrInvalidTransition
+	}
+
 	if err := h.outbox.Append(ctx, OutboxEvent{
-		Topic:       "runtime.task.canceled",
+		Topic:       topic,
 		AggregateID: task.ID.String(),
 		Payload:     payload,
 	}); err != nil {

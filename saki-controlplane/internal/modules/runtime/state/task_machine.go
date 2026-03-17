@@ -68,18 +68,20 @@ func DecideTask(snapshot TaskSnapshot, cmd TaskCommand) ([]TaskEvent, error) {
 		switch snapshot.Status {
 		case TaskStatusPending:
 			return []TaskEvent{TaskCanceled{}}, nil
+		case TaskStatusAssigned:
+			return []TaskEvent{TaskCancelRequested{}}, nil
 		case TaskStatusRunning:
 			return []TaskEvent{TaskCancelRequested{}}, nil
 		default:
 			return nil, ErrInvalidTransition
 		}
 	case FinishTask:
-		if snapshot.Status != TaskStatusRunning {
+		if snapshot.Status != TaskStatusRunning && snapshot.Status != TaskStatusCancelRequested {
 			return nil, ErrInvalidTransition
 		}
 		return []TaskEvent{TaskFinished{}}, nil
 	case FailTask:
-		if snapshot.Status != TaskStatusRunning {
+		if snapshot.Status != TaskStatusRunning && snapshot.Status != TaskStatusCancelRequested {
 			return nil, ErrInvalidTransition
 		}
 		return []TaskEvent{TaskFailed{}}, nil

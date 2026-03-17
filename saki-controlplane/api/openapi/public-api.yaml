@@ -500,10 +500,6 @@ components:
       properties:
         user_id:
           type: string
-        permissions:
-          type: array
-          items:
-            type: string
     AuthTokenResponse:
       type: object
       required:

@@ -1242,8 +1242,7 @@ func (s *ImportUploadSession) SetAbortedAt(val OptDateTime) {
 
 // Ref: #/components/schemas/LoginRequest
 type LoginRequest struct {
-	UserID      string   `json:"user_id"`
-	Permissions []string `json:"permissions"`
+	UserID string `json:"user_id"`
 }
 
 // GetUserID returns the value of UserID.
@@ -1251,19 +1250,9 @@ func (s *LoginRequest) GetUserID() string {
 	return s.UserID
 }
 
-// GetPermissions returns the value of Permissions.
-func (s *LoginRequest) GetPermissions() []string {
-	return s.Permissions
-}
-
 // SetUserID sets the value of UserID.
 func (s *LoginRequest) SetUserID(val string) {
 	s.UserID = val
-}
-
-// SetPermissions sets the value of Permissions.
-func (s *LoginRequest) SetPermissions(val []string) {
-	s.Permissions = val
 }
 
 // NewOptCreateAnnotationRequestAttrs returns new OptCreateAnnotationRequestAttrs with value set to v.

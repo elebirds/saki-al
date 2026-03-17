@@ -21,11 +21,15 @@ func (h *Handlers) Login(ctx context.Context, req *openapi.LoginRequest) (*opena
 	if err != nil {
 		return nil, err
 	}
+	claims, err := h.authenticator.ParseToken(token)
+	if err != nil {
+		return nil, err
+	}
 
 	return &openapi.AuthTokenResponse{
 		Token:       token,
-		UserID:      req.GetUserID(),
-		Permissions: req.GetPermissions(),
+		UserID:      claims.UserID,
+		Permissions: claims.Permissions,
 	}, nil
 }
 

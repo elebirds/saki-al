@@ -4077,21 +4077,10 @@ func (s *LoginRequest) encodeFields(e *jx.Encoder) {
 		e.FieldStart("user_id")
 		e.Str(s.UserID)
 	}
-	{
-		if s.Permissions != nil {
-			e.FieldStart("permissions")
-			e.ArrStart()
-			for _, elem := range s.Permissions {
-				e.Str(elem)
-			}
-			e.ArrEnd()
-		}
-	}
 }
 
-var jsonFieldsNameOfLoginRequest = [2]string{
+var jsonFieldsNameOfLoginRequest = [1]string{
 	0: "user_id",
-	1: "permissions",
 }
 
 // Decode decodes LoginRequest from json.
@@ -4114,25 +4103,6 @@ func (s *LoginRequest) Decode(d *jx.Decoder) error {
 				return nil
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"user_id\"")
-			}
-		case "permissions":
-			if err := func() error {
-				s.Permissions = make([]string, 0)
-				if err := d.Arr(func(d *jx.Decoder) error {
-					var elem string
-					v, err := d.Str()
-					elem = string(v)
-					if err != nil {
-						return err
-					}
-					s.Permissions = append(s.Permissions, elem)
-					return nil
-				}); err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"permissions\"")
 			}
 		default:
 			return d.Skip()

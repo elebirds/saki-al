@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 	"time"
 
@@ -19,13 +20,13 @@ import (
 	"github.com/google/uuid"
 )
 
-func TestLoginReturnsToken(t *testing.T) {
+func TestLoginReturnsRepoBackedPermissions(t *testing.T) {
 	handler, err := newTestHTTPHandler()
 	if err != nil {
 		t.Fatalf("new http handler: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewBufferString(`{"user_id":"user-1","permissions":["projects:read"]}`))
+	req := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewBufferString(`{"user_id":"user-1"}`))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -34,12 +35,51 @@ func TestLoginReturnsToken(t *testing.T) {
 		t.Fatalf("unexpected status: %d body=%s", rec.Code, rec.Body.String())
 	}
 
-	var body map[string]any
+	var body struct {
+		Token       string   `json:"token"`
+		UserID      string   `json:"user_id"`
+		Permissions []string `json:"permissions"`
+	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if body["token"] == "" || body["user_id"] != "user-1" {
+	if body.Token == "" || body.UserID != "user-1" {
 		t.Fatalf("unexpected login body: %v", body)
+	}
+	if !slices.Equal(body.Permissions, []string{"projects:read"}) {
+		t.Fatalf("expected repo-backed permissions, got %+v", body)
+	}
+}
+
+func TestLoginRejectsUnknownPrincipal(t *testing.T) {
+	handler, err := newTestHTTPHandler()
+	if err != nil {
+		t.Fatalf("new http handler: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewBufferString(`{"user_id":"missing-user"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("unexpected status: %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestLoginRejectsDisabledPrincipal(t *testing.T) {
+	handler, err := newTestHTTPHandler()
+	if err != nil {
+		t.Fatalf("new http handler: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewBufferString(`{"user_id":"disabled-user"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("unexpected status: %d body=%s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -49,7 +89,7 @@ func TestCurrentUserUsesBearerToken(t *testing.T) {
 		t.Fatalf("new http handler: %v", err)
 	}
 
-	token := loginAndExtractToken(t, handler, "user-2", []string{"projects:read"})
+	token := loginAndExtractToken(t, handler, "user-2")
 	req := httptest.NewRequest(http.MethodGet, "/auth/me", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
@@ -74,7 +114,7 @@ func TestPermissionDeniedReturnsForbidden(t *testing.T) {
 		t.Fatalf("new http handler: %v", err)
 	}
 
-	token := loginAndExtractToken(t, handler, "user-3", []string{"projects:read"})
+	token := loginAndExtractToken(t, handler, "user-3")
 	req := httptest.NewRequest(http.MethodGet, "/auth/permissions/projects:write", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
@@ -93,12 +133,11 @@ func TestPermissionDeniedReturnsForbidden(t *testing.T) {
 	}
 }
 
-func loginAndExtractToken(t *testing.T, handler http.Handler, userID string, permissions []string) string {
+func loginAndExtractToken(t *testing.T, handler http.Handler, userID string) string {
 	t.Helper()
 
 	payload, err := json.Marshal(map[string]any{
-		"user_id":     userID,
-		"permissions": permissions,
+		"user_id": userID,
 	})
 	if err != nil {
 		t.Fatalf("marshal login payload: %v", err)
@@ -189,11 +228,19 @@ func newFakeAccessStore() *fakeAccessStore {
 				DisplayName: "User Three",
 				Status:      accessdomain.PrincipalStatusActive,
 			},
+			"disabled-user": {
+				ID:          uuid.MustParse("00000000-0000-0000-0000-000000000104"),
+				SubjectType: accessdomain.SubjectTypeUser,
+				SubjectKey:  "disabled-user",
+				DisplayName: "Disabled User",
+				Status:      accessdomain.PrincipalStatusDisabled,
+			},
 		},
 		permissionsByID: map[uuid.UUID][]string{
 			uuid.MustParse("00000000-0000-0000-0000-000000000101"): {"projects:read"},
 			uuid.MustParse("00000000-0000-0000-0000-000000000102"): {"projects:read"},
 			uuid.MustParse("00000000-0000-0000-0000-000000000103"): {"projects:read"},
+			uuid.MustParse("00000000-0000-0000-0000-000000000104"): {"projects:read"},
 		},
 	}
 }

@@ -19,6 +19,7 @@ import (
 	projectrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/project/repo"
 	runtimecommands "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/commands"
 	runtimequeries "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/queries"
+	runtimeapp "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/runtime"
 	runtimerepo "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/repo"
 	systemapi "github.com/elebirds/saki/saki-controlplane/internal/modules/system/apihttp"
 )
@@ -105,22 +106,21 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 	return server, logger, nil
 }
 
-func NewRuntime(_ context.Context) (*http.Server, *slog.Logger, error) {
+func NewRuntime(ctx context.Context) (*runtimeapp.Runner, *slog.Logger, error) {
 	cfg, err := config.Load()
 	if err != nil {
 		return nil, nil, err
 	}
 
 	logger := observe.NewLogger("runtime", observe.ParseLevel(cfg.LogLevel), cfg.LogFormat)
-	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok"))
-	})
+	runner, err := runtimeapp.New(ctx, runtimeapp.Options{
+		Bind:                 cfg.RuntimeBind,
+		DatabaseDSN:          cfg.DatabaseDSN,
+		SchedulerTargetAgent: cfg.RuntimeSchedulerTargetAgent,
+	}, logger)
+	if err != nil {
+		return nil, nil, err
+	}
 
-	return &http.Server{
-		Addr:              cfg.RuntimeBind,
-		Handler:           mux,
-		ReadHeaderTimeout: 5 * time.Second,
-	}, logger, nil
+	return runner, logger, nil
 }

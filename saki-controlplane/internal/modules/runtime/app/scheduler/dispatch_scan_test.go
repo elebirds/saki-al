@@ -76,6 +76,34 @@ func TestDispatchScanClaimsPendingTaskAndAppendsAssignOutbox(t *testing.T) {
 	}
 }
 
+func TestDispatchScanSkipsWhenTargetAgentIsNotConfigured(t *testing.T) {
+	store := &fakeDispatchTaskStore{
+		assignedTask: &commands.ClaimedTask{
+			ID:                 uuid.New(),
+			TaskKind:           "PREDICTION",
+			TaskType:           "predict",
+			CurrentExecutionID: "exec-dispatch-2",
+			AssignedAgentID:    "agent-should-not-be-used",
+			Attempt:            1,
+			MaxAttempts:        1,
+			ResolvedParams:     []byte(`{}`),
+			LeaderEpoch:        17,
+		},
+	}
+	handler := commands.NewAssignTaskHandler(store)
+	scan := NewDispatchScan(handler, "")
+
+	if err := scan.Dispatch(context.Background(), DispatchCommand{LeaderEpoch: 17}); err != nil {
+		t.Fatalf("dispatch scan: %v", err)
+	}
+	if store.calledWith != nil {
+		t.Fatalf("expected dispatch scan to skip without target agent, got %+v", store.calledWith)
+	}
+	if store.last != nil {
+		t.Fatalf("expected no outbox event when target agent is missing, got %+v", store.last)
+	}
+}
+
 type fakeDispatchTaskStore struct {
 	assignedTask *commands.ClaimedTask
 	calledWith   *commands.AssignClaimParams

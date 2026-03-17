@@ -31,6 +31,10 @@ func NewDispatchScan(assigner DispatchTaskAssigner, targetAgentID string) *Dispa
 }
 
 func (s *DispatchScan) Dispatch(ctx context.Context, command DispatchCommand) error {
+	if s.targetAgentID == "" {
+		return nil
+	}
+
 	_, err := s.assigner.Handle(ctx, commands.AssignTaskCommand{
 		AssignedAgentID: s.targetAgentID,
 		LeaderEpoch:     command.LeaderEpoch,

@@ -9,6 +9,22 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AccessPermissionGrant struct {
+	PrincipalID uuid.UUID          `json:"principal_id"`
+	Permission  string             `json:"permission"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
+type AccessPrincipal struct {
+	ID          uuid.UUID          `json:"id"`
+	SubjectType string             `json:"subject_type"`
+	SubjectKey  string             `json:"subject_key"`
+	DisplayName string             `json:"display_name"`
+	Status      string             `json:"status"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
 type Annotation struct {
 	ID             uuid.UUID          `json:"id"`
 	SampleID       uuid.UUID          `json:"sample_id"`

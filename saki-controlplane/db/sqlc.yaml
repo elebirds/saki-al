@@ -3,6 +3,7 @@ sql:
   - engine: "postgresql"
     schema: "migrations"
     queries:
+      - "queries/access"
       - "queries/annotation"
       - "queries/importing"
       - "queries/project"

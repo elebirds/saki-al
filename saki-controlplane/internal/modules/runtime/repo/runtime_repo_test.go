@@ -307,6 +307,36 @@ where id = $1
 	}
 }
 
+func TestRuntimeCoreAlignmentMigrationDownIsForwardOnly(t *testing.T) {
+	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+
+	ctx := context.Background()
+	container, dsn := startRuntimePostgres(t, ctx)
+	defer func() {
+		_ = testcontainers.TerminateContainer(container)
+	}()
+
+	sqlDB, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("open sql db: %v", err)
+	}
+	defer sqlDB.Close()
+
+	goose.SetDialect("postgres")
+	migrationsDir := runtimeMigrationsDir(t)
+	if err := goose.UpTo(sqlDB, migrationsDir, 31); err != nil {
+		t.Fatalf("run migrations to 31: %v", err)
+	}
+
+	err = goose.DownTo(sqlDB, migrationsDir, 30)
+	if err == nil {
+		t.Fatal("expected 000031 down migration to refuse rollback")
+	}
+	if !strings.Contains(err.Error(), "forward-only") {
+		t.Fatalf("expected forward-only rollback error, got %v", err)
+	}
+}
+
 func TestOutboxRepoDefaultsIdempotencyKeyWithPayloadSpecificity(t *testing.T) {
 	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
 

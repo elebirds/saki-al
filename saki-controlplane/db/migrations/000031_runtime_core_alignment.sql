@@ -50,28 +50,8 @@ create index if not exists runtime_outbox_due_idx
     where published_at is null;
 
 -- +goose Down
-drop index if exists runtime_outbox_due_idx;
-drop index if exists runtime_outbox_idempotency_key_idx;
-
-alter table runtime_outbox
-    drop column if exists last_error,
-    drop column if exists attempt_count,
-    drop column if exists available_at,
-    drop column if exists idempotency_key,
-    drop column if exists aggregate_type;
-
-alter table runtime_task
-    add column claimed_at timestamptz;
-
-update runtime_task
-set status = 'dispatching'
-where status = 'assigned';
-
-alter table runtime_task
-    drop column if exists assigned_agent_id,
-    drop column if exists depends_on_task_ids,
-    drop column if exists resolved_params,
-    drop column if exists max_attempts,
-    drop column if exists attempt,
-    drop column if exists current_execution_id,
-    drop column if exists task_kind;
+do $$
+begin
+    raise exception '000031_runtime_core_alignment is forward-only; drain runtime and restore from backup before rollback';
+end
+$$;

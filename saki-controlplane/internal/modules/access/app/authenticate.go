@@ -1,12 +1,15 @@
 package app
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 var (
@@ -15,6 +18,7 @@ var (
 )
 
 type Claims struct {
+	PrincipalID uuid.UUID
 	UserID      string
 	Permissions []string
 	ExpiresAt   time.Time
@@ -33,6 +37,7 @@ type Authenticator struct {
 	secret []byte
 	ttl    time.Duration
 	now    func() time.Time
+	store  Store
 }
 
 func NewAuthenticator(secret string, ttl time.Duration) *Authenticator {
@@ -43,14 +48,42 @@ func NewAuthenticator(secret string, ttl time.Duration) *Authenticator {
 	}
 }
 
-func (a *Authenticator) IssueToken(userID string, permissions []string) (string, error) {
+func (a *Authenticator) WithStore(store Store) *Authenticator {
+	a.store = store
+	return a
+}
+
+func (a *Authenticator) IssueToken(userID string, _ []string) (string, error) {
+	return a.IssueTokenContext(context.Background(), userID)
+}
+
+func (a *Authenticator) IssueTokenContext(ctx context.Context, userID string) (string, error) {
+	if a.store == nil {
+		return "", ErrMissingAccessStore
+	}
+
+	principal, err := a.store.GetPrincipalByUserID(ctx, userID)
+	if err != nil {
+		return "", err
+	}
+	if principal == nil || principal.IsDisabled() {
+		return "", ErrUnauthorized
+	}
+
+	resolvedPermissions, err := a.store.ListPermissions(ctx, principal.ID)
+	if err != nil {
+		return "", err
+	}
+
 	payload, err := json.Marshal(struct {
+		PrincipalID uuid.UUID `json:"principal_id"`
 		UserID      string   `json:"user_id"`
 		Permissions []string `json:"permissions"`
 		ExpiresAt   int64    `json:"expires_at"`
 	}{
+		PrincipalID: principal.ID,
 		UserID:      userID,
-		Permissions: permissions,
+		Permissions: resolvedPermissions,
 		ExpiresAt:   a.now().Add(a.ttl).Unix(),
 	})
 	if err != nil {
@@ -77,6 +110,7 @@ func (a *Authenticator) ParseToken(token string) (*Claims, error) {
 	}
 
 	var decoded struct {
+		PrincipalID uuid.UUID `json:"principal_id"`
 		UserID      string   `json:"user_id"`
 		Permissions []string `json:"permissions"`
 		ExpiresAt   int64    `json:"expires_at"`
@@ -86,6 +120,7 @@ func (a *Authenticator) ParseToken(token string) (*Claims, error) {
 	}
 
 	claims := &Claims{
+		PrincipalID: decoded.PrincipalID,
 		UserID:      decoded.UserID,
 		Permissions: decoded.Permissions,
 		ExpiresAt:   time.Unix(decoded.ExpiresAt, 0),

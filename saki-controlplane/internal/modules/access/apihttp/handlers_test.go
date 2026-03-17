@@ -10,6 +10,7 @@ import (
 	"time"
 
 	accessapp "github.com/elebirds/saki/saki-controlplane/internal/modules/access/app"
+	accessdomain "github.com/elebirds/saki/saki-controlplane/internal/modules/access/domain"
 	annotationrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/repo"
 	projectapp "github.com/elebirds/saki/saki-controlplane/internal/modules/project/app"
 	runtimecommands "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/commands"
@@ -126,8 +127,9 @@ func loginAndExtractToken(t *testing.T, handler http.Handler, userID string, per
 }
 
 func newTestHTTPHandler() (http.Handler, error) {
+	store := newFakeAccessStore()
 	return systemapi.NewHTTPHandler(systemapi.Dependencies{
-		Authenticator:       accessapp.NewAuthenticator("test-secret", time.Hour),
+		Authenticator:       accessapp.NewAuthenticator("test-secret", time.Hour).WithStore(store),
 		ProjectStore:        projectapp.NewMemoryStore(),
 		RuntimeStore:        runtimequeries.NewMemoryAdminStore(),
 		RuntimeTaskCanceler: fakeRuntimeTaskCanceler{},
@@ -155,5 +157,64 @@ func (fakeAnnotationStore) Create(context.Context, annotationrepo.CreateAnnotati
 }
 
 func (fakeAnnotationStore) ListBySample(context.Context, uuid.UUID) ([]annotationrepo.Annotation, error) {
+	return nil, nil
+}
+
+type fakeAccessStore struct {
+	byUserID        map[string]*accessdomain.Principal
+	permissionsByID map[uuid.UUID][]string
+}
+
+func newFakeAccessStore() *fakeAccessStore {
+	return &fakeAccessStore{
+		byUserID: map[string]*accessdomain.Principal{
+			"user-1": {
+				ID:          uuid.MustParse("00000000-0000-0000-0000-000000000101"),
+				SubjectType: accessdomain.SubjectTypeUser,
+				SubjectKey:  "user-1",
+				DisplayName: "User One",
+				Status:      accessdomain.PrincipalStatusActive,
+			},
+			"user-2": {
+				ID:          uuid.MustParse("00000000-0000-0000-0000-000000000102"),
+				SubjectType: accessdomain.SubjectTypeUser,
+				SubjectKey:  "user-2",
+				DisplayName: "User Two",
+				Status:      accessdomain.PrincipalStatusActive,
+			},
+			"user-3": {
+				ID:          uuid.MustParse("00000000-0000-0000-0000-000000000103"),
+				SubjectType: accessdomain.SubjectTypeUser,
+				SubjectKey:  "user-3",
+				DisplayName: "User Three",
+				Status:      accessdomain.PrincipalStatusActive,
+			},
+		},
+		permissionsByID: map[uuid.UUID][]string{
+			uuid.MustParse("00000000-0000-0000-0000-000000000101"): {"projects:read"},
+			uuid.MustParse("00000000-0000-0000-0000-000000000102"): {"projects:read"},
+			uuid.MustParse("00000000-0000-0000-0000-000000000103"): {"projects:read"},
+		},
+	}
+}
+
+func (s *fakeAccessStore) GetPrincipalByUserID(_ context.Context, userID string) (*accessdomain.Principal, error) {
+	return s.byUserID[userID], nil
+}
+
+func (s *fakeAccessStore) GetPrincipalByID(_ context.Context, principalID uuid.UUID) (*accessdomain.Principal, error) {
+	for _, principal := range s.byUserID {
+		if principal.ID == principalID {
+			return principal, nil
+		}
+	}
+	return nil, nil
+}
+
+func (s *fakeAccessStore) ListPermissions(_ context.Context, principalID uuid.UUID) ([]string, error) {
+	return append([]string(nil), s.permissionsByID[principalID]...), nil
+}
+
+func (s *fakeAccessStore) UpsertBootstrapPrincipal(context.Context, accessapp.BootstrapPrincipalSpec) (*accessdomain.Principal, error) {
 	return nil, nil
 }

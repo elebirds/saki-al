@@ -156,6 +156,30 @@ func TestTaskRepoAssignsExecutionAndAgent(t *testing.T) {
 	if assigned.Status != "assigned" {
 		t.Fatalf("expected assigned status, got %q", assigned.Status)
 	}
+	if assigned.TaskKind != "PREDICTION" {
+		t.Fatalf("expected assigned task kind PREDICTION, got %q", assigned.TaskKind)
+	}
+	if assigned.CurrentExecutionID == nil || *assigned.CurrentExecutionID == "" {
+		t.Fatalf("expected assigned execution id, got %+v", assigned.CurrentExecutionID)
+	}
+	if assigned.AssignedAgentID == nil || *assigned.AssignedAgentID != "agent-1" {
+		t.Fatalf("expected assigned agent id agent-1, got %+v", assigned.AssignedAgentID)
+	}
+	if assigned.Attempt != 1 {
+		t.Fatalf("expected assigned attempt 1, got %d", assigned.Attempt)
+	}
+	if assigned.MaxAttempts != 1 {
+		t.Fatalf("expected assigned max attempts 1, got %d", assigned.MaxAttempts)
+	}
+	if string(assigned.ResolvedParams) != "{}" {
+		t.Fatalf("expected assigned resolved params {}, got %s", string(assigned.ResolvedParams))
+	}
+	if len(assigned.DependsOnTaskIDs) != 0 {
+		t.Fatalf("expected assigned dependencies to be empty, got %+v", assigned.DependsOnTaskIDs)
+	}
+	if assigned.LeaderEpoch == nil || *assigned.LeaderEpoch != lease.Epoch {
+		t.Fatalf("expected assigned leader epoch %d, got %+v", lease.Epoch, assigned.LeaderEpoch)
+	}
 
 	var (
 		taskKind           string
@@ -198,6 +222,9 @@ where id = $1
 	}
 	if currentExecutionID == "" {
 		t.Fatal("expected current execution id to be generated")
+	}
+	if *assigned.CurrentExecutionID != currentExecutionID {
+		t.Fatalf("expected repo result execution id %q, got %q", currentExecutionID, *assigned.CurrentExecutionID)
 	}
 	if assignedAgentID != "agent-1" {
 		t.Fatalf("expected assigned agent id agent-1, got %q", assignedAgentID)

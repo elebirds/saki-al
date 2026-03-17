@@ -182,6 +182,10 @@ func (h *Handlers) PrepareProjectAnnotationImport(ctx context.Context, req *open
 	if err != nil {
 		return nil, badRequest("invalid project_id")
 	}
+	datasetID, err := uuid.Parse(params.DatasetID)
+	if err != nil {
+		return nil, badRequest("invalid dataset_id")
+	}
 	uploadSessionID, err := uuid.Parse(req.GetUploadSessionID())
 	if err != nil {
 		return nil, badRequest("invalid upload_session_id")
@@ -189,6 +193,7 @@ func (h *Handlers) PrepareProjectAnnotationImport(ctx context.Context, req *open
 
 	result, err := h.prepare.Execute(ctx, importapp.PrepareProjectAnnotationsInput{
 		ProjectID:       projectID,
+		DatasetID:       datasetID,
 		UploadSessionID: uploadSessionID,
 		FormatProfile:   req.GetFormatProfile(),
 		Split:           req.GetSplit().Or(""),
@@ -241,8 +246,13 @@ func (h *Handlers) ExecuteProjectAnnotationImport(ctx context.Context, req *open
 	if err := h.requireEnabled(); err != nil {
 		return nil, err
 	}
-	if _, err := uuid.Parse(params.ProjectID); err != nil {
+	projectID, err := uuid.Parse(params.ProjectID)
+	if err != nil {
 		return nil, badRequest("invalid project_id")
+	}
+	datasetID, err := uuid.Parse(params.DatasetID)
+	if err != nil {
+		return nil, badRequest("invalid dataset_id")
 	}
 	userID, err := currentUserID(ctx)
 	if err != nil {
@@ -250,6 +260,8 @@ func (h *Handlers) ExecuteProjectAnnotationImport(ctx context.Context, req *open
 	}
 
 	task, err := h.execute.Execute(ctx, importapp.ExecuteProjectAnnotationsInput{
+		ProjectID:    projectID,
+		DatasetID:    datasetID,
 		PreviewToken: req.GetPreviewToken(),
 		UserID:       userID,
 	})

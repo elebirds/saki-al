@@ -53,6 +53,29 @@ func (s *CurrentUserResponse) Validate() error {
 	return nil
 }
 
+func (s *DatasetListResponse) Validate() error {
+	if s == nil {
+		return validate.ErrNilPointer
+	}
+
+	var failures []validate.FieldError
+	if err := func() error {
+		if s.Items == nil {
+			return errors.New("nil is invalid value")
+		}
+		return nil
+	}(); err != nil {
+		failures = append(failures, validate.FieldError{
+			Name:  "items",
+			Error: err,
+		})
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+	return nil
+}
+
 func (s *ImportPrepareGeometryCapabilities) Validate() error {
 	if s == nil {
 		return validate.ErrNilPointer
@@ -179,6 +202,30 @@ func (s *ImportUploadPartSignResponse) Validate() error {
 	return nil
 }
 
+func (s LinkProjectDatasetsOKApplicationJSON) Validate() error {
+	alias := ([]string)(s)
+	if alias == nil {
+		return errors.New("nil is invalid value")
+	}
+	return nil
+}
+
+func (s ListProjectDatasetDetailsOKApplicationJSON) Validate() error {
+	alias := ([]Dataset)(s)
+	if alias == nil {
+		return errors.New("nil is invalid value")
+	}
+	return nil
+}
+
+func (s ListProjectDatasetsOKApplicationJSON) Validate() error {
+	alias := ([]string)(s)
+	if alias == nil {
+		return errors.New("nil is invalid value")
+	}
+	return nil
+}
+
 func (s *PrepareProjectAnnotationImportResponse) Validate() error {
 	if s == nil {
 		return validate.ErrNilPointer
@@ -237,6 +284,29 @@ func (s *PrepareProjectAnnotationImportResponse) Validate() error {
 	}(); err != nil {
 		failures = append(failures, validate.FieldError{
 			Name:  "errors",
+			Error: err,
+		})
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+	return nil
+}
+
+func (s *ProjectDatasetLinkRequest) Validate() error {
+	if s == nil {
+		return validate.ErrNilPointer
+	}
+
+	var failures []validate.FieldError
+	if err := func() error {
+		if s.DatasetIds == nil {
+			return errors.New("nil is invalid value")
+		}
+		return nil
+	}(); err != nil {
+		failures = append(failures, validate.FieldError{
+			Name:  "dataset_ids",
 			Error: err,
 		})
 	}

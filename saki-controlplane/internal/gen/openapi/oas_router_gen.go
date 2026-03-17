@@ -11,28 +11,38 @@ import (
 )
 
 var (
-	rn29AllowedHeaders = map[string]string{
-		"POST": "Content-Type",
-	}
-	rn34AllowedHeaders = map[string]string{
-		"POST": "Content-Type",
-	}
-	rn9AllowedHeaders = map[string]string{
-		"POST": "Content-Type",
-	}
-	rn26AllowedHeaders = map[string]string{
+	rn37AllowedHeaders = map[string]string{
 		"POST": "Content-Type",
 	}
 	rn10AllowedHeaders = map[string]string{
 		"POST": "Content-Type",
 	}
+	rn18AllowedHeaders = map[string]string{
+		"PUT": "Content-Type",
+	}
+	rn42AllowedHeaders = map[string]string{
+		"POST": "Content-Type",
+	}
+	rn9AllowedHeaders = map[string]string{
+		"POST": "Content-Type",
+	}
+	rn32AllowedHeaders = map[string]string{
+		"POST": "Content-Type",
+	}
+	rn11AllowedHeaders = map[string]string{
+		"POST": "Content-Type",
+	}
+	rn33AllowedHeaders = map[string]string{
+		"DELETE": "Content-Type",
+		"POST":   "Content-Type",
+	}
+	rn22AllowedHeaders = map[string]string{
+		"POST": "Content-Type",
+	}
+	rn39AllowedHeaders = map[string]string{
+		"POST": "Content-Type",
+	}
 	rn16AllowedHeaders = map[string]string{
-		"POST": "Content-Type",
-	}
-	rn31AllowedHeaders = map[string]string{
-		"POST": "Content-Type",
-	}
-	rn13AllowedHeaders = map[string]string{
 		"POST": "Content-Type",
 	}
 )
@@ -67,7 +77,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.notFound(w, r)
 		return
 	}
-	args := [1]string{}
+	args := [2]string{}
 
 	// Static code generated router with unwrapped path search.
 	switch {
@@ -116,7 +126,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 						default:
 							s.notAllowed(w, r, notAllowedParams{
 								allowedMethods: "POST",
-								allowedHeaders: rn29AllowedHeaders,
+								allowedHeaders: rn37AllowedHeaders,
 								acceptPost:     "application/json",
 								acceptPatch:    "",
 							})
@@ -178,6 +188,78 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 							s.notAllowed(w, r, notAllowedParams{
 								allowedMethods: "GET",
 								allowedHeaders: nil,
+								acceptPost:     "",
+								acceptPatch:    "",
+							})
+						}
+
+						return
+					}
+
+				}
+
+			case 'd': // Prefix: "datasets"
+
+				if l := len("datasets"); len(elem) >= l && elem[0:l] == "datasets" {
+					elem = elem[l:]
+				} else {
+					break
+				}
+
+				if len(elem) == 0 {
+					switch r.Method {
+					case "GET":
+						s.handleListDatasetsRequest([0]string{}, elemIsEscaped, w, r)
+					case "POST":
+						s.handleCreateDatasetRequest([0]string{}, elemIsEscaped, w, r)
+					default:
+						s.notAllowed(w, r, notAllowedParams{
+							allowedMethods: "GET,POST",
+							allowedHeaders: rn10AllowedHeaders,
+							acceptPost:     "application/json",
+							acceptPatch:    "",
+						})
+					}
+
+					return
+				}
+				switch elem[0] {
+				case '/': // Prefix: "/"
+
+					if l := len("/"); len(elem) >= l && elem[0:l] == "/" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					// Param: "dataset_id"
+					// Leaf parameter, slashes are prohibited
+					idx := strings.IndexByte(elem, '/')
+					if idx >= 0 {
+						break
+					}
+					args[0] = elem
+					elem = ""
+
+					if len(elem) == 0 {
+						// Leaf node.
+						switch r.Method {
+						case "DELETE":
+							s.handleDeleteDatasetRequest([1]string{
+								args[0],
+							}, elemIsEscaped, w, r)
+						case "GET":
+							s.handleGetDatasetRequest([1]string{
+								args[0],
+							}, elemIsEscaped, w, r)
+						case "PUT":
+							s.handleUpdateDatasetRequest([1]string{
+								args[0],
+							}, elemIsEscaped, w, r)
+						default:
+							s.notAllowed(w, r, notAllowedParams{
+								allowedMethods: "DELETE,GET,PUT",
+								allowedHeaders: rn18AllowedHeaders,
 								acceptPost:     "",
 								acceptPatch:    "",
 							})
@@ -354,7 +436,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 								default:
 									s.notAllowed(w, r, notAllowedParams{
 										allowedMethods: "POST",
-										allowedHeaders: rn34AllowedHeaders,
+										allowedHeaders: rn42AllowedHeaders,
 										acceptPost:     "application/json",
 										acceptPatch:    "",
 									})
@@ -449,7 +531,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 							default:
 								s.notAllowed(w, r, notAllowedParams{
 									allowedMethods: "POST",
-									allowedHeaders: rn26AllowedHeaders,
+									allowedHeaders: rn32AllowedHeaders,
 									acceptPost:     "application/json",
 									acceptPatch:    "",
 								})
@@ -479,7 +561,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					default:
 						s.notAllowed(w, r, notAllowedParams{
 							allowedMethods: "GET,POST",
-							allowedHeaders: rn10AllowedHeaders,
+							allowedHeaders: rn11AllowedHeaders,
 							acceptPost:     "application/json",
 							acceptPatch:    "",
 						})
@@ -523,9 +605,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 						return
 					}
 					switch elem[0] {
-					case '/': // Prefix: "/imports/annotations:"
+					case '/': // Prefix: "/"
 
-						if l := len("/imports/annotations:"); len(elem) >= l && elem[0:l] == "/imports/annotations:" {
+						if l := len("/"); len(elem) >= l && elem[0:l] == "/" {
 							elem = elem[l:]
 						} else {
 							break
@@ -535,25 +617,32 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 							break
 						}
 						switch elem[0] {
-						case 'e': // Prefix: "execute"
+						case 'd': // Prefix: "datasets"
 
-							if l := len("execute"); len(elem) >= l && elem[0:l] == "execute" {
+							if l := len("datasets"); len(elem) >= l && elem[0:l] == "datasets" {
 								elem = elem[l:]
 							} else {
 								break
 							}
 
 							if len(elem) == 0 {
-								// Leaf node.
 								switch r.Method {
+								case "DELETE":
+									s.handleUnlinkProjectDatasetsRequest([1]string{
+										args[0],
+									}, elemIsEscaped, w, r)
+								case "GET":
+									s.handleListProjectDatasetsRequest([1]string{
+										args[0],
+									}, elemIsEscaped, w, r)
 								case "POST":
-									s.handleExecuteProjectAnnotationImportRequest([1]string{
+									s.handleLinkProjectDatasetsRequest([1]string{
 										args[0],
 									}, elemIsEscaped, w, r)
 								default:
 									s.notAllowed(w, r, notAllowedParams{
-										allowedMethods: "POST",
-										allowedHeaders: rn16AllowedHeaders,
+										allowedMethods: "DELETE,GET,POST",
+										allowedHeaders: rn33AllowedHeaders,
 										acceptPost:     "application/json",
 										acceptPatch:    "",
 									})
@@ -561,32 +650,189 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 								return
 							}
+							switch elem[0] {
+							case '/': // Prefix: "/"
 
-						case 'p': // Prefix: "prepare"
+								if l := len("/"); len(elem) >= l && elem[0:l] == "/" {
+									elem = elem[l:]
+								} else {
+									break
+								}
 
-							if l := len("prepare"); len(elem) >= l && elem[0:l] == "prepare" {
+								if len(elem) == 0 {
+									break
+								}
+								switch elem[0] {
+								case 'd': // Prefix: "detail"
+									origElem := elem
+									if l := len("detail"); len(elem) >= l && elem[0:l] == "detail" {
+										elem = elem[l:]
+									} else {
+										break
+									}
+
+									if len(elem) == 0 {
+										// Leaf node.
+										switch r.Method {
+										case "GET":
+											s.handleListProjectDatasetDetailsRequest([1]string{
+												args[0],
+											}, elemIsEscaped, w, r)
+										default:
+											s.notAllowed(w, r, notAllowedParams{
+												allowedMethods: "GET",
+												allowedHeaders: nil,
+												acceptPost:     "",
+												acceptPatch:    "",
+											})
+										}
+
+										return
+									}
+
+									elem = origElem
+								}
+								// Param: "dataset_id"
+								// Match until "/"
+								idx := strings.IndexByte(elem, '/')
+								if idx < 0 {
+									idx = len(elem)
+								}
+								args[1] = elem[:idx]
+								elem = elem[idx:]
+
+								if len(elem) == 0 {
+									break
+								}
+								switch elem[0] {
+								case '/': // Prefix: "/imports/annotations:"
+
+									if l := len("/imports/annotations:"); len(elem) >= l && elem[0:l] == "/imports/annotations:" {
+										elem = elem[l:]
+									} else {
+										break
+									}
+
+									if len(elem) == 0 {
+										break
+									}
+									switch elem[0] {
+									case 'e': // Prefix: "execute"
+
+										if l := len("execute"); len(elem) >= l && elem[0:l] == "execute" {
+											elem = elem[l:]
+										} else {
+											break
+										}
+
+										if len(elem) == 0 {
+											// Leaf node.
+											switch r.Method {
+											case "POST":
+												s.handleExecuteProjectAnnotationImportRequest([2]string{
+													args[0],
+													args[1],
+												}, elemIsEscaped, w, r)
+											default:
+												s.notAllowed(w, r, notAllowedParams{
+													allowedMethods: "POST",
+													allowedHeaders: rn22AllowedHeaders,
+													acceptPost:     "application/json",
+													acceptPatch:    "",
+												})
+											}
+
+											return
+										}
+
+									case 'p': // Prefix: "prepare"
+
+										if l := len("prepare"); len(elem) >= l && elem[0:l] == "prepare" {
+											elem = elem[l:]
+										} else {
+											break
+										}
+
+										if len(elem) == 0 {
+											// Leaf node.
+											switch r.Method {
+											case "POST":
+												s.handlePrepareProjectAnnotationImportRequest([2]string{
+													args[0],
+													args[1],
+												}, elemIsEscaped, w, r)
+											default:
+												s.notAllowed(w, r, notAllowedParams{
+													allowedMethods: "POST",
+													allowedHeaders: rn39AllowedHeaders,
+													acceptPost:     "application/json",
+													acceptPatch:    "",
+												})
+											}
+
+											return
+										}
+
+									}
+
+								}
+
+							}
+
+						case 's': // Prefix: "samples/"
+
+							if l := len("samples/"); len(elem) >= l && elem[0:l] == "samples/" {
 								elem = elem[l:]
 							} else {
 								break
 							}
 
+							// Param: "sample_id"
+							// Match until "/"
+							idx := strings.IndexByte(elem, '/')
+							if idx < 0 {
+								idx = len(elem)
+							}
+							args[1] = elem[:idx]
+							elem = elem[idx:]
+
 							if len(elem) == 0 {
-								// Leaf node.
-								switch r.Method {
-								case "POST":
-									s.handlePrepareProjectAnnotationImportRequest([1]string{
-										args[0],
-									}, elemIsEscaped, w, r)
-								default:
-									s.notAllowed(w, r, notAllowedParams{
-										allowedMethods: "POST",
-										allowedHeaders: rn31AllowedHeaders,
-										acceptPost:     "application/json",
-										acceptPatch:    "",
-									})
+								break
+							}
+							switch elem[0] {
+							case '/': // Prefix: "/annotations"
+
+								if l := len("/annotations"); len(elem) >= l && elem[0:l] == "/annotations" {
+									elem = elem[l:]
+								} else {
+									break
 								}
 
-								return
+								if len(elem) == 0 {
+									// Leaf node.
+									switch r.Method {
+									case "GET":
+										s.handleListSampleAnnotationsRequest([2]string{
+											args[0],
+											args[1],
+										}, elemIsEscaped, w, r)
+									case "POST":
+										s.handleCreateSampleAnnotationsRequest([2]string{
+											args[0],
+											args[1],
+										}, elemIsEscaped, w, r)
+									default:
+										s.notAllowed(w, r, notAllowedParams{
+											allowedMethods: "GET,POST",
+											allowedHeaders: rn16AllowedHeaders,
+											acceptPost:     "application/json",
+											acceptPatch:    "",
+										})
+									}
+
+									return
+								}
+
 							}
 
 						}
@@ -709,60 +955,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 				}
 
-			case 's': // Prefix: "samples/"
-
-				if l := len("samples/"); len(elem) >= l && elem[0:l] == "samples/" {
-					elem = elem[l:]
-				} else {
-					break
-				}
-
-				// Param: "sample_id"
-				// Match until "/"
-				idx := strings.IndexByte(elem, '/')
-				if idx < 0 {
-					idx = len(elem)
-				}
-				args[0] = elem[:idx]
-				elem = elem[idx:]
-
-				if len(elem) == 0 {
-					break
-				}
-				switch elem[0] {
-				case '/': // Prefix: "/annotations"
-
-					if l := len("/annotations"); len(elem) >= l && elem[0:l] == "/annotations" {
-						elem = elem[l:]
-					} else {
-						break
-					}
-
-					if len(elem) == 0 {
-						// Leaf node.
-						switch r.Method {
-						case "GET":
-							s.handleListSampleAnnotationsRequest([1]string{
-								args[0],
-							}, elemIsEscaped, w, r)
-						case "POST":
-							s.handleCreateSampleAnnotationsRequest([1]string{
-								args[0],
-							}, elemIsEscaped, w, r)
-						default:
-							s.notAllowed(w, r, notAllowedParams{
-								allowedMethods: "GET,POST",
-								allowedHeaders: rn13AllowedHeaders,
-								acceptPost:     "application/json",
-								acceptPatch:    "",
-							})
-						}
-
-						return
-					}
-
-				}
-
 			}
 
 		}
@@ -778,7 +970,7 @@ type Route struct {
 	operationGroup string
 	pathPattern    string
 	count          int
-	args           [1]string
+	args           [2]string
 }
 
 // Name returns ogen operation name.
@@ -951,6 +1143,93 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 							r.operationID = "requirePermission"
 							r.operationGroup = ""
 							r.pathPattern = "/auth/permissions/{permission}"
+							r.args = args
+							r.count = 1
+							return r, true
+						default:
+							return
+						}
+					}
+
+				}
+
+			case 'd': // Prefix: "datasets"
+
+				if l := len("datasets"); len(elem) >= l && elem[0:l] == "datasets" {
+					elem = elem[l:]
+				} else {
+					break
+				}
+
+				if len(elem) == 0 {
+					switch method {
+					case "GET":
+						r.name = ListDatasetsOperation
+						r.summary = ""
+						r.operationID = "listDatasets"
+						r.operationGroup = ""
+						r.pathPattern = "/datasets"
+						r.args = args
+						r.count = 0
+						return r, true
+					case "POST":
+						r.name = CreateDatasetOperation
+						r.summary = ""
+						r.operationID = "createDataset"
+						r.operationGroup = ""
+						r.pathPattern = "/datasets"
+						r.args = args
+						r.count = 0
+						return r, true
+					default:
+						return
+					}
+				}
+				switch elem[0] {
+				case '/': // Prefix: "/"
+
+					if l := len("/"); len(elem) >= l && elem[0:l] == "/" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					// Param: "dataset_id"
+					// Leaf parameter, slashes are prohibited
+					idx := strings.IndexByte(elem, '/')
+					if idx >= 0 {
+						break
+					}
+					args[0] = elem
+					elem = ""
+
+					if len(elem) == 0 {
+						// Leaf node.
+						switch method {
+						case "DELETE":
+							r.name = DeleteDatasetOperation
+							r.summary = ""
+							r.operationID = "deleteDataset"
+							r.operationGroup = ""
+							r.pathPattern = "/datasets/{dataset_id}"
+							r.args = args
+							r.count = 1
+							return r, true
+						case "GET":
+							r.name = GetDatasetOperation
+							r.summary = ""
+							r.operationID = "getDataset"
+							r.operationGroup = ""
+							r.pathPattern = "/datasets/{dataset_id}"
+							r.args = args
+							r.count = 1
+							return r, true
+						case "PUT":
+							r.name = UpdateDatasetOperation
+							r.summary = ""
+							r.operationID = "updateDataset"
+							r.operationGroup = ""
+							r.pathPattern = "/datasets/{dataset_id}"
 							r.args = args
 							r.count = 1
 							return r, true
@@ -1289,9 +1568,9 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 						}
 					}
 					switch elem[0] {
-					case '/': // Prefix: "/imports/annotations:"
+					case '/': // Prefix: "/"
 
-						if l := len("/imports/annotations:"); len(elem) >= l && elem[0:l] == "/imports/annotations:" {
+						if l := len("/"); len(elem) >= l && elem[0:l] == "/" {
 							elem = elem[l:]
 						} else {
 							break
@@ -1301,23 +1580,40 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 							break
 						}
 						switch elem[0] {
-						case 'e': // Prefix: "execute"
+						case 'd': // Prefix: "datasets"
 
-							if l := len("execute"); len(elem) >= l && elem[0:l] == "execute" {
+							if l := len("datasets"); len(elem) >= l && elem[0:l] == "datasets" {
 								elem = elem[l:]
 							} else {
 								break
 							}
 
 							if len(elem) == 0 {
-								// Leaf node.
 								switch method {
-								case "POST":
-									r.name = ExecuteProjectAnnotationImportOperation
+								case "DELETE":
+									r.name = UnlinkProjectDatasetsOperation
 									r.summary = ""
-									r.operationID = "executeProjectAnnotationImport"
+									r.operationID = "unlinkProjectDatasets"
 									r.operationGroup = ""
-									r.pathPattern = "/projects/{project_id}/imports/annotations:execute"
+									r.pathPattern = "/projects/{project_id}/datasets"
+									r.args = args
+									r.count = 1
+									return r, true
+								case "GET":
+									r.name = ListProjectDatasetsOperation
+									r.summary = ""
+									r.operationID = "listProjectDatasets"
+									r.operationGroup = ""
+									r.pathPattern = "/projects/{project_id}/datasets"
+									r.args = args
+									r.count = 1
+									return r, true
+								case "POST":
+									r.name = LinkProjectDatasetsOperation
+									r.summary = ""
+									r.operationID = "linkProjectDatasets"
+									r.operationGroup = ""
+									r.pathPattern = "/projects/{project_id}/datasets"
 									r.args = args
 									r.count = 1
 									return r, true
@@ -1325,30 +1621,182 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 									return
 								}
 							}
+							switch elem[0] {
+							case '/': // Prefix: "/"
 
-						case 'p': // Prefix: "prepare"
+								if l := len("/"); len(elem) >= l && elem[0:l] == "/" {
+									elem = elem[l:]
+								} else {
+									break
+								}
 
-							if l := len("prepare"); len(elem) >= l && elem[0:l] == "prepare" {
+								if len(elem) == 0 {
+									break
+								}
+								switch elem[0] {
+								case 'd': // Prefix: "detail"
+									origElem := elem
+									if l := len("detail"); len(elem) >= l && elem[0:l] == "detail" {
+										elem = elem[l:]
+									} else {
+										break
+									}
+
+									if len(elem) == 0 {
+										// Leaf node.
+										switch method {
+										case "GET":
+											r.name = ListProjectDatasetDetailsOperation
+											r.summary = ""
+											r.operationID = "listProjectDatasetDetails"
+											r.operationGroup = ""
+											r.pathPattern = "/projects/{project_id}/datasets/detail"
+											r.args = args
+											r.count = 1
+											return r, true
+										default:
+											return
+										}
+									}
+
+									elem = origElem
+								}
+								// Param: "dataset_id"
+								// Match until "/"
+								idx := strings.IndexByte(elem, '/')
+								if idx < 0 {
+									idx = len(elem)
+								}
+								args[1] = elem[:idx]
+								elem = elem[idx:]
+
+								if len(elem) == 0 {
+									break
+								}
+								switch elem[0] {
+								case '/': // Prefix: "/imports/annotations:"
+
+									if l := len("/imports/annotations:"); len(elem) >= l && elem[0:l] == "/imports/annotations:" {
+										elem = elem[l:]
+									} else {
+										break
+									}
+
+									if len(elem) == 0 {
+										break
+									}
+									switch elem[0] {
+									case 'e': // Prefix: "execute"
+
+										if l := len("execute"); len(elem) >= l && elem[0:l] == "execute" {
+											elem = elem[l:]
+										} else {
+											break
+										}
+
+										if len(elem) == 0 {
+											// Leaf node.
+											switch method {
+											case "POST":
+												r.name = ExecuteProjectAnnotationImportOperation
+												r.summary = ""
+												r.operationID = "executeProjectAnnotationImport"
+												r.operationGroup = ""
+												r.pathPattern = "/projects/{project_id}/datasets/{dataset_id}/imports/annotations:execute"
+												r.args = args
+												r.count = 2
+												return r, true
+											default:
+												return
+											}
+										}
+
+									case 'p': // Prefix: "prepare"
+
+										if l := len("prepare"); len(elem) >= l && elem[0:l] == "prepare" {
+											elem = elem[l:]
+										} else {
+											break
+										}
+
+										if len(elem) == 0 {
+											// Leaf node.
+											switch method {
+											case "POST":
+												r.name = PrepareProjectAnnotationImportOperation
+												r.summary = ""
+												r.operationID = "prepareProjectAnnotationImport"
+												r.operationGroup = ""
+												r.pathPattern = "/projects/{project_id}/datasets/{dataset_id}/imports/annotations:prepare"
+												r.args = args
+												r.count = 2
+												return r, true
+											default:
+												return
+											}
+										}
+
+									}
+
+								}
+
+							}
+
+						case 's': // Prefix: "samples/"
+
+							if l := len("samples/"); len(elem) >= l && elem[0:l] == "samples/" {
 								elem = elem[l:]
 							} else {
 								break
 							}
 
+							// Param: "sample_id"
+							// Match until "/"
+							idx := strings.IndexByte(elem, '/')
+							if idx < 0 {
+								idx = len(elem)
+							}
+							args[1] = elem[:idx]
+							elem = elem[idx:]
+
 							if len(elem) == 0 {
-								// Leaf node.
-								switch method {
-								case "POST":
-									r.name = PrepareProjectAnnotationImportOperation
-									r.summary = ""
-									r.operationID = "prepareProjectAnnotationImport"
-									r.operationGroup = ""
-									r.pathPattern = "/projects/{project_id}/imports/annotations:prepare"
-									r.args = args
-									r.count = 1
-									return r, true
-								default:
-									return
+								break
+							}
+							switch elem[0] {
+							case '/': // Prefix: "/annotations"
+
+								if l := len("/annotations"); len(elem) >= l && elem[0:l] == "/annotations" {
+									elem = elem[l:]
+								} else {
+									break
 								}
+
+								if len(elem) == 0 {
+									// Leaf node.
+									switch method {
+									case "GET":
+										r.name = ListSampleAnnotationsOperation
+										r.summary = ""
+										r.operationID = "listSampleAnnotations"
+										r.operationGroup = ""
+										r.pathPattern = "/projects/{project_id}/samples/{sample_id}/annotations"
+										r.args = args
+										r.count = 2
+										return r, true
+									case "POST":
+										r.name = CreateSampleAnnotationsOperation
+										r.summary = ""
+										r.operationID = "createSampleAnnotations"
+										r.operationGroup = ""
+										r.pathPattern = "/projects/{project_id}/samples/{sample_id}/annotations"
+										r.args = args
+										r.count = 2
+										return r, true
+									default:
+										return
+									}
+								}
+
 							}
 
 						}
@@ -1465,63 +1913,6 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 							}
 						}
 
-					}
-
-				}
-
-			case 's': // Prefix: "samples/"
-
-				if l := len("samples/"); len(elem) >= l && elem[0:l] == "samples/" {
-					elem = elem[l:]
-				} else {
-					break
-				}
-
-				// Param: "sample_id"
-				// Match until "/"
-				idx := strings.IndexByte(elem, '/')
-				if idx < 0 {
-					idx = len(elem)
-				}
-				args[0] = elem[:idx]
-				elem = elem[idx:]
-
-				if len(elem) == 0 {
-					break
-				}
-				switch elem[0] {
-				case '/': // Prefix: "/annotations"
-
-					if l := len("/annotations"); len(elem) >= l && elem[0:l] == "/annotations" {
-						elem = elem[l:]
-					} else {
-						break
-					}
-
-					if len(elem) == 0 {
-						// Leaf node.
-						switch method {
-						case "GET":
-							r.name = ListSampleAnnotationsOperation
-							r.summary = ""
-							r.operationID = "listSampleAnnotations"
-							r.operationGroup = ""
-							r.pathPattern = "/samples/{sample_id}/annotations"
-							r.args = args
-							r.count = 1
-							return r, true
-						case "POST":
-							r.name = CreateSampleAnnotationsOperation
-							r.summary = ""
-							r.operationID = "createSampleAnnotations"
-							r.operationGroup = ""
-							r.pathPattern = "/samples/{sample_id}/annotations"
-							r.args = args
-							r.count = 1
-							return r, true
-						default:
-							return
-						}
 					}
 
 				}

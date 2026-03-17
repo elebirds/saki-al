@@ -19,6 +19,8 @@ import (
 	accessapp "github.com/elebirds/saki/saki-controlplane/internal/modules/access/app"
 	accessdomain "github.com/elebirds/saki/saki-controlplane/internal/modules/access/domain"
 	annotationrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/repo"
+	datasetapp "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/app"
+	datasetrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/repo"
 	projectapp "github.com/elebirds/saki/saki-controlplane/internal/modules/project/app"
 	runtimecommands "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/commands"
 	runtimequeries "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/queries"
@@ -148,16 +150,279 @@ func TestProjectPersistsAcrossPublicAPIInstances(t *testing.T) {
 	}
 }
 
+func TestProjectDatasetEndpointsLinkListDetailAndUnlink(t *testing.T) {
+	handler, err := newTestHTTPHandler()
+	if err != nil {
+		t.Fatalf("new http handler: %v", err)
+	}
+
+	projectID := createProjectViaAPI(t, handler, "project-datasets")
+	datasetA := createDatasetViaAPI(t, handler, "dataset-a", "image")
+	datasetB := createDatasetViaAPI(t, handler, "dataset-b", "image")
+
+	linkRec := performJSONRequest(
+		handler,
+		http.MethodPost,
+		"/projects/"+projectID+"/datasets",
+		`{"dataset_ids":["`+datasetB+`","`+datasetA+`"]}`,
+	)
+	if linkRec.Code != http.StatusOK {
+		t.Fatalf("unexpected link status: %d body=%s", linkRec.Code, linkRec.Body.String())
+	}
+
+	var linked []string
+	if err := json.Unmarshal(linkRec.Body.Bytes(), &linked); err != nil {
+		t.Fatalf("decode link response: %v", err)
+	}
+	if len(linked) != 2 || linked[0] != datasetB || linked[1] != datasetA {
+		t.Fatalf("unexpected linked ids: %+v", linked)
+	}
+
+	listRec := performJSONRequest(handler, http.MethodGet, "/projects/"+projectID+"/datasets", "")
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("unexpected list ids status: %d body=%s", listRec.Code, listRec.Body.String())
+	}
+
+	var listed []string
+	if err := json.Unmarshal(listRec.Body.Bytes(), &listed); err != nil {
+		t.Fatalf("decode list ids response: %v", err)
+	}
+	if len(listed) != 2 || !containsAll(listed, datasetA, datasetB) {
+		t.Fatalf("unexpected listed ids: %+v", listed)
+	}
+
+	detailRec := performJSONRequest(handler, http.MethodGet, "/projects/"+projectID+"/datasets/detail", "")
+	if detailRec.Code != http.StatusOK {
+		t.Fatalf("unexpected list detail status: %d body=%s", detailRec.Code, detailRec.Body.String())
+	}
+
+	var details []struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(detailRec.Body.Bytes(), &details); err != nil {
+		t.Fatalf("decode list detail response: %v", err)
+	}
+	if len(details) != 2 {
+		t.Fatalf("unexpected dataset details length: %+v", details)
+	}
+	if !hasDatasetDetail(details, datasetA, "dataset-a", "image") || !hasDatasetDetail(details, datasetB, "dataset-b", "image") {
+		t.Fatalf("unexpected dataset details: %+v", details)
+	}
+
+	unlinkRec := performJSONRequest(
+		handler,
+		http.MethodDelete,
+		"/projects/"+projectID+"/datasets",
+		`{"dataset_ids":["`+datasetA+`"]}`,
+	)
+	if unlinkRec.Code != http.StatusOK {
+		t.Fatalf("unexpected unlink status: %d body=%s", unlinkRec.Code, unlinkRec.Body.String())
+	}
+
+	var unlinked int
+	if err := json.Unmarshal(unlinkRec.Body.Bytes(), &unlinked); err != nil {
+		t.Fatalf("decode unlink response: %v", err)
+	}
+	if unlinked != 1 {
+		t.Fatalf("unexpected unlink count: %d", unlinked)
+	}
+
+	listAfterRec := performJSONRequest(handler, http.MethodGet, "/projects/"+projectID+"/datasets", "")
+	if listAfterRec.Code != http.StatusOK {
+		t.Fatalf("unexpected list ids after unlink status: %d body=%s", listAfterRec.Code, listAfterRec.Body.String())
+	}
+
+	var listedAfter []string
+	if err := json.Unmarshal(listAfterRec.Body.Bytes(), &listedAfter); err != nil {
+		t.Fatalf("decode list ids after unlink response: %v", err)
+	}
+	if len(listedAfter) != 1 || listedAfter[0] != datasetB {
+		t.Fatalf("unexpected listed ids after unlink: %+v", listedAfter)
+	}
+}
+
+func TestProjectDatasetLinkEndpointSkipsAlreadyLinkedDatasets(t *testing.T) {
+	handler, err := newTestHTTPHandler()
+	if err != nil {
+		t.Fatalf("new http handler: %v", err)
+	}
+
+	projectID := createProjectViaAPI(t, handler, "project-datasets")
+	datasetID := createDatasetViaAPI(t, handler, "dataset-a", "image")
+
+	firstRec := performJSONRequest(
+		handler,
+		http.MethodPost,
+		"/projects/"+projectID+"/datasets",
+		`{"dataset_ids":["`+datasetID+`"]}`,
+	)
+	if firstRec.Code != http.StatusOK {
+		t.Fatalf("unexpected first link status: %d body=%s", firstRec.Code, firstRec.Body.String())
+	}
+
+	secondRec := performJSONRequest(
+		handler,
+		http.MethodPost,
+		"/projects/"+projectID+"/datasets",
+		`{"dataset_ids":["`+datasetID+`"]}`,
+	)
+	if secondRec.Code != http.StatusOK {
+		t.Fatalf("unexpected second link status: %d body=%s", secondRec.Code, secondRec.Body.String())
+	}
+
+	var linked []string
+	if err := json.Unmarshal(secondRec.Body.Bytes(), &linked); err != nil {
+		t.Fatalf("decode second link response: %v", err)
+	}
+	if len(linked) != 0 {
+		t.Fatalf("expected no new links on second request, got %+v", linked)
+	}
+}
+
+func TestProjectDatasetLinkEndpointReturns404WhenProjectOrDatasetMissing(t *testing.T) {
+	handler, err := newTestHTTPHandler()
+	if err != nil {
+		t.Fatalf("new http handler: %v", err)
+	}
+
+	projectID := createProjectViaAPI(t, handler, "project-datasets")
+	datasetID := createDatasetViaAPI(t, handler, "dataset-a", "image")
+
+	missingProjectRec := performJSONRequest(
+		handler,
+		http.MethodPost,
+		"/projects/"+uuid.New().String()+"/datasets",
+		`{"dataset_ids":["`+datasetID+`"]}`,
+	)
+	if missingProjectRec.Code != http.StatusNotFound {
+		t.Fatalf("expected missing project 404, got %d body=%s", missingProjectRec.Code, missingProjectRec.Body.String())
+	}
+
+	missingDatasetRec := performJSONRequest(
+		handler,
+		http.MethodPost,
+		"/projects/"+projectID+"/datasets",
+		`{"dataset_ids":["`+uuid.New().String()+`"]}`,
+	)
+	if missingDatasetRec.Code != http.StatusNotFound {
+		t.Fatalf("expected missing dataset 404, got %d body=%s", missingDatasetRec.Code, missingDatasetRec.Body.String())
+	}
+}
+
+func TestProjectDatasetEndpointsRejectInvalidProjectID(t *testing.T) {
+	handler, err := newTestHTTPHandler()
+	if err != nil {
+		t.Fatalf("new http handler: %v", err)
+	}
+
+	rec := performJSONRequest(handler, http.MethodGet, "/projects/not-a-uuid/datasets", "")
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected invalid project id 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func newTestHTTPHandler() (http.Handler, error) {
 	return systemapi.NewHTTPHandler(systemapi.Dependencies{
 		Authenticator:       accessapp.NewAuthenticator("test-secret", time.Hour),
 		AccessStore:         fakeAccessStore{},
+		DatasetStore:        datasetapp.NewMemoryStore(),
 		ProjectStore:        projectapp.NewMemoryStore(),
 		RuntimeStore:        runtimequeries.NewMemoryAdminStore(),
 		RuntimeTaskCanceler: fakeRuntimeTaskCanceler{},
 		AnnotationSamples:   fakeAnnotationSampleStore{},
+		AnnotationDatasets:  fakeAnnotationDatasetStore{},
 		AnnotationStore:     fakeAnnotationStore{},
 	})
+}
+
+func createProjectViaAPI(t *testing.T, handler http.Handler, name string) string {
+	t.Helper()
+
+	rec := performJSONRequest(handler, http.MethodPost, "/projects", `{"name":"`+name+`"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("unexpected create project status: %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var created struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode create project response: %v", err)
+	}
+	if created.ID == "" {
+		t.Fatal("expected project id")
+	}
+	return created.ID
+}
+
+func createDatasetViaAPI(t *testing.T, handler http.Handler, name, dtype string) string {
+	t.Helper()
+
+	rec := performJSONRequest(
+		handler,
+		http.MethodPost,
+		"/datasets",
+		`{"name":"`+name+`","type":"`+dtype+`"}`,
+	)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("unexpected create dataset status: %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var created struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode create dataset response: %v", err)
+	}
+	if created.ID == "" {
+		t.Fatal("expected dataset id")
+	}
+	return created.ID
+}
+
+func performJSONRequest(handler http.Handler, method, path, body string) *httptest.ResponseRecorder {
+	var reader *bytes.Reader
+	if body == "" {
+		reader = bytes.NewReader(nil)
+	} else {
+		reader = bytes.NewReader([]byte(body))
+	}
+
+	req := httptest.NewRequest(method, path, reader)
+	if body != "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	return rec
+}
+
+func containsAll(ids []string, wanted ...string) bool {
+	index := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		index[id] = struct{}{}
+	}
+	for _, id := range wanted {
+		if _, ok := index[id]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func hasDatasetDetail(items []struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Type string `json:"type"`
+}, id, name, dtype string) bool {
+	for _, item := range items {
+		if item.ID == id && item.Name == name && item.Type == dtype {
+			return true
+		}
+	}
+	return false
 }
 
 type fakeRuntimeTaskCanceler struct{}
@@ -172,13 +437,19 @@ func (fakeAnnotationSampleStore) Get(context.Context, uuid.UUID) (*annotationrep
 	return nil, nil
 }
 
+type fakeAnnotationDatasetStore struct{}
+
+func (fakeAnnotationDatasetStore) Get(context.Context, uuid.UUID) (*datasetrepo.Dataset, error) {
+	return nil, nil
+}
+
 type fakeAnnotationStore struct{}
 
 func (fakeAnnotationStore) Create(context.Context, annotationrepo.CreateAnnotationParams) (*annotationrepo.Annotation, error) {
 	return nil, nil
 }
 
-func (fakeAnnotationStore) ListBySample(context.Context, uuid.UUID) ([]annotationrepo.Annotation, error) {
+func (fakeAnnotationStore) ListByProjectSample(context.Context, uuid.UUID, uuid.UUID) ([]annotationrepo.Annotation, error) {
 	return nil, nil
 }
 

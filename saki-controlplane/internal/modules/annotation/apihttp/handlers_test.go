@@ -16,7 +16,10 @@ import (
 	accessapp "github.com/elebirds/saki/saki-controlplane/internal/modules/access/app"
 	accessdomain "github.com/elebirds/saki/saki-controlplane/internal/modules/access/domain"
 	annotationrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/repo"
+	datasetapp "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/app"
+	datasetrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/repo"
 	projectapp "github.com/elebirds/saki/saki-controlplane/internal/modules/project/app"
+	projectrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/project/repo"
 	runtimecommands "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/commands"
 	runtimequeries "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/queries"
 	systemapi "github.com/elebirds/saki/saki-controlplane/internal/modules/system/apihttp"
@@ -43,11 +46,24 @@ func TestCreateAndListSampleAnnotationsEndpoints(t *testing.T) {
 	pool := openAnnotationPool(t, ctx, dsn)
 	defer pool.Close()
 
+	datasetRepo := datasetrepo.NewDatasetRepo(pool)
+	projectRepo := projectrepo.NewProjectRepo(pool)
 	sampleRepo := annotationrepo.NewSampleRepo(pool)
+	project, err := projectRepo.CreateProject(ctx, projectrepo.CreateProjectParams{Name: "demo-project"})
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	dataset, err := datasetRepo.Create(ctx, datasetrepo.CreateDatasetParams{Name: "demo-dataset", Type: "fedo-dual-view"})
+	if err != nil {
+		t.Fatalf("create dataset: %v", err)
+	}
+	if _, err := projectRepo.LinkDataset(ctx, project.ID, dataset.ID); err != nil {
+		t.Fatalf("link dataset: %v", err)
+	}
 	sample, err := sampleRepo.Create(ctx, annotationrepo.CreateSampleParams{
-		ProjectID:   uuid.New(),
-		DatasetType: "fedo-dual-view",
-		Meta:        []byte(`{"source_view":"rgb","target_view":"thermal","lookup_ref":"lut-1"}`),
+		DatasetID: dataset.ID,
+		Name:      "sample-1",
+		Meta:      []byte(`{"source_view":"rgb","target_view":"thermal","lookup_ref":"lut-1"}`),
 	})
 	if err != nil {
 		t.Fatalf("create sample: %v", err)
@@ -56,10 +72,12 @@ func TestCreateAndListSampleAnnotationsEndpoints(t *testing.T) {
 	handler, err := systemapi.NewHTTPHandler(systemapi.Dependencies{
 		Authenticator:       accessapp.NewAuthenticator("test-secret", time.Hour),
 		AccessStore:         fakeAccessStore{},
-		ProjectStore:        projectapp.NewMemoryStore(),
+		DatasetStore:        datasetapp.NewRepoStore(datasetRepo),
+		ProjectStore:        projectapp.NewRepoStore(projectRepo),
 		RuntimeStore:        runtimequeries.NewMemoryAdminStore(),
 		RuntimeTaskCanceler: fakeRuntimeTaskCanceler{},
 		AnnotationSamples:   sampleRepo,
+		AnnotationDatasets:  datasetRepo,
 		AnnotationStore:     annotationrepo.NewAnnotationRepo(pool),
 	})
 	if err != nil {
@@ -68,7 +86,7 @@ func TestCreateAndListSampleAnnotationsEndpoints(t *testing.T) {
 
 	createReq := httptest.NewRequest(
 		http.MethodPost,
-		"/samples/"+sample.ID.String()+"/annotations",
+		"/projects/"+project.ID.String()+"/samples/"+sample.ID.String()+"/annotations",
 		bytes.NewBufferString(`{"group_id":"group-a","label_id":"car","view":"rgb","annotation_type":"obb","geometry":{"cx":10,"cy":20,"w":5,"h":6,"angle":30},"attrs":{"score":0.9},"source":"manual"}`),
 	)
 	createReq.Header.Set("Content-Type", "application/json")
@@ -86,7 +104,7 @@ func TestCreateAndListSampleAnnotationsEndpoints(t *testing.T) {
 		t.Fatalf("unexpected create response: %+v", created)
 	}
 
-	listReq := httptest.NewRequest(http.MethodGet, "/samples/"+sample.ID.String()+"/annotations", nil)
+	listReq := httptest.NewRequest(http.MethodGet, "/projects/"+project.ID.String()+"/samples/"+sample.ID.String()+"/annotations", nil)
 	listRec := httptest.NewRecorder()
 	handler.ServeHTTP(listRec, listReq)
 	if listRec.Code != http.StatusOK {

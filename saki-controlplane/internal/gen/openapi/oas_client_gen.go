@@ -39,22 +39,34 @@ type Invoker interface {
 	//
 	// POST /imports/uploads/{session_id}:complete
 	CompleteImportUploadSession(ctx context.Context, request *ImportUploadCompleteRequest, params CompleteImportUploadSessionParams) (*ImportUploadSession, error)
+	// CreateDataset invokes createDataset operation.
+	//
+	// POST /datasets
+	CreateDataset(ctx context.Context, request *CreateDatasetRequest) (*Dataset, error)
 	// CreateProject invokes createProject operation.
 	//
 	// POST /projects
 	CreateProject(ctx context.Context, request *CreateProjectRequest) (*Project, error)
 	// CreateSampleAnnotations invokes createSampleAnnotations operation.
 	//
-	// POST /samples/{sample_id}/annotations
+	// POST /projects/{project_id}/samples/{sample_id}/annotations
 	CreateSampleAnnotations(ctx context.Context, request *CreateAnnotationRequest, params CreateSampleAnnotationsParams) ([]Annotation, error)
+	// DeleteDataset invokes deleteDataset operation.
+	//
+	// DELETE /datasets/{dataset_id}
+	DeleteDataset(ctx context.Context, params DeleteDatasetParams) (DeleteDatasetRes, error)
 	// ExecuteProjectAnnotationImport invokes executeProjectAnnotationImport operation.
 	//
-	// POST /projects/{project_id}/imports/annotations:execute
+	// POST /projects/{project_id}/datasets/{dataset_id}/imports/annotations:execute
 	ExecuteProjectAnnotationImport(ctx context.Context, request *ExecuteProjectAnnotationImportRequest, params ExecuteProjectAnnotationImportParams) (*ImportTaskCreateResponse, error)
 	// GetCurrentUser invokes getCurrentUser operation.
 	//
 	// GET /auth/me
 	GetCurrentUser(ctx context.Context) (*CurrentUserResponse, error)
+	// GetDataset invokes getDataset operation.
+	//
+	// GET /datasets/{dataset_id}
+	GetDataset(ctx context.Context, params GetDatasetParams) (GetDatasetRes, error)
 	// GetImportTask invokes getImportTask operation.
 	//
 	// GET /imports/tasks/{task_id}
@@ -83,6 +95,22 @@ type Invoker interface {
 	//
 	// POST /imports/uploads:init
 	InitImportUploadSession(ctx context.Context, request *ImportUploadInitRequest) (*ImportUploadInitResponse, error)
+	// LinkProjectDatasets invokes linkProjectDatasets operation.
+	//
+	// POST /projects/{project_id}/datasets
+	LinkProjectDatasets(ctx context.Context, request *ProjectDatasetLinkRequest, params LinkProjectDatasetsParams) (LinkProjectDatasetsRes, error)
+	// ListDatasets invokes listDatasets operation.
+	//
+	// GET /datasets
+	ListDatasets(ctx context.Context, params ListDatasetsParams) (*DatasetListResponse, error)
+	// ListProjectDatasetDetails invokes listProjectDatasetDetails operation.
+	//
+	// GET /projects/{project_id}/datasets/detail
+	ListProjectDatasetDetails(ctx context.Context, params ListProjectDatasetDetailsParams) (ListProjectDatasetDetailsRes, error)
+	// ListProjectDatasets invokes listProjectDatasets operation.
+	//
+	// GET /projects/{project_id}/datasets
+	ListProjectDatasets(ctx context.Context, params ListProjectDatasetsParams) (ListProjectDatasetsRes, error)
 	// ListProjects invokes listProjects operation.
 	//
 	// GET /projects
@@ -93,7 +121,7 @@ type Invoker interface {
 	ListRuntimeExecutors(ctx context.Context) ([]RuntimeExecutor, error)
 	// ListSampleAnnotations invokes listSampleAnnotations operation.
 	//
-	// GET /samples/{sample_id}/annotations
+	// GET /projects/{project_id}/samples/{sample_id}/annotations
 	ListSampleAnnotations(ctx context.Context, params ListSampleAnnotationsParams) ([]Annotation, error)
 	// Login invokes login operation.
 	//
@@ -101,7 +129,7 @@ type Invoker interface {
 	Login(ctx context.Context, request *LoginRequest) (*AuthTokenResponse, error)
 	// PrepareProjectAnnotationImport invokes prepareProjectAnnotationImport operation.
 	//
-	// POST /projects/{project_id}/imports/annotations:prepare
+	// POST /projects/{project_id}/datasets/{dataset_id}/imports/annotations:prepare
 	PrepareProjectAnnotationImport(ctx context.Context, request *PrepareProjectAnnotationImportRequest, params PrepareProjectAnnotationImportParams) (*PrepareProjectAnnotationImportResponse, error)
 	// RequirePermission invokes requirePermission operation.
 	//
@@ -111,6 +139,14 @@ type Invoker interface {
 	//
 	// POST /imports/uploads/{session_id}/parts:sign
 	SignImportUploadParts(ctx context.Context, request *ImportUploadPartSignRequest, params SignImportUploadPartsParams) (*ImportUploadPartSignResponse, error)
+	// UnlinkProjectDatasets invokes unlinkProjectDatasets operation.
+	//
+	// DELETE /projects/{project_id}/datasets
+	UnlinkProjectDatasets(ctx context.Context, request *ProjectDatasetLinkRequest, params UnlinkProjectDatasetsParams) (UnlinkProjectDatasetsRes, error)
+	// UpdateDataset invokes updateDataset operation.
+	//
+	// PUT /datasets/{dataset_id}
+	UpdateDataset(ctx context.Context, request *UpdateDatasetRequest, params UpdateDatasetParams) (UpdateDatasetRes, error)
 }
 
 // Client implements OAS client.
@@ -428,6 +464,81 @@ func (c *Client) sendCompleteImportUploadSession(ctx context.Context, request *I
 	return result, nil
 }
 
+// CreateDataset invokes createDataset operation.
+//
+// POST /datasets
+func (c *Client) CreateDataset(ctx context.Context, request *CreateDatasetRequest) (*Dataset, error) {
+	res, err := c.sendCreateDataset(ctx, request)
+	return res, err
+}
+
+func (c *Client) sendCreateDataset(ctx context.Context, request *CreateDatasetRequest) (res *Dataset, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("createDataset"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/datasets"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, CreateDatasetOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/datasets"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeCreateDatasetRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeCreateDatasetResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // CreateProject invokes createProject operation.
 //
 // POST /projects
@@ -505,7 +616,7 @@ func (c *Client) sendCreateProject(ctx context.Context, request *CreateProjectRe
 
 // CreateSampleAnnotations invokes createSampleAnnotations operation.
 //
-// POST /samples/{sample_id}/annotations
+// POST /projects/{project_id}/samples/{sample_id}/annotations
 func (c *Client) CreateSampleAnnotations(ctx context.Context, request *CreateAnnotationRequest, params CreateSampleAnnotationsParams) ([]Annotation, error) {
 	res, err := c.sendCreateSampleAnnotations(ctx, request, params)
 	return res, err
@@ -515,7 +626,7 @@ func (c *Client) sendCreateSampleAnnotations(ctx context.Context, request *Creat
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("createSampleAnnotations"),
 		semconv.HTTPRequestMethodKey.String("POST"),
-		semconv.URLTemplateKey.String("/samples/{sample_id}/annotations"),
+		semconv.URLTemplateKey.String("/projects/{project_id}/samples/{sample_id}/annotations"),
 	}
 	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
 
@@ -548,8 +659,27 @@ func (c *Client) sendCreateSampleAnnotations(ctx context.Context, request *Creat
 
 	stage = "BuildURL"
 	u := uri.Clone(c.requestURL(ctx))
-	var pathParts [3]string
-	pathParts[0] = "/samples/"
+	var pathParts [5]string
+	pathParts[0] = "/projects/"
+	{
+		// Encode "project_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "project_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.ProjectID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/samples/"
 	{
 		// Encode "sample_id" parameter.
 		e := uri.NewPathEncoder(uri.PathEncoderConfig{
@@ -566,9 +696,9 @@ func (c *Client) sendCreateSampleAnnotations(ctx context.Context, request *Creat
 		if err != nil {
 			return res, errors.Wrap(err, "encode path")
 		}
-		pathParts[1] = encoded
+		pathParts[3] = encoded
 	}
-	pathParts[2] = "/annotations"
+	pathParts[4] = "/annotations"
 	uri.AddPathParts(u, pathParts[:]...)
 
 	stage = "EncodeRequest"
@@ -597,9 +727,99 @@ func (c *Client) sendCreateSampleAnnotations(ctx context.Context, request *Creat
 	return result, nil
 }
 
+// DeleteDataset invokes deleteDataset operation.
+//
+// DELETE /datasets/{dataset_id}
+func (c *Client) DeleteDataset(ctx context.Context, params DeleteDatasetParams) (DeleteDatasetRes, error) {
+	res, err := c.sendDeleteDataset(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendDeleteDataset(ctx context.Context, params DeleteDatasetParams) (res DeleteDatasetRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("deleteDataset"),
+		semconv.HTTPRequestMethodKey.String("DELETE"),
+		semconv.URLTemplateKey.String("/datasets/{dataset_id}"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, DeleteDatasetOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [2]string
+	pathParts[0] = "/datasets/"
+	{
+		// Encode "dataset_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "dataset_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.DatasetID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "DELETE", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeDeleteDatasetResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // ExecuteProjectAnnotationImport invokes executeProjectAnnotationImport operation.
 //
-// POST /projects/{project_id}/imports/annotations:execute
+// POST /projects/{project_id}/datasets/{dataset_id}/imports/annotations:execute
 func (c *Client) ExecuteProjectAnnotationImport(ctx context.Context, request *ExecuteProjectAnnotationImportRequest, params ExecuteProjectAnnotationImportParams) (*ImportTaskCreateResponse, error) {
 	res, err := c.sendExecuteProjectAnnotationImport(ctx, request, params)
 	return res, err
@@ -609,7 +829,7 @@ func (c *Client) sendExecuteProjectAnnotationImport(ctx context.Context, request
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("executeProjectAnnotationImport"),
 		semconv.HTTPRequestMethodKey.String("POST"),
-		semconv.URLTemplateKey.String("/projects/{project_id}/imports/annotations:execute"),
+		semconv.URLTemplateKey.String("/projects/{project_id}/datasets/{dataset_id}/imports/annotations:execute"),
 	}
 	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
 
@@ -642,7 +862,7 @@ func (c *Client) sendExecuteProjectAnnotationImport(ctx context.Context, request
 
 	stage = "BuildURL"
 	u := uri.Clone(c.requestURL(ctx))
-	var pathParts [3]string
+	var pathParts [5]string
 	pathParts[0] = "/projects/"
 	{
 		// Encode "project_id" parameter.
@@ -662,7 +882,26 @@ func (c *Client) sendExecuteProjectAnnotationImport(ctx context.Context, request
 		}
 		pathParts[1] = encoded
 	}
-	pathParts[2] = "/imports/annotations:execute"
+	pathParts[2] = "/datasets/"
+	{
+		// Encode "dataset_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "dataset_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.DatasetID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[3] = encoded
+	}
+	pathParts[4] = "/imports/annotations:execute"
 	uri.AddPathParts(u, pathParts[:]...)
 
 	stage = "EncodeRequest"
@@ -756,6 +995,96 @@ func (c *Client) sendGetCurrentUser(ctx context.Context) (res *CurrentUserRespon
 
 	stage = "DecodeResponse"
 	result, err := decodeGetCurrentUserResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// GetDataset invokes getDataset operation.
+//
+// GET /datasets/{dataset_id}
+func (c *Client) GetDataset(ctx context.Context, params GetDatasetParams) (GetDatasetRes, error) {
+	res, err := c.sendGetDataset(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendGetDataset(ctx context.Context, params GetDatasetParams) (res GetDatasetRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("getDataset"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/datasets/{dataset_id}"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, GetDatasetOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [2]string
+	pathParts[0] = "/datasets/"
+	{
+		// Encode "dataset_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "dataset_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.DatasetID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeGetDatasetResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -1343,6 +1672,409 @@ func (c *Client) sendInitImportUploadSession(ctx context.Context, request *Impor
 	return result, nil
 }
 
+// LinkProjectDatasets invokes linkProjectDatasets operation.
+//
+// POST /projects/{project_id}/datasets
+func (c *Client) LinkProjectDatasets(ctx context.Context, request *ProjectDatasetLinkRequest, params LinkProjectDatasetsParams) (LinkProjectDatasetsRes, error) {
+	res, err := c.sendLinkProjectDatasets(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendLinkProjectDatasets(ctx context.Context, request *ProjectDatasetLinkRequest, params LinkProjectDatasetsParams) (res LinkProjectDatasetsRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("linkProjectDatasets"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/projects/{project_id}/datasets"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, LinkProjectDatasetsOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/projects/"
+	{
+		// Encode "project_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "project_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.ProjectID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/datasets"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeLinkProjectDatasetsRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeLinkProjectDatasetsResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// ListDatasets invokes listDatasets operation.
+//
+// GET /datasets
+func (c *Client) ListDatasets(ctx context.Context, params ListDatasetsParams) (*DatasetListResponse, error) {
+	res, err := c.sendListDatasets(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendListDatasets(ctx context.Context, params ListDatasetsParams) (res *DatasetListResponse, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("listDatasets"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/datasets"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, ListDatasetsOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/datasets"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeQueryParams"
+	q := uri.NewQueryEncoder()
+	{
+		// Encode "page" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "page",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.Page.Get(); ok {
+				return e.EncodeValue(conv.Int32ToString(val))
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	{
+		// Encode "limit" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "limit",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.Limit.Get(); ok {
+				return e.EncodeValue(conv.Int32ToString(val))
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	{
+		// Encode "q" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "q",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.Q.Get(); ok {
+				return e.EncodeValue(conv.StringToString(val))
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	u.RawQuery = q.Values().Encode()
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeListDatasetsResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// ListProjectDatasetDetails invokes listProjectDatasetDetails operation.
+//
+// GET /projects/{project_id}/datasets/detail
+func (c *Client) ListProjectDatasetDetails(ctx context.Context, params ListProjectDatasetDetailsParams) (ListProjectDatasetDetailsRes, error) {
+	res, err := c.sendListProjectDatasetDetails(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendListProjectDatasetDetails(ctx context.Context, params ListProjectDatasetDetailsParams) (res ListProjectDatasetDetailsRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("listProjectDatasetDetails"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/projects/{project_id}/datasets/detail"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, ListProjectDatasetDetailsOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/projects/"
+	{
+		// Encode "project_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "project_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.ProjectID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/datasets/detail"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeListProjectDatasetDetailsResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// ListProjectDatasets invokes listProjectDatasets operation.
+//
+// GET /projects/{project_id}/datasets
+func (c *Client) ListProjectDatasets(ctx context.Context, params ListProjectDatasetsParams) (ListProjectDatasetsRes, error) {
+	res, err := c.sendListProjectDatasets(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendListProjectDatasets(ctx context.Context, params ListProjectDatasetsParams) (res ListProjectDatasetsRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("listProjectDatasets"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/projects/{project_id}/datasets"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, ListProjectDatasetsOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/projects/"
+	{
+		// Encode "project_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "project_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.ProjectID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/datasets"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeListProjectDatasetsResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // ListProjects invokes listProjects operation.
 //
 // GET /projects
@@ -1489,7 +2221,7 @@ func (c *Client) sendListRuntimeExecutors(ctx context.Context) (res []RuntimeExe
 
 // ListSampleAnnotations invokes listSampleAnnotations operation.
 //
-// GET /samples/{sample_id}/annotations
+// GET /projects/{project_id}/samples/{sample_id}/annotations
 func (c *Client) ListSampleAnnotations(ctx context.Context, params ListSampleAnnotationsParams) ([]Annotation, error) {
 	res, err := c.sendListSampleAnnotations(ctx, params)
 	return res, err
@@ -1499,7 +2231,7 @@ func (c *Client) sendListSampleAnnotations(ctx context.Context, params ListSampl
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("listSampleAnnotations"),
 		semconv.HTTPRequestMethodKey.String("GET"),
-		semconv.URLTemplateKey.String("/samples/{sample_id}/annotations"),
+		semconv.URLTemplateKey.String("/projects/{project_id}/samples/{sample_id}/annotations"),
 	}
 	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
 
@@ -1532,8 +2264,27 @@ func (c *Client) sendListSampleAnnotations(ctx context.Context, params ListSampl
 
 	stage = "BuildURL"
 	u := uri.Clone(c.requestURL(ctx))
-	var pathParts [3]string
-	pathParts[0] = "/samples/"
+	var pathParts [5]string
+	pathParts[0] = "/projects/"
+	{
+		// Encode "project_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "project_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.ProjectID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/samples/"
 	{
 		// Encode "sample_id" parameter.
 		e := uri.NewPathEncoder(uri.PathEncoderConfig{
@@ -1550,9 +2301,9 @@ func (c *Client) sendListSampleAnnotations(ctx context.Context, params ListSampl
 		if err != nil {
 			return res, errors.Wrap(err, "encode path")
 		}
-		pathParts[1] = encoded
+		pathParts[3] = encoded
 	}
-	pathParts[2] = "/annotations"
+	pathParts[4] = "/annotations"
 	uri.AddPathParts(u, pathParts[:]...)
 
 	stage = "EncodeRequest"
@@ -1655,7 +2406,7 @@ func (c *Client) sendLogin(ctx context.Context, request *LoginRequest) (res *Aut
 
 // PrepareProjectAnnotationImport invokes prepareProjectAnnotationImport operation.
 //
-// POST /projects/{project_id}/imports/annotations:prepare
+// POST /projects/{project_id}/datasets/{dataset_id}/imports/annotations:prepare
 func (c *Client) PrepareProjectAnnotationImport(ctx context.Context, request *PrepareProjectAnnotationImportRequest, params PrepareProjectAnnotationImportParams) (*PrepareProjectAnnotationImportResponse, error) {
 	res, err := c.sendPrepareProjectAnnotationImport(ctx, request, params)
 	return res, err
@@ -1665,7 +2416,7 @@ func (c *Client) sendPrepareProjectAnnotationImport(ctx context.Context, request
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("prepareProjectAnnotationImport"),
 		semconv.HTTPRequestMethodKey.String("POST"),
-		semconv.URLTemplateKey.String("/projects/{project_id}/imports/annotations:prepare"),
+		semconv.URLTemplateKey.String("/projects/{project_id}/datasets/{dataset_id}/imports/annotations:prepare"),
 	}
 	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
 
@@ -1698,7 +2449,7 @@ func (c *Client) sendPrepareProjectAnnotationImport(ctx context.Context, request
 
 	stage = "BuildURL"
 	u := uri.Clone(c.requestURL(ctx))
-	var pathParts [3]string
+	var pathParts [5]string
 	pathParts[0] = "/projects/"
 	{
 		// Encode "project_id" parameter.
@@ -1718,7 +2469,26 @@ func (c *Client) sendPrepareProjectAnnotationImport(ctx context.Context, request
 		}
 		pathParts[1] = encoded
 	}
-	pathParts[2] = "/imports/annotations:prepare"
+	pathParts[2] = "/datasets/"
+	{
+		// Encode "dataset_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "dataset_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.DatasetID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[3] = encoded
+	}
+	pathParts[4] = "/imports/annotations:prepare"
 	uri.AddPathParts(u, pathParts[:]...)
 
 	stage = "EncodeRequest"
@@ -1924,6 +2694,193 @@ func (c *Client) sendSignImportUploadParts(ctx context.Context, request *ImportU
 
 	stage = "DecodeResponse"
 	result, err := decodeSignImportUploadPartsResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// UnlinkProjectDatasets invokes unlinkProjectDatasets operation.
+//
+// DELETE /projects/{project_id}/datasets
+func (c *Client) UnlinkProjectDatasets(ctx context.Context, request *ProjectDatasetLinkRequest, params UnlinkProjectDatasetsParams) (UnlinkProjectDatasetsRes, error) {
+	res, err := c.sendUnlinkProjectDatasets(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendUnlinkProjectDatasets(ctx context.Context, request *ProjectDatasetLinkRequest, params UnlinkProjectDatasetsParams) (res UnlinkProjectDatasetsRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("unlinkProjectDatasets"),
+		semconv.HTTPRequestMethodKey.String("DELETE"),
+		semconv.URLTemplateKey.String("/projects/{project_id}/datasets"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, UnlinkProjectDatasetsOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/projects/"
+	{
+		// Encode "project_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "project_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.ProjectID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/datasets"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "DELETE", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeUnlinkProjectDatasetsRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeUnlinkProjectDatasetsResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// UpdateDataset invokes updateDataset operation.
+//
+// PUT /datasets/{dataset_id}
+func (c *Client) UpdateDataset(ctx context.Context, request *UpdateDatasetRequest, params UpdateDatasetParams) (UpdateDatasetRes, error) {
+	res, err := c.sendUpdateDataset(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendUpdateDataset(ctx context.Context, request *UpdateDatasetRequest, params UpdateDatasetParams) (res UpdateDatasetRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("updateDataset"),
+		semconv.HTTPRequestMethodKey.String("PUT"),
+		semconv.URLTemplateKey.String("/datasets/{dataset_id}"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, UpdateDatasetOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [2]string
+	pathParts[0] = "/datasets/"
+	{
+		// Encode "dataset_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "dataset_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.DatasetID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "PUT", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeUpdateDatasetRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeUpdateDatasetResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}

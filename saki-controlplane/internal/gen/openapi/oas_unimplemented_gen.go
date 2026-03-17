@@ -34,6 +34,13 @@ func (UnimplementedHandler) CompleteImportUploadSession(ctx context.Context, req
 	return r, ht.ErrNotImplemented
 }
 
+// CreateDataset implements createDataset operation.
+//
+// POST /datasets
+func (UnimplementedHandler) CreateDataset(ctx context.Context, req *CreateDatasetRequest) (r *Dataset, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // CreateProject implements createProject operation.
 //
 // POST /projects
@@ -43,14 +50,21 @@ func (UnimplementedHandler) CreateProject(ctx context.Context, req *CreateProjec
 
 // CreateSampleAnnotations implements createSampleAnnotations operation.
 //
-// POST /samples/{sample_id}/annotations
+// POST /projects/{project_id}/samples/{sample_id}/annotations
 func (UnimplementedHandler) CreateSampleAnnotations(ctx context.Context, req *CreateAnnotationRequest, params CreateSampleAnnotationsParams) (r []Annotation, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// DeleteDataset implements deleteDataset operation.
+//
+// DELETE /datasets/{dataset_id}
+func (UnimplementedHandler) DeleteDataset(ctx context.Context, params DeleteDatasetParams) (r DeleteDatasetRes, _ error) {
 	return r, ht.ErrNotImplemented
 }
 
 // ExecuteProjectAnnotationImport implements executeProjectAnnotationImport operation.
 //
-// POST /projects/{project_id}/imports/annotations:execute
+// POST /projects/{project_id}/datasets/{dataset_id}/imports/annotations:execute
 func (UnimplementedHandler) ExecuteProjectAnnotationImport(ctx context.Context, req *ExecuteProjectAnnotationImportRequest, params ExecuteProjectAnnotationImportParams) (r *ImportTaskCreateResponse, _ error) {
 	return r, ht.ErrNotImplemented
 }
@@ -59,6 +73,13 @@ func (UnimplementedHandler) ExecuteProjectAnnotationImport(ctx context.Context, 
 //
 // GET /auth/me
 func (UnimplementedHandler) GetCurrentUser(ctx context.Context) (r *CurrentUserResponse, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// GetDataset implements getDataset operation.
+//
+// GET /datasets/{dataset_id}
+func (UnimplementedHandler) GetDataset(ctx context.Context, params GetDatasetParams) (r GetDatasetRes, _ error) {
 	return r, ht.ErrNotImplemented
 }
 
@@ -111,6 +132,34 @@ func (UnimplementedHandler) InitImportUploadSession(ctx context.Context, req *Im
 	return r, ht.ErrNotImplemented
 }
 
+// LinkProjectDatasets implements linkProjectDatasets operation.
+//
+// POST /projects/{project_id}/datasets
+func (UnimplementedHandler) LinkProjectDatasets(ctx context.Context, req *ProjectDatasetLinkRequest, params LinkProjectDatasetsParams) (r LinkProjectDatasetsRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// ListDatasets implements listDatasets operation.
+//
+// GET /datasets
+func (UnimplementedHandler) ListDatasets(ctx context.Context, params ListDatasetsParams) (r *DatasetListResponse, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// ListProjectDatasetDetails implements listProjectDatasetDetails operation.
+//
+// GET /projects/{project_id}/datasets/detail
+func (UnimplementedHandler) ListProjectDatasetDetails(ctx context.Context, params ListProjectDatasetDetailsParams) (r ListProjectDatasetDetailsRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// ListProjectDatasets implements listProjectDatasets operation.
+//
+// GET /projects/{project_id}/datasets
+func (UnimplementedHandler) ListProjectDatasets(ctx context.Context, params ListProjectDatasetsParams) (r ListProjectDatasetsRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // ListProjects implements listProjects operation.
 //
 // GET /projects
@@ -127,7 +176,7 @@ func (UnimplementedHandler) ListRuntimeExecutors(ctx context.Context) (r []Runti
 
 // ListSampleAnnotations implements listSampleAnnotations operation.
 //
-// GET /samples/{sample_id}/annotations
+// GET /projects/{project_id}/samples/{sample_id}/annotations
 func (UnimplementedHandler) ListSampleAnnotations(ctx context.Context, params ListSampleAnnotationsParams) (r []Annotation, _ error) {
 	return r, ht.ErrNotImplemented
 }
@@ -141,7 +190,7 @@ func (UnimplementedHandler) Login(ctx context.Context, req *LoginRequest) (r *Au
 
 // PrepareProjectAnnotationImport implements prepareProjectAnnotationImport operation.
 //
-// POST /projects/{project_id}/imports/annotations:prepare
+// POST /projects/{project_id}/datasets/{dataset_id}/imports/annotations:prepare
 func (UnimplementedHandler) PrepareProjectAnnotationImport(ctx context.Context, req *PrepareProjectAnnotationImportRequest, params PrepareProjectAnnotationImportParams) (r *PrepareProjectAnnotationImportResponse, _ error) {
 	return r, ht.ErrNotImplemented
 }
@@ -157,6 +206,20 @@ func (UnimplementedHandler) RequirePermission(ctx context.Context, params Requir
 //
 // POST /imports/uploads/{session_id}/parts:sign
 func (UnimplementedHandler) SignImportUploadParts(ctx context.Context, req *ImportUploadPartSignRequest, params SignImportUploadPartsParams) (r *ImportUploadPartSignResponse, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// UnlinkProjectDatasets implements unlinkProjectDatasets operation.
+//
+// DELETE /projects/{project_id}/datasets
+func (UnimplementedHandler) UnlinkProjectDatasets(ctx context.Context, req *ProjectDatasetLinkRequest, params UnlinkProjectDatasetsParams) (r UnlinkProjectDatasetsRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// UpdateDataset implements updateDataset operation.
+//
+// PUT /datasets/{dataset_id}
+func (UnimplementedHandler) UpdateDataset(ctx context.Context, req *UpdateDatasetRequest, params UpdateDatasetParams) (r UpdateDatasetRes, _ error) {
 	return r, ht.ErrNotImplemented
 }
 

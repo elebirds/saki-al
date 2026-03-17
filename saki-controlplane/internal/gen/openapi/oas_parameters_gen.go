@@ -211,10 +211,18 @@ func decodeCompleteImportUploadSessionParams(args [1]string, argsEscaped bool, r
 
 // CreateSampleAnnotationsParams is parameters of createSampleAnnotations operation.
 type CreateSampleAnnotationsParams struct {
-	SampleID string
+	ProjectID string
+	SampleID  string
 }
 
 func unpackCreateSampleAnnotationsParams(packed middleware.Parameters) (params CreateSampleAnnotationsParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "project_id",
+			In:   "path",
+		}
+		params.ProjectID = packed[key].(string)
+	}
 	{
 		key := middleware.ParameterKey{
 			Name: "sample_id",
@@ -225,12 +233,57 @@ func unpackCreateSampleAnnotationsParams(packed middleware.Parameters) (params C
 	return params
 }
 
-func decodeCreateSampleAnnotationsParams(args [1]string, argsEscaped bool, r *http.Request) (params CreateSampleAnnotationsParams, _ error) {
-	// Decode path: sample_id.
+func decodeCreateSampleAnnotationsParams(args [2]string, argsEscaped bool, r *http.Request) (params CreateSampleAnnotationsParams, _ error) {
+	// Decode path: project_id.
 	if err := func() error {
 		param := args[0]
 		if argsEscaped {
 			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "project_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.ProjectID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "project_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	// Decode path: sample_id.
+	if err := func() error {
+		param := args[1]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[1])
 			if err != nil {
 				return errors.Wrap(err, "unescape path")
 			}
@@ -274,9 +327,75 @@ func decodeCreateSampleAnnotationsParams(args [1]string, argsEscaped bool, r *ht
 	return params, nil
 }
 
+// DeleteDatasetParams is parameters of deleteDataset operation.
+type DeleteDatasetParams struct {
+	DatasetID string
+}
+
+func unpackDeleteDatasetParams(packed middleware.Parameters) (params DeleteDatasetParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "dataset_id",
+			In:   "path",
+		}
+		params.DatasetID = packed[key].(string)
+	}
+	return params
+}
+
+func decodeDeleteDatasetParams(args [1]string, argsEscaped bool, r *http.Request) (params DeleteDatasetParams, _ error) {
+	// Decode path: dataset_id.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "dataset_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.DatasetID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "dataset_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
 // ExecuteProjectAnnotationImportParams is parameters of executeProjectAnnotationImport operation.
 type ExecuteProjectAnnotationImportParams struct {
 	ProjectID string
+	DatasetID string
 }
 
 func unpackExecuteProjectAnnotationImportParams(packed middleware.Parameters) (params ExecuteProjectAnnotationImportParams) {
@@ -287,10 +406,17 @@ func unpackExecuteProjectAnnotationImportParams(packed middleware.Parameters) (p
 		}
 		params.ProjectID = packed[key].(string)
 	}
+	{
+		key := middleware.ParameterKey{
+			Name: "dataset_id",
+			In:   "path",
+		}
+		params.DatasetID = packed[key].(string)
+	}
 	return params
 }
 
-func decodeExecuteProjectAnnotationImportParams(args [1]string, argsEscaped bool, r *http.Request) (params ExecuteProjectAnnotationImportParams, _ error) {
+func decodeExecuteProjectAnnotationImportParams(args [2]string, argsEscaped bool, r *http.Request) (params ExecuteProjectAnnotationImportParams, _ error) {
 	// Decode path: project_id.
 	if err := func() error {
 		param := args[0]
@@ -332,6 +458,116 @@ func decodeExecuteProjectAnnotationImportParams(args [1]string, argsEscaped bool
 	}(); err != nil {
 		return params, &ogenerrors.DecodeParamError{
 			Name: "project_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	// Decode path: dataset_id.
+	if err := func() error {
+		param := args[1]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[1])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "dataset_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.DatasetID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "dataset_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
+// GetDatasetParams is parameters of getDataset operation.
+type GetDatasetParams struct {
+	DatasetID string
+}
+
+func unpackGetDatasetParams(packed middleware.Parameters) (params GetDatasetParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "dataset_id",
+			In:   "path",
+		}
+		params.DatasetID = packed[key].(string)
+	}
+	return params
+}
+
+func decodeGetDatasetParams(args [1]string, argsEscaped bool, r *http.Request) (params GetDatasetParams, _ error) {
+	// Decode path: dataset_id.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "dataset_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.DatasetID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "dataset_id",
 			In:   "path",
 			Err:  err,
 		}
@@ -599,12 +835,441 @@ func decodeGetProjectParams(args [1]string, argsEscaped bool, r *http.Request) (
 	return params, nil
 }
 
+// LinkProjectDatasetsParams is parameters of linkProjectDatasets operation.
+type LinkProjectDatasetsParams struct {
+	ProjectID string
+}
+
+func unpackLinkProjectDatasetsParams(packed middleware.Parameters) (params LinkProjectDatasetsParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "project_id",
+			In:   "path",
+		}
+		params.ProjectID = packed[key].(string)
+	}
+	return params
+}
+
+func decodeLinkProjectDatasetsParams(args [1]string, argsEscaped bool, r *http.Request) (params LinkProjectDatasetsParams, _ error) {
+	// Decode path: project_id.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "project_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.ProjectID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "project_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
+// ListDatasetsParams is parameters of listDatasets operation.
+type ListDatasetsParams struct {
+	Page  OptInt32  `json:",omitempty,omitzero"`
+	Limit OptInt32  `json:",omitempty,omitzero"`
+	Q     OptString `json:",omitempty,omitzero"`
+}
+
+func unpackListDatasetsParams(packed middleware.Parameters) (params ListDatasetsParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "page",
+			In:   "query",
+		}
+		if v, ok := packed[key]; ok {
+			params.Page = v.(OptInt32)
+		}
+	}
+	{
+		key := middleware.ParameterKey{
+			Name: "limit",
+			In:   "query",
+		}
+		if v, ok := packed[key]; ok {
+			params.Limit = v.(OptInt32)
+		}
+	}
+	{
+		key := middleware.ParameterKey{
+			Name: "q",
+			In:   "query",
+		}
+		if v, ok := packed[key]; ok {
+			params.Q = v.(OptString)
+		}
+	}
+	return params
+}
+
+func decodeListDatasetsParams(args [0]string, argsEscaped bool, r *http.Request) (params ListDatasetsParams, _ error) {
+	q := uri.NewQueryDecoder(r.URL.Query())
+	// Set default value for query: page.
+	{
+		val := int32(1)
+		params.Page.SetTo(val)
+	}
+	// Decode query: page.
+	if err := func() error {
+		cfg := uri.QueryParameterDecodingConfig{
+			Name:    "page",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.HasParam(cfg); err == nil {
+			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
+				var paramsDotPageVal int32
+				if err := func() error {
+					val, err := d.DecodeValue()
+					if err != nil {
+						return err
+					}
+
+					c, err := conv.ToInt32(val)
+					if err != nil {
+						return err
+					}
+
+					paramsDotPageVal = c
+					return nil
+				}(); err != nil {
+					return err
+				}
+				params.Page.SetTo(paramsDotPageVal)
+				return nil
+			}); err != nil {
+				return err
+			}
+			if err := func() error {
+				if value, ok := params.Page.Get(); ok {
+					if err := func() error {
+						if err := (validate.Int{
+							MinSet:        true,
+							Min:           1,
+							MaxSet:        false,
+							Max:           0,
+							MinExclusive:  false,
+							MaxExclusive:  false,
+							MultipleOfSet: false,
+							MultipleOf:    0,
+							Pattern:       nil,
+						}).Validate(int64(value)); err != nil {
+							return errors.Wrap(err, "int")
+						}
+						return nil
+					}(); err != nil {
+						return err
+					}
+				}
+				return nil
+			}(); err != nil {
+				return err
+			}
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "page",
+			In:   "query",
+			Err:  err,
+		}
+	}
+	// Set default value for query: limit.
+	{
+		val := int32(20)
+		params.Limit.SetTo(val)
+	}
+	// Decode query: limit.
+	if err := func() error {
+		cfg := uri.QueryParameterDecodingConfig{
+			Name:    "limit",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.HasParam(cfg); err == nil {
+			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
+				var paramsDotLimitVal int32
+				if err := func() error {
+					val, err := d.DecodeValue()
+					if err != nil {
+						return err
+					}
+
+					c, err := conv.ToInt32(val)
+					if err != nil {
+						return err
+					}
+
+					paramsDotLimitVal = c
+					return nil
+				}(); err != nil {
+					return err
+				}
+				params.Limit.SetTo(paramsDotLimitVal)
+				return nil
+			}); err != nil {
+				return err
+			}
+			if err := func() error {
+				if value, ok := params.Limit.Get(); ok {
+					if err := func() error {
+						if err := (validate.Int{
+							MinSet:        true,
+							Min:           1,
+							MaxSet:        true,
+							Max:           200,
+							MinExclusive:  false,
+							MaxExclusive:  false,
+							MultipleOfSet: false,
+							MultipleOf:    0,
+							Pattern:       nil,
+						}).Validate(int64(value)); err != nil {
+							return errors.Wrap(err, "int")
+						}
+						return nil
+					}(); err != nil {
+						return err
+					}
+				}
+				return nil
+			}(); err != nil {
+				return err
+			}
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "limit",
+			In:   "query",
+			Err:  err,
+		}
+	}
+	// Decode query: q.
+	if err := func() error {
+		cfg := uri.QueryParameterDecodingConfig{
+			Name:    "q",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.HasParam(cfg); err == nil {
+			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
+				var paramsDotQVal string
+				if err := func() error {
+					val, err := d.DecodeValue()
+					if err != nil {
+						return err
+					}
+
+					c, err := conv.ToString(val)
+					if err != nil {
+						return err
+					}
+
+					paramsDotQVal = c
+					return nil
+				}(); err != nil {
+					return err
+				}
+				params.Q.SetTo(paramsDotQVal)
+				return nil
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "q",
+			In:   "query",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
+// ListProjectDatasetDetailsParams is parameters of listProjectDatasetDetails operation.
+type ListProjectDatasetDetailsParams struct {
+	ProjectID string
+}
+
+func unpackListProjectDatasetDetailsParams(packed middleware.Parameters) (params ListProjectDatasetDetailsParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "project_id",
+			In:   "path",
+		}
+		params.ProjectID = packed[key].(string)
+	}
+	return params
+}
+
+func decodeListProjectDatasetDetailsParams(args [1]string, argsEscaped bool, r *http.Request) (params ListProjectDatasetDetailsParams, _ error) {
+	// Decode path: project_id.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "project_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.ProjectID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "project_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
+// ListProjectDatasetsParams is parameters of listProjectDatasets operation.
+type ListProjectDatasetsParams struct {
+	ProjectID string
+}
+
+func unpackListProjectDatasetsParams(packed middleware.Parameters) (params ListProjectDatasetsParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "project_id",
+			In:   "path",
+		}
+		params.ProjectID = packed[key].(string)
+	}
+	return params
+}
+
+func decodeListProjectDatasetsParams(args [1]string, argsEscaped bool, r *http.Request) (params ListProjectDatasetsParams, _ error) {
+	// Decode path: project_id.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "project_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.ProjectID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "project_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
 // ListSampleAnnotationsParams is parameters of listSampleAnnotations operation.
 type ListSampleAnnotationsParams struct {
-	SampleID string
+	ProjectID string
+	SampleID  string
 }
 
 func unpackListSampleAnnotationsParams(packed middleware.Parameters) (params ListSampleAnnotationsParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "project_id",
+			In:   "path",
+		}
+		params.ProjectID = packed[key].(string)
+	}
 	{
 		key := middleware.ParameterKey{
 			Name: "sample_id",
@@ -615,12 +1280,57 @@ func unpackListSampleAnnotationsParams(packed middleware.Parameters) (params Lis
 	return params
 }
 
-func decodeListSampleAnnotationsParams(args [1]string, argsEscaped bool, r *http.Request) (params ListSampleAnnotationsParams, _ error) {
-	// Decode path: sample_id.
+func decodeListSampleAnnotationsParams(args [2]string, argsEscaped bool, r *http.Request) (params ListSampleAnnotationsParams, _ error) {
+	// Decode path: project_id.
 	if err := func() error {
 		param := args[0]
 		if argsEscaped {
 			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "project_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.ProjectID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "project_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	// Decode path: sample_id.
+	if err := func() error {
+		param := args[1]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[1])
 			if err != nil {
 				return errors.Wrap(err, "unescape path")
 			}
@@ -667,6 +1377,7 @@ func decodeListSampleAnnotationsParams(args [1]string, argsEscaped bool, r *http
 // PrepareProjectAnnotationImportParams is parameters of prepareProjectAnnotationImport operation.
 type PrepareProjectAnnotationImportParams struct {
 	ProjectID string
+	DatasetID string
 }
 
 func unpackPrepareProjectAnnotationImportParams(packed middleware.Parameters) (params PrepareProjectAnnotationImportParams) {
@@ -677,10 +1388,17 @@ func unpackPrepareProjectAnnotationImportParams(packed middleware.Parameters) (p
 		}
 		params.ProjectID = packed[key].(string)
 	}
+	{
+		key := middleware.ParameterKey{
+			Name: "dataset_id",
+			In:   "path",
+		}
+		params.DatasetID = packed[key].(string)
+	}
 	return params
 }
 
-func decodePrepareProjectAnnotationImportParams(args [1]string, argsEscaped bool, r *http.Request) (params PrepareProjectAnnotationImportParams, _ error) {
+func decodePrepareProjectAnnotationImportParams(args [2]string, argsEscaped bool, r *http.Request) (params PrepareProjectAnnotationImportParams, _ error) {
 	// Decode path: project_id.
 	if err := func() error {
 		param := args[0]
@@ -722,6 +1440,51 @@ func decodePrepareProjectAnnotationImportParams(args [1]string, argsEscaped bool
 	}(); err != nil {
 		return params, &ogenerrors.DecodeParamError{
 			Name: "project_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	// Decode path: dataset_id.
+	if err := func() error {
+		param := args[1]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[1])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "dataset_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.DatasetID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "dataset_id",
 			In:   "path",
 			Err:  err,
 		}
@@ -852,6 +1615,136 @@ func decodeSignImportUploadPartsParams(args [1]string, argsEscaped bool, r *http
 	}(); err != nil {
 		return params, &ogenerrors.DecodeParamError{
 			Name: "session_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
+// UnlinkProjectDatasetsParams is parameters of unlinkProjectDatasets operation.
+type UnlinkProjectDatasetsParams struct {
+	ProjectID string
+}
+
+func unpackUnlinkProjectDatasetsParams(packed middleware.Parameters) (params UnlinkProjectDatasetsParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "project_id",
+			In:   "path",
+		}
+		params.ProjectID = packed[key].(string)
+	}
+	return params
+}
+
+func decodeUnlinkProjectDatasetsParams(args [1]string, argsEscaped bool, r *http.Request) (params UnlinkProjectDatasetsParams, _ error) {
+	// Decode path: project_id.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "project_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.ProjectID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "project_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
+// UpdateDatasetParams is parameters of updateDataset operation.
+type UpdateDatasetParams struct {
+	DatasetID string
+}
+
+func unpackUpdateDatasetParams(packed middleware.Parameters) (params UpdateDatasetParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "dataset_id",
+			In:   "path",
+		}
+		params.DatasetID = packed[key].(string)
+	}
+	return params
+}
+
+func decodeUpdateDatasetParams(args [1]string, argsEscaped bool, r *http.Request) (params UpdateDatasetParams, _ error) {
+	// Decode path: dataset_id.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "dataset_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.DatasetID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "dataset_id",
 			In:   "path",
 			Err:  err,
 		}

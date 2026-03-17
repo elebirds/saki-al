@@ -24,6 +24,20 @@ func encodeCompleteImportUploadSessionRequest(
 	return nil
 }
 
+func encodeCreateDatasetRequest(
+	req *CreateDatasetRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
 func encodeCreateProjectRequest(
 	req *CreateProjectRequest,
 	r *http.Request,
@@ -80,6 +94,20 @@ func encodeInitImportUploadSessionRequest(
 	return nil
 }
 
+func encodeLinkProjectDatasetsRequest(
+	req *ProjectDatasetLinkRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
 func encodeLoginRequest(
 	req *LoginRequest,
 	r *http.Request,
@@ -110,6 +138,34 @@ func encodePrepareProjectAnnotationImportRequest(
 
 func encodeSignImportUploadPartsRequest(
 	req *ImportUploadPartSignRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodeUnlinkProjectDatasetsRequest(
+	req *ProjectDatasetLinkRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodeUpdateDatasetRequest(
+	req *UpdateDatasetRequest,
 	r *http.Request,
 ) error {
 	const contentType = "application/json"

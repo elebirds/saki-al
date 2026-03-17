@@ -289,6 +289,32 @@ func (s *CreateAnnotationRequestGeometry) init() CreateAnnotationRequestGeometry
 	return m
 }
 
+// Ref: #/components/schemas/CreateDatasetRequest
+type CreateDatasetRequest struct {
+	Name string `json:"name"`
+	Type string `json:"type"`
+}
+
+// GetName returns the value of Name.
+func (s *CreateDatasetRequest) GetName() string {
+	return s.Name
+}
+
+// GetType returns the value of Type.
+func (s *CreateDatasetRequest) GetType() string {
+	return s.Type
+}
+
+// SetName sets the value of Name.
+func (s *CreateDatasetRequest) SetName(val string) {
+	s.Name = val
+}
+
+// SetType sets the value of Type.
+func (s *CreateDatasetRequest) SetType(val string) {
+	s.Type = val
+}
+
 // Ref: #/components/schemas/CreateProjectRequest
 type CreateProjectRequest struct {
 	Name string `json:"name"`
@@ -329,6 +355,129 @@ func (s *CurrentUserResponse) SetUserID(val string) {
 func (s *CurrentUserResponse) SetPermissions(val []string) {
 	s.Permissions = val
 }
+
+// Ref: #/components/schemas/Dataset
+type Dataset struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Type string `json:"type"`
+}
+
+// GetID returns the value of ID.
+func (s *Dataset) GetID() string {
+	return s.ID
+}
+
+// GetName returns the value of Name.
+func (s *Dataset) GetName() string {
+	return s.Name
+}
+
+// GetType returns the value of Type.
+func (s *Dataset) GetType() string {
+	return s.Type
+}
+
+// SetID sets the value of ID.
+func (s *Dataset) SetID(val string) {
+	s.ID = val
+}
+
+// SetName sets the value of Name.
+func (s *Dataset) SetName(val string) {
+	s.Name = val
+}
+
+// SetType sets the value of Type.
+func (s *Dataset) SetType(val string) {
+	s.Type = val
+}
+
+func (*Dataset) getDatasetRes()    {}
+func (*Dataset) updateDatasetRes() {}
+
+// Ref: #/components/schemas/DatasetListResponse
+type DatasetListResponse struct {
+	Items   []Dataset `json:"items"`
+	Total   int32     `json:"total"`
+	Offset  int32     `json:"offset"`
+	Limit   int32     `json:"limit"`
+	Size    int32     `json:"size"`
+	HasMore bool      `json:"has_more"`
+}
+
+// GetItems returns the value of Items.
+func (s *DatasetListResponse) GetItems() []Dataset {
+	return s.Items
+}
+
+// GetTotal returns the value of Total.
+func (s *DatasetListResponse) GetTotal() int32 {
+	return s.Total
+}
+
+// GetOffset returns the value of Offset.
+func (s *DatasetListResponse) GetOffset() int32 {
+	return s.Offset
+}
+
+// GetLimit returns the value of Limit.
+func (s *DatasetListResponse) GetLimit() int32 {
+	return s.Limit
+}
+
+// GetSize returns the value of Size.
+func (s *DatasetListResponse) GetSize() int32 {
+	return s.Size
+}
+
+// GetHasMore returns the value of HasMore.
+func (s *DatasetListResponse) GetHasMore() bool {
+	return s.HasMore
+}
+
+// SetItems sets the value of Items.
+func (s *DatasetListResponse) SetItems(val []Dataset) {
+	s.Items = val
+}
+
+// SetTotal sets the value of Total.
+func (s *DatasetListResponse) SetTotal(val int32) {
+	s.Total = val
+}
+
+// SetOffset sets the value of Offset.
+func (s *DatasetListResponse) SetOffset(val int32) {
+	s.Offset = val
+}
+
+// SetLimit sets the value of Limit.
+func (s *DatasetListResponse) SetLimit(val int32) {
+	s.Limit = val
+}
+
+// SetSize sets the value of Size.
+func (s *DatasetListResponse) SetSize(val int32) {
+	s.Size = val
+}
+
+// SetHasMore sets the value of HasMore.
+func (s *DatasetListResponse) SetHasMore(val bool) {
+	s.HasMore = val
+}
+
+type DeleteDatasetBadRequest ErrorResponse
+
+func (*DeleteDatasetBadRequest) deleteDatasetRes() {}
+
+// DeleteDatasetNoContent is response for DeleteDataset operation.
+type DeleteDatasetNoContent struct{}
+
+func (*DeleteDatasetNoContent) deleteDatasetRes() {}
+
+type DeleteDatasetNotFound ErrorResponse
+
+func (*DeleteDatasetNotFound) deleteDatasetRes() {}
 
 // Ref: #/components/schemas/ErrorResponse
 type ErrorResponse struct {
@@ -396,6 +545,14 @@ func (s *ExecuteProjectAnnotationImportRequest) GetPreviewToken() string {
 func (s *ExecuteProjectAnnotationImportRequest) SetPreviewToken(val string) {
 	s.PreviewToken = val
 }
+
+type GetDatasetBadRequest ErrorResponse
+
+func (*GetDatasetBadRequest) getDatasetRes() {}
+
+type GetDatasetNotFound ErrorResponse
+
+func (*GetDatasetNotFound) getDatasetRes() {}
 
 // Ref: #/components/schemas/HealthResponse
 type HealthResponse struct {
@@ -1240,6 +1397,42 @@ func (s *ImportUploadSession) SetAbortedAt(val OptDateTime) {
 	s.AbortedAt = val
 }
 
+type LinkProjectDatasetsBadRequest ErrorResponse
+
+func (*LinkProjectDatasetsBadRequest) linkProjectDatasetsRes() {}
+
+type LinkProjectDatasetsNotFound ErrorResponse
+
+func (*LinkProjectDatasetsNotFound) linkProjectDatasetsRes() {}
+
+type LinkProjectDatasetsOKApplicationJSON []string
+
+func (*LinkProjectDatasetsOKApplicationJSON) linkProjectDatasetsRes() {}
+
+type ListProjectDatasetDetailsBadRequest ErrorResponse
+
+func (*ListProjectDatasetDetailsBadRequest) listProjectDatasetDetailsRes() {}
+
+type ListProjectDatasetDetailsNotFound ErrorResponse
+
+func (*ListProjectDatasetDetailsNotFound) listProjectDatasetDetailsRes() {}
+
+type ListProjectDatasetDetailsOKApplicationJSON []Dataset
+
+func (*ListProjectDatasetDetailsOKApplicationJSON) listProjectDatasetDetailsRes() {}
+
+type ListProjectDatasetsBadRequest ErrorResponse
+
+func (*ListProjectDatasetsBadRequest) listProjectDatasetsRes() {}
+
+type ListProjectDatasetsNotFound ErrorResponse
+
+func (*ListProjectDatasetsNotFound) listProjectDatasetsRes() {}
+
+type ListProjectDatasetsOKApplicationJSON []string
+
+func (*ListProjectDatasetsOKApplicationJSON) listProjectDatasetsRes() {}
+
 // Ref: #/components/schemas/LoginRequest
 type LoginRequest struct {
 	UserID string `json:"user_id"`
@@ -1341,6 +1534,52 @@ func (o OptDateTime) Get() (v time.Time, ok bool) {
 
 // Or returns value if set, or given parameter if does not.
 func (o OptDateTime) Or(d time.Time) time.Time {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptInt32 returns new OptInt32 with value set to v.
+func NewOptInt32(v int32) OptInt32 {
+	return OptInt32{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptInt32 is optional int32.
+type OptInt32 struct {
+	Value int32
+	Set   bool
+}
+
+// IsSet returns true if OptInt32 was set.
+func (o OptInt32) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptInt32) Reset() {
+	var v int32
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptInt32) SetTo(v int32) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptInt32) Get() (v int32, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptInt32) Or(d int32) int32 {
 	if v, ok := o.Get(); ok {
 		return v
 	}
@@ -1537,6 +1776,21 @@ func (s *Project) SetName(val string) {
 	s.Name = val
 }
 
+// Ref: #/components/schemas/ProjectDatasetLinkRequest
+type ProjectDatasetLinkRequest struct {
+	DatasetIds []string `json:"dataset_ids"`
+}
+
+// GetDatasetIds returns the value of DatasetIds.
+func (s *ProjectDatasetLinkRequest) GetDatasetIds() []string {
+	return s.DatasetIds
+}
+
+// SetDatasetIds sets the value of DatasetIds.
+func (s *ProjectDatasetLinkRequest) SetDatasetIds(val []string) {
+	s.DatasetIds = val
+}
+
 // RequirePermissionNoContent is response for RequirePermission operation.
 type RequirePermissionNoContent struct{}
 
@@ -1627,4 +1881,50 @@ func (s *RuntimeSummaryResponse) SetRunningTasks(val int32) {
 // SetLeaderEpoch sets the value of LeaderEpoch.
 func (s *RuntimeSummaryResponse) SetLeaderEpoch(val int64) {
 	s.LeaderEpoch = val
+}
+
+type UnlinkProjectDatasetsBadRequest ErrorResponse
+
+func (*UnlinkProjectDatasetsBadRequest) unlinkProjectDatasetsRes() {}
+
+type UnlinkProjectDatasetsNotFound ErrorResponse
+
+func (*UnlinkProjectDatasetsNotFound) unlinkProjectDatasetsRes() {}
+
+type UnlinkProjectDatasetsOKApplicationJSON int32
+
+func (*UnlinkProjectDatasetsOKApplicationJSON) unlinkProjectDatasetsRes() {}
+
+type UpdateDatasetBadRequest ErrorResponse
+
+func (*UpdateDatasetBadRequest) updateDatasetRes() {}
+
+type UpdateDatasetNotFound ErrorResponse
+
+func (*UpdateDatasetNotFound) updateDatasetRes() {}
+
+// Ref: #/components/schemas/UpdateDatasetRequest
+type UpdateDatasetRequest struct {
+	Name string `json:"name"`
+	Type string `json:"type"`
+}
+
+// GetName returns the value of Name.
+func (s *UpdateDatasetRequest) GetName() string {
+	return s.Name
+}
+
+// GetType returns the value of Type.
+func (s *UpdateDatasetRequest) GetType() string {
+	return s.Type
+}
+
+// SetName sets the value of Name.
+func (s *UpdateDatasetRequest) SetName(val string) {
+	s.Name = val
+}
+
+// SetType sets the value of Type.
+func (s *UpdateDatasetRequest) SetType(val string) {
+	s.Type = val
 }

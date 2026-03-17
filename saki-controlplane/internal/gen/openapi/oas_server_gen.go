@@ -20,22 +20,34 @@ type Handler interface {
 	//
 	// POST /imports/uploads/{session_id}:complete
 	CompleteImportUploadSession(ctx context.Context, req *ImportUploadCompleteRequest, params CompleteImportUploadSessionParams) (*ImportUploadSession, error)
+	// CreateDataset implements createDataset operation.
+	//
+	// POST /datasets
+	CreateDataset(ctx context.Context, req *CreateDatasetRequest) (*Dataset, error)
 	// CreateProject implements createProject operation.
 	//
 	// POST /projects
 	CreateProject(ctx context.Context, req *CreateProjectRequest) (*Project, error)
 	// CreateSampleAnnotations implements createSampleAnnotations operation.
 	//
-	// POST /samples/{sample_id}/annotations
+	// POST /projects/{project_id}/samples/{sample_id}/annotations
 	CreateSampleAnnotations(ctx context.Context, req *CreateAnnotationRequest, params CreateSampleAnnotationsParams) ([]Annotation, error)
+	// DeleteDataset implements deleteDataset operation.
+	//
+	// DELETE /datasets/{dataset_id}
+	DeleteDataset(ctx context.Context, params DeleteDatasetParams) (DeleteDatasetRes, error)
 	// ExecuteProjectAnnotationImport implements executeProjectAnnotationImport operation.
 	//
-	// POST /projects/{project_id}/imports/annotations:execute
+	// POST /projects/{project_id}/datasets/{dataset_id}/imports/annotations:execute
 	ExecuteProjectAnnotationImport(ctx context.Context, req *ExecuteProjectAnnotationImportRequest, params ExecuteProjectAnnotationImportParams) (*ImportTaskCreateResponse, error)
 	// GetCurrentUser implements getCurrentUser operation.
 	//
 	// GET /auth/me
 	GetCurrentUser(ctx context.Context) (*CurrentUserResponse, error)
+	// GetDataset implements getDataset operation.
+	//
+	// GET /datasets/{dataset_id}
+	GetDataset(ctx context.Context, params GetDatasetParams) (GetDatasetRes, error)
 	// GetImportTask implements getImportTask operation.
 	//
 	// GET /imports/tasks/{task_id}
@@ -64,6 +76,22 @@ type Handler interface {
 	//
 	// POST /imports/uploads:init
 	InitImportUploadSession(ctx context.Context, req *ImportUploadInitRequest) (*ImportUploadInitResponse, error)
+	// LinkProjectDatasets implements linkProjectDatasets operation.
+	//
+	// POST /projects/{project_id}/datasets
+	LinkProjectDatasets(ctx context.Context, req *ProjectDatasetLinkRequest, params LinkProjectDatasetsParams) (LinkProjectDatasetsRes, error)
+	// ListDatasets implements listDatasets operation.
+	//
+	// GET /datasets
+	ListDatasets(ctx context.Context, params ListDatasetsParams) (*DatasetListResponse, error)
+	// ListProjectDatasetDetails implements listProjectDatasetDetails operation.
+	//
+	// GET /projects/{project_id}/datasets/detail
+	ListProjectDatasetDetails(ctx context.Context, params ListProjectDatasetDetailsParams) (ListProjectDatasetDetailsRes, error)
+	// ListProjectDatasets implements listProjectDatasets operation.
+	//
+	// GET /projects/{project_id}/datasets
+	ListProjectDatasets(ctx context.Context, params ListProjectDatasetsParams) (ListProjectDatasetsRes, error)
 	// ListProjects implements listProjects operation.
 	//
 	// GET /projects
@@ -74,7 +102,7 @@ type Handler interface {
 	ListRuntimeExecutors(ctx context.Context) ([]RuntimeExecutor, error)
 	// ListSampleAnnotations implements listSampleAnnotations operation.
 	//
-	// GET /samples/{sample_id}/annotations
+	// GET /projects/{project_id}/samples/{sample_id}/annotations
 	ListSampleAnnotations(ctx context.Context, params ListSampleAnnotationsParams) ([]Annotation, error)
 	// Login implements login operation.
 	//
@@ -82,7 +110,7 @@ type Handler interface {
 	Login(ctx context.Context, req *LoginRequest) (*AuthTokenResponse, error)
 	// PrepareProjectAnnotationImport implements prepareProjectAnnotationImport operation.
 	//
-	// POST /projects/{project_id}/imports/annotations:prepare
+	// POST /projects/{project_id}/datasets/{dataset_id}/imports/annotations:prepare
 	PrepareProjectAnnotationImport(ctx context.Context, req *PrepareProjectAnnotationImportRequest, params PrepareProjectAnnotationImportParams) (*PrepareProjectAnnotationImportResponse, error)
 	// RequirePermission implements requirePermission operation.
 	//
@@ -92,6 +120,14 @@ type Handler interface {
 	//
 	// POST /imports/uploads/{session_id}/parts:sign
 	SignImportUploadParts(ctx context.Context, req *ImportUploadPartSignRequest, params SignImportUploadPartsParams) (*ImportUploadPartSignResponse, error)
+	// UnlinkProjectDatasets implements unlinkProjectDatasets operation.
+	//
+	// DELETE /projects/{project_id}/datasets
+	UnlinkProjectDatasets(ctx context.Context, req *ProjectDatasetLinkRequest, params UnlinkProjectDatasetsParams) (UnlinkProjectDatasetsRes, error)
+	// UpdateDataset implements updateDataset operation.
+	//
+	// PUT /datasets/{dataset_id}
+	UpdateDataset(ctx context.Context, req *UpdateDatasetRequest, params UpdateDatasetParams) (UpdateDatasetRes, error)
 	// NewError creates *ErrorResponseStatusCode from error returned by handler.
 	//
 	// Used for common default response.

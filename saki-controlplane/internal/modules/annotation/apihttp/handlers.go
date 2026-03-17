@@ -18,13 +18,21 @@ type Handlers struct {
 }
 
 func NewHandlers(samples annotationapp.SampleStore, annotations annotationapp.AnnotationStore, mapper annotationapp.Mapper) *Handlers {
+	return NewHandlersWithDependencies(samples, nil, nil, annotations, mapper)
+}
+
+func NewHandlersWithDependencies(samples annotationapp.SampleStore, datasets annotationapp.DatasetStore, projects annotationapp.ProjectDatasetStore, annotations annotationapp.AnnotationStore, mapper annotationapp.Mapper) *Handlers {
 	return &Handlers{
-		create: annotationapp.NewCreateAnnotationUseCase(samples, annotations, mapper),
-		list:   annotationapp.NewListAnnotationsUseCase(annotations),
+		create: annotationapp.NewCreateAnnotationUseCase(samples, datasets, projects, annotations, mapper),
+		list:   annotationapp.NewListAnnotationsUseCase(samples, projects, annotations),
 	}
 }
 
 func (h *Handlers) CreateSampleAnnotations(ctx context.Context, req *openapi.CreateAnnotationRequest, params openapi.CreateSampleAnnotationsParams) ([]openapi.Annotation, error) {
+	projectID, err := uuid.Parse(params.ProjectID)
+	if err != nil {
+		return nil, err
+	}
 	sampleID, err := uuid.Parse(params.SampleID)
 	if err != nil {
 		return nil, err
@@ -43,7 +51,7 @@ func (h *Handlers) CreateSampleAnnotations(ctx context.Context, req *openapi.Cre
 		}
 	}
 
-	annotations, err := h.create.Execute(ctx, sampleID, annotationdomain.CreateInput{
+	annotations, err := h.create.Execute(ctx, projectID, sampleID, annotationdomain.CreateInput{
 		GroupID:        req.GetGroupID(),
 		LabelID:        req.GetLabelID(),
 		View:           req.GetView(),
@@ -60,12 +68,16 @@ func (h *Handlers) CreateSampleAnnotations(ctx context.Context, req *openapi.Cre
 }
 
 func (h *Handlers) ListSampleAnnotations(ctx context.Context, params openapi.ListSampleAnnotationsParams) ([]openapi.Annotation, error) {
+	projectID, err := uuid.Parse(params.ProjectID)
+	if err != nil {
+		return nil, err
+	}
 	sampleID, err := uuid.Parse(params.SampleID)
 	if err != nil {
 		return nil, err
 	}
 
-	annotations, err := h.list.Execute(ctx, sampleID)
+	annotations, err := h.list.Execute(ctx, projectID, sampleID)
 	if err != nil {
 		return nil, err
 	}

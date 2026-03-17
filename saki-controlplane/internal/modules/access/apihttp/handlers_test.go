@@ -13,6 +13,8 @@ import (
 	accessapp "github.com/elebirds/saki/saki-controlplane/internal/modules/access/app"
 	accessdomain "github.com/elebirds/saki/saki-controlplane/internal/modules/access/domain"
 	annotationrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/repo"
+	datasetapp "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/app"
+	datasetrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/repo"
 	projectapp "github.com/elebirds/saki/saki-controlplane/internal/modules/project/app"
 	runtimecommands "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/commands"
 	runtimequeries "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/queries"
@@ -227,10 +229,12 @@ func newTestHTTPHandlerWithStore(store *fakeAccessStore) (http.Handler, error) {
 	return systemapi.NewHTTPHandler(systemapi.Dependencies{
 		Authenticator:       accessapp.NewAuthenticator("test-secret", time.Hour).WithStore(store),
 		AccessStore:         store,
+		DatasetStore:        datasetapp.NewMemoryStore(),
 		ProjectStore:        projectapp.NewMemoryStore(),
 		RuntimeStore:        runtimequeries.NewMemoryAdminStore(),
 		RuntimeTaskCanceler: fakeRuntimeTaskCanceler{},
 		AnnotationSamples:   fakeAnnotationSampleStore{},
+		AnnotationDatasets:  fakeAnnotationDatasetStore{},
 		AnnotationStore:     fakeAnnotationStore{},
 	})
 }
@@ -247,13 +251,19 @@ func (fakeAnnotationSampleStore) Get(context.Context, uuid.UUID) (*annotationrep
 	return nil, nil
 }
 
+type fakeAnnotationDatasetStore struct{}
+
+func (fakeAnnotationDatasetStore) Get(context.Context, uuid.UUID) (*datasetrepo.Dataset, error) {
+	return nil, nil
+}
+
 type fakeAnnotationStore struct{}
 
 func (fakeAnnotationStore) Create(context.Context, annotationrepo.CreateAnnotationParams) (*annotationrepo.Annotation, error) {
 	return nil, nil
 }
 
-func (fakeAnnotationStore) ListBySample(context.Context, uuid.UUID) ([]annotationrepo.Annotation, error) {
+func (fakeAnnotationStore) ListByProjectSample(context.Context, uuid.UUID, uuid.UUID) ([]annotationrepo.Annotation, error) {
 	return nil, nil
 }
 

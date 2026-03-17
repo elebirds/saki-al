@@ -11,6 +11,8 @@ import (
 	accessapp "github.com/elebirds/saki/saki-controlplane/internal/modules/access/app"
 	annotationapi "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/apihttp"
 	annotationapp "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/app"
+	datasetapi "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/apihttp"
+	datasetapp "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/app"
 	importingapi "github.com/elebirds/saki/saki-controlplane/internal/modules/importing/apihttp"
 	projectapi "github.com/elebirds/saki/saki-controlplane/internal/modules/project/apihttp"
 	projectapp "github.com/elebirds/saki/saki-controlplane/internal/modules/project/app"
@@ -22,10 +24,12 @@ import (
 type Dependencies struct {
 	Authenticator       *accessapp.Authenticator
 	AccessStore         accessapp.Store
+	DatasetStore        datasetapp.Store
 	ProjectStore        projectapp.Store
 	RuntimeStore        runtimequeries.AdminStore
 	RuntimeTaskCanceler runtimequeries.RuntimeTaskCanceler
 	AnnotationSamples   annotationapp.SampleStore
+	AnnotationDatasets  annotationapp.DatasetStore
 	AnnotationStore     annotationapp.AnnotationStore
 	AnnotationMapper    annotationapp.Mapper
 	Importing           importingapi.Dependencies
@@ -36,6 +40,7 @@ type Server struct {
 
 	access     *accessapi.Handlers
 	annotation *annotationapi.Handlers
+	dataset    *datasetapi.Handlers
 	importing  *importingapi.Handlers
 	project    *projectapi.Handlers
 	runtime    *runtimeapi.Handlers
@@ -48,6 +53,9 @@ func NewHandler(deps Dependencies) (*Server, error) {
 	if deps.ProjectStore == nil {
 		return nil, errors.New("project store is required")
 	}
+	if deps.DatasetStore == nil {
+		return nil, errors.New("dataset store is required")
+	}
 	if deps.RuntimeStore == nil {
 		return nil, errors.New("runtime store is required")
 	}
@@ -57,18 +65,24 @@ func NewHandler(deps Dependencies) (*Server, error) {
 	if deps.AnnotationSamples == nil {
 		return nil, errors.New("annotation sample store is required")
 	}
+	if deps.AnnotationDatasets == nil {
+		return nil, errors.New("annotation dataset store is required")
+	}
 	if deps.AnnotationStore == nil {
 		return nil, errors.New("annotation store is required")
 	}
 	return &Server{
 		access: accessapi.NewHandlers(deps.Authenticator),
-		annotation: annotationapi.NewHandlers(
+		annotation: annotationapi.NewHandlersWithDependencies(
 			deps.AnnotationSamples,
+			deps.AnnotationDatasets,
+			deps.ProjectStore,
 			deps.AnnotationStore,
 			deps.AnnotationMapper,
 		),
+		dataset:   datasetapi.NewHandlers(deps.DatasetStore),
 		importing: importingapi.NewHandlers(deps.Importing),
-		project: projectapi.NewHandlers(deps.ProjectStore),
+		project:   projectapi.NewHandlers(deps.ProjectStore, deps.DatasetStore),
 		runtime: runtimeapi.NewHandlers(runtimeapi.Dependencies{
 			Store:    deps.RuntimeStore,
 			Commands: runtimequeries.NewIssueRuntimeCommandUseCase(deps.RuntimeTaskCanceler),
@@ -120,6 +134,10 @@ func (s *Server) Login(ctx context.Context, req *openapi.LoginRequest) (*openapi
 
 func (s *Server) CreateProject(ctx context.Context, req *openapi.CreateProjectRequest) (*openapi.Project, error) {
 	return s.project.CreateProject(ctx, req)
+}
+
+func (s *Server) CreateDataset(ctx context.Context, req *openapi.CreateDatasetRequest) (*openapi.Dataset, error) {
+	return s.dataset.CreateDataset(ctx, req)
 }
 
 func (s *Server) InitImportUploadSession(ctx context.Context, req *openapi.ImportUploadInitRequest) (*openapi.ImportUploadInitResponse, error) {
@@ -197,6 +215,10 @@ func (s *Server) GetCurrentUser(ctx context.Context) (*openapi.CurrentUserRespon
 	return s.access.GetCurrentUser(ctx)
 }
 
+func (s *Server) GetDataset(ctx context.Context, params openapi.GetDatasetParams) (openapi.GetDatasetRes, error) {
+	return s.dataset.GetDataset(ctx, params)
+}
+
 func (s *Server) GetProject(ctx context.Context, params openapi.GetProjectParams) (*openapi.Project, error) {
 	return s.project.GetProject(ctx, params)
 }
@@ -209,12 +231,40 @@ func (s *Server) ListProjects(ctx context.Context) ([]openapi.Project, error) {
 	return s.project.ListProjects(ctx)
 }
 
+func (s *Server) ListDatasets(ctx context.Context, params openapi.ListDatasetsParams) (*openapi.DatasetListResponse, error) {
+	return s.dataset.ListDatasets(ctx, params)
+}
+
+func (s *Server) LinkProjectDatasets(ctx context.Context, req *openapi.ProjectDatasetLinkRequest, params openapi.LinkProjectDatasetsParams) (openapi.LinkProjectDatasetsRes, error) {
+	return s.project.LinkProjectDatasets(ctx, req, params)
+}
+
+func (s *Server) ListProjectDatasetDetails(ctx context.Context, params openapi.ListProjectDatasetDetailsParams) (openapi.ListProjectDatasetDetailsRes, error) {
+	return s.project.ListProjectDatasetDetails(ctx, params)
+}
+
+func (s *Server) ListProjectDatasets(ctx context.Context, params openapi.ListProjectDatasetsParams) (openapi.ListProjectDatasetsRes, error) {
+	return s.project.ListProjectDatasets(ctx, params)
+}
+
 func (s *Server) ListRuntimeExecutors(ctx context.Context) ([]openapi.RuntimeExecutor, error) {
 	return s.runtime.ListRuntimeExecutors(ctx)
 }
 
 func (s *Server) ListSampleAnnotations(ctx context.Context, params openapi.ListSampleAnnotationsParams) ([]openapi.Annotation, error) {
 	return s.annotation.ListSampleAnnotations(ctx, params)
+}
+
+func (s *Server) UpdateDataset(ctx context.Context, req *openapi.UpdateDatasetRequest, params openapi.UpdateDatasetParams) (openapi.UpdateDatasetRes, error) {
+	return s.dataset.UpdateDataset(ctx, req, params)
+}
+
+func (s *Server) UnlinkProjectDatasets(ctx context.Context, req *openapi.ProjectDatasetLinkRequest, params openapi.UnlinkProjectDatasetsParams) (openapi.UnlinkProjectDatasetsRes, error) {
+	return s.project.UnlinkProjectDatasets(ctx, req, params)
+}
+
+func (s *Server) DeleteDataset(ctx context.Context, params openapi.DeleteDatasetParams) (openapi.DeleteDatasetRes, error) {
+	return s.dataset.DeleteDataset(ctx, params)
 }
 
 func (s *Server) RequirePermission(ctx context.Context, params openapi.RequirePermissionParams) error {

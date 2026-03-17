@@ -13,6 +13,8 @@ import (
 	accessrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/access/repo"
 	annotationmapping "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/app/mapping"
 	annotationrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/repo"
+	datasetapp "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/app"
+	datasetrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/repo"
 	importapi "github.com/elebirds/saki/saki-controlplane/internal/modules/importing/apihttp"
 	importapp "github.com/elebirds/saki/saki-controlplane/internal/modules/importing/app"
 	importrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/importing/repo"
@@ -59,6 +61,8 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 
 	sampleRepo := annotationrepo.NewSampleRepo(pool)
 	annotationRepo := annotationrepo.NewAnnotationRepo(pool)
+	datasetRepo := datasetrepo.NewDatasetRepo(pool)
+	datasetStore := datasetapp.NewRepoStore(datasetRepo)
 	projectRepo := projectrepo.NewProjectRepo(pool)
 	projectStore := projectapp.NewRepoStore(projectRepo)
 	importUploadRepo := importrepo.NewUploadRepo(pool)
@@ -73,18 +77,21 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 		importapp.NewParserRegistry(),
 	)
 	importExecute := importapp.NewExecuteProjectAnnotationsUseCase(
+		projectRepo,
 		importPreviewRepo,
 		importTaskRepo,
-		importapp.NewProjectAnnotationsTaskRunner(annotationRepo, importTaskRepo),
+		importapp.NewProjectAnnotationsTaskRunner(sampleRepo, annotationRepo, importTaskRepo),
 	)
 
 	handler, err := systemapi.NewHTTPHandler(systemapi.Dependencies{
 		Authenticator:       accessapp.NewAuthenticator(cfg.AuthTokenSecret, tokenTTL).WithStore(accessStore),
 		AccessStore:         accessStore,
+		DatasetStore:        datasetStore,
 		ProjectStore:        projectStore,
 		RuntimeStore:        runtimequeries.NewRepoAdminStore(taskRepo, runtimerepo.NewExecutorRepo(pool)),
 		RuntimeTaskCanceler: runtimecommands.NewCancelTaskHandlerWithTx(runtimerepo.NewCancelTaskTxRunner(pool)),
 		AnnotationSamples:   sampleRepo,
+		AnnotationDatasets:  datasetRepo,
 		AnnotationStore:     annotationRepo,
 		AnnotationMapper: annotationmapping.NewClient(annotationmapping.ClientConfig{
 			Command: []string{

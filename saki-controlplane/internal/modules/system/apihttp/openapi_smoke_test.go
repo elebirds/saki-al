@@ -20,6 +20,7 @@ import (
 	"github.com/elebirds/saki/saki-controlplane/internal/app/bootstrap"
 	appdb "github.com/elebirds/saki/saki-controlplane/internal/app/db"
 	annotationrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/repo"
+	datasetrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/repo"
 	importrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/importing/repo"
 	projectrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/project/repo"
 	runtimecommands "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/commands"
@@ -58,6 +59,7 @@ func TestPublicAPISmoke(t *testing.T) {
 	}
 	defer pool.Close()
 
+	datasetRepo := datasetrepo.NewDatasetRepo(pool)
 	sampleRepo := annotationrepo.NewSampleRepo(pool)
 	projectRepo := projectrepo.NewProjectRepo(pool)
 	matchRefRepo := importrepo.NewSampleMatchRefRepo(pool)
@@ -65,16 +67,23 @@ func TestPublicAPISmoke(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create smoke project: %v", err)
 	}
+	dataset, err := datasetRepo.Create(ctx, datasetrepo.CreateDatasetParams{Name: "smoke-dataset", Type: "single-view"})
+	if err != nil {
+		t.Fatalf("create smoke dataset: %v", err)
+	}
+	if _, err := projectRepo.LinkDataset(ctx, project.ID, dataset.ID); err != nil {
+		t.Fatalf("link smoke dataset: %v", err)
+	}
 	sample, err := sampleRepo.Create(ctx, annotationrepo.CreateSampleParams{
-		ProjectID:   project.ID,
-		DatasetType: "single-view",
-		Meta:        []byte(`{}`),
+		DatasetID: dataset.ID,
+		Name:      "sample1",
+		Meta:      []byte(`{}`),
 	})
 	if err != nil {
 		t.Fatalf("create smoke sample: %v", err)
 	}
 	if _, err := matchRefRepo.Put(ctx, importrepo.PutSampleMatchRefParams{
-		ProjectID: project.ID,
+		DatasetID: dataset.ID,
 		SampleID:  sample.ID,
 		RefType:   "dataset_relpath",
 		RefValue:  "images/train/sample1.jpg",
@@ -147,7 +156,7 @@ func TestPublicAPISmoke(t *testing.T) {
 	}
 
 	createAnnotationResp, err := http.Post(
-		httpServer.URL+"/samples/"+sample.ID.String()+"/annotations",
+		httpServer.URL+"/projects/"+project.ID.String()+"/samples/"+sample.ID.String()+"/annotations",
 		"application/json",
 		bytes.NewBufferString(`{"group_id":"smoke-group","label_id":"smoke-label","view":"rgb","annotation_type":"rect","geometry":{"x":1,"y":2,"w":3,"h":4},"attrs":{"score":0.5},"source":"manual"}`),
 	)
@@ -167,7 +176,7 @@ func TestPublicAPISmoke(t *testing.T) {
 		t.Fatalf("unexpected create annotation body: %+v", created)
 	}
 
-	listAnnotationResp, err := http.Get(httpServer.URL + "/samples/" + sample.ID.String() + "/annotations")
+	listAnnotationResp, err := http.Get(httpServer.URL + "/projects/" + project.ID.String() + "/samples/" + sample.ID.String() + "/annotations")
 	if err != nil {
 		t.Fatalf("get sample annotations: %v", err)
 	}
@@ -250,7 +259,7 @@ func TestPublicAPISmoke(t *testing.T) {
 
 	prepareReq, err := http.NewRequest(
 		http.MethodPost,
-		httpServer.URL+"/projects/"+project.ID.String()+"/imports/annotations:prepare",
+		httpServer.URL+"/projects/"+project.ID.String()+"/datasets/"+dataset.ID.String()+"/imports/annotations:prepare",
 		bytes.NewBufferString(`{"upload_session_id":"`+sessionID+`","format_profile":"coco"}`),
 	)
 	if err != nil {
@@ -278,7 +287,7 @@ func TestPublicAPISmoke(t *testing.T) {
 
 	executeReq, err := http.NewRequest(
 		http.MethodPost,
-		httpServer.URL+"/projects/"+project.ID.String()+"/imports/annotations:execute",
+		httpServer.URL+"/projects/"+project.ID.String()+"/datasets/"+dataset.ID.String()+"/imports/annotations:execute",
 		bytes.NewBufferString(`{"preview_token":"`+previewToken+`"}`),
 	)
 	if err != nil {
@@ -363,7 +372,7 @@ func TestPublicAPISmoke(t *testing.T) {
 		t.Fatalf("unexpected import task events body: %s", eventBytes.String())
 	}
 
-	importedListResp, err := http.Get(httpServer.URL + "/samples/" + sample.ID.String() + "/annotations")
+	importedListResp, err := http.Get(httpServer.URL + "/projects/" + project.ID.String() + "/samples/" + sample.ID.String() + "/annotations")
 	if err != nil {
 		t.Fatalf("get imported sample annotations: %v", err)
 	}

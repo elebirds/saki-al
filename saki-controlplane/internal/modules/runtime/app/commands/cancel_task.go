@@ -71,7 +71,7 @@ func (h *CancelTaskHandler) Handle(ctx context.Context, cmd CancelTaskCommand) (
 	topic := "runtime.task.canceled"
 	switch snapshot.Status {
 	case state.TaskStatusCancelRequested:
-		topic = "runtime.task.cancel_requested"
+		topic = "runtime.task.stop.v1"
 	case state.TaskStatusCanceled:
 		topic = "runtime.task.canceled"
 	default:

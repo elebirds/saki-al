@@ -33,8 +33,8 @@ func TestCancelTaskCommandRequestsCancelForRunningTaskAndAppendsOutbox(t *testin
 	if taskStore.updated == nil || taskStore.updated.Status != string(state.TaskStatusCancelRequested) {
 		t.Fatalf("expected cancel_requested status update, got %+v", taskStore.updated)
 	}
-	if outbox.last == nil || outbox.last.Topic != "runtime.task.cancel_requested" {
-		t.Fatalf("expected runtime.task.cancel_requested outbox event, got %+v", outbox.last)
+	if outbox.last == nil || outbox.last.Topic != "runtime.task.stop.v1" {
+		t.Fatalf("expected runtime.task.stop.v1 outbox event, got %+v", outbox.last)
 	}
 }
 
@@ -62,8 +62,8 @@ func TestCancelTaskCommandRequestsCancelForAssignedTaskAndAppendsOutbox(t *testi
 	if taskStore.updated == nil || taskStore.updated.Status != string(state.TaskStatusCancelRequested) {
 		t.Fatalf("expected cancel_requested status update, got %+v", taskStore.updated)
 	}
-	if outbox.last == nil || outbox.last.Topic != "runtime.task.cancel_requested" {
-		t.Fatalf("expected runtime.task.cancel_requested outbox event, got %+v", outbox.last)
+	if outbox.last == nil || outbox.last.Topic != "runtime.task.stop.v1" {
+		t.Fatalf("expected runtime.task.stop.v1 outbox event, got %+v", outbox.last)
 	}
 }
 

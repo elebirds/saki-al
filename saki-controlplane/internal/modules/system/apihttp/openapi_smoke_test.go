@@ -14,13 +14,16 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/elebirds/saki/saki-controlplane/internal/app/bootstrap"
 	appdb "github.com/elebirds/saki/saki-controlplane/internal/app/db"
 	annotationrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/repo"
 	importrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/importing/repo"
 	projectrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/project/repo"
+	runtimecommands "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/commands"
+	runtimerepo "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/repo"
 	"github.com/google/uuid"
-	"github.com/elebirds/saki/saki-controlplane/internal/app/bootstrap"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 	"github.com/testcontainers/testcontainers-go"
@@ -371,6 +374,148 @@ func TestPublicAPISmoke(t *testing.T) {
 	}
 	if len(importedListed) != 2 {
 		t.Fatalf("expected imported annotation to be persisted, got %+v", importedListed)
+	}
+}
+
+func TestPublicAPICancelTaskWritesStopOutbox(t *testing.T) {
+	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+
+	ctx := context.Background()
+	container, dsn := startSmokePostgres(t, ctx)
+	defer func() {
+		_ = testcontainers.TerminateContainer(container)
+	}()
+
+	sqlDB, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("open sql db: %v", err)
+	}
+	defer sqlDB.Close()
+
+	goose.SetDialect("postgres")
+	if err := goose.Up(sqlDB, smokeMigrationsDir(t)); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+
+	pool, err := appdb.NewPool(ctx, dsn)
+	if err != nil {
+		t.Fatalf("create pgx pool: %v", err)
+	}
+	defer pool.Close()
+
+	leaseRepo := runtimerepo.NewLeaseRepo(pool)
+	lease, err := leaseRepo.AcquireOrRenew(ctx, runtimerepo.AcquireLeaseParams{
+		Name:       "runtime-scheduler",
+		Holder:     "runtime-1",
+		LeaseUntil: time.Now().Add(time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("acquire runtime lease: %v", err)
+	}
+
+	taskRepo := runtimerepo.NewTaskRepo(pool)
+	taskID := uuid.New()
+	if err := taskRepo.CreateTask(ctx, runtimerepo.CreateTaskParams{
+		ID:       taskID,
+		TaskType: "predict",
+	}); err != nil {
+		t.Fatalf("create runtime task: %v", err)
+	}
+
+	assigned, err := taskRepo.AssignPendingTask(ctx, runtimerepo.AssignTaskParams{
+		AssignedAgentID: "agent-public-api-1",
+		LeaderEpoch:     lease.Epoch,
+	})
+	if err != nil {
+		t.Fatalf("assign runtime task: %v", err)
+	}
+	if assigned == nil {
+		t.Fatal("expected assigned runtime task")
+	}
+
+	t.Setenv("DATABASE_DSN", dsn)
+	t.Setenv("AUTH_TOKEN_SECRET", "smoke-secret")
+	t.Setenv("AUTH_TOKEN_TTL", "1h")
+	t.Setenv("PUBLIC_API_BIND", "127.0.0.1:0")
+
+	server, _, err := bootstrap.NewPublicAPI(context.Background())
+	if err != nil {
+		t.Fatalf("bootstrap public api: %v", err)
+	}
+
+	httpServer := httptest.NewServer(server.Handler)
+	defer httpServer.Close()
+
+	req, err := http.NewRequest(http.MethodPost, httpServer.URL+"/runtime/tasks/"+taskID.String()+"/cancel", nil)
+	if err != nil {
+		t.Fatalf("new cancel request: %v", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("post cancel runtime task: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("unexpected cancel status: %d", resp.StatusCode)
+	}
+
+	var body map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode cancel response: %v", err)
+	}
+	if accepted, _ := body["accepted"].(bool); !accepted {
+		t.Fatalf("unexpected cancel response body: %+v", body)
+	}
+
+	task, err := taskRepo.GetTask(ctx, taskID)
+	if err != nil {
+		t.Fatalf("load runtime task: %v", err)
+	}
+	if task == nil || task.Status != "cancel_requested" {
+		t.Fatalf("unexpected runtime task after cancel: %+v", task)
+	}
+
+	var stopOutboxCount int
+	if err := pool.QueryRow(ctx, `
+select count(*)
+from runtime_outbox
+where aggregate_id = $1
+  and topic = $2
+`, taskID.String(), runtimecommands.StopTaskOutboxTopic).Scan(&stopOutboxCount); err != nil {
+		t.Fatalf("count stop outbox: %v", err)
+	}
+	if stopOutboxCount != 1 {
+		t.Fatalf("expected exactly one stop outbox, got %d", stopOutboxCount)
+	}
+
+	var payloadBytes []byte
+	if err := pool.QueryRow(ctx, `
+select payload
+from runtime_outbox
+where aggregate_id = $1
+  and topic = $2
+`, taskID.String(), runtimecommands.StopTaskOutboxTopic).Scan(&payloadBytes); err != nil {
+		t.Fatalf("load stop outbox payload: %v", err)
+	}
+
+	var payload runtimecommands.StopTaskOutboxPayload
+	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
+		t.Fatalf("unmarshal stop payload: %v", err)
+	}
+	if payload.TaskID != taskID {
+		t.Fatalf("unexpected stop payload task id: %+v", payload)
+	}
+	if payload.ExecutionID != assigned.CurrentExecutionID {
+		t.Fatalf("unexpected stop payload execution id: %+v", payload)
+	}
+	if payload.AgentID != "agent-public-api-1" {
+		t.Fatalf("unexpected stop payload agent id: %+v", payload)
+	}
+	if payload.Reason != "cancel_requested" {
+		t.Fatalf("unexpected stop payload reason: %+v", payload)
+	}
+	if payload.LeaderEpoch != lease.Epoch {
+		t.Fatalf("unexpected stop payload leader epoch: %+v", payload)
 	}
 }
 

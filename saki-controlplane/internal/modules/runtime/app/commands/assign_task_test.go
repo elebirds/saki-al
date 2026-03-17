@@ -31,8 +31,8 @@ func TestAssignTaskCommandClaimsPendingTaskAndAppendsOutbox(t *testing.T) {
 	if assigned == nil || assigned.ID != taskID {
 		t.Fatalf("unexpected assigned task: %+v", assigned)
 	}
-	if taskStore.updated == nil || taskStore.updated.Status != string(state.TaskStatusRunning) {
-		t.Fatalf("expected running status update, got %+v", taskStore.updated)
+	if taskStore.updated == nil || taskStore.updated.Status != string(state.TaskStatusAssigned) {
+		t.Fatalf("expected assigned status update, got %+v", taskStore.updated)
 	}
 	if outbox.last == nil || outbox.last.Topic != "runtime.task.assigned" {
 		t.Fatalf("expected runtime.task.assigned outbox event, got %+v", outbox.last)

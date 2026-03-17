@@ -42,6 +42,10 @@ func (h *CompleteTaskHandler) Handle(ctx context.Context, cmd CompleteTaskComman
 	}
 
 	snapshot := state.TaskSnapshot{Status: state.TaskStatus(task.Status)}
+	if snapshot.Status != state.TaskStatusRunning {
+		return nil, state.ErrInvalidTransition
+	}
+
 	events, err := state.DecideTask(snapshot, state.FinishTask{})
 	if err != nil {
 		return nil, err

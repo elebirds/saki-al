@@ -38,7 +38,7 @@ func (h *CancelTaskHandler) Handle(ctx context.Context, cmd CancelTaskCommand) (
 	}
 
 	snapshot := state.TaskSnapshot{Status: state.TaskStatus(task.Status)}
-	events, err := state.DecideTask(snapshot, state.CancelTask{})
+	events, err := state.DecideTask(snapshot, state.RequestTaskCancel{})
 	if err != nil {
 		return nil, err
 	}

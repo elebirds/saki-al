@@ -63,7 +63,7 @@ func (h *AssignTaskHandler) Handle(ctx context.Context, cmd AssignTaskCommand) (
 	}
 
 	snapshot := state.TaskSnapshot{Status: state.TaskStatus(task.Status)}
-	events, err := state.DecideTask(snapshot, state.StartTask{})
+	events, err := state.DecideTask(snapshot, state.AssignTask{})
 	if err != nil {
 		return nil, err
 	}

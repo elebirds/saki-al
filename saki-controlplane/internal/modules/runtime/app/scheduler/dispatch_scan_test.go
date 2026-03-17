@@ -12,7 +12,7 @@ import (
 
 func TestDispatchScanClaimsPendingTaskAndAppendsAssignOutbox(t *testing.T) {
 	taskID := uuid.New()
-	taskClaimer := &fakeDispatchTaskClaimer{
+	store := &fakeDispatchTaskStore{
 		assignedTask: &commands.ClaimedTask{
 			ID:                 taskID,
 			TaskKind:           "PREDICTION",
@@ -26,32 +26,31 @@ func TestDispatchScanClaimsPendingTaskAndAppendsAssignOutbox(t *testing.T) {
 			LeaderEpoch:        11,
 		},
 	}
-	outbox := &fakeDispatchOutboxWriter{}
-	handler := commands.NewAssignTaskHandler(taskClaimer, outbox)
+	handler := commands.NewAssignTaskHandler(store)
 	scan := NewDispatchScan(handler, "agent-dispatch-1")
 
 	if err := scan.Dispatch(context.Background(), DispatchCommand{LeaderEpoch: 11}); err != nil {
 		t.Fatalf("dispatch scan: %v", err)
 	}
 
-	if taskClaimer.calledWith == nil {
+	if store.calledWith == nil {
 		t.Fatal("expected task claim to be called")
 	}
-	if taskClaimer.calledWith.AssignedAgentID != "agent-dispatch-1" {
-		t.Fatalf("unexpected assigned agent id: %+v", taskClaimer.calledWith)
+	if store.calledWith.AssignedAgentID != "agent-dispatch-1" {
+		t.Fatalf("unexpected assigned agent id: %+v", store.calledWith)
 	}
-	if taskClaimer.calledWith.LeaderEpoch != 11 {
-		t.Fatalf("unexpected leader epoch: %+v", taskClaimer.calledWith)
+	if store.calledWith.LeaderEpoch != 11 {
+		t.Fatalf("unexpected leader epoch: %+v", store.calledWith)
 	}
-	if outbox.last == nil {
+	if store.last == nil {
 		t.Fatal("expected outbox event")
 	}
-	if outbox.last.Topic != commands.AssignTaskOutboxTopic {
-		t.Fatalf("unexpected topic: %+v", outbox.last)
+	if store.last.Topic != commands.AssignTaskOutboxTopic {
+		t.Fatalf("unexpected topic: %+v", store.last)
 	}
 
 	var payload commands.AssignTaskOutboxPayload
-	if err := json.Unmarshal(outbox.last.Payload, &payload); err != nil {
+	if err := json.Unmarshal(store.last.Payload, &payload); err != nil {
 		t.Fatalf("unmarshal payload: %v", err)
 	}
 	if payload.TaskID != taskID {
@@ -77,21 +76,18 @@ func TestDispatchScanClaimsPendingTaskAndAppendsAssignOutbox(t *testing.T) {
 	}
 }
 
-type fakeDispatchTaskClaimer struct {
+type fakeDispatchTaskStore struct {
 	assignedTask *commands.ClaimedTask
 	calledWith   *commands.AssignClaimParams
+	last         *commands.OutboxEvent
 }
 
-func (f *fakeDispatchTaskClaimer) AssignPendingTask(_ context.Context, params commands.AssignClaimParams) (*commands.ClaimedTask, error) {
+func (f *fakeDispatchTaskStore) AssignPendingTask(_ context.Context, params commands.AssignClaimParams) (*commands.ClaimedTask, error) {
 	f.calledWith = &params
 	return f.assignedTask, nil
 }
 
-type fakeDispatchOutboxWriter struct {
-	last *commands.OutboxEvent
-}
-
-func (f *fakeDispatchOutboxWriter) Append(_ context.Context, event commands.OutboxEvent) error {
+func (f *fakeDispatchTaskStore) Append(_ context.Context, event commands.OutboxEvent) error {
 	f.last = &event
 	return nil
 }

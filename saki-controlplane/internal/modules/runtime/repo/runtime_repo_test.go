@@ -3,6 +3,7 @@ package repo
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"os/exec"
 	"path/filepath"
@@ -13,8 +14,11 @@ import (
 	"time"
 
 	appdb "github.com/elebirds/saki/saki-controlplane/internal/app/db"
+	sqlcdb "github.com/elebirds/saki/saki-controlplane/internal/gen/sqlc"
 	"github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/commands"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 	"github.com/testcontainers/testcontainers-go"
@@ -80,7 +84,7 @@ func TestRuntimeReposClaimLeaseAndAppendOutbox(t *testing.T) {
 	if assigned.ID != taskID {
 		t.Fatalf("unexpected assigned task id: %s", assigned.ID)
 	}
-	if assigned.AssignedAgentID == nil || *assigned.AssignedAgentID != "agent-runtime-1" {
+	if assigned.AssignedAgentID != "agent-runtime-1" {
 		t.Fatalf("expected assigned agent id agent-runtime-1, got %+v", assigned.AssignedAgentID)
 	}
 
@@ -159,10 +163,10 @@ func TestTaskRepoAssignsExecutionAndAgent(t *testing.T) {
 	if assigned.TaskKind != "PREDICTION" {
 		t.Fatalf("expected assigned task kind PREDICTION, got %q", assigned.TaskKind)
 	}
-	if assigned.CurrentExecutionID == nil || *assigned.CurrentExecutionID == "" {
+	if assigned.CurrentExecutionID == "" {
 		t.Fatalf("expected assigned execution id, got %+v", assigned.CurrentExecutionID)
 	}
-	if assigned.AssignedAgentID == nil || *assigned.AssignedAgentID != "agent-1" {
+	if assigned.AssignedAgentID != "agent-1" {
 		t.Fatalf("expected assigned agent id agent-1, got %+v", assigned.AssignedAgentID)
 	}
 	if assigned.Attempt != 1 {
@@ -177,7 +181,7 @@ func TestTaskRepoAssignsExecutionAndAgent(t *testing.T) {
 	if len(assigned.DependsOnTaskIDs) != 0 {
 		t.Fatalf("expected assigned dependencies to be empty, got %+v", assigned.DependsOnTaskIDs)
 	}
-	if assigned.LeaderEpoch == nil || *assigned.LeaderEpoch != lease.Epoch {
+	if assigned.LeaderEpoch != lease.Epoch {
 		t.Fatalf("expected assigned leader epoch %d, got %+v", lease.Epoch, assigned.LeaderEpoch)
 	}
 
@@ -223,8 +227,8 @@ where id = $1
 	if currentExecutionID == "" {
 		t.Fatal("expected current execution id to be generated")
 	}
-	if *assigned.CurrentExecutionID != currentExecutionID {
-		t.Fatalf("expected repo result execution id %q, got %q", currentExecutionID, *assigned.CurrentExecutionID)
+	if assigned.CurrentExecutionID != currentExecutionID {
+		t.Fatalf("expected repo result execution id %q, got %q", currentExecutionID, assigned.CurrentExecutionID)
 	}
 	if assignedAgentID != "agent-1" {
 		t.Fatalf("expected assigned agent id agent-1, got %q", assignedAgentID)
@@ -243,6 +247,242 @@ where id = $1
 	}
 	if leaderEpoch != lease.Epoch {
 		t.Fatalf("expected leader epoch %d, got %d", lease.Epoch, leaderEpoch)
+	}
+}
+
+func TestAssignTaskHandlerUsesTaskRepoClaimAndAppendsFrozenOutbox(t *testing.T) {
+	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+
+	ctx := context.Background()
+	container, dsn := startRuntimePostgres(t, ctx)
+	defer func() {
+		_ = testcontainers.TerminateContainer(container)
+	}()
+
+	sqlDB, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("open sql db: %v", err)
+	}
+	defer sqlDB.Close()
+
+	goose.SetDialect("postgres")
+	if err := goose.Up(sqlDB, runtimeMigrationsDir(t)); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+
+	pool, err := appdb.NewPool(ctx, dsn)
+	if err != nil {
+		t.Fatalf("create pool: %v", err)
+	}
+	defer pool.Close()
+
+	leaseRepo := NewLeaseRepo(pool)
+	lease, err := leaseRepo.AcquireOrRenew(ctx, AcquireLeaseParams{
+		Name:       "runtime-scheduler",
+		Holder:     "runtime-1",
+		LeaseUntil: time.Now().Add(time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("acquire lease: %v", err)
+	}
+
+	taskRepo := NewTaskRepo(pool)
+	taskID := uuid.New()
+	if err := taskRepo.CreateTask(ctx, CreateTaskParams{
+		ID:       taskID,
+		TaskType: "predict",
+	}); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	handler := commands.NewAssignTaskHandlerWithTx(NewAssignTaskTxRunner(pool))
+	assigned, err := handler.Handle(ctx, commands.AssignTaskCommand{
+		AssignedAgentID: "agent-handler-1",
+		LeaderEpoch:     lease.Epoch,
+	})
+	if err != nil {
+		t.Fatalf("handle assign task: %v", err)
+	}
+	if assigned == nil {
+		t.Fatal("expected assigned task")
+	}
+	if assigned.ID != taskID {
+		t.Fatalf("expected task id %s, got %s", taskID, assigned.ID)
+	}
+	if assigned.CurrentExecutionID == "" {
+		t.Fatal("expected execution id to be populated")
+	}
+	if assigned.AssignedAgentID != "agent-handler-1" {
+		t.Fatalf("expected assigned agent id agent-handler-1, got %q", assigned.AssignedAgentID)
+	}
+	if assigned.LeaderEpoch != lease.Epoch {
+		t.Fatalf("expected leader epoch %d, got %d", lease.Epoch, assigned.LeaderEpoch)
+	}
+
+	var (
+		topic          string
+		idempotencyKey string
+		payloadBytes   []byte
+	)
+	if err := pool.QueryRow(ctx, `
+select topic, idempotency_key, payload
+from runtime_outbox
+where aggregate_id = $1
+`, taskID.String()).Scan(&topic, &idempotencyKey, &payloadBytes); err != nil {
+		t.Fatalf("load runtime outbox: %v", err)
+	}
+	if topic != commands.AssignTaskOutboxTopic {
+		t.Fatalf("expected topic %s, got %q", commands.AssignTaskOutboxTopic, topic)
+	}
+	if idempotencyKey != commands.AssignTaskOutboxTopic+":"+assigned.CurrentExecutionID {
+		t.Fatalf("expected execution-scoped idempotency key, got %q", idempotencyKey)
+	}
+
+	var payload commands.AssignTaskOutboxPayload
+	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+	if payload.TaskID != taskID {
+		t.Fatalf("expected payload task id %s, got %s", taskID, payload.TaskID)
+	}
+	if payload.ExecutionID != assigned.CurrentExecutionID {
+		t.Fatalf("expected payload execution id %q, got %q", assigned.CurrentExecutionID, payload.ExecutionID)
+	}
+	if payload.AgentID != "agent-handler-1" {
+		t.Fatalf("expected payload agent id agent-handler-1, got %q", payload.AgentID)
+	}
+	if payload.TaskKind != "PREDICTION" || payload.TaskType != "predict" {
+		t.Fatalf("unexpected payload task metadata: %+v", payload)
+	}
+	if payload.Attempt != 1 || payload.MaxAttempts != 1 {
+		t.Fatalf("unexpected payload attempts: %+v", payload)
+	}
+	if string(payload.ResolvedParams) != "{}" {
+		t.Fatalf("expected payload resolved params {}, got %s", string(payload.ResolvedParams))
+	}
+	if len(payload.DependsOnTaskIDs) != 0 {
+		t.Fatalf("expected empty dependency ids, got %+v", payload.DependsOnTaskIDs)
+	}
+	if payload.LeaderEpoch != lease.Epoch {
+		t.Fatalf("expected payload leader epoch %d, got %d", lease.Epoch, payload.LeaderEpoch)
+	}
+}
+
+func TestAssignTaskHandlerWithTxReturnsNilWhenTaskRepoHasNoPendingTask(t *testing.T) {
+	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+
+	ctx := context.Background()
+	container, dsn := startRuntimePostgres(t, ctx)
+	defer func() {
+		_ = testcontainers.TerminateContainer(container)
+	}()
+
+	sqlDB, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("open sql db: %v", err)
+	}
+	defer sqlDB.Close()
+
+	goose.SetDialect("postgres")
+	if err := goose.Up(sqlDB, runtimeMigrationsDir(t)); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+
+	pool, err := appdb.NewPool(ctx, dsn)
+	if err != nil {
+		t.Fatalf("create pool: %v", err)
+	}
+	defer pool.Close()
+
+	handler := commands.NewAssignTaskHandlerWithTx(NewAssignTaskTxRunner(pool))
+	assigned, err := handler.Handle(ctx, commands.AssignTaskCommand{
+		AssignedAgentID: "agent-empty-queue",
+		LeaderEpoch:     1,
+	})
+	if err != nil {
+		t.Fatalf("expected empty queue to be non-error, got %v", err)
+	}
+	if assigned != nil {
+		t.Fatalf("expected nil assigned task on empty queue, got %+v", assigned)
+	}
+
+	outboxRepo := NewOutboxRepo(pool)
+	entries, err := outboxRepo.ClaimDue(ctx, 1, time.Now().Add(time.Minute))
+	if err != nil {
+		t.Fatalf("claim due outbox: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("expected no outbox entries on empty queue, got %+v", entries)
+	}
+}
+
+func TestAssignTaskHandlerWithTxRollsBackClaimWhenOutboxAppendFails(t *testing.T) {
+	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+
+	ctx := context.Background()
+	container, dsn := startRuntimePostgres(t, ctx)
+	defer func() {
+		_ = testcontainers.TerminateContainer(container)
+	}()
+
+	sqlDB, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("open sql db: %v", err)
+	}
+	defer sqlDB.Close()
+
+	goose.SetDialect("postgres")
+	if err := goose.Up(sqlDB, runtimeMigrationsDir(t)); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+
+	pool, err := appdb.NewPool(ctx, dsn)
+	if err != nil {
+		t.Fatalf("create pool: %v", err)
+	}
+	defer pool.Close()
+
+	taskRepo := NewTaskRepo(pool)
+	taskID := uuid.New()
+	if err := taskRepo.CreateTask(ctx, CreateTaskParams{
+		ID:       taskID,
+		TaskType: "predict",
+	}); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	handler := commands.NewAssignTaskHandlerWithTx(newFailingAssignTaskTxRunner(pool))
+	assigned, err := handler.Handle(ctx, commands.AssignTaskCommand{
+		AssignedAgentID: "agent-rollback-1",
+		LeaderEpoch:     9,
+	})
+	if err == nil {
+		t.Fatal("expected append failure")
+	}
+	if assigned != nil {
+		t.Fatalf("expected nil task when append fails, got %+v", assigned)
+	}
+
+	var (
+		status             string
+		currentExecutionID sql.NullString
+		assignedAgentID    sql.NullString
+	)
+	if err := pool.QueryRow(ctx, `
+select status, current_execution_id, assigned_agent_id
+from runtime_task
+where id = $1
+`, taskID).Scan(&status, &currentExecutionID, &assignedAgentID); err != nil {
+		t.Fatalf("load runtime task: %v", err)
+	}
+	if status != "pending" {
+		t.Fatalf("expected pending status after rollback, got %q", status)
+	}
+	if currentExecutionID.Valid {
+		t.Fatalf("expected current_execution_id rollback, got %+v", currentExecutionID)
+	}
+	if assignedAgentID.Valid {
+		t.Fatalf("expected assigned_agent_id rollback, got %+v", assignedAgentID)
 	}
 }
 
@@ -595,6 +835,34 @@ func TestExecutorRepoRegisterAndHeartbeat(t *testing.T) {
 	if !slices.Equal(executors[0].Capabilities, []string{"gpu", "cuda"}) {
 		t.Fatalf("unexpected persisted capabilities: %+v", executors[0].Capabilities)
 	}
+}
+
+type failingAssignTaskTxRunner struct {
+	tx *appdb.TxRunner
+}
+
+func newFailingAssignTaskTxRunner(pool *pgxpool.Pool) *failingAssignTaskTxRunner {
+	return &failingAssignTaskTxRunner{tx: appdb.NewTxRunner(pool)}
+}
+
+func (r *failingAssignTaskTxRunner) InTx(ctx context.Context, fn func(store commands.AssignTaskTx) error) error {
+	return r.tx.InTx(ctx, func(tx pgx.Tx) error {
+		return fn(failingAssignTaskTxStore{
+			tasks: newTaskRepo(sqlcdb.New(tx)),
+		})
+	})
+}
+
+type failingAssignTaskTxStore struct {
+	tasks *TaskRepo
+}
+
+func (s failingAssignTaskTxStore) AssignPendingTask(ctx context.Context, params commands.AssignClaimParams) (*commands.ClaimedTask, error) {
+	return s.tasks.AssignPendingTask(ctx, params)
+}
+
+func (failingAssignTaskTxStore) Append(context.Context, commands.OutboxEvent) error {
+	return errors.New("append failed")
 }
 
 func startRuntimePostgres(t *testing.T, ctx context.Context) (*postgres.PostgresContainer, string) {

@@ -13,30 +13,13 @@ import (
 	"github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/commands"
 )
 
-type RuntimeTask struct {
-	ID                 uuid.UUID
-	TaskKind           string
-	TaskType           string
-	Status             string
-	CurrentExecutionID *string
-	AssignedAgentID    *string
-	Attempt            int32
-	MaxAttempts        int32
-	ResolvedParams     []byte
-	DependsOnTaskIDs   []uuid.UUID
-	LeaderEpoch        *int64
-}
-
 type CreateTaskParams struct {
 	ID       uuid.UUID
 	TaskKind string
 	TaskType string
 }
 
-type AssignTaskParams struct {
-	AssignedAgentID string
-	LeaderEpoch     int64
-}
+type AssignTaskParams = commands.AssignClaimParams
 
 type RuntimeSummary struct {
 	PendingTasks int32
@@ -48,8 +31,14 @@ type TaskRepo struct {
 	q *sqlcdb.Queries
 }
 
+var _ commands.TaskClaimer = (*TaskRepo)(nil)
+
 func NewTaskRepo(pool *pgxpool.Pool) *TaskRepo {
-	return &TaskRepo{q: sqlcdb.New(pool)}
+	return newTaskRepo(sqlcdb.New(pool))
+}
+
+func newTaskRepo(q *sqlcdb.Queries) *TaskRepo {
+	return &TaskRepo{q: q}
 }
 
 func (r *TaskRepo) CreateTask(ctx context.Context, params CreateTaskParams) error {
@@ -61,16 +50,19 @@ func (r *TaskRepo) CreateTask(ctx context.Context, params CreateTaskParams) erro
 	return err
 }
 
-func (r *TaskRepo) AssignPendingTask(ctx context.Context, params AssignTaskParams) (*RuntimeTask, error) {
+func (r *TaskRepo) AssignPendingTask(ctx context.Context, params AssignTaskParams) (*commands.ClaimedTask, error) {
 	row, err := r.q.AssignPendingTask(ctx, sqlcdb.AssignPendingTaskParams{
 		AssignedAgentID: pgtype.Text{String: params.AssignedAgentID, Valid: true},
 		LeaderEpoch:     pgtype.Int8{Int64: params.LeaderEpoch, Valid: true},
 	})
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
 		return nil, err
 	}
 
-	return runtimeTaskFromAssignedRow(row), nil
+	return claimedTaskFromAssignedRow(row), nil
 }
 
 func (r *TaskRepo) GetTask(ctx context.Context, taskID uuid.UUID) (*commands.TaskRecord, error) {
@@ -113,22 +105,6 @@ func (r *TaskRepo) GetSummary(ctx context.Context) (RuntimeSummary, error) {
 	}, nil
 }
 
-func optionalText(value pgtype.Text) *string {
-	if !value.Valid {
-		return nil
-	}
-	text := value.String
-	return &text
-}
-
-func optionalInt64(value pgtype.Int8) *int64 {
-	if !value.Valid {
-		return nil
-	}
-	n := value.Int64
-	return &n
-}
-
 func textValue(value pgtype.Text) string {
 	if !value.Valid {
 		return ""
@@ -164,34 +140,18 @@ func taskKindOrDefault(taskKind string) string {
 	return taskKind
 }
 
-func runtimeTaskFromAssignedRow(row sqlcdb.AssignPendingTaskRow) *RuntimeTask {
-	return &RuntimeTask{
+func claimedTaskFromAssignedRow(row sqlcdb.AssignPendingTaskRow) *commands.ClaimedTask {
+	return &commands.ClaimedTask{
 		ID:                 row.ID,
 		TaskKind:           row.TaskKind,
 		TaskType:           row.TaskType,
 		Status:             row.Status,
-		CurrentExecutionID: optionalText(row.CurrentExecutionID),
-		AssignedAgentID:    optionalText(row.AssignedAgentID),
+		CurrentExecutionID: textValue(row.CurrentExecutionID),
+		AssignedAgentID:    textValue(row.AssignedAgentID),
 		Attempt:            row.Attempt,
 		MaxAttempts:        row.MaxAttempts,
 		ResolvedParams:     row.ResolvedParams,
 		DependsOnTaskIDs:   row.DependsOnTaskIds,
-		LeaderEpoch:        optionalInt64(row.LeaderEpoch),
-	}
-}
-
-func runtimeTaskFromRow(row sqlcdb.RuntimeTask) *RuntimeTask {
-	return &RuntimeTask{
-		ID:                 row.ID,
-		TaskKind:           row.TaskKind,
-		TaskType:           row.TaskType,
-		Status:             row.Status,
-		CurrentExecutionID: optionalText(row.CurrentExecutionID),
-		AssignedAgentID:    optionalText(row.AssignedAgentID),
-		Attempt:            row.Attempt,
-		MaxAttempts:        row.MaxAttempts,
-		ResolvedParams:     row.ResolvedParams,
-		DependsOnTaskIDs:   row.DependsOnTaskIds,
-		LeaderEpoch:        optionalInt64(row.LeaderEpoch),
+		LeaderEpoch:        int64Value(row.LeaderEpoch),
 	}
 }

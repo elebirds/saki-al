@@ -3,12 +3,15 @@ package commands
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
 )
 
 const AssignTaskOutboxTopic = "runtime.task.assign.v1"
+
+var ErrAssignedAgentRequired = errors.New("assigned agent id is required")
 
 type TaskRecord struct {
 	ID                 uuid.UUID
@@ -78,47 +81,72 @@ type OutboxWriter interface {
 	Append(ctx context.Context, event OutboxEvent) error
 }
 
+type AssignTaskTx interface {
+	TaskClaimer
+	OutboxWriter
+}
+
+type AssignTaskTxRunner interface {
+	InTx(ctx context.Context, fn func(store AssignTaskTx) error) error
+}
+
 type AssignTaskCommand struct {
 	AssignedAgentID string
 	LeaderEpoch     int64
 }
 
 type AssignTaskHandler struct {
-	tasks  TaskClaimer
-	outbox OutboxWriter
+	tx AssignTaskTxRunner
 }
 
-func NewAssignTaskHandler(tasks TaskClaimer, outbox OutboxWriter) *AssignTaskHandler {
+func NewAssignTaskHandler(store AssignTaskTx) *AssignTaskHandler {
 	return &AssignTaskHandler{
-		tasks:  tasks,
-		outbox: outbox,
+		tx: inlineAssignTaskTxRunner{store: store},
+	}
+}
+
+func NewAssignTaskHandlerWithTx(tx AssignTaskTxRunner) *AssignTaskHandler {
+	return &AssignTaskHandler{
+		tx: tx,
 	}
 }
 
 func (h *AssignTaskHandler) Handle(ctx context.Context, cmd AssignTaskCommand) (*TaskRecord, error) {
-	task, err := h.tasks.AssignPendingTask(ctx, AssignClaimParams{
-		AssignedAgentID: cmd.AssignedAgentID,
-		LeaderEpoch:     cmd.LeaderEpoch,
-	})
-	if err != nil || task == nil {
-		return nil, err
+	if cmd.AssignedAgentID == "" {
+		return nil, ErrAssignedAgentRequired
 	}
 
-	payload, err := json.Marshal(assignTaskOutboxPayloadFromClaim(task))
-	if err != nil {
-		return nil, err
-	}
+	var assigned *TaskRecord
+	if err := h.tx.InTx(ctx, func(store AssignTaskTx) error {
+		task, err := store.AssignPendingTask(ctx, AssignClaimParams{
+			AssignedAgentID: cmd.AssignedAgentID,
+			LeaderEpoch:     cmd.LeaderEpoch,
+		})
+		if err != nil || task == nil {
+			return err
+		}
 
-	if err := h.outbox.Append(ctx, OutboxEvent{
-		Topic:          AssignTaskOutboxTopic,
-		AggregateID:    task.ID.String(),
-		IdempotencyKey: assignTaskOutboxIdempotencyKey(task.CurrentExecutionID),
-		Payload:        payload,
+		payload, err := json.Marshal(assignTaskOutboxPayloadFromClaim(task))
+		if err != nil {
+			return err
+		}
+
+		if err := store.Append(ctx, OutboxEvent{
+			Topic:          AssignTaskOutboxTopic,
+			AggregateID:    task.ID.String(),
+			IdempotencyKey: assignTaskOutboxIdempotencyKey(task.CurrentExecutionID),
+			Payload:        payload,
+		}); err != nil {
+			return err
+		}
+
+		assigned = taskRecordFromClaimedTask(task)
+		return nil
 	}); err != nil {
 		return nil, err
 	}
 
-	return taskRecordFromClaimedTask(task), nil
+	return assigned, nil
 }
 
 func assignTaskOutboxPayloadFromClaim(task *ClaimedTask) AssignTaskOutboxPayload {
@@ -161,4 +189,12 @@ func normalizedResolvedParams(raw []byte) json.RawMessage {
 
 func assignTaskOutboxIdempotencyKey(executionID string) string {
 	return fmt.Sprintf("%s:%s", AssignTaskOutboxTopic, executionID)
+}
+
+type inlineAssignTaskTxRunner struct {
+	store AssignTaskTx
+}
+
+func (r inlineAssignTaskTxRunner) InTx(_ context.Context, fn func(store AssignTaskTx) error) error {
+	return fn(r.store)
 }

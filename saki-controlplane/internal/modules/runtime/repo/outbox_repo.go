@@ -45,7 +45,11 @@ type OutboxRepo struct {
 }
 
 func NewOutboxRepo(pool *pgxpool.Pool) *OutboxRepo {
-	return &OutboxRepo{q: sqlcdb.New(pool)}
+	return newOutboxRepo(sqlcdb.New(pool))
+}
+
+func newOutboxRepo(q *sqlcdb.Queries) *OutboxRepo {
+	return &OutboxRepo{q: q}
 }
 
 func (r *OutboxRepo) Append(ctx context.Context, params AppendOutboxParams) (*OutboxEntry, error) {
@@ -119,7 +123,11 @@ type CommandOutboxWriter struct {
 }
 
 func NewCommandOutboxWriter(pool *pgxpool.Pool) *CommandOutboxWriter {
-	return &CommandOutboxWriter{repo: NewOutboxRepo(pool)}
+	return newCommandOutboxWriter(NewOutboxRepo(pool))
+}
+
+func newCommandOutboxWriter(repo *OutboxRepo) *CommandOutboxWriter {
+	return &CommandOutboxWriter{repo: repo}
 }
 
 func (w *CommandOutboxWriter) Append(ctx context.Context, event commands.OutboxEvent) error {

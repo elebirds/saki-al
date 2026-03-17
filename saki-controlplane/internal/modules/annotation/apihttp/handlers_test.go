@@ -14,6 +14,7 @@ import (
 
 	appdb "github.com/elebirds/saki/saki-controlplane/internal/app/db"
 	accessapp "github.com/elebirds/saki/saki-controlplane/internal/modules/access/app"
+	accessdomain "github.com/elebirds/saki/saki-controlplane/internal/modules/access/domain"
 	annotationrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/repo"
 	projectapp "github.com/elebirds/saki/saki-controlplane/internal/modules/project/app"
 	runtimecommands "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/commands"
@@ -54,6 +55,7 @@ func TestCreateAndListSampleAnnotationsEndpoints(t *testing.T) {
 
 	handler, err := systemapi.NewHTTPHandler(systemapi.Dependencies{
 		Authenticator:       accessapp.NewAuthenticator("test-secret", time.Hour),
+		AccessStore:         fakeAccessStore{},
 		ProjectStore:        projectapp.NewMemoryStore(),
 		RuntimeStore:        runtimequeries.NewMemoryAdminStore(),
 		RuntimeTaskCanceler: fakeRuntimeTaskCanceler{},
@@ -104,6 +106,24 @@ type fakeRuntimeTaskCanceler struct{}
 
 func (fakeRuntimeTaskCanceler) Handle(context.Context, runtimecommands.CancelTaskCommand) (*runtimecommands.TaskRecord, error) {
 	return &runtimecommands.TaskRecord{}, nil
+}
+
+type fakeAccessStore struct{}
+
+func (fakeAccessStore) GetPrincipalByUserID(context.Context, string) (*accessdomain.Principal, error) {
+	return nil, nil
+}
+
+func (fakeAccessStore) GetPrincipalByID(context.Context, uuid.UUID) (*accessdomain.Principal, error) {
+	return nil, nil
+}
+
+func (fakeAccessStore) ListPermissions(context.Context, uuid.UUID) ([]string, error) {
+	return nil, nil
+}
+
+func (fakeAccessStore) UpsertBootstrapPrincipal(context.Context, accessapp.BootstrapPrincipalSpec) (*accessdomain.Principal, error) {
+	return nil, nil
 }
 
 func openAnnotationPool(t *testing.T, ctx context.Context, dsn string) *pgxpool.Pool {

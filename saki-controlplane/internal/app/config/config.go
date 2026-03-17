@@ -1,6 +1,34 @@
 package config
 
-import "github.com/caarlos0/env/v11"
+import (
+	"bytes"
+	"encoding/json"
+
+	"github.com/caarlos0/env/v11"
+)
+
+type BootstrapPrincipal struct {
+	UserID      string   `json:"user_id"`
+	DisplayName string   `json:"display_name"`
+	Permissions []string `json:"permissions"`
+}
+
+type BootstrapPrincipals []BootstrapPrincipal
+
+func (p *BootstrapPrincipals) UnmarshalText(text []byte) error {
+	if len(bytes.TrimSpace(text)) == 0 {
+		*p = nil
+		return nil
+	}
+
+	var principals []BootstrapPrincipal
+	if err := json.Unmarshal(text, &principals); err != nil {
+		return err
+	}
+
+	*p = principals
+	return nil
+}
 
 type Config struct {
 	PublicAPIBind               string `env:"PUBLIC_API_BIND" envDefault:":8080"`
@@ -11,6 +39,7 @@ type Config struct {
 	DatabaseDSN                 string `env:"DATABASE_DSN"`
 	AuthTokenSecret             string `env:"AUTH_TOKEN_SECRET" envDefault:"dev-secret"`
 	AuthTokenTTL                string `env:"AUTH_TOKEN_TTL" envDefault:"24h"`
+	AuthBootstrapPrincipals     BootstrapPrincipals `env:"AUTH_BOOTSTRAP_PRINCIPALS"`
 }
 
 func Load() (Config, error) {

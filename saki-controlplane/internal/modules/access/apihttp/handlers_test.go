@@ -108,6 +108,60 @@ func TestCurrentUserUsesBearerToken(t *testing.T) {
 	}
 }
 
+func TestMiddlewareUsesCurrentRepoPermissions(t *testing.T) {
+	store := newFakeAccessStore()
+	handler, err := newTestHTTPHandlerWithStore(store)
+	if err != nil {
+		t.Fatalf("new http handler: %v", err)
+	}
+
+	token := loginAndExtractToken(t, handler, "user-2")
+	store.permissionsByID[store.byUserID["user-2"].ID] = []string{"projects:write"}
+
+	req := httptest.NewRequest(http.MethodGet, "/auth/me", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unexpected status: %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var body struct {
+		UserID      string   `json:"user_id"`
+		Permissions []string `json:"permissions"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode current user response: %v", err)
+	}
+	if body.UserID != "user-2" {
+		t.Fatalf("unexpected current user body: %+v", body)
+	}
+	if !slices.Equal(body.Permissions, []string{"projects:write"}) {
+		t.Fatalf("expected repo-current permissions, got %+v", body)
+	}
+}
+
+func TestMiddlewareRejectsDisabledPrincipal(t *testing.T) {
+	store := newFakeAccessStore()
+	handler, err := newTestHTTPHandlerWithStore(store)
+	if err != nil {
+		t.Fatalf("new http handler: %v", err)
+	}
+
+	token := loginAndExtractToken(t, handler, "user-2")
+	store.byUserID["user-2"].Status = accessdomain.PrincipalStatusDisabled
+
+	req := httptest.NewRequest(http.MethodGet, "/auth/me", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("unexpected status: %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestPermissionDeniedReturnsForbidden(t *testing.T) {
 	handler, err := newTestHTTPHandler()
 	if err != nil {
@@ -166,9 +220,13 @@ func loginAndExtractToken(t *testing.T, handler http.Handler, userID string) str
 }
 
 func newTestHTTPHandler() (http.Handler, error) {
-	store := newFakeAccessStore()
+	return newTestHTTPHandlerWithStore(newFakeAccessStore())
+}
+
+func newTestHTTPHandlerWithStore(store *fakeAccessStore) (http.Handler, error) {
 	return systemapi.NewHTTPHandler(systemapi.Dependencies{
 		Authenticator:       accessapp.NewAuthenticator("test-secret", time.Hour).WithStore(store),
+		AccessStore:         store,
 		ProjectStore:        projectapp.NewMemoryStore(),
 		RuntimeStore:        runtimequeries.NewMemoryAdminStore(),
 		RuntimeTaskCanceler: fakeRuntimeTaskCanceler{},

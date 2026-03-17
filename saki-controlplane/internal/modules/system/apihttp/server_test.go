@@ -9,6 +9,7 @@ import (
 	"time"
 
 	accessapp "github.com/elebirds/saki/saki-controlplane/internal/modules/access/app"
+	accessdomain "github.com/elebirds/saki/saki-controlplane/internal/modules/access/domain"
 	annotationrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/repo"
 	projectapp "github.com/elebirds/saki/saki-controlplane/internal/modules/project/app"
 	runtimecommands "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/commands"
@@ -68,6 +69,7 @@ func TestServerReturnsStructuredErrorResponse(t *testing.T) {
 func newTestHTTPHandler() (http.Handler, error) {
 	return NewHTTPHandler(Dependencies{
 		Authenticator:       accessapp.NewAuthenticator("test-secret", time.Hour),
+		AccessStore:         fakeAccessStore{},
 		ProjectStore:        projectapp.NewMemoryStore(),
 		RuntimeStore:        runtimequeries.NewMemoryAdminStore(),
 		RuntimeTaskCanceler: fakeRuntimeTaskCanceler{},
@@ -95,5 +97,23 @@ func (fakeAnnotationStore) Create(context.Context, annotationrepo.CreateAnnotati
 }
 
 func (fakeAnnotationStore) ListBySample(context.Context, uuid.UUID) ([]annotationrepo.Annotation, error) {
+	return nil, nil
+}
+
+type fakeAccessStore struct{}
+
+func (fakeAccessStore) GetPrincipalByUserID(context.Context, string) (*accessdomain.Principal, error) {
+	return nil, nil
+}
+
+func (fakeAccessStore) GetPrincipalByID(context.Context, uuid.UUID) (*accessdomain.Principal, error) {
+	return nil, nil
+}
+
+func (fakeAccessStore) ListPermissions(context.Context, uuid.UUID) ([]string, error) {
+	return nil, nil
+}
+
+func (fakeAccessStore) UpsertBootstrapPrincipal(context.Context, accessapp.BootstrapPrincipalSpec) (*accessdomain.Principal, error) {
 	return nil, nil
 }

@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -22,7 +23,7 @@ func ClaimsFromContext(ctx context.Context) (*accessapp.Claims, bool) {
 	return claims, ok && claims != nil
 }
 
-func Middleware(authenticator *accessapp.Authenticator) func(http.Handler) http.Handler {
+func Middleware(authenticator *accessapp.Authenticator, store accessapp.Store) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			header := r.Header.Get("Authorization")
@@ -43,9 +44,44 @@ func Middleware(authenticator *accessapp.Authenticator) func(http.Handler) http.
 				return
 			}
 
-			next.ServeHTTP(w, r.WithContext(WithClaims(r.Context(), claims)))
+			resolvedClaims, err := resolveClaims(r.Context(), store, claims)
+			switch {
+			case errors.Is(err, accessapp.ErrUnauthorized):
+				writeUnauthorized(w)
+				return
+			case err != nil:
+				writeInternalError(w)
+				return
+			}
+
+			next.ServeHTTP(w, r.WithContext(WithClaims(r.Context(), resolvedClaims)))
 		})
 	}
+}
+
+func resolveClaims(ctx context.Context, store accessapp.Store, claims *accessapp.Claims) (*accessapp.Claims, error) {
+	principal, err := store.GetPrincipalByID(ctx, claims.PrincipalID)
+	if err != nil {
+		return nil, err
+	}
+	if principal == nil || principal.IsDisabled() {
+		return nil, accessapp.ErrUnauthorized
+	}
+	if principal.SubjectKey != claims.UserID {
+		return nil, accessapp.ErrUnauthorized
+	}
+
+	permissions, err := store.ListPermissions(ctx, principal.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &accessapp.Claims{
+		PrincipalID: principal.ID,
+		UserID:      principal.SubjectKey,
+		Permissions: permissions,
+		ExpiresAt:   claims.ExpiresAt,
+	}, nil
 }
 
 func writeUnauthorized(w http.ResponseWriter) {
@@ -54,5 +90,14 @@ func writeUnauthorized(w http.ResponseWriter) {
 	_ = json.NewEncoder(w).Encode(map[string]string{
 		"code":    "unauthorized",
 		"message": "invalid bearer token",
+	})
+}
+
+func writeInternalError(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusInternalServerError)
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"code":    "internal_error",
+		"message": "internal server error",
 	})
 }

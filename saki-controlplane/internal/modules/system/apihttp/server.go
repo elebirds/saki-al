@@ -21,6 +21,7 @@ import (
 
 type Dependencies struct {
 	Authenticator       *accessapp.Authenticator
+	AccessStore         accessapp.Store
 	ProjectStore        projectapp.Store
 	RuntimeStore        runtimequeries.AdminStore
 	RuntimeTaskCanceler runtimequeries.RuntimeTaskCanceler
@@ -76,6 +77,10 @@ func NewHandler(deps Dependencies) (*Server, error) {
 }
 
 func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
+	if deps.AccessStore == nil {
+		return nil, errors.New("access store is required")
+	}
+
 	handler, err := NewHandler(deps)
 	if err != nil {
 		return nil, err
@@ -96,7 +101,7 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 		})
 	}
 
-	return authctx.Middleware(deps.Authenticator)(baseHandler), nil
+	return authctx.Middleware(deps.Authenticator, deps.AccessStore)(baseHandler), nil
 }
 
 func (s *Server) Healthz(context.Context) (*openapi.HealthResponse, error) {

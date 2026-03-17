@@ -10,6 +10,7 @@ import (
 	appdb "github.com/elebirds/saki/saki-controlplane/internal/app/db"
 	"github.com/elebirds/saki/saki-controlplane/internal/app/observe"
 	accessapp "github.com/elebirds/saki/saki-controlplane/internal/modules/access/app"
+	accessrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/access/repo"
 	annotationmapping "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/app/mapping"
 	annotationrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/repo"
 	importapi "github.com/elebirds/saki/saki-controlplane/internal/modules/importing/apihttp"
@@ -42,6 +43,20 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 	}
 
 	taskRepo := runtimerepo.NewTaskRepo(pool)
+	accessStore := accessrepo.NewAppStore(accessrepo.NewPrincipalRepo(pool))
+	bootstrapPrincipals := make([]accessapp.BootstrapPrincipalSpec, 0, len(cfg.AuthBootstrapPrincipals))
+	for _, principal := range cfg.AuthBootstrapPrincipals {
+		bootstrapPrincipals = append(bootstrapPrincipals, accessapp.BootstrapPrincipalSpec{
+			UserID:      principal.UserID,
+			DisplayName: principal.DisplayName,
+			Permissions: append([]string(nil), principal.Permissions...),
+		})
+	}
+	if err := accessapp.NewBootstrapSeedUseCase(accessStore).Execute(ctx, bootstrapPrincipals); err != nil {
+		pool.Close()
+		return nil, nil, err
+	}
+
 	sampleRepo := annotationrepo.NewSampleRepo(pool)
 	annotationRepo := annotationrepo.NewAnnotationRepo(pool)
 	projectRepo := projectrepo.NewProjectRepo(pool)
@@ -64,7 +79,8 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 	)
 
 	handler, err := systemapi.NewHTTPHandler(systemapi.Dependencies{
-		Authenticator:       accessapp.NewAuthenticator(cfg.AuthTokenSecret, tokenTTL),
+		Authenticator:       accessapp.NewAuthenticator(cfg.AuthTokenSecret, tokenTTL).WithStore(accessStore),
+		AccessStore:         accessStore,
 		ProjectStore:        projectStore,
 		RuntimeStore:        runtimequeries.NewRepoAdminStore(taskRepo, runtimerepo.NewExecutorRepo(pool)),
 		RuntimeTaskCanceler: runtimecommands.NewCancelTaskHandlerWithTx(runtimerepo.NewCancelTaskTxRunner(pool)),

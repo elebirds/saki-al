@@ -9,10 +9,13 @@ OGEN_BIN ?= $(shell command -v ogen 2>/dev/null)
 BUF_BIN ?= $(shell command -v buf 2>/dev/null)
 SQLC_BIN ?= $(shell command -v sqlc 2>/dev/null)
 
-.PHONY: test fmt vet build-public-api build-runtime run-public-api run-runtime gen gen-openapi gen-proto gen-sqlc check-gen smoke-public-api ci
+.PHONY: test test-runtime fmt vet build-public-api build-runtime run-public-api run-runtime gen gen-openapi gen-proto gen-sqlc check-gen smoke-public-api ci
 
 test:
 	$(GO) test ./...
+
+test-runtime:
+	$(GO) test ./internal/modules/runtime/...
 
 fmt:
 	$(GO) fmt ./...

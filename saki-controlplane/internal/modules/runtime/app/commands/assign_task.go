@@ -10,18 +10,18 @@ import (
 )
 
 type TaskRecord struct {
-	ID          uuid.UUID
-	TaskType    string
-	Status      string
-	ClaimedBy   string
-	LeaderEpoch int64
+	ID              uuid.UUID
+	TaskType        string
+	Status          string
+	AssignedAgentID string
+	LeaderEpoch     int64
 }
 
 type TaskUpdate struct {
-	ID          uuid.UUID
-	Status      string
-	ClaimedBy   string
-	LeaderEpoch int64
+	ID              uuid.UUID
+	Status          string
+	AssignedAgentID string
+	LeaderEpoch     int64
 }
 
 type OutboxEvent struct {
@@ -40,8 +40,8 @@ type OutboxWriter interface {
 }
 
 type AssignTaskCommand struct {
-	ClaimedBy   string
-	LeaderEpoch int64
+	AssignedAgentID string
+	LeaderEpoch     int64
 }
 
 type AssignTaskHandler struct {
@@ -73,23 +73,23 @@ func (h *AssignTaskHandler) Handle(ctx context.Context, cmd AssignTaskCommand) (
 	}
 
 	update := TaskUpdate{
-		ID:          task.ID,
-		Status:      string(snapshot.Status),
-		ClaimedBy:   cmd.ClaimedBy,
-		LeaderEpoch: cmd.LeaderEpoch,
+		ID:              task.ID,
+		Status:          string(snapshot.Status),
+		AssignedAgentID: cmd.AssignedAgentID,
+		LeaderEpoch:     cmd.LeaderEpoch,
 	}
 	if err := h.tasks.UpdateTask(ctx, update); err != nil {
 		return nil, err
 	}
 
 	payload, err := json.Marshal(struct {
-		TaskID      uuid.UUID `json:"task_id"`
-		ClaimedBy   string    `json:"claimed_by"`
-		LeaderEpoch int64     `json:"leader_epoch"`
+		TaskID          uuid.UUID `json:"task_id"`
+		AssignedAgentID string    `json:"assigned_agent_id"`
+		LeaderEpoch     int64     `json:"leader_epoch"`
 	}{
-		TaskID:      task.ID,
-		ClaimedBy:   cmd.ClaimedBy,
-		LeaderEpoch: cmd.LeaderEpoch,
+		TaskID:          task.ID,
+		AssignedAgentID: cmd.AssignedAgentID,
+		LeaderEpoch:     cmd.LeaderEpoch,
 	})
 	if err != nil {
 		return nil, err
@@ -105,7 +105,7 @@ func (h *AssignTaskHandler) Handle(ctx context.Context, cmd AssignTaskCommand) (
 
 	assigned := *task
 	assigned.Status = update.Status
-	assigned.ClaimedBy = update.ClaimedBy
+	assigned.AssignedAgentID = update.AssignedAgentID
 	assigned.LeaderEpoch = update.LeaderEpoch
 
 	return &assigned, nil

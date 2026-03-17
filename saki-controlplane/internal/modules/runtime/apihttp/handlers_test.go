@@ -60,11 +60,11 @@ func TestRuntimeAdminQueriesReadPersistedState(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("create claimable task: %v", err)
 	}
-	if _, err := taskRepo.ClaimPendingTask(ctx, runtimerepo.ClaimTaskParams{
-		ClaimedBy:   "runtime-1",
-		LeaderEpoch: lease.Epoch,
+	if _, err := taskRepo.AssignPendingTask(ctx, runtimerepo.AssignTaskParams{
+		AssignedAgentID: "agent-runtime-1",
+		LeaderEpoch:     lease.Epoch,
 	}); err != nil {
-		t.Fatalf("claim task: %v", err)
+		t.Fatalf("assign task: %v", err)
 	}
 
 	executorRepo := runtimerepo.NewExecutorRepo(pool)

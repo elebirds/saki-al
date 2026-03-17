@@ -38,11 +38,6 @@ type AssignTaskParams struct {
 	LeaderEpoch     int64
 }
 
-type ClaimTaskParams struct {
-	ClaimedBy   string
-	LeaderEpoch int64
-}
-
 type RuntimeSummary struct {
 	PendingTasks int32
 	RunningTasks int32
@@ -78,13 +73,6 @@ func (r *TaskRepo) AssignPendingTask(ctx context.Context, params AssignTaskParam
 	return runtimeTaskFromAssignedRow(row), nil
 }
 
-func (r *TaskRepo) ClaimPendingTask(ctx context.Context, params ClaimTaskParams) (*RuntimeTask, error) {
-	return r.AssignPendingTask(ctx, AssignTaskParams{
-		AssignedAgentID: params.ClaimedBy,
-		LeaderEpoch:     params.LeaderEpoch,
-	})
-}
-
 func (r *TaskRepo) GetTask(ctx context.Context, taskID uuid.UUID) (*commands.TaskRecord, error) {
 	row, err := r.q.GetRuntimeTask(ctx, taskID)
 	if err != nil {
@@ -95,11 +83,11 @@ func (r *TaskRepo) GetTask(ctx context.Context, taskID uuid.UUID) (*commands.Tas
 	}
 
 	return &commands.TaskRecord{
-		ID:          row.ID,
-		TaskType:    row.TaskType,
-		Status:      row.Status,
-		ClaimedBy:   textValue(row.AssignedAgentID),
-		LeaderEpoch: int64Value(row.LeaderEpoch),
+		ID:              row.ID,
+		TaskType:        row.TaskType,
+		Status:          row.Status,
+		AssignedAgentID: textValue(row.AssignedAgentID),
+		LeaderEpoch:     int64Value(row.LeaderEpoch),
 	}, nil
 }
 
@@ -107,7 +95,7 @@ func (r *TaskRepo) UpdateTask(ctx context.Context, update commands.TaskUpdate) e
 	return r.q.UpdateRuntimeTask(ctx, sqlcdb.UpdateRuntimeTaskParams{
 		ID:              update.ID,
 		Status:          update.Status,
-		AssignedAgentID: nullableText(update.ClaimedBy),
+		AssignedAgentID: nullableText(update.AssignedAgentID),
 		LeaderEpoch:     nullableInt64(update.LeaderEpoch),
 	})
 }

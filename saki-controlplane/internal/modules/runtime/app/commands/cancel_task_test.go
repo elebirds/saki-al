@@ -13,10 +13,10 @@ func TestCancelTaskCommandRequestsCancelForRunningTaskAndAppendsOutbox(t *testin
 	taskID := uuid.New()
 	taskStore := &cancelTaskStore{
 		task: &TaskRecord{
-			ID:          taskID,
-			Status:      string(state.TaskStatusRunning),
-			ClaimedBy:   "runtime-1",
-			LeaderEpoch: 7,
+			ID:              taskID,
+			Status:          string(state.TaskStatusRunning),
+			AssignedAgentID: "agent-1",
+			LeaderEpoch:     7,
 		},
 	}
 	outbox := &fakeOutboxWriter{}
@@ -42,10 +42,10 @@ func TestCancelTaskCommandRequestsCancelForAssignedTaskAndAppendsOutbox(t *testi
 	taskID := uuid.New()
 	taskStore := &cancelTaskStore{
 		task: &TaskRecord{
-			ID:          taskID,
-			Status:      string(state.TaskStatusAssigned),
-			ClaimedBy:   "runtime-1",
-			LeaderEpoch: 7,
+			ID:              taskID,
+			Status:          string(state.TaskStatusAssigned),
+			AssignedAgentID: "agent-1",
+			LeaderEpoch:     7,
 		},
 	}
 	outbox := &fakeOutboxWriter{}
@@ -71,10 +71,10 @@ func TestCancelTaskCommandCancelsPendingTaskAndAppendsOutbox(t *testing.T) {
 	taskID := uuid.New()
 	taskStore := &cancelTaskStore{
 		task: &TaskRecord{
-			ID:          taskID,
-			Status:      string(state.TaskStatusPending),
-			ClaimedBy:   "runtime-1",
-			LeaderEpoch: 7,
+			ID:              taskID,
+			Status:          string(state.TaskStatusPending),
+			AssignedAgentID: "agent-1",
+			LeaderEpoch:     7,
 		},
 	}
 	outbox := &fakeOutboxWriter{}

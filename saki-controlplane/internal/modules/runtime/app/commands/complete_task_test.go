@@ -14,10 +14,10 @@ func TestCompleteTaskCommandCompletesRunningTaskAndAppendsOutbox(t *testing.T) {
 	taskID := uuid.New()
 	taskStore := &completeTaskStore{
 		task: &TaskRecord{
-			ID:          taskID,
-			Status:      string(state.TaskStatusRunning),
-			ClaimedBy:   "runtime-1",
-			LeaderEpoch: 7,
+			ID:              taskID,
+			Status:          string(state.TaskStatusRunning),
+			AssignedAgentID: "agent-1",
+			LeaderEpoch:     7,
 		},
 	}
 	outbox := &fakeOutboxWriter{}
@@ -43,10 +43,10 @@ func TestCompleteTaskCommandRejectsAssignedTask(t *testing.T) {
 	taskID := uuid.New()
 	taskStore := &completeTaskStore{
 		task: &TaskRecord{
-			ID:          taskID,
-			Status:      string(state.TaskStatusAssigned),
-			ClaimedBy:   "runtime-1",
-			LeaderEpoch: 7,
+			ID:              taskID,
+			Status:          string(state.TaskStatusAssigned),
+			AssignedAgentID: "agent-1",
+			LeaderEpoch:     7,
 		},
 	}
 	outbox := &fakeOutboxWriter{}

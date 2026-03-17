@@ -70,15 +70,18 @@ func TestRuntimeReposClaimLeaseAndAppendOutbox(t *testing.T) {
 		t.Fatalf("seed runtime task: %v", err)
 	}
 
-	claimed, err := taskRepo.ClaimPendingTask(ctx, ClaimTaskParams{
-		ClaimedBy:   "runtime-1",
-		LeaderEpoch: lease.Epoch,
+	assigned, err := taskRepo.AssignPendingTask(ctx, AssignTaskParams{
+		AssignedAgentID: "agent-runtime-1",
+		LeaderEpoch:     lease.Epoch,
 	})
 	if err != nil {
-		t.Fatalf("claim task: %v", err)
+		t.Fatalf("assign task: %v", err)
 	}
-	if claimed.ID != taskID {
-		t.Fatalf("unexpected claimed task id: %s", claimed.ID)
+	if assigned.ID != taskID {
+		t.Fatalf("unexpected assigned task id: %s", assigned.ID)
+	}
+	if assigned.AssignedAgentID == nil || *assigned.AssignedAgentID != "agent-runtime-1" {
+		t.Fatalf("expected assigned agent id agent-runtime-1, got %+v", assigned.AssignedAgentID)
 	}
 
 	outboxRepo := NewOutboxRepo(pool)
@@ -140,9 +143,9 @@ func TestTaskRepoAssignsExecutionAndAgent(t *testing.T) {
 		t.Fatalf("create task: %v", err)
 	}
 
-	assigned, err := taskRepo.ClaimPendingTask(ctx, ClaimTaskParams{
-		ClaimedBy:   "agent-1",
-		LeaderEpoch: lease.Epoch,
+	assigned, err := taskRepo.AssignPendingTask(ctx, AssignTaskParams{
+		AssignedAgentID: "agent-1",
+		LeaderEpoch:     lease.Epoch,
 	})
 	if err != nil {
 		t.Fatalf("assign pending task: %v", err)
@@ -213,6 +216,40 @@ where id = $1
 	}
 	if leaderEpoch != lease.Epoch {
 		t.Fatalf("expected leader epoch %d, got %d", lease.Epoch, leaderEpoch)
+	}
+}
+
+func TestTaskRepoExposesAssignedAgentFormalContract(t *testing.T) {
+	taskRepoType := reflect.TypeOf(&TaskRepo{})
+	if _, ok := taskRepoType.MethodByName("AssignPendingTask"); !ok {
+		t.Fatal("expected TaskRepo.AssignPendingTask to be exported")
+	}
+	if _, ok := taskRepoType.MethodByName("ClaimPendingTask"); ok {
+		t.Fatal("did not expect TaskRepo.ClaimPendingTask compatibility shell to remain exported")
+	}
+
+	assignParamsType := reflect.TypeOf(AssignTaskParams{})
+	if _, ok := assignParamsType.FieldByName("AssignedAgentID"); !ok {
+		t.Fatal("expected AssignTaskParams.AssignedAgentID")
+	}
+	if _, ok := assignParamsType.FieldByName("ClaimedBy"); ok {
+		t.Fatal("did not expect AssignTaskParams.ClaimedBy")
+	}
+
+	taskRecordType := reflect.TypeOf(commands.TaskRecord{})
+	if _, ok := taskRecordType.FieldByName("AssignedAgentID"); !ok {
+		t.Fatal("expected commands.TaskRecord.AssignedAgentID")
+	}
+	if _, ok := taskRecordType.FieldByName("ClaimedBy"); ok {
+		t.Fatal("did not expect commands.TaskRecord.ClaimedBy")
+	}
+
+	taskUpdateType := reflect.TypeOf(commands.TaskUpdate{})
+	if _, ok := taskUpdateType.FieldByName("AssignedAgentID"); !ok {
+		t.Fatal("expected commands.TaskUpdate.AssignedAgentID")
+	}
+	if _, ok := taskUpdateType.FieldByName("ClaimedBy"); ok {
+		t.Fatal("did not expect commands.TaskUpdate.ClaimedBy")
 	}
 }
 

@@ -9,7 +9,7 @@ import (
 	"github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/state"
 )
 
-func TestAssignTaskCommandClaimsPendingTaskAndAppendsOutbox(t *testing.T) {
+func TestAssignTaskCommandAssignsPendingTaskAndAppendsOutbox(t *testing.T) {
 	taskID := uuid.New()
 	taskStore := &fakeTaskStore{
 		nextTask: &TaskRecord{
@@ -21,8 +21,8 @@ func TestAssignTaskCommandClaimsPendingTaskAndAppendsOutbox(t *testing.T) {
 
 	handler := NewAssignTaskHandler(taskStore, outbox)
 	assigned, err := handler.Handle(context.Background(), AssignTaskCommand{
-		ClaimedBy:   "runtime-1",
-		LeaderEpoch: 7,
+		AssignedAgentID: "agent-1",
+		LeaderEpoch:     7,
 	})
 	if err != nil {
 		t.Fatalf("handle assign task: %v", err)
@@ -33,6 +33,9 @@ func TestAssignTaskCommandClaimsPendingTaskAndAppendsOutbox(t *testing.T) {
 	}
 	if taskStore.updated == nil || taskStore.updated.Status != string(state.TaskStatusAssigned) {
 		t.Fatalf("expected assigned status update, got %+v", taskStore.updated)
+	}
+	if taskStore.updated == nil || taskStore.updated.AssignedAgentID != "agent-1" {
+		t.Fatalf("expected assigned agent id update, got %+v", taskStore.updated)
 	}
 	if outbox.last == nil || outbox.last.Topic != "runtime.task.assigned" {
 		t.Fatalf("expected runtime.task.assigned outbox event, got %+v", outbox.last)

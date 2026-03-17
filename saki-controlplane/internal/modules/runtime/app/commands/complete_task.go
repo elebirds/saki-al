@@ -56,10 +56,10 @@ func (h *CompleteTaskHandler) Handle(ctx context.Context, cmd CompleteTaskComman
 	}
 
 	update := TaskUpdate{
-		ID:          task.ID,
-		Status:      string(snapshot.Status),
-		ClaimedBy:   task.ClaimedBy,
-		LeaderEpoch: task.LeaderEpoch,
+		ID:              task.ID,
+		Status:          string(snapshot.Status),
+		AssignedAgentID: task.AssignedAgentID,
+		LeaderEpoch:     task.LeaderEpoch,
 	}
 	if err := h.tasks.UpdateTask(ctx, update); err != nil {
 		return nil, err

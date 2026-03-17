@@ -2,7 +2,6 @@ package internalrpc
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"connectrpc.com/connect"
@@ -28,7 +27,7 @@ type completeTaskHandler interface {
 }
 
 type RuntimeServer struct {
-	runtimev1connect.UnimplementedAgentControlHandler
+	runtimev1connect.UnimplementedAgentIngressHandler
 
 	registers         registerExecutorHandler
 	heartbeats        heartbeatExecutorHandler
@@ -54,7 +53,7 @@ func (s *RuntimeServer) Register(
 	req *connect.Request[runtimev1.RegisterRequest],
 ) (*connect.Response[runtimev1.RegisterResponse], error) {
 	if _, err := s.registers.Handle(ctx, commands.RegisterExecutorCommand{
-		ExecutorID:   req.Msg.GetExecutorId(),
+		ExecutorID:   req.Msg.GetAgentId(),
 		Version:      req.Msg.GetVersion(),
 		Capabilities: append([]string(nil), req.Msg.GetCapabilities()...),
 		SeenAt:       time.Now(),
@@ -74,7 +73,7 @@ func (s *RuntimeServer) Heartbeat(
 ) (*connect.Response[runtimev1.HeartbeatResponse], error) {
 	seenAt := time.UnixMilli(req.Msg.GetSentAtUnixMs())
 	if err := s.heartbeats.Handle(ctx, commands.HeartbeatExecutorCommand{
-		ExecutorID: req.Msg.GetExecutorId(),
+		ExecutorID: req.Msg.GetAgentId(),
 		SeenAt:     seenAt,
 	}); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
@@ -86,18 +85,17 @@ func (s *RuntimeServer) Heartbeat(
 	}), nil
 }
 
-func (s *RuntimeServer) AssignTask(
-	context.Context,
-	*connect.Request[runtimev1.AssignTaskRequest],
-) (*connect.Response[runtimev1.AssignTaskResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("assign task is agent-side RPC"))
-}
+func (s *RuntimeServer) PushTaskEvent(
+	ctx context.Context,
+	req *connect.Request[runtimev1.PushTaskEventRequest],
+) (*connect.Response[runtimev1.PushTaskEventResponse], error) {
+	if err := s.IngestTaskEvent(ctx, req.Msg.GetEvent()); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
 
-func (s *RuntimeServer) StopTask(
-	context.Context,
-	*connect.Request[runtimev1.StopTaskRequest],
-) (*connect.Response[runtimev1.StopTaskResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("stop task is agent-side RPC"))
+	return connect.NewResponse(&runtimev1.PushTaskEventResponse{
+		Accepted: true,
+	}), nil
 }
 
 func (s *RuntimeServer) IngestTaskEvent(ctx context.Context, envelope *runtimev1.TaskEventEnvelope) error {

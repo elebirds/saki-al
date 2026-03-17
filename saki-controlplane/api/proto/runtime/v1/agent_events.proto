@@ -19,7 +19,7 @@ enum TaskEventPhase {
 }
 
 message TaskEventEnvelope {
-  string executor_id = 1;
+  string agent_id = 1;
   string task_id = 2;
   string execution_id = 3;
   TaskEventPhase phase = 4;

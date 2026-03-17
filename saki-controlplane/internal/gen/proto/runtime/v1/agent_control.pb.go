@@ -21,238 +21,6 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-type RegisterRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ExecutorId    string                 `protobuf:"bytes,1,opt,name=executor_id,json=executorId,proto3" json:"executor_id,omitempty"`
-	Version       string                 `protobuf:"bytes,2,opt,name=version,proto3" json:"version,omitempty"`
-	Capabilities  []string               `protobuf:"bytes,3,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *RegisterRequest) Reset() {
-	*x = RegisterRequest{}
-	mi := &file_runtime_v1_agent_control_proto_msgTypes[0]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *RegisterRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*RegisterRequest) ProtoMessage() {}
-
-func (x *RegisterRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_agent_control_proto_msgTypes[0]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use RegisterRequest.ProtoReflect.Descriptor instead.
-func (*RegisterRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_agent_control_proto_rawDescGZIP(), []int{0}
-}
-
-func (x *RegisterRequest) GetExecutorId() string {
-	if x != nil {
-		return x.ExecutorId
-	}
-	return ""
-}
-
-func (x *RegisterRequest) GetVersion() string {
-	if x != nil {
-		return x.Version
-	}
-	return ""
-}
-
-func (x *RegisterRequest) GetCapabilities() []string {
-	if x != nil {
-		return x.Capabilities
-	}
-	return nil
-}
-
-type RegisterResponse struct {
-	state               protoimpl.MessageState `protogen:"open.v1"`
-	Accepted            bool                   `protobuf:"varint,1,opt,name=accepted,proto3" json:"accepted,omitempty"`
-	HeartbeatIntervalMs int64                  `protobuf:"varint,2,opt,name=heartbeat_interval_ms,json=heartbeatIntervalMs,proto3" json:"heartbeat_interval_ms,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
-}
-
-func (x *RegisterResponse) Reset() {
-	*x = RegisterResponse{}
-	mi := &file_runtime_v1_agent_control_proto_msgTypes[1]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *RegisterResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*RegisterResponse) ProtoMessage() {}
-
-func (x *RegisterResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_agent_control_proto_msgTypes[1]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use RegisterResponse.ProtoReflect.Descriptor instead.
-func (*RegisterResponse) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_agent_control_proto_rawDescGZIP(), []int{1}
-}
-
-func (x *RegisterResponse) GetAccepted() bool {
-	if x != nil {
-		return x.Accepted
-	}
-	return false
-}
-
-func (x *RegisterResponse) GetHeartbeatIntervalMs() int64 {
-	if x != nil {
-		return x.HeartbeatIntervalMs
-	}
-	return 0
-}
-
-type HeartbeatRequest struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	ExecutorId     string                 `protobuf:"bytes,1,opt,name=executor_id,json=executorId,proto3" json:"executor_id,omitempty"`
-	AgentVersion   string                 `protobuf:"bytes,2,opt,name=agent_version,json=agentVersion,proto3" json:"agent_version,omitempty"`
-	RunningTaskIds []string               `protobuf:"bytes,3,rep,name=running_task_ids,json=runningTaskIds,proto3" json:"running_task_ids,omitempty"`
-	SentAtUnixMs   int64                  `protobuf:"varint,4,opt,name=sent_at_unix_ms,json=sentAtUnixMs,proto3" json:"sent_at_unix_ms,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
-}
-
-func (x *HeartbeatRequest) Reset() {
-	*x = HeartbeatRequest{}
-	mi := &file_runtime_v1_agent_control_proto_msgTypes[2]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *HeartbeatRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*HeartbeatRequest) ProtoMessage() {}
-
-func (x *HeartbeatRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_agent_control_proto_msgTypes[2]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use HeartbeatRequest.ProtoReflect.Descriptor instead.
-func (*HeartbeatRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_agent_control_proto_rawDescGZIP(), []int{2}
-}
-
-func (x *HeartbeatRequest) GetExecutorId() string {
-	if x != nil {
-		return x.ExecutorId
-	}
-	return ""
-}
-
-func (x *HeartbeatRequest) GetAgentVersion() string {
-	if x != nil {
-		return x.AgentVersion
-	}
-	return ""
-}
-
-func (x *HeartbeatRequest) GetRunningTaskIds() []string {
-	if x != nil {
-		return x.RunningTaskIds
-	}
-	return nil
-}
-
-func (x *HeartbeatRequest) GetSentAtUnixMs() int64 {
-	if x != nil {
-		return x.SentAtUnixMs
-	}
-	return 0
-}
-
-type HeartbeatResponse struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	Accepted        bool                   `protobuf:"varint,1,opt,name=accepted,proto3" json:"accepted,omitempty"`
-	NextHeartbeatMs int64                  `protobuf:"varint,2,opt,name=next_heartbeat_ms,json=nextHeartbeatMs,proto3" json:"next_heartbeat_ms,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
-}
-
-func (x *HeartbeatResponse) Reset() {
-	*x = HeartbeatResponse{}
-	mi := &file_runtime_v1_agent_control_proto_msgTypes[3]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *HeartbeatResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*HeartbeatResponse) ProtoMessage() {}
-
-func (x *HeartbeatResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_agent_control_proto_msgTypes[3]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use HeartbeatResponse.ProtoReflect.Descriptor instead.
-func (*HeartbeatResponse) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_agent_control_proto_rawDescGZIP(), []int{3}
-}
-
-func (x *HeartbeatResponse) GetAccepted() bool {
-	if x != nil {
-		return x.Accepted
-	}
-	return false
-}
-
-func (x *HeartbeatResponse) GetNextHeartbeatMs() int64 {
-	if x != nil {
-		return x.NextHeartbeatMs
-	}
-	return 0
-}
-
 type AssignTaskRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
@@ -265,7 +33,7 @@ type AssignTaskRequest struct {
 
 func (x *AssignTaskRequest) Reset() {
 	*x = AssignTaskRequest{}
-	mi := &file_runtime_v1_agent_control_proto_msgTypes[4]
+	mi := &file_runtime_v1_agent_control_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -277,7 +45,7 @@ func (x *AssignTaskRequest) String() string {
 func (*AssignTaskRequest) ProtoMessage() {}
 
 func (x *AssignTaskRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_agent_control_proto_msgTypes[4]
+	mi := &file_runtime_v1_agent_control_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -290,7 +58,7 @@ func (x *AssignTaskRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AssignTaskRequest.ProtoReflect.Descriptor instead.
 func (*AssignTaskRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_agent_control_proto_rawDescGZIP(), []int{4}
+	return file_runtime_v1_agent_control_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *AssignTaskRequest) GetTaskId() string {
@@ -330,7 +98,7 @@ type AssignTaskResponse struct {
 
 func (x *AssignTaskResponse) Reset() {
 	*x = AssignTaskResponse{}
-	mi := &file_runtime_v1_agent_control_proto_msgTypes[5]
+	mi := &file_runtime_v1_agent_control_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -342,7 +110,7 @@ func (x *AssignTaskResponse) String() string {
 func (*AssignTaskResponse) ProtoMessage() {}
 
 func (x *AssignTaskResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_agent_control_proto_msgTypes[5]
+	mi := &file_runtime_v1_agent_control_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -355,7 +123,7 @@ func (x *AssignTaskResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AssignTaskResponse.ProtoReflect.Descriptor instead.
 func (*AssignTaskResponse) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_agent_control_proto_rawDescGZIP(), []int{5}
+	return file_runtime_v1_agent_control_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *AssignTaskResponse) GetAccepted() bool {
@@ -376,7 +144,7 @@ type StopTaskRequest struct {
 
 func (x *StopTaskRequest) Reset() {
 	*x = StopTaskRequest{}
-	mi := &file_runtime_v1_agent_control_proto_msgTypes[6]
+	mi := &file_runtime_v1_agent_control_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -388,7 +156,7 @@ func (x *StopTaskRequest) String() string {
 func (*StopTaskRequest) ProtoMessage() {}
 
 func (x *StopTaskRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_agent_control_proto_msgTypes[6]
+	mi := &file_runtime_v1_agent_control_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -401,7 +169,7 @@ func (x *StopTaskRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StopTaskRequest.ProtoReflect.Descriptor instead.
 func (*StopTaskRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_agent_control_proto_rawDescGZIP(), []int{6}
+	return file_runtime_v1_agent_control_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *StopTaskRequest) GetTaskId() string {
@@ -434,7 +202,7 @@ type StopTaskResponse struct {
 
 func (x *StopTaskResponse) Reset() {
 	*x = StopTaskResponse{}
-	mi := &file_runtime_v1_agent_control_proto_msgTypes[7]
+	mi := &file_runtime_v1_agent_control_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -446,7 +214,7 @@ func (x *StopTaskResponse) String() string {
 func (*StopTaskResponse) ProtoMessage() {}
 
 func (x *StopTaskResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_v1_agent_control_proto_msgTypes[7]
+	mi := &file_runtime_v1_agent_control_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -459,7 +227,7 @@ func (x *StopTaskResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StopTaskResponse.ProtoReflect.Descriptor instead.
 func (*StopTaskResponse) Descriptor() ([]byte, []int) {
-	return file_runtime_v1_agent_control_proto_rawDescGZIP(), []int{7}
+	return file_runtime_v1_agent_control_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *StopTaskResponse) GetAccepted() bool {
@@ -473,24 +241,7 @@ var File_runtime_v1_agent_control_proto protoreflect.FileDescriptor
 
 const file_runtime_v1_agent_control_proto_rawDesc = "" +
 	"\n" +
-	"\x1eruntime/v1/agent_control.proto\x12\x0fsaki.runtime.v1\"p\n" +
-	"\x0fRegisterRequest\x12\x1f\n" +
-	"\vexecutor_id\x18\x01 \x01(\tR\n" +
-	"executorId\x12\x18\n" +
-	"\aversion\x18\x02 \x01(\tR\aversion\x12\"\n" +
-	"\fcapabilities\x18\x03 \x03(\tR\fcapabilities\"b\n" +
-	"\x10RegisterResponse\x12\x1a\n" +
-	"\baccepted\x18\x01 \x01(\bR\baccepted\x122\n" +
-	"\x15heartbeat_interval_ms\x18\x02 \x01(\x03R\x13heartbeatIntervalMs\"\xa9\x01\n" +
-	"\x10HeartbeatRequest\x12\x1f\n" +
-	"\vexecutor_id\x18\x01 \x01(\tR\n" +
-	"executorId\x12#\n" +
-	"\ragent_version\x18\x02 \x01(\tR\fagentVersion\x12(\n" +
-	"\x10running_task_ids\x18\x03 \x03(\tR\x0erunningTaskIds\x12%\n" +
-	"\x0fsent_at_unix_ms\x18\x04 \x01(\x03R\fsentAtUnixMs\"[\n" +
-	"\x11HeartbeatResponse\x12\x1a\n" +
-	"\baccepted\x18\x01 \x01(\bR\baccepted\x12*\n" +
-	"\x11next_heartbeat_ms\x18\x02 \x01(\x03R\x0fnextHeartbeatMs\"\x86\x01\n" +
+	"\x1eruntime/v1/agent_control.proto\x12\x0fsaki.runtime.v1\"\x86\x01\n" +
 	"\x11AssignTaskRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12!\n" +
 	"\fexecution_id\x18\x02 \x01(\tR\vexecutionId\x12\x1b\n" +
@@ -503,10 +254,8 @@ const file_runtime_v1_agent_control_proto_rawDesc = "" +
 	"\fexecution_id\x18\x02 \x01(\tR\vexecutionId\x12\x16\n" +
 	"\x06reason\x18\x03 \x01(\tR\x06reason\".\n" +
 	"\x10StopTaskResponse\x12\x1a\n" +
-	"\baccepted\x18\x01 \x01(\bR\baccepted2\xdb\x02\n" +
-	"\fAgentControl\x12O\n" +
-	"\bRegister\x12 .saki.runtime.v1.RegisterRequest\x1a!.saki.runtime.v1.RegisterResponse\x12R\n" +
-	"\tHeartbeat\x12!.saki.runtime.v1.HeartbeatRequest\x1a\".saki.runtime.v1.HeartbeatResponse\x12U\n" +
+	"\baccepted\x18\x01 \x01(\bR\baccepted2\xb6\x01\n" +
+	"\fAgentControl\x12U\n" +
 	"\n" +
 	"AssignTask\x12\".saki.runtime.v1.AssignTaskRequest\x1a#.saki.runtime.v1.AssignTaskResponse\x12O\n" +
 	"\bStopTask\x12 .saki.runtime.v1.StopTaskRequest\x1a!.saki.runtime.v1.StopTaskResponseBTZRgithub.com/elebirds/saki/saki-controlplane/internal/gen/proto/runtime/v1;runtimev1b\x06proto3"
@@ -523,28 +272,20 @@ func file_runtime_v1_agent_control_proto_rawDescGZIP() []byte {
 	return file_runtime_v1_agent_control_proto_rawDescData
 }
 
-var file_runtime_v1_agent_control_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_runtime_v1_agent_control_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_runtime_v1_agent_control_proto_goTypes = []any{
-	(*RegisterRequest)(nil),    // 0: saki.runtime.v1.RegisterRequest
-	(*RegisterResponse)(nil),   // 1: saki.runtime.v1.RegisterResponse
-	(*HeartbeatRequest)(nil),   // 2: saki.runtime.v1.HeartbeatRequest
-	(*HeartbeatResponse)(nil),  // 3: saki.runtime.v1.HeartbeatResponse
-	(*AssignTaskRequest)(nil),  // 4: saki.runtime.v1.AssignTaskRequest
-	(*AssignTaskResponse)(nil), // 5: saki.runtime.v1.AssignTaskResponse
-	(*StopTaskRequest)(nil),    // 6: saki.runtime.v1.StopTaskRequest
-	(*StopTaskResponse)(nil),   // 7: saki.runtime.v1.StopTaskResponse
+	(*AssignTaskRequest)(nil),  // 0: saki.runtime.v1.AssignTaskRequest
+	(*AssignTaskResponse)(nil), // 1: saki.runtime.v1.AssignTaskResponse
+	(*StopTaskRequest)(nil),    // 2: saki.runtime.v1.StopTaskRequest
+	(*StopTaskResponse)(nil),   // 3: saki.runtime.v1.StopTaskResponse
 }
 var file_runtime_v1_agent_control_proto_depIdxs = []int32{
-	0, // 0: saki.runtime.v1.AgentControl.Register:input_type -> saki.runtime.v1.RegisterRequest
-	2, // 1: saki.runtime.v1.AgentControl.Heartbeat:input_type -> saki.runtime.v1.HeartbeatRequest
-	4, // 2: saki.runtime.v1.AgentControl.AssignTask:input_type -> saki.runtime.v1.AssignTaskRequest
-	6, // 3: saki.runtime.v1.AgentControl.StopTask:input_type -> saki.runtime.v1.StopTaskRequest
-	1, // 4: saki.runtime.v1.AgentControl.Register:output_type -> saki.runtime.v1.RegisterResponse
-	3, // 5: saki.runtime.v1.AgentControl.Heartbeat:output_type -> saki.runtime.v1.HeartbeatResponse
-	5, // 6: saki.runtime.v1.AgentControl.AssignTask:output_type -> saki.runtime.v1.AssignTaskResponse
-	7, // 7: saki.runtime.v1.AgentControl.StopTask:output_type -> saki.runtime.v1.StopTaskResponse
-	4, // [4:8] is the sub-list for method output_type
-	0, // [0:4] is the sub-list for method input_type
+	0, // 0: saki.runtime.v1.AgentControl.AssignTask:input_type -> saki.runtime.v1.AssignTaskRequest
+	2, // 1: saki.runtime.v1.AgentControl.StopTask:input_type -> saki.runtime.v1.StopTaskRequest
+	1, // 2: saki.runtime.v1.AgentControl.AssignTask:output_type -> saki.runtime.v1.AssignTaskResponse
+	3, // 3: saki.runtime.v1.AgentControl.StopTask:output_type -> saki.runtime.v1.StopTaskResponse
+	2, // [2:4] is the sub-list for method output_type
+	0, // [0:2] is the sub-list for method input_type
 	0, // [0:0] is the sub-list for extension type_name
 	0, // [0:0] is the sub-list for extension extendee
 	0, // [0:0] is the sub-list for field type_name
@@ -561,7 +302,7 @@ func file_runtime_v1_agent_control_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_runtime_v1_agent_control_proto_rawDesc), len(file_runtime_v1_agent_control_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   8,
+			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

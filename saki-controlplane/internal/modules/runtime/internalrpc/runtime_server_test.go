@@ -38,15 +38,15 @@ func TestRuntimeServerRegisterTranslatesToCommand(t *testing.T) {
 	server := NewRuntimeServer(registrar, &fakeHeartbeatExecutorHandler{}, &fakeCompleteTaskHandler{})
 
 	mux := http.NewServeMux()
-	path, handler := runtimev1connect.NewAgentControlHandler(server)
+	path, handler := runtimev1connect.NewAgentIngressHandler(server)
 	mux.Handle(path, handler)
 
 	httpServer := httptest.NewServer(mux)
 	defer httpServer.Close()
 
-	client := runtimev1connect.NewAgentControlClient(http.DefaultClient, httpServer.URL)
+	client := runtimev1connect.NewAgentIngressClient(http.DefaultClient, httpServer.URL)
 	resp, err := client.Register(context.Background(), connect.NewRequest(&runtimev1.RegisterRequest{
-		ExecutorId:   "executor-a",
+		AgentId:      "agent-a",
 		Version:      "1.2.3",
 		Capabilities: []string{"gpu"},
 	}))
@@ -57,7 +57,7 @@ func TestRuntimeServerRegisterTranslatesToCommand(t *testing.T) {
 	if !resp.Msg.Accepted || resp.Msg.HeartbeatIntervalMs == 0 {
 		t.Fatalf("unexpected register response: %+v", resp.Msg)
 	}
-	if registrar.last.ExecutorID != "executor-a" || registrar.last.Version != "1.2.3" {
+	if registrar.last.ExecutorID != "agent-a" || registrar.last.Version != "1.2.3" {
 		t.Fatalf("unexpected register command: %+v", registrar.last)
 	}
 	if !slices.Equal(registrar.last.Capabilities, []string{"gpu"}) {
@@ -70,15 +70,15 @@ func TestRuntimeServerHeartbeatTranslatesToCommand(t *testing.T) {
 	server := NewRuntimeServer(&fakeRegisterExecutorHandler{}, heartbeats, &fakeCompleteTaskHandler{})
 
 	mux := http.NewServeMux()
-	path, handler := runtimev1connect.NewAgentControlHandler(server)
+	path, handler := runtimev1connect.NewAgentIngressHandler(server)
 	mux.Handle(path, handler)
 
 	httpServer := httptest.NewServer(mux)
 	defer httpServer.Close()
 
-	client := runtimev1connect.NewAgentControlClient(http.DefaultClient, httpServer.URL)
+	client := runtimev1connect.NewAgentIngressClient(http.DefaultClient, httpServer.URL)
 	resp, err := client.Heartbeat(context.Background(), connect.NewRequest(&runtimev1.HeartbeatRequest{
-		ExecutorId:   "executor-a",
+		AgentId:      "agent-a",
 		AgentVersion: "1.2.4",
 		SentAtUnixMs: 123456789,
 	}))
@@ -89,22 +89,36 @@ func TestRuntimeServerHeartbeatTranslatesToCommand(t *testing.T) {
 	if !resp.Msg.Accepted || resp.Msg.NextHeartbeatMs == 0 {
 		t.Fatalf("unexpected heartbeat response: %+v", resp.Msg)
 	}
-	if heartbeats.last.ExecutorID != "executor-a" || heartbeats.last.SeenAt.UnixMilli() != 123456789 {
+	if heartbeats.last.ExecutorID != "agent-a" || heartbeats.last.SeenAt.UnixMilli() != 123456789 {
 		t.Fatalf("unexpected heartbeat command: %+v", heartbeats.last)
 	}
 }
 
-func TestRuntimeServerIngestSucceededTaskEventCompletesTask(t *testing.T) {
+func TestRuntimeServerPushTaskEventCompletesTask(t *testing.T) {
 	completer := &fakeCompleteTaskHandler{}
 	server := NewRuntimeServer(&fakeRegisterExecutorHandler{}, &fakeHeartbeatExecutorHandler{}, completer)
 
-	if err := server.IngestTaskEvent(context.Background(), &runtimev1.TaskEventEnvelope{
-		ExecutorId:  "executor-a",
-		TaskId:      "550e8400-e29b-41d4-a716-446655440000",
-		ExecutionId: "exec-1",
-		Phase:       runtimev1.TaskEventPhase_TASK_EVENT_PHASE_SUCCEEDED,
-	}); err != nil {
-		t.Fatalf("ingest task event: %v", err)
+	mux := http.NewServeMux()
+	path, handler := runtimev1connect.NewAgentIngressHandler(server)
+	mux.Handle(path, handler)
+
+	httpServer := httptest.NewServer(mux)
+	defer httpServer.Close()
+
+	client := runtimev1connect.NewAgentIngressClient(http.DefaultClient, httpServer.URL)
+	resp, err := client.PushTaskEvent(context.Background(), connect.NewRequest(&runtimev1.PushTaskEventRequest{
+		Event: &runtimev1.TaskEventEnvelope{
+			AgentId:     "agent-a",
+			TaskId:      "550e8400-e29b-41d4-a716-446655440000",
+			ExecutionId: "exec-1",
+			Phase:       runtimev1.TaskEventPhase_TASK_EVENT_PHASE_SUCCEEDED,
+		},
+	}))
+	if err != nil {
+		t.Fatalf("push task event: %v", err)
+	}
+	if !resp.Msg.Accepted {
+		t.Fatalf("unexpected push task event response: %+v", resp.Msg)
 	}
 
 	if completer.last.TaskID.String() != "550e8400-e29b-41d4-a716-446655440000" {
@@ -146,17 +160,17 @@ func TestRuntimeServerRegisterAndHeartbeatPersistExecutor(t *testing.T) {
 	)
 
 	mux := http.NewServeMux()
-	path, handler := runtimev1connect.NewAgentControlHandler(server)
+	path, handler := runtimev1connect.NewAgentIngressHandler(server)
 	mux.Handle(path, handler)
 
 	httpServer := httptest.NewServer(mux)
 	defer httpServer.Close()
 
-	client := runtimev1connect.NewAgentControlClient(http.DefaultClient, httpServer.URL)
+	client := runtimev1connect.NewAgentIngressClient(http.DefaultClient, httpServer.URL)
 	registerAt := time.UnixMilli(123456789)
 	server.heartbeatInterval = time.Second
 	if _, err := client.Register(context.Background(), connect.NewRequest(&runtimev1.RegisterRequest{
-		ExecutorId:   "executor-a",
+		AgentId:      "agent-a",
 		Version:      "1.2.3",
 		Capabilities: []string{"gpu", "cuda"},
 	})); err != nil {
@@ -165,7 +179,7 @@ func TestRuntimeServerRegisterAndHeartbeatPersistExecutor(t *testing.T) {
 
 	heartbeatAt := registerAt.Add(2 * time.Minute)
 	if _, err := client.Heartbeat(context.Background(), connect.NewRequest(&runtimev1.HeartbeatRequest{
-		ExecutorId:   "executor-a",
+		AgentId:      "agent-a",
 		AgentVersion: "1.2.4",
 		SentAtUnixMs: heartbeatAt.UnixMilli(),
 	})); err != nil {
@@ -179,7 +193,7 @@ func TestRuntimeServerRegisterAndHeartbeatPersistExecutor(t *testing.T) {
 	if len(executors) != 1 {
 		t.Fatalf("unexpected executor count: %d", len(executors))
 	}
-	if executors[0].ID != "executor-a" || executors[0].Version != "1.2.3" {
+	if executors[0].ID != "agent-a" || executors[0].Version != "1.2.3" {
 		t.Fatalf("unexpected executor: %+v", executors[0])
 	}
 	if !slices.Equal(executors[0].Capabilities, []string{"gpu", "cuda"}) {

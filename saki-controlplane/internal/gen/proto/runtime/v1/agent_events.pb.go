@@ -138,7 +138,7 @@ func (x *TaskEvent) GetMessage() string {
 
 type TaskEventEnvelope struct {
 	state       protoimpl.MessageState `protogen:"open.v1"`
-	ExecutorId  string                 `protobuf:"bytes,1,opt,name=executor_id,json=executorId,proto3" json:"executor_id,omitempty"`
+	AgentId     string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
 	TaskId      string                 `protobuf:"bytes,2,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
 	ExecutionId string                 `protobuf:"bytes,3,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
 	Phase       TaskEventPhase         `protobuf:"varint,4,opt,name=phase,proto3,enum=saki.runtime.v1.TaskEventPhase" json:"phase,omitempty"`
@@ -182,9 +182,9 @@ func (*TaskEventEnvelope) Descriptor() ([]byte, []int) {
 	return file_runtime_v1_agent_events_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *TaskEventEnvelope) GetExecutorId() string {
+func (x *TaskEventEnvelope) GetAgentId() string {
 	if x != nil {
-		return x.ExecutorId
+		return x.AgentId
 	}
 	return ""
 }
@@ -423,10 +423,9 @@ const file_runtime_v1_agent_events_proto_rawDesc = "" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1d\n" +
 	"\n" +
 	"event_type\x18\x02 \x01(\tR\teventType\x12\x18\n" +
-	"\amessage\x18\x03 \x01(\tR\amessage\"\xe3\x02\n" +
-	"\x11TaskEventEnvelope\x12\x1f\n" +
-	"\vexecutor_id\x18\x01 \x01(\tR\n" +
-	"executorId\x12\x17\n" +
+	"\amessage\x18\x03 \x01(\tR\amessage\"\xdd\x02\n" +
+	"\x11TaskEventEnvelope\x12\x19\n" +
+	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12\x17\n" +
 	"\atask_id\x18\x02 \x01(\tR\x06taskId\x12!\n" +
 	"\fexecution_id\x18\x03 \x01(\tR\vexecutionId\x125\n" +
 	"\x05phase\x18\x04 \x01(\x0e2\x1f.saki.runtime.v1.TaskEventPhaseR\x05phase\x121\n" +

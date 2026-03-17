@@ -10,6 +10,7 @@ type PreviewManifest struct {
 	Token           string
 	Mode            string
 	ProjectID       uuid.UUID
+	DatasetID       uuid.UUID
 	UploadSessionID uuid.UUID
 	Manifest        []byte
 	ParamsHash      string

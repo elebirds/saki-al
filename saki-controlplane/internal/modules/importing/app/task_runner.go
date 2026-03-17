@@ -3,11 +3,16 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 
 	annotationrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/repo"
 	importrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/importing/repo"
 	"github.com/google/uuid"
 )
+
+type SampleStore interface {
+	Get(ctx context.Context, sampleID uuid.UUID) (*annotationrepo.Sample, error)
+}
 
 type AnnotationCreateStore interface {
 	Create(ctx context.Context, params annotationrepo.CreateAnnotationParams) (*annotationrepo.Annotation, error)
@@ -21,12 +26,14 @@ type MutableImportTaskStore interface {
 }
 
 type ProjectAnnotationsTaskRunner struct {
+	samples     SampleStore
 	annotations AnnotationCreateStore
 	tasks       MutableImportTaskStore
 }
 
-func NewProjectAnnotationsTaskRunner(annotations AnnotationCreateStore, tasks MutableImportTaskStore) *ProjectAnnotationsTaskRunner {
+func NewProjectAnnotationsTaskRunner(samples SampleStore, annotations AnnotationCreateStore, tasks MutableImportTaskStore) *ProjectAnnotationsTaskRunner {
 	return &ProjectAnnotationsTaskRunner{
+		samples:     samples,
 		annotations: annotations,
 		tasks:       tasks,
 	}
@@ -54,7 +61,20 @@ func (r *ProjectAnnotationsTaskRunner) Run(ctx context.Context, taskID uuid.UUID
 	}
 
 	for _, entry := range manifest.MatchedAnnotations {
+		if r.samples != nil {
+			sample, err := r.samples.Get(ctx, entry.ResolvedSampleID)
+			if err != nil {
+				return err
+			}
+			if sample == nil {
+				return errors.New("sample not found")
+			}
+			if sample.DatasetID != manifest.DatasetID {
+				return errors.New("sample dataset mismatch")
+			}
+		}
 		if _, err := r.annotations.Create(ctx, annotationrepo.CreateAnnotationParams{
+			ProjectID:      manifest.ProjectID,
 			SampleID:       entry.ResolvedSampleID,
 			GroupID:        entry.GroupID,
 			LabelID:        entry.LabelID,

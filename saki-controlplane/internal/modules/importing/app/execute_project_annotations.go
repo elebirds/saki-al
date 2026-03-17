@@ -6,6 +6,7 @@ import (
 	"errors"
 
 	importrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/importing/repo"
+	projectrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/project/repo"
 	"github.com/google/uuid"
 )
 
@@ -13,6 +14,10 @@ var ErrBlockingPreviewManifest = errors.New("preview manifest has blocking error
 
 type PreviewManifestLoader interface {
 	Get(ctx context.Context, token string) (*importrepo.PreviewManifest, error)
+}
+
+type ProjectDatasetLinkStore interface {
+	GetProjectDatasetLink(ctx context.Context, projectID, datasetID uuid.UUID) (*projectrepo.ProjectDatasetLink, error)
 }
 
 type ImportTaskCreator interface {
@@ -24,18 +29,22 @@ type ImportTaskRunner interface {
 }
 
 type ExecuteProjectAnnotationsInput struct {
+	ProjectID    uuid.UUID
+	DatasetID    uuid.UUID
 	PreviewToken string
 	UserID       uuid.UUID
 }
 
 type ExecuteProjectAnnotationsUseCase struct {
+	projects ProjectDatasetLinkStore
 	previews PreviewManifestLoader
 	tasks    ImportTaskCreator
 	runner   ImportTaskRunner
 }
 
-func NewExecuteProjectAnnotationsUseCase(previews PreviewManifestLoader, tasks ImportTaskCreator, runner ImportTaskRunner) *ExecuteProjectAnnotationsUseCase {
+func NewExecuteProjectAnnotationsUseCase(projects ProjectDatasetLinkStore, previews PreviewManifestLoader, tasks ImportTaskCreator, runner ImportTaskRunner) *ExecuteProjectAnnotationsUseCase {
 	return &ExecuteProjectAnnotationsUseCase{
+		projects: projects,
 		previews: previews,
 		tasks:    tasks,
 		runner:   runner,
@@ -50,10 +59,25 @@ func (u *ExecuteProjectAnnotationsUseCase) Execute(ctx context.Context, input Ex
 	if preview == nil {
 		return nil, errors.New("preview manifest not found")
 	}
+	if preview.ProjectID != input.ProjectID || preview.DatasetID != input.DatasetID {
+		return nil, errors.New("preview manifest scope mismatch")
+	}
+	if u.projects != nil {
+		link, err := u.projects.GetProjectDatasetLink(ctx, input.ProjectID, input.DatasetID)
+		if err != nil {
+			return nil, err
+		}
+		if link == nil {
+			return nil, errors.New("dataset is not linked to project")
+		}
+	}
 
 	var manifest PreviewManifest
 	if err := json.Unmarshal(preview.Manifest, &manifest); err != nil {
 		return nil, err
+	}
+	if manifest.ProjectID != input.ProjectID || manifest.DatasetID != input.DatasetID {
+		return nil, errors.New("preview manifest payload scope mismatch")
 	}
 	if len(manifest.Errors) > 0 {
 		return nil, ErrBlockingPreviewManifest

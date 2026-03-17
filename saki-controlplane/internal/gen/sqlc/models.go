@@ -27,6 +27,7 @@ type AccessPrincipal struct {
 
 type Annotation struct {
 	ID             uuid.UUID          `json:"id"`
+	ProjectID      uuid.UUID          `json:"project_id"`
 	SampleID       uuid.UUID          `json:"sample_id"`
 	GroupID        string             `json:"group_id"`
 	LabelID        string             `json:"label_id"`
@@ -39,10 +40,19 @@ type Annotation struct {
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 }
 
+type Dataset struct {
+	ID        uuid.UUID          `json:"id"`
+	Name      string             `json:"name"`
+	Type      string             `json:"type"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
 type ImportPreviewManifest struct {
 	Token           string             `json:"token"`
 	Mode            string             `json:"mode"`
 	ProjectID       uuid.UUID          `json:"project_id"`
+	DatasetID       uuid.UUID          `json:"dataset_id"`
 	UploadSessionID uuid.UUID          `json:"upload_session_id"`
 	Manifest        []byte             `json:"manifest"`
 	ParamsHash      string             `json:"params_hash"`
@@ -91,6 +101,12 @@ type Project struct {
 	Name      string             `json:"name"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
+type ProjectDataset struct {
+	ProjectID uuid.UUID          `json:"project_id"`
+	DatasetID uuid.UUID          `json:"dataset_id"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }
 
 type RuntimeExecutor struct {
@@ -143,16 +159,17 @@ type RuntimeTask struct {
 }
 
 type Sample struct {
-	ID          uuid.UUID          `json:"id"`
-	ProjectID   uuid.UUID          `json:"project_id"`
-	DatasetType string             `json:"dataset_type"`
-	Meta        []byte             `json:"meta"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	ID        uuid.UUID          `json:"id"`
+	DatasetID uuid.UUID          `json:"dataset_id"`
+	Name      string             `json:"name"`
+	Meta      []byte             `json:"meta"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
 type SampleMatchRef struct {
 	ID        int64              `json:"id"`
-	ProjectID uuid.UUID          `json:"project_id"`
+	DatasetID uuid.UUID          `json:"dataset_id"`
 	SampleID  uuid.UUID          `json:"sample_id"`
 	RefType   string             `json:"ref_type"`
 	RefValue  string             `json:"ref_value"`

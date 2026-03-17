@@ -9,15 +9,38 @@ import (
 )
 
 type ListAnnotationsUseCase struct {
+	samples     SampleStore
+	projects    ProjectDatasetStore
 	annotations AnnotationStore
 }
 
-func NewListAnnotationsUseCase(annotations AnnotationStore) *ListAnnotationsUseCase {
-	return &ListAnnotationsUseCase{annotations: annotations}
+func NewListAnnotationsUseCase(samples SampleStore, projects ProjectDatasetStore, annotations AnnotationStore) *ListAnnotationsUseCase {
+	return &ListAnnotationsUseCase{
+		samples:     samples,
+		projects:    projects,
+		annotations: annotations,
+	}
 }
 
-func (u *ListAnnotationsUseCase) Execute(ctx context.Context, sampleID uuid.UUID) ([]annotationdomain.Annotation, error) {
-	rows, err := u.annotations.ListBySample(ctx, sampleID)
+func (u *ListAnnotationsUseCase) Execute(ctx context.Context, projectID, sampleID uuid.UUID) ([]annotationdomain.Annotation, error) {
+	sample, err := u.samples.Get(ctx, sampleID)
+	if err != nil {
+		return nil, err
+	}
+	if sample == nil {
+		return nil, annotationdomain.ErrSampleNotFound
+	}
+	if u.projects != nil {
+		link, err := u.projects.GetProjectDatasetLink(ctx, projectID, sample.DatasetID)
+		if err != nil {
+			return nil, err
+		}
+		if link == nil {
+			return nil, annotationdomain.ErrSampleNotFound
+		}
+	}
+
+	rows, err := u.annotations.ListByProjectSample(ctx, projectID, sampleID)
 	if err != nil {
 		return nil, err
 	}

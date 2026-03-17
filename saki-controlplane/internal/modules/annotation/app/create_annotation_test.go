@@ -10,9 +10,13 @@ import (
 	annotationmapping "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/app/mapping"
 	annotationdomain "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/domain"
 	annotationrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/repo"
+	datasetrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/repo"
+	projectrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/project/repo"
 )
 
 func TestCreateAnnotationWithFedoMappingCreatesSourceAndGeneratedAnnotations(t *testing.T) {
+	projectID := uuid.New()
+	datasetID := uuid.New()
 	sampleID := uuid.New()
 	store := &fakeAnnotationStore{
 		nextIDs: []uuid.UUID{uuid.New(), uuid.New()},
@@ -20,9 +24,20 @@ func TestCreateAnnotationWithFedoMappingCreatesSourceAndGeneratedAnnotations(t *
 	useCase := NewCreateAnnotationUseCase(
 		&fakeSampleStore{
 			sample: &annotationrepo.Sample{
-				ID:          sampleID,
-				DatasetType: "fedo-dual-view",
-				Meta:        []byte(`{"mapping":{"source_view":"rgb","target_view":"thermal","lookup_table_b64":"bG9va3VwLWJ5dGVz","time_gap_threshold":8}}`),
+				ID:        sampleID,
+				DatasetID: datasetID,
+				Meta:      []byte(`{"mapping":{"source_view":"rgb","target_view":"thermal","lookup_table_b64":"bG9va3VwLWJ5dGVz","time_gap_threshold":8}}`),
+			},
+		},
+		&fakeDatasetStore{
+			dataset: &datasetrepo.Dataset{
+				ID:   datasetID,
+				Type: "fedo-dual-view",
+			},
+		},
+		&fakeProjectDatasetStore{
+			links: map[string]bool{
+				projectDatasetKey(projectID, datasetID): true,
 			},
 		},
 		store,
@@ -43,7 +58,7 @@ func TestCreateAnnotationWithFedoMappingCreatesSourceAndGeneratedAnnotations(t *
 		},
 	)
 
-	annotations, err := useCase.Execute(context.Background(), sampleID, annotationdomain.CreateInput{
+	annotations, err := useCase.Execute(context.Background(), projectID, sampleID, annotationdomain.CreateInput{
 		GroupID:        "group-a",
 		LabelID:        "car",
 		View:           "rgb",
@@ -64,6 +79,9 @@ func TestCreateAnnotationWithFedoMappingCreatesSourceAndGeneratedAnnotations(t *
 	if len(store.created) != 2 || len(annotations) != 2 {
 		t.Fatalf("expected source and generated annotations, got created=%d annotations=%d", len(store.created), len(annotations))
 	}
+	if store.created[0].ProjectID != projectID || store.created[1].ProjectID != projectID {
+		t.Fatalf("expected project-scoped writes, got %+v", store.created)
+	}
 	if store.created[0].View != "rgb" || store.created[0].IsGenerated {
 		t.Fatalf("unexpected source annotation params: %+v", store.created[0])
 	}
@@ -76,6 +94,8 @@ func TestCreateAnnotationWithFedoMappingCreatesSourceAndGeneratedAnnotations(t *
 }
 
 func TestCreateAnnotationFailsBeforeWriteWhenMappingFails(t *testing.T) {
+	projectID := uuid.New()
+	datasetID := uuid.New()
 	sampleID := uuid.New()
 	store := &fakeAnnotationStore{
 		nextIDs: []uuid.UUID{uuid.New()},
@@ -83,16 +103,27 @@ func TestCreateAnnotationFailsBeforeWriteWhenMappingFails(t *testing.T) {
 	useCase := NewCreateAnnotationUseCase(
 		&fakeSampleStore{
 			sample: &annotationrepo.Sample{
-				ID:          sampleID,
-				DatasetType: "fedo-dual-view",
-				Meta:        []byte(`{"mapping":{"source_view":"rgb","target_view":"thermal","lookup_table_b64":"bG9va3VwLWJ5dGVz"}}`),
+				ID:        sampleID,
+				DatasetID: datasetID,
+				Meta:      []byte(`{"mapping":{"source_view":"rgb","target_view":"thermal","lookup_table_b64":"bG9va3VwLWJ5dGVz"}}`),
+			},
+		},
+		&fakeDatasetStore{
+			dataset: &datasetrepo.Dataset{
+				ID:   datasetID,
+				Type: "fedo-dual-view",
+			},
+		},
+		&fakeProjectDatasetStore{
+			links: map[string]bool{
+				projectDatasetKey(projectID, datasetID): true,
 			},
 		},
 		store,
 		&fakeMapper{err: errors.New("mapping failed")},
 	)
 
-	_, err := useCase.Execute(context.Background(), sampleID, annotationdomain.CreateInput{
+	_, err := useCase.Execute(context.Background(), projectID, sampleID, annotationdomain.CreateInput{
 		GroupID:        "group-a",
 		LabelID:        "car",
 		View:           "rgb",
@@ -122,6 +153,25 @@ func (f *fakeSampleStore) Get(context.Context, uuid.UUID) (*annotationrepo.Sampl
 	return f.sample, nil
 }
 
+type fakeDatasetStore struct {
+	dataset *datasetrepo.Dataset
+}
+
+func (f *fakeDatasetStore) Get(context.Context, uuid.UUID) (*datasetrepo.Dataset, error) {
+	return f.dataset, nil
+}
+
+type fakeProjectDatasetStore struct {
+	links map[string]bool
+}
+
+func (f *fakeProjectDatasetStore) GetProjectDatasetLink(_ context.Context, projectID, datasetID uuid.UUID) (*projectrepo.ProjectDatasetLink, error) {
+	if !f.links[projectDatasetKey(projectID, datasetID)] {
+		return nil, nil
+	}
+	return &projectrepo.ProjectDatasetLink{ProjectID: projectID, DatasetID: datasetID}, nil
+}
+
 type fakeAnnotationStore struct {
 	nextIDs []uuid.UUID
 	created []annotationrepo.CreateAnnotationParams
@@ -136,6 +186,7 @@ func (f *fakeAnnotationStore) Create(_ context.Context, params annotationrepo.Cr
 	}
 	return &annotationrepo.Annotation{
 		ID:             id,
+		ProjectID:      params.ProjectID,
 		SampleID:       params.SampleID,
 		GroupID:        params.GroupID,
 		LabelID:        params.LabelID,
@@ -148,8 +199,12 @@ func (f *fakeAnnotationStore) Create(_ context.Context, params annotationrepo.Cr
 	}, nil
 }
 
-func (f *fakeAnnotationStore) ListBySample(context.Context, uuid.UUID) ([]annotationrepo.Annotation, error) {
+func (f *fakeAnnotationStore) ListByProjectSample(context.Context, uuid.UUID, uuid.UUID) ([]annotationrepo.Annotation, error) {
 	return nil, nil
+}
+
+func projectDatasetKey(projectID, datasetID uuid.UUID) string {
+	return projectID.String() + "|" + datasetID.String()
 }
 
 type fakeMapper struct {

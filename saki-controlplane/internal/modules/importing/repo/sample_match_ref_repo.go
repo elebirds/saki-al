@@ -11,7 +11,7 @@ import (
 
 type SampleMatchRef struct {
 	ID        int64
-	ProjectID uuid.UUID
+	DatasetID uuid.UUID
 	SampleID  uuid.UUID
 	RefType   string
 	RefValue  string
@@ -20,7 +20,7 @@ type SampleMatchRef struct {
 }
 
 type PutSampleMatchRefParams struct {
-	ProjectID uuid.UUID
+	DatasetID uuid.UUID
 	SampleID  uuid.UUID
 	RefType   string
 	RefValue  string
@@ -37,7 +37,7 @@ func NewSampleMatchRefRepo(pool *pgxpool.Pool) *SampleMatchRefRepo {
 
 func (r *SampleMatchRefRepo) Put(ctx context.Context, params PutSampleMatchRefParams) (*SampleMatchRef, error) {
 	row, err := r.q.PutSampleMatchRef(ctx, sqlcdb.PutSampleMatchRefParams{
-		ProjectID: params.ProjectID,
+		DatasetID: params.DatasetID,
 		SampleID:  params.SampleID,
 		RefType:   params.RefType,
 		RefValue:  params.RefValue,
@@ -48,7 +48,7 @@ func (r *SampleMatchRefRepo) Put(ctx context.Context, params PutSampleMatchRefPa
 	}
 	return &SampleMatchRef{
 		ID:        row.ID,
-		ProjectID: row.ProjectID,
+		DatasetID: row.DatasetID,
 		SampleID:  row.SampleID,
 		RefType:   row.RefType,
 		RefValue:  row.RefValue,
@@ -57,9 +57,9 @@ func (r *SampleMatchRefRepo) Put(ctx context.Context, params PutSampleMatchRefPa
 	}, nil
 }
 
-func (r *SampleMatchRefRepo) FindExact(ctx context.Context, projectID uuid.UUID, refType, refValue string) ([]SampleMatchRef, error) {
+func (r *SampleMatchRefRepo) FindExact(ctx context.Context, datasetID uuid.UUID, refType, refValue string) ([]SampleMatchRef, error) {
 	rows, err := r.q.FindExactSampleMatchRefs(ctx, sqlcdb.FindExactSampleMatchRefsParams{
-		ProjectID: projectID,
+		DatasetID: datasetID,
 		RefType:   refType,
 		RefValue:  refValue,
 	})
@@ -70,7 +70,7 @@ func (r *SampleMatchRefRepo) FindExact(ctx context.Context, projectID uuid.UUID,
 	for _, row := range rows {
 		refs = append(refs, SampleMatchRef{
 			ID:        row.ID,
-			ProjectID: row.ProjectID,
+			DatasetID: row.DatasetID,
 			SampleID:  row.SampleID,
 			RefType:   row.RefType,
 			RefValue:  row.RefValue,

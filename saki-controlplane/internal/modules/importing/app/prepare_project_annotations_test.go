@@ -17,6 +17,7 @@ func TestPrepareProjectAnnotationsCreatesPreviewManifest(t *testing.T) {
 	t.Parallel()
 
 	projectID := uuid.New()
+	datasetID := uuid.New()
 	sampleID := uuid.New()
 	sessionID := uuid.New()
 	ref, err := common.NewSampleRef(common.SampleRefTypeDatasetRelpath, "images/train/sample-1.jpg")
@@ -51,13 +52,21 @@ func TestPrepareProjectAnnotationsCreatesPreviewManifest(t *testing.T) {
 
 	previewStore := &fakePreviewStore{}
 	useCase := NewPrepareProjectAnnotationsUseCase(
-		fakeProjectStore{project: &projectrepo.Project{ID: projectID, Name: "demo"}},
+		fakeProjectStore{
+			project: &projectrepo.Project{ID: projectID, Name: "demo"},
+			links: map[string]*projectrepo.ProjectDatasetLink{
+				projectDatasetKey(projectID, datasetID): {
+					ProjectID: projectID,
+					DatasetID: datasetID,
+				},
+			},
+		},
 		fakeUploadStore{session: &importrepo.UploadSession{ID: sessionID, Status: "completed", ObjectKey: "/tmp/archive", Mode: "project_annotations"}},
 		previewStore,
 		fakeMatchStore{
 			rows: map[string][]importrepo.SampleMatchRef{
-				matchKey(projectID, "dataset_relpath", "images/train/sample-1.jpg"): {
-					{ProjectID: projectID, SampleID: sampleID, RefType: "dataset_relpath", RefValue: "images/train/sample-1.jpg"},
+				matchKey(datasetID, "dataset_relpath", "images/train/sample-1.jpg"): {
+					{DatasetID: datasetID, SampleID: sampleID, RefType: "dataset_relpath", RefValue: "images/train/sample-1.jpg"},
 				},
 			},
 		},
@@ -66,6 +75,7 @@ func TestPrepareProjectAnnotationsCreatesPreviewManifest(t *testing.T) {
 
 	result, err := useCase.Execute(context.Background(), PrepareProjectAnnotationsInput{
 		ProjectID:       projectID,
+		DatasetID:       datasetID,
 		UploadSessionID: sessionID,
 		FormatProfile:   "coco",
 	})
@@ -90,6 +100,9 @@ func TestPrepareProjectAnnotationsCreatesPreviewManifest(t *testing.T) {
 	if previewStore.saved == nil {
 		t.Fatal("expected preview manifest to be stored")
 	}
+	if got, want := previewStore.saved.DatasetID, datasetID; got != want {
+		t.Fatalf("saved preview dataset_id got %s want %s", got, want)
+	}
 
 	var manifest PreviewManifest
 	if err := json.Unmarshal(previewStore.saved.Manifest, &manifest); err != nil {
@@ -107,10 +120,19 @@ func TestPrepareProjectAnnotationsCarriesBlockingErrors(t *testing.T) {
 	t.Parallel()
 
 	projectID := uuid.New()
+	datasetID := uuid.New()
 	sessionID := uuid.New()
 
 	useCase := NewPrepareProjectAnnotationsUseCase(
-		fakeProjectStore{project: &projectrepo.Project{ID: projectID, Name: "demo"}},
+		fakeProjectStore{
+			project: &projectrepo.Project{ID: projectID, Name: "demo"},
+			links: map[string]*projectrepo.ProjectDatasetLink{
+				projectDatasetKey(projectID, datasetID): {
+					ProjectID: projectID,
+					DatasetID: datasetID,
+				},
+			},
+		},
 		fakeUploadStore{session: &importrepo.UploadSession{ID: sessionID, Status: "completed", ObjectKey: "/tmp/archive", Mode: "project_annotations"}},
 		&fakePreviewStore{},
 		fakeMatchStore{},
@@ -129,6 +151,7 @@ func TestPrepareProjectAnnotationsCarriesBlockingErrors(t *testing.T) {
 
 	result, err := useCase.Execute(context.Background(), PrepareProjectAnnotationsInput{
 		ProjectID:       projectID,
+		DatasetID:       datasetID,
 		UploadSessionID: sessionID,
 		FormatProfile:   "coco",
 	})
@@ -145,10 +168,15 @@ func TestPrepareProjectAnnotationsCarriesBlockingErrors(t *testing.T) {
 
 type fakeProjectStore struct {
 	project *projectrepo.Project
+	links   map[string]*projectrepo.ProjectDatasetLink
 }
 
 func (s fakeProjectStore) GetProject(ctx context.Context, id uuid.UUID) (*projectrepo.Project, error) {
 	return s.project, nil
+}
+
+func (s fakeProjectStore) GetProjectDatasetLink(ctx context.Context, projectID, datasetID uuid.UUID) (*projectrepo.ProjectDatasetLink, error) {
+	return s.links[projectDatasetKey(projectID, datasetID)], nil
 }
 
 type fakeUploadStore struct {
@@ -168,6 +196,7 @@ func (s *fakePreviewStore) Put(ctx context.Context, params importrepo.PutPreview
 		Token:           params.Token,
 		Mode:            params.Mode,
 		ProjectID:       params.ProjectID,
+		DatasetID:       params.DatasetID,
 		UploadSessionID: params.UploadSessionID,
 		Manifest:        params.Manifest,
 		ParamsHash:      params.ParamsHash,
@@ -175,6 +204,10 @@ func (s *fakePreviewStore) Put(ctx context.Context, params importrepo.PutPreview
 		CreatedAt:       time.Now(),
 	}
 	return s.saved, nil
+}
+
+func projectDatasetKey(projectID, datasetID uuid.UUID) string {
+	return projectID.String() + "|" + datasetID.String()
 }
 
 type fakeParserRegistry struct {

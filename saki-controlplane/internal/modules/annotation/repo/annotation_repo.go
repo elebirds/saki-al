@@ -12,6 +12,7 @@ import (
 
 type Annotation struct {
 	ID             uuid.UUID
+	ProjectID      uuid.UUID
 	SampleID       uuid.UUID
 	GroupID        string
 	LabelID        string
@@ -25,6 +26,7 @@ type Annotation struct {
 }
 
 type CreateAnnotationParams struct {
+	ProjectID      uuid.UUID
 	SampleID       uuid.UUID
 	GroupID        string
 	LabelID        string
@@ -46,6 +48,7 @@ func NewAnnotationRepo(pool *pgxpool.Pool) *AnnotationRepo {
 
 func (r *AnnotationRepo) Create(ctx context.Context, params CreateAnnotationParams) (*Annotation, error) {
 	row, err := r.q.CreateAnnotation(ctx, sqlcdb.CreateAnnotationParams{
+		ProjectID:      params.ProjectID,
 		SampleID:       params.SampleID,
 		GroupID:        params.GroupID,
 		LabelID:        params.LabelID,
@@ -62,6 +65,7 @@ func (r *AnnotationRepo) Create(ctx context.Context, params CreateAnnotationPara
 
 	return &Annotation{
 		ID:             row.ID,
+		ProjectID:      row.ProjectID,
 		SampleID:       row.SampleID,
 		GroupID:        row.GroupID,
 		LabelID:        row.LabelID,
@@ -75,8 +79,11 @@ func (r *AnnotationRepo) Create(ctx context.Context, params CreateAnnotationPara
 	}, nil
 }
 
-func (r *AnnotationRepo) ListBySample(ctx context.Context, sampleID uuid.UUID) ([]Annotation, error) {
-	rows, err := r.q.ListAnnotationsBySample(ctx, sampleID)
+func (r *AnnotationRepo) ListByProjectSample(ctx context.Context, projectID, sampleID uuid.UUID) ([]Annotation, error) {
+	rows, err := r.q.ListAnnotationsByProjectSample(ctx, sqlcdb.ListAnnotationsByProjectSampleParams{
+		ProjectID: projectID,
+		SampleID:  sampleID,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -85,6 +92,7 @@ func (r *AnnotationRepo) ListBySample(ctx context.Context, sampleID uuid.UUID) (
 	for _, row := range rows {
 		annotations = append(annotations, Annotation{
 			ID:             row.ID,
+			ProjectID:      row.ProjectID,
 			SampleID:       row.SampleID,
 			GroupID:        row.GroupID,
 			LabelID:        row.LabelID,

@@ -13,11 +13,11 @@ import (
 func TestMatchSampleRefPrefersDatasetRelpath(t *testing.T) {
 	t.Parallel()
 
-	projectID := uuid.New()
+	datasetID := uuid.New()
 	sampleID := uuid.New()
 	store := fakeMatchStore{
 		rows: map[string][]importrepo.SampleMatchRef{
-			matchKey(projectID, "dataset_relpath", "images/train/sample-1.jpg"): {
+			matchKey(datasetID, "dataset_relpath", "images/train/sample-1.jpg"): {
 				{SampleID: sampleID, RefType: "dataset_relpath", RefValue: "images/train/sample-1.jpg"},
 			},
 		},
@@ -28,7 +28,7 @@ func TestMatchSampleRefPrefersDatasetRelpath(t *testing.T) {
 		t.Fatalf("NewSampleRef failed: %v", err)
 	}
 
-	decision, err := matchSampleRef(context.Background(), store, projectID, ref)
+	decision, err := matchSampleRef(context.Background(), store, datasetID, ref)
 	if err != nil {
 		t.Fatalf("matchSampleRef failed: %v", err)
 	}
@@ -43,11 +43,11 @@ func TestMatchSampleRefPrefersDatasetRelpath(t *testing.T) {
 func TestMatchSampleRefFallsBackToSampleNameAndBasename(t *testing.T) {
 	t.Parallel()
 
-	projectID := uuid.New()
+	datasetID := uuid.New()
 	sampleID := uuid.New()
 	store := fakeMatchStore{
 		rows: map[string][]importrepo.SampleMatchRef{
-			matchKey(projectID, "sample_name", "sample-1"): {
+			matchKey(datasetID, "sample_name", "sample-1"): {
 				{SampleID: sampleID, RefType: "sample_name", RefValue: "sample-1"},
 			},
 		},
@@ -58,7 +58,7 @@ func TestMatchSampleRefFallsBackToSampleNameAndBasename(t *testing.T) {
 		t.Fatalf("NewSampleRef failed: %v", err)
 	}
 
-	decision, err := matchSampleRef(context.Background(), store, projectID, ref)
+	decision, err := matchSampleRef(context.Background(), store, datasetID, ref)
 	if err != nil {
 		t.Fatalf("matchSampleRef failed: %v", err)
 	}
@@ -71,12 +71,12 @@ func TestMatchSampleRefFallsBackToSampleNameAndBasename(t *testing.T) {
 
 	store = fakeMatchStore{
 		rows: map[string][]importrepo.SampleMatchRef{
-			matchKey(projectID, "basename", "sample-1.jpg"): {
+			matchKey(datasetID, "basename", "sample-1.jpg"): {
 				{SampleID: sampleID, RefType: "basename", RefValue: "sample-1.jpg"},
 			},
 		},
 	}
-	decision, err = matchSampleRef(context.Background(), store, projectID, ref)
+	decision, err = matchSampleRef(context.Background(), store, datasetID, ref)
 	if err != nil {
 		t.Fatalf("matchSampleRef basename failed: %v", err)
 	}
@@ -91,10 +91,10 @@ func TestMatchSampleRefFallsBackToSampleNameAndBasename(t *testing.T) {
 func TestMatchSampleRefRejectsAmbiguousFallback(t *testing.T) {
 	t.Parallel()
 
-	projectID := uuid.New()
+	datasetID := uuid.New()
 	store := fakeMatchStore{
 		rows: map[string][]importrepo.SampleMatchRef{
-			matchKey(projectID, "basename", "sample-1.jpg"): {
+			matchKey(datasetID, "basename", "sample-1.jpg"): {
 				{SampleID: uuid.New(), RefType: "basename", RefValue: "sample-1.jpg"},
 				{SampleID: uuid.New(), RefType: "basename", RefValue: "sample-1.jpg"},
 			},
@@ -106,7 +106,7 @@ func TestMatchSampleRefRejectsAmbiguousFallback(t *testing.T) {
 		t.Fatalf("NewSampleRef failed: %v", err)
 	}
 
-	_, err = matchSampleRef(context.Background(), store, projectID, ref)
+	_, err = matchSampleRef(context.Background(), store, datasetID, ref)
 	if !errors.Is(err, ErrAmbiguousSampleMatch) {
 		t.Fatalf("expected ErrAmbiguousSampleMatch, got %v", err)
 	}
@@ -117,13 +117,13 @@ type fakeMatchStore struct {
 	err  error
 }
 
-func (s fakeMatchStore) FindExact(ctx context.Context, projectID uuid.UUID, refType, refValue string) ([]importrepo.SampleMatchRef, error) {
+func (s fakeMatchStore) FindExact(ctx context.Context, datasetID uuid.UUID, refType, refValue string) ([]importrepo.SampleMatchRef, error) {
 	if s.err != nil {
 		return nil, s.err
 	}
-	return s.rows[matchKey(projectID, refType, refValue)], nil
+	return s.rows[matchKey(datasetID, refType, refValue)], nil
 }
 
-func matchKey(projectID uuid.UUID, refType, refValue string) string {
-	return projectID.String() + "|" + refType + "|" + refValue
+func matchKey(datasetID uuid.UUID, refType, refValue string) string {
+	return datasetID.String() + "|" + refType + "|" + refValue
 }

@@ -13,6 +13,7 @@ import (
 
 const createAnnotation = `-- name: CreateAnnotation :one
 insert into annotation (
+    project_id,
     sample_id,
     group_id,
     label_id,
@@ -32,12 +33,14 @@ values (
     $6,
     $7,
     $8,
-    $9
+    $9,
+    $10
 )
-returning id, sample_id, group_id, label_id, view, annotation_type, geometry, attrs, source, is_generated, created_at
+returning id, project_id, sample_id, group_id, label_id, view, annotation_type, geometry, attrs, source, is_generated, created_at
 `
 
 type CreateAnnotationParams struct {
+	ProjectID      uuid.UUID `json:"project_id"`
 	SampleID       uuid.UUID `json:"sample_id"`
 	GroupID        string    `json:"group_id"`
 	LabelID        string    `json:"label_id"`
@@ -51,6 +54,7 @@ type CreateAnnotationParams struct {
 
 func (q *Queries) CreateAnnotation(ctx context.Context, arg CreateAnnotationParams) (Annotation, error) {
 	row := q.db.QueryRow(ctx, createAnnotation,
+		arg.ProjectID,
 		arg.SampleID,
 		arg.GroupID,
 		arg.LabelID,
@@ -64,6 +68,7 @@ func (q *Queries) CreateAnnotation(ctx context.Context, arg CreateAnnotationPara
 	var i Annotation
 	err := row.Scan(
 		&i.ID,
+		&i.ProjectID,
 		&i.SampleID,
 		&i.GroupID,
 		&i.LabelID,
@@ -78,15 +83,21 @@ func (q *Queries) CreateAnnotation(ctx context.Context, arg CreateAnnotationPara
 	return i, err
 }
 
-const listAnnotationsBySample = `-- name: ListAnnotationsBySample :many
-select id, sample_id, group_id, label_id, view, annotation_type, geometry, attrs, source, is_generated, created_at
+const listAnnotationsByProjectSample = `-- name: ListAnnotationsByProjectSample :many
+select id, project_id, sample_id, group_id, label_id, view, annotation_type, geometry, attrs, source, is_generated, created_at
 from annotation
-where sample_id = $1
+where project_id = $1
+  and sample_id = $2
 order by created_at, id
 `
 
-func (q *Queries) ListAnnotationsBySample(ctx context.Context, sampleID uuid.UUID) ([]Annotation, error) {
-	rows, err := q.db.Query(ctx, listAnnotationsBySample, sampleID)
+type ListAnnotationsByProjectSampleParams struct {
+	ProjectID uuid.UUID `json:"project_id"`
+	SampleID  uuid.UUID `json:"sample_id"`
+}
+
+func (q *Queries) ListAnnotationsByProjectSample(ctx context.Context, arg ListAnnotationsByProjectSampleParams) ([]Annotation, error) {
+	rows, err := q.db.Query(ctx, listAnnotationsByProjectSample, arg.ProjectID, arg.SampleID)
 	if err != nil {
 		return nil, err
 	}
@@ -96,6 +107,7 @@ func (q *Queries) ListAnnotationsBySample(ctx context.Context, sampleID uuid.UUI
 		var i Annotation
 		if err := rows.Scan(
 			&i.ID,
+			&i.ProjectID,
 			&i.SampleID,
 			&i.GroupID,
 			&i.LabelID,

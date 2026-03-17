@@ -17,7 +17,7 @@ var (
 )
 
 type SampleMatchFinder interface {
-	FindExact(ctx context.Context, projectID uuid.UUID, refType, refValue string) ([]importrepo.SampleMatchRef, error)
+	FindExact(ctx context.Context, datasetID uuid.UUID, refType, refValue string) ([]importrepo.SampleMatchRef, error)
 }
 
 type sampleMatchDecision struct {
@@ -26,8 +26,8 @@ type sampleMatchDecision struct {
 	Warning  *common.ConversionIssue
 }
 
-func matchSampleRef(ctx context.Context, store SampleMatchFinder, projectID uuid.UUID, ref common.SampleRef) (sampleMatchDecision, error) {
-	if matches, err := store.FindExact(ctx, projectID, "dataset_relpath", ref.NormalizedValue); err != nil {
+func matchSampleRef(ctx context.Context, store SampleMatchFinder, datasetID uuid.UUID, ref common.SampleRef) (sampleMatchDecision, error) {
+	if matches, err := store.FindExact(ctx, datasetID, "dataset_relpath", ref.NormalizedValue); err != nil {
 		return sampleMatchDecision{}, err
 	} else if len(matches) == 1 {
 		return sampleMatchDecision{SampleID: matches[0].SampleID, Strategy: "dataset_relpath"}, nil
@@ -37,7 +37,7 @@ func matchSampleRef(ctx context.Context, store SampleMatchFinder, projectID uuid
 
 	sampleName := deriveSampleName(ref.NormalizedValue)
 	if sampleName != "" {
-		if matches, err := store.FindExact(ctx, projectID, "sample_name", sampleName); err != nil {
+		if matches, err := store.FindExact(ctx, datasetID, "sample_name", sampleName); err != nil {
 			return sampleMatchDecision{}, err
 		} else if len(matches) == 1 {
 			return sampleMatchDecision{SampleID: matches[0].SampleID, Strategy: "sample_name"}, nil
@@ -48,7 +48,7 @@ func matchSampleRef(ctx context.Context, store SampleMatchFinder, projectID uuid
 
 	basename := path.Base(ref.NormalizedValue)
 	if basename != "" && basename != "." {
-		if matches, err := store.FindExact(ctx, projectID, "basename", basename); err != nil {
+		if matches, err := store.FindExact(ctx, datasetID, "basename", basename); err != nil {
 			return sampleMatchDecision{}, err
 		} else if len(matches) == 1 {
 			return sampleMatchDecision{

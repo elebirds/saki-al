@@ -12,22 +12,22 @@ import (
 )
 
 const findExactSampleMatchRefs = `-- name: FindExactSampleMatchRefs :many
-select id, project_id, sample_id, ref_type, ref_value, is_primary, created_at
+select id, dataset_id, sample_id, ref_type, ref_value, is_primary, created_at
 from sample_match_ref
-where project_id = $1
+where dataset_id = $1
   and ref_type = $2
   and ref_value = $3
 order by id
 `
 
 type FindExactSampleMatchRefsParams struct {
-	ProjectID uuid.UUID `json:"project_id"`
+	DatasetID uuid.UUID `json:"dataset_id"`
 	RefType   string    `json:"ref_type"`
 	RefValue  string    `json:"ref_value"`
 }
 
 func (q *Queries) FindExactSampleMatchRefs(ctx context.Context, arg FindExactSampleMatchRefsParams) ([]SampleMatchRef, error) {
-	rows, err := q.db.Query(ctx, findExactSampleMatchRefs, arg.ProjectID, arg.RefType, arg.RefValue)
+	rows, err := q.db.Query(ctx, findExactSampleMatchRefs, arg.DatasetID, arg.RefType, arg.RefValue)
 	if err != nil {
 		return nil, err
 	}
@@ -37,7 +37,7 @@ func (q *Queries) FindExactSampleMatchRefs(ctx context.Context, arg FindExactSam
 		var i SampleMatchRef
 		if err := rows.Scan(
 			&i.ID,
-			&i.ProjectID,
+			&i.DatasetID,
 			&i.SampleID,
 			&i.RefType,
 			&i.RefValue,
@@ -56,7 +56,7 @@ func (q *Queries) FindExactSampleMatchRefs(ctx context.Context, arg FindExactSam
 
 const putSampleMatchRef = `-- name: PutSampleMatchRef :one
 insert into sample_match_ref (
-    project_id,
+    dataset_id,
     sample_id,
     ref_type,
     ref_value,
@@ -69,11 +69,11 @@ values (
     $4,
     $5
 )
-returning id, project_id, sample_id, ref_type, ref_value, is_primary, created_at
+returning id, dataset_id, sample_id, ref_type, ref_value, is_primary, created_at
 `
 
 type PutSampleMatchRefParams struct {
-	ProjectID uuid.UUID `json:"project_id"`
+	DatasetID uuid.UUID `json:"dataset_id"`
 	SampleID  uuid.UUID `json:"sample_id"`
 	RefType   string    `json:"ref_type"`
 	RefValue  string    `json:"ref_value"`
@@ -82,7 +82,7 @@ type PutSampleMatchRefParams struct {
 
 func (q *Queries) PutSampleMatchRef(ctx context.Context, arg PutSampleMatchRefParams) (SampleMatchRef, error) {
 	row := q.db.QueryRow(ctx, putSampleMatchRef,
-		arg.ProjectID,
+		arg.DatasetID,
 		arg.SampleID,
 		arg.RefType,
 		arg.RefValue,
@@ -91,7 +91,7 @@ func (q *Queries) PutSampleMatchRef(ctx context.Context, arg PutSampleMatchRefPa
 	var i SampleMatchRef
 	err := row.Scan(
 		&i.ID,
-		&i.ProjectID,
+		&i.DatasetID,
 		&i.SampleID,
 		&i.RefType,
 		&i.RefValue,

@@ -19,6 +19,7 @@ import (
 
 type ProjectStore interface {
 	GetProject(ctx context.Context, id uuid.UUID) (*projectrepo.Project, error)
+	GetProjectDatasetLink(ctx context.Context, projectID, datasetID uuid.UUID) (*projectrepo.ProjectDatasetLink, error)
 }
 
 type UploadSessionStore interface {
@@ -31,6 +32,7 @@ type PreviewManifestStore interface {
 
 type PrepareProjectAnnotationsInput struct {
 	ProjectID       uuid.UUID
+	DatasetID       uuid.UUID
 	UploadSessionID uuid.UUID
 	FormatProfile   string
 	Split           string
@@ -80,6 +82,7 @@ type PrepareProjectAnnotationsResult struct {
 type PreviewManifest struct {
 	Mode               string                   `json:"mode"`
 	ProjectID          uuid.UUID                `json:"project_id"`
+	DatasetID          uuid.UUID                `json:"dataset_id"`
 	UploadSessionID    uuid.UUID                `json:"upload_session_id"`
 	FormatProfile      string                   `json:"format_profile"`
 	SourcePath         string                   `json:"source_path"`
@@ -135,6 +138,13 @@ func (u *PrepareProjectAnnotationsUseCase) Execute(ctx context.Context, input Pr
 	}
 	if project == nil {
 		return nil, errors.New("project not found")
+	}
+	link, err := u.projects.GetProjectDatasetLink(ctx, input.ProjectID, input.DatasetID)
+	if err != nil {
+		return nil, err
+	}
+	if link == nil {
+		return nil, errors.New("dataset is not linked to project")
 	}
 
 	session, err := u.uploads.Get(ctx, input.UploadSessionID)
@@ -198,7 +208,7 @@ func (u *PrepareProjectAnnotationsUseCase) Execute(ctx context.Context, input Pr
 	matchedEntries := make([]MatchedAnnotationEntry, 0, len(parsed.Annotations))
 	uniqueSamples := map[uuid.UUID]struct{}{}
 	for _, parsedAnnotation := range parsed.Annotations {
-		decision, err := matchSampleRef(ctx, u.matches, input.ProjectID, parsedAnnotation.PrimarySampleRef)
+		decision, err := matchSampleRef(ctx, u.matches, input.DatasetID, parsedAnnotation.PrimarySampleRef)
 		if err != nil {
 			switch {
 			case errors.Is(err, ErrAmbiguousSampleMatch):
@@ -263,6 +273,7 @@ func (u *PrepareProjectAnnotationsUseCase) Execute(ctx context.Context, input Pr
 	manifest := PreviewManifest{
 		Mode:               "project_annotations",
 		ProjectID:          input.ProjectID,
+		DatasetID:          input.DatasetID,
 		UploadSessionID:    input.UploadSessionID,
 		FormatProfile:      input.FormatProfile,
 		SourcePath:         session.ObjectKey,
@@ -280,6 +291,7 @@ func (u *PrepareProjectAnnotationsUseCase) Execute(ctx context.Context, input Pr
 		Token:           previewToken,
 		Mode:            manifest.Mode,
 		ProjectID:       manifest.ProjectID,
+		DatasetID:       manifest.DatasetID,
 		UploadSessionID: manifest.UploadSessionID,
 		Manifest:        manifestBytes,
 		ParamsHash:      paramsHash(input, session.ObjectKey),
@@ -342,6 +354,6 @@ func annotationTypeFromGeometry(geometry *annotationirv1.Geometry) string {
 }
 
 func paramsHash(input PrepareProjectAnnotationsInput, sourcePath string) string {
-	sum := sha256.Sum256([]byte(input.ProjectID.String() + "|" + input.UploadSessionID.String() + "|" + input.FormatProfile + "|" + input.Split + "|" + sourcePath))
+	sum := sha256.Sum256([]byte(input.ProjectID.String() + "|" + input.DatasetID.String() + "|" + input.UploadSessionID.String() + "|" + input.FormatProfile + "|" + input.Split + "|" + sourcePath))
 	return hex.EncodeToString(sum[:])
 }

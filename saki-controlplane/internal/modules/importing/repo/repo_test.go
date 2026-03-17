@@ -23,6 +23,31 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
+func TestImportSchemaUsesDatasetScopedPreviewAndMatchRefs(t *testing.T) {
+	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+
+	ctx := context.Background()
+	container, dsn := startImportPostgres(t, ctx)
+	defer func() {
+		_ = testcontainers.TerminateContainer(container)
+	}()
+
+	sqlDB, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("open sql db: %v", err)
+	}
+	defer sqlDB.Close()
+
+	goose.SetDialect("postgres")
+	if err := goose.Up(sqlDB, importMigrationsDir(t)); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+
+	assertHasColumn(t, sqlDB, "import_preview_manifest", "dataset_id")
+	assertHasColumn(t, sqlDB, "sample_match_ref", "dataset_id")
+	assertMissingColumn(t, sqlDB, "sample_match_ref", "project_id")
+}
+
 func TestImportReposSessionPreviewTaskAndMatchRef(t *testing.T) {
 	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
 
@@ -86,10 +111,15 @@ func TestImportReposSessionPreviewTaskAndMatchRef(t *testing.T) {
 
 	previewRepo := NewPreviewRepo(pool)
 	expiresAt := time.Now().Add(15 * time.Minute).UTC().Truncate(time.Microsecond)
+	datasetID := uuid.New()
+	if _, err := sqlDB.ExecContext(ctx, `insert into dataset (id, name, type) values ($1, $2, $3)`, datasetID, "demo-dataset", "image"); err != nil {
+		t.Fatalf("seed dataset: %v", err)
+	}
 	manifest, err := previewRepo.Put(ctx, PutPreviewManifestParams{
 		Token:           "preview-token-1",
 		Mode:            "project_annotations",
 		ProjectID:       uuid.New(),
+		DatasetID:       datasetID,
 		UploadSessionID: session.ID,
 		Manifest:        []byte(`{"summary":{"total_annotations":1}}`),
 		ParamsHash:      "hash-1",
@@ -164,11 +194,10 @@ func TestImportReposSessionPreviewTaskAndMatchRef(t *testing.T) {
 	}
 
 	sampleRepo := annotationrepo.NewSampleRepo(pool)
-	projectID := uuid.New()
 	sample, err := sampleRepo.Create(ctx, annotationrepo.CreateSampleParams{
-		ProjectID:   projectID,
-		DatasetType: "image",
-		Meta:        []byte(`{}`),
+		DatasetID: datasetID,
+		Name:      "sample-1",
+		Meta:      []byte(`{}`),
 	})
 	if err != nil {
 		t.Fatalf("create sample: %v", err)
@@ -176,7 +205,7 @@ func TestImportReposSessionPreviewTaskAndMatchRef(t *testing.T) {
 
 	matchRepo := NewSampleMatchRefRepo(pool)
 	ref, err := matchRepo.Put(ctx, PutSampleMatchRefParams{
-		ProjectID: projectID,
+		DatasetID: datasetID,
 		SampleID:  sample.ID,
 		RefType:   "dataset_relpath",
 		RefValue:  "images/train/sample1.png",
@@ -189,7 +218,7 @@ func TestImportReposSessionPreviewTaskAndMatchRef(t *testing.T) {
 		t.Fatalf("sample match ref value got %q want %q", got, want)
 	}
 
-	matches, err := matchRepo.FindExact(ctx, projectID, "dataset_relpath", "images/train/sample1.png")
+	matches, err := matchRepo.FindExact(ctx, datasetID, "dataset_relpath", "images/train/sample1.png")
 	if err != nil {
 		t.Fatalf("find exact match refs: %v", err)
 	}
@@ -262,4 +291,44 @@ func jsonEqual(t *testing.T, left, right []byte) bool {
 		t.Fatalf("unmarshal right json: %v", err)
 	}
 	return reflect.DeepEqual(leftValue, rightValue)
+}
+
+func assertHasColumn(t *testing.T, db *sql.DB, tableName, columnName string) {
+	t.Helper()
+
+	var exists bool
+	row := db.QueryRow(`
+select exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = $1
+      and column_name = $2
+)`, tableName, columnName)
+	if err := row.Scan(&exists); err != nil {
+		t.Fatalf("scan column existence for %s.%s: %v", tableName, columnName, err)
+	}
+	if !exists {
+		t.Fatalf("expected column %s.%s to exist", tableName, columnName)
+	}
+}
+
+func assertMissingColumn(t *testing.T, db *sql.DB, tableName, columnName string) {
+	t.Helper()
+
+	var exists bool
+	row := db.QueryRow(`
+select exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = $1
+      and column_name = $2
+)`, tableName, columnName)
+	if err := row.Scan(&exists); err != nil {
+		t.Fatalf("scan column existence for %s.%s: %v", tableName, columnName, err)
+	}
+	if exists {
+		t.Fatalf("expected column %s.%s to be absent", tableName, columnName)
+	}
 }

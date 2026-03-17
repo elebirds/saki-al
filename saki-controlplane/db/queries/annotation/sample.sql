@@ -1,9 +1,9 @@
 -- name: CreateSample :one
-insert into sample (project_id, dataset_type, meta)
-values (sqlc.arg(project_id), sqlc.arg(dataset_type), sqlc.arg(meta))
-returning id, project_id, dataset_type, meta, created_at;
+insert into sample (dataset_id, name, meta)
+values (sqlc.arg(dataset_id), sqlc.arg(name), sqlc.arg(meta))
+returning id, dataset_id, name, meta, created_at, updated_at;
 
 -- name: GetSample :one
-select id, project_id, dataset_type, meta, created_at
+select id, dataset_id, name, meta, created_at, updated_at
 from sample
 where id = sqlc.arg(id);

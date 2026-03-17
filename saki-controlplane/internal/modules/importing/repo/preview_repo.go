@@ -15,6 +15,7 @@ type PreviewManifest struct {
 	Token           string
 	Mode            string
 	ProjectID       uuid.UUID
+	DatasetID       uuid.UUID
 	UploadSessionID uuid.UUID
 	Manifest        []byte
 	ParamsHash      string
@@ -26,6 +27,7 @@ type PutPreviewManifestParams struct {
 	Token           string
 	Mode            string
 	ProjectID       uuid.UUID
+	DatasetID       uuid.UUID
 	UploadSessionID uuid.UUID
 	Manifest        []byte
 	ParamsHash      string
@@ -45,6 +47,7 @@ func (r *PreviewRepo) Put(ctx context.Context, params PutPreviewManifestParams) 
 		Token:           params.Token,
 		Mode:            params.Mode,
 		ProjectID:       params.ProjectID,
+		DatasetID:       params.DatasetID,
 		UploadSessionID: params.UploadSessionID,
 		Manifest:        params.Manifest,
 		ParamsHash:      params.ParamsHash,
@@ -57,6 +60,7 @@ func (r *PreviewRepo) Put(ctx context.Context, params PutPreviewManifestParams) 
 		Token:           row.Token,
 		Mode:            row.Mode,
 		ProjectID:       row.ProjectID,
+		DatasetID:       row.DatasetID,
 		UploadSessionID: row.UploadSessionID,
 		Manifest:        row.Manifest,
 		ParamsHash:      row.ParamsHash,
@@ -77,6 +81,7 @@ func (r *PreviewRepo) Get(ctx context.Context, token string) (*PreviewManifest, 
 		Token:           row.Token,
 		Mode:            row.Mode,
 		ProjectID:       row.ProjectID,
+		DatasetID:       row.DatasetID,
 		UploadSessionID: row.UploadSessionID,
 		Manifest:        row.Manifest,
 		ParamsHash:      row.ParamsHash,

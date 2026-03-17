@@ -12,32 +12,33 @@ import (
 )
 
 const createSample = `-- name: CreateSample :one
-insert into sample (project_id, dataset_type, meta)
+insert into sample (dataset_id, name, meta)
 values ($1, $2, $3)
-returning id, project_id, dataset_type, meta, created_at
+returning id, dataset_id, name, meta, created_at, updated_at
 `
 
 type CreateSampleParams struct {
-	ProjectID   uuid.UUID `json:"project_id"`
-	DatasetType string    `json:"dataset_type"`
-	Meta        []byte    `json:"meta"`
+	DatasetID uuid.UUID `json:"dataset_id"`
+	Name      string    `json:"name"`
+	Meta      []byte    `json:"meta"`
 }
 
 func (q *Queries) CreateSample(ctx context.Context, arg CreateSampleParams) (Sample, error) {
-	row := q.db.QueryRow(ctx, createSample, arg.ProjectID, arg.DatasetType, arg.Meta)
+	row := q.db.QueryRow(ctx, createSample, arg.DatasetID, arg.Name, arg.Meta)
 	var i Sample
 	err := row.Scan(
 		&i.ID,
-		&i.ProjectID,
-		&i.DatasetType,
+		&i.DatasetID,
+		&i.Name,
 		&i.Meta,
 		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
 
 const getSample = `-- name: GetSample :one
-select id, project_id, dataset_type, meta, created_at
+select id, dataset_id, name, meta, created_at, updated_at
 from sample
 where id = $1
 `
@@ -47,10 +48,11 @@ func (q *Queries) GetSample(ctx context.Context, id uuid.UUID) (Sample, error) {
 	var i Sample
 	err := row.Scan(
 		&i.ID,
-		&i.ProjectID,
-		&i.DatasetType,
+		&i.DatasetID,
+		&i.Name,
 		&i.Meta,
 		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }

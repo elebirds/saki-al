@@ -15,6 +15,7 @@ var (
 
 type Annotation struct {
 	ID             string
+	ProjectID      string
 	SampleID       string
 	GroupID        string
 	LabelID        string
@@ -96,6 +97,7 @@ func FromRepoAnnotation(annotation annotationrepo.Annotation) (Annotation, error
 
 	return Annotation{
 		ID:             annotation.ID.String(),
+		ProjectID:      annotation.ProjectID.String(),
 		SampleID:       annotation.SampleID.String(),
 		GroupID:        annotation.GroupID,
 		LabelID:        annotation.LabelID,

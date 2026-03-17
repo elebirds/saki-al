@@ -19,6 +19,7 @@ create table import_preview_manifest (
     token text primary key,
     mode text not null,
     project_id uuid not null,
+    dataset_id uuid not null references dataset(id) on delete cascade,
     upload_session_id uuid not null references import_upload_session(id) on delete cascade,
     manifest jsonb not null,
     params_hash text not null,
@@ -56,7 +57,7 @@ create index idx_import_task_event_task_seq on import_task_event (task_id, seq);
 
 create table sample_match_ref (
     id bigserial primary key,
-    project_id uuid not null,
+    dataset_id uuid not null references dataset(id) on delete cascade,
     sample_id uuid not null references sample(id) on delete cascade,
     ref_type text not null,
     ref_value text not null,
@@ -64,7 +65,7 @@ create table sample_match_ref (
     created_at timestamptz not null default now()
 );
 
-create index idx_sample_match_ref_exact on sample_match_ref (project_id, ref_type, ref_value, id);
+create index idx_sample_match_ref_exact on sample_match_ref (dataset_id, ref_type, ref_value, id);
 
 -- +goose Down
 drop table if exists sample_match_ref;

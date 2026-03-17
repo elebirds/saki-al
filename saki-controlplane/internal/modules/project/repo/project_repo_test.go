@@ -18,6 +18,30 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
+func TestProjectSchemaIncludesProjectDatasetLinkTable(t *testing.T) {
+	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+
+	ctx := context.Background()
+	container, dsn := startPostgres(t, ctx)
+	defer func() {
+		_ = testcontainers.TerminateContainer(container)
+	}()
+
+	sqlDB, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("open sql db: %v", err)
+	}
+	defer sqlDB.Close()
+
+	goose.SetDialect("postgres")
+	if err := goose.Up(sqlDB, migrationsDir(t)); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+
+	assertHasColumn(t, sqlDB, "project_dataset", "project_id")
+	assertHasColumn(t, sqlDB, "project_dataset", "dataset_id")
+}
+
 func TestProjectRepoCreateProject(t *testing.T) {
 	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
 
@@ -63,6 +87,68 @@ func TestProjectRepoCreateProject(t *testing.T) {
 	}
 	if project.UpdatedAt.IsZero() {
 		t.Fatal("expected updated_at to be populated")
+	}
+}
+
+func TestProjectRepoCanLinkAndListDatasets(t *testing.T) {
+	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+
+	ctx := context.Background()
+	container, dsn := startPostgres(t, ctx)
+	defer func() {
+		_ = testcontainers.TerminateContainer(container)
+	}()
+
+	sqlDB, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("open sql db: %v", err)
+	}
+	defer sqlDB.Close()
+
+	goose.SetDialect("postgres")
+	if err := goose.Up(sqlDB, migrationsDir(t)); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+
+	pool, err := appdb.NewPool(ctx, dsn)
+	if err != nil {
+		t.Fatalf("create pool: %v", err)
+	}
+	defer pool.Close()
+
+	projectRepo := NewProjectRepo(pool)
+	project, err := projectRepo.CreateProject(ctx, CreateProjectParams{Name: "linked-project"})
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+
+	datasetID := uuid.New()
+	if _, err := sqlDB.ExecContext(ctx, `insert into dataset (id, name, type) values ($1, $2, $3)`, datasetID, "dataset-1", "image"); err != nil {
+		t.Fatalf("seed dataset: %v", err)
+	}
+
+	link, err := projectRepo.LinkDataset(ctx, project.ID, datasetID)
+	if err != nil {
+		t.Fatalf("link dataset: %v", err)
+	}
+	if link.ProjectID != project.ID || link.DatasetID != datasetID {
+		t.Fatalf("unexpected project dataset link: %+v", link)
+	}
+
+	linkedIDs, err := projectRepo.ListProjectDatasetIDs(ctx, project.ID)
+	if err != nil {
+		t.Fatalf("list linked dataset ids: %v", err)
+	}
+	if len(linkedIDs) != 1 || linkedIDs[0] != datasetID {
+		t.Fatalf("unexpected linked dataset ids: %+v", linkedIDs)
+	}
+
+	loadedLink, err := projectRepo.GetProjectDatasetLink(ctx, project.ID, datasetID)
+	if err != nil {
+		t.Fatalf("get project dataset link: %v", err)
+	}
+	if loadedLink == nil || loadedLink.ProjectID != project.ID || loadedLink.DatasetID != datasetID {
+		t.Fatalf("unexpected loaded project dataset link: %+v", loadedLink)
 	}
 }
 
@@ -115,4 +201,24 @@ func postgresImageRef() string {
 		return "postgres:16-alpine"
 	}
 	return imageID
+}
+
+func assertHasColumn(t *testing.T, db *sql.DB, tableName, columnName string) {
+	t.Helper()
+
+	var exists bool
+	row := db.QueryRow(`
+select exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = $1
+      and column_name = $2
+)`, tableName, columnName)
+	if err := row.Scan(&exists); err != nil {
+		t.Fatalf("scan column existence for %s.%s: %v", tableName, columnName, err)
+	}
+	if !exists {
+		t.Fatalf("expected column %s.%s to exist", tableName, columnName)
+	}
 }

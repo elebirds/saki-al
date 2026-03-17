@@ -14,12 +14,23 @@ func TestProjectAnnotationsTaskRunnerCreatesAnnotationsAndEvents(t *testing.T) {
 	t.Parallel()
 
 	taskID := uuid.New()
+	projectID := uuid.New()
+	datasetID := uuid.New()
 	sampleID := uuid.New()
 	taskStore := &fakeMutableTaskStore{}
 	annotationStore := &fakeAnnotationStore{}
-	runner := NewProjectAnnotationsTaskRunner(annotationStore, taskStore)
+	runner := NewProjectAnnotationsTaskRunner(&fakeSampleLookupStore{
+		samples: map[uuid.UUID]*annotationrepo.Sample{
+			sampleID: {
+				ID:        sampleID,
+				DatasetID: datasetID,
+			},
+		},
+	}, annotationStore, taskStore)
 
 	err := runner.Run(context.Background(), taskID, PreviewManifest{
+		ProjectID: projectID,
+		DatasetID: datasetID,
 		MatchedAnnotations: []MatchedAnnotationEntry{
 			{
 				AnnotationID:     "ann-1",
@@ -40,6 +51,9 @@ func TestProjectAnnotationsTaskRunnerCreatesAnnotationsAndEvents(t *testing.T) {
 	if got, want := len(annotationStore.created), 1; got != want {
 		t.Fatalf("created annotations len got %d want %d", got, want)
 	}
+	if got, want := annotationStore.created[0].ProjectID, projectID; got != want {
+		t.Fatalf("created annotation project_id got %s want %s", got, want)
+	}
 	if got, want := annotationStore.created[0].SampleID, sampleID; got != want {
 		t.Fatalf("created annotation sample_id got %s want %s", got, want)
 	}
@@ -52,6 +66,14 @@ func TestProjectAnnotationsTaskRunnerCreatesAnnotationsAndEvents(t *testing.T) {
 	if len(taskStore.result) == 0 {
 		t.Fatal("expected task result to be written")
 	}
+}
+
+type fakeSampleLookupStore struct {
+	samples map[uuid.UUID]*annotationrepo.Sample
+}
+
+func (s *fakeSampleLookupStore) Get(ctx context.Context, sampleID uuid.UUID) (*annotationrepo.Sample, error) {
+	return s.samples[sampleID], nil
 }
 
 type fakeAnnotationStore struct {

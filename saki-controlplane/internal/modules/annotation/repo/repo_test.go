@@ -18,6 +18,34 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
+func TestAnnotationSchemaUsesDatasetBackedSamples(t *testing.T) {
+	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+
+	ctx := context.Background()
+	container, dsn := startAnnotationPostgres(t, ctx)
+	defer func() {
+		_ = testcontainers.TerminateContainer(container)
+	}()
+
+	sqlDB, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("open sql db: %v", err)
+	}
+	defer sqlDB.Close()
+
+	goose.SetDialect("postgres")
+	if err := goose.Up(sqlDB, annotationMigrationsDir(t)); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+
+	assertHasColumn(t, sqlDB, "dataset", "id")
+	assertHasColumn(t, sqlDB, "project_dataset", "project_id")
+	assertHasColumn(t, sqlDB, "project_dataset", "dataset_id")
+	assertHasColumn(t, sqlDB, "sample", "dataset_id")
+	assertMissingColumn(t, sqlDB, "sample", "project_id")
+	assertHasColumn(t, sqlDB, "annotation", "project_id")
+}
+
 func TestSampleAndAnnotationReposCreateAndList(t *testing.T) {
 	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
 
@@ -46,15 +74,26 @@ func TestSampleAndAnnotationReposCreateAndList(t *testing.T) {
 
 	sampleRepo := NewSampleRepo(pool)
 	projectID := uuid.New()
+	datasetID := uuid.New()
+	if _, err := sqlDB.ExecContext(ctx, `insert into dataset (id, name, type) values ($1, $2, $3)`, datasetID, "demo-dataset", "image"); err != nil {
+		t.Fatalf("seed dataset: %v", err)
+	}
+	if _, err := sqlDB.ExecContext(ctx, `insert into project (id, name) values ($1, $2)`, projectID, "demo-project"); err != nil {
+		t.Fatalf("seed project: %v", err)
+	}
+	if _, err := sqlDB.ExecContext(ctx, `insert into project_dataset (project_id, dataset_id) values ($1, $2)`, projectID, datasetID); err != nil {
+		t.Fatalf("seed project dataset link: %v", err)
+	}
+
 	sample, err := sampleRepo.Create(ctx, CreateSampleParams{
-		ProjectID:   projectID,
-		DatasetType: "fedo-dual-view",
-		Meta:        []byte(`{"source_view":"rgb","target_view":"thermal","lookup_ref":"lut-1"}`),
+		DatasetID: datasetID,
+		Name:      "sample-1",
+		Meta:      []byte(`{"source_view":"rgb","target_view":"thermal","lookup_ref":"lut-1"}`),
 	})
 	if err != nil {
 		t.Fatalf("create sample: %v", err)
 	}
-	if sample.ID == uuid.Nil || sample.ProjectID != projectID {
+	if sample.ID == uuid.Nil || sample.DatasetID != datasetID {
 		t.Fatalf("unexpected sample: %+v", sample)
 	}
 
@@ -62,12 +101,13 @@ func TestSampleAndAnnotationReposCreateAndList(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get sample: %v", err)
 	}
-	if loadedSample == nil || string(loadedSample.Meta) == "" {
+	if loadedSample == nil || loadedSample.DatasetID != datasetID || loadedSample.Name != "sample-1" || string(loadedSample.Meta) == "" {
 		t.Fatalf("unexpected loaded sample: %+v", loadedSample)
 	}
 
 	annotationRepo := NewAnnotationRepo(pool)
 	created, err := annotationRepo.Create(ctx, CreateAnnotationParams{
+		ProjectID:      projectID,
 		SampleID:       sample.ID,
 		GroupID:        "group-a",
 		LabelID:        "car",
@@ -81,11 +121,11 @@ func TestSampleAndAnnotationReposCreateAndList(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create annotation: %v", err)
 	}
-	if created.ID == uuid.Nil || created.SampleID != sample.ID {
+	if created.ID == uuid.Nil || created.ProjectID != projectID || created.SampleID != sample.ID {
 		t.Fatalf("unexpected created annotation: %+v", created)
 	}
 
-	listed, err := annotationRepo.ListBySample(ctx, sample.ID)
+	listed, err := annotationRepo.ListByProjectSample(ctx, projectID, sample.ID)
 	if err != nil {
 		t.Fatalf("list annotations: %v", err)
 	}
@@ -148,4 +188,44 @@ func annotationPostgresImageRef() string {
 		return "postgres:16-alpine"
 	}
 	return imageID
+}
+
+func assertHasColumn(t *testing.T, db *sql.DB, tableName, columnName string) {
+	t.Helper()
+
+	var exists bool
+	row := db.QueryRow(`
+select exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = $1
+      and column_name = $2
+)`, tableName, columnName)
+	if err := row.Scan(&exists); err != nil {
+		t.Fatalf("scan column existence for %s.%s: %v", tableName, columnName, err)
+	}
+	if !exists {
+		t.Fatalf("expected column %s.%s to exist", tableName, columnName)
+	}
+}
+
+func assertMissingColumn(t *testing.T, db *sql.DB, tableName, columnName string) {
+	t.Helper()
+
+	var exists bool
+	row := db.QueryRow(`
+select exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = $1
+      and column_name = $2
+)`, tableName, columnName)
+	if err := row.Scan(&exists); err != nil {
+		t.Fatalf("scan column existence for %s.%s: %v", tableName, columnName, err)
+	}
+	if exists {
+		t.Fatalf("expected column %s.%s to be absent", tableName, columnName)
+	}
 }

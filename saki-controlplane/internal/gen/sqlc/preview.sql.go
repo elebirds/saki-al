@@ -13,7 +13,7 @@ import (
 )
 
 const getImportPreviewManifest = `-- name: GetImportPreviewManifest :one
-select token, mode, project_id, upload_session_id, manifest, params_hash, expires_at, created_at
+select token, mode, project_id, dataset_id, upload_session_id, manifest, params_hash, expires_at, created_at
 from import_preview_manifest
 where token = $1
 `
@@ -25,6 +25,7 @@ func (q *Queries) GetImportPreviewManifest(ctx context.Context, token string) (I
 		&i.Token,
 		&i.Mode,
 		&i.ProjectID,
+		&i.DatasetID,
 		&i.UploadSessionID,
 		&i.Manifest,
 		&i.ParamsHash,
@@ -39,6 +40,7 @@ insert into import_preview_manifest (
     token,
     mode,
     project_id,
+    dataset_id,
     upload_session_id,
     manifest,
     params_hash,
@@ -51,22 +53,25 @@ values (
     $4,
     $5,
     $6,
-    $7
+    $7,
+    $8
 )
 on conflict (token) do update
 set mode = excluded.mode,
     project_id = excluded.project_id,
+    dataset_id = excluded.dataset_id,
     upload_session_id = excluded.upload_session_id,
     manifest = excluded.manifest,
     params_hash = excluded.params_hash,
     expires_at = excluded.expires_at
-returning token, mode, project_id, upload_session_id, manifest, params_hash, expires_at, created_at
+returning token, mode, project_id, dataset_id, upload_session_id, manifest, params_hash, expires_at, created_at
 `
 
 type PutImportPreviewManifestParams struct {
 	Token           string             `json:"token"`
 	Mode            string             `json:"mode"`
 	ProjectID       uuid.UUID          `json:"project_id"`
+	DatasetID       uuid.UUID          `json:"dataset_id"`
 	UploadSessionID uuid.UUID          `json:"upload_session_id"`
 	Manifest        []byte             `json:"manifest"`
 	ParamsHash      string             `json:"params_hash"`
@@ -78,6 +83,7 @@ func (q *Queries) PutImportPreviewManifest(ctx context.Context, arg PutImportPre
 		arg.Token,
 		arg.Mode,
 		arg.ProjectID,
+		arg.DatasetID,
 		arg.UploadSessionID,
 		arg.Manifest,
 		arg.ParamsHash,
@@ -88,6 +94,7 @@ func (q *Queries) PutImportPreviewManifest(ctx context.Context, arg PutImportPre
 		&i.Token,
 		&i.Mode,
 		&i.ProjectID,
+		&i.DatasetID,
 		&i.UploadSessionID,
 		&i.Manifest,
 		&i.ParamsHash,

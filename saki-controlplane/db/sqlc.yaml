@@ -5,6 +5,7 @@ sql:
     queries:
       - "queries/access"
       - "queries/annotation"
+      - "queries/dataset"
       - "queries/importing"
       - "queries/project"
       - "queries/runtime"

@@ -4,21 +4,32 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 
 	"github.com/google/uuid"
 
 	annotationmapping "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/app/mapping"
 	annotationdomain "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/domain"
 	annotationrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/repo"
+	datasetrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/repo"
+	projectrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/project/repo"
 )
 
 type SampleStore interface {
 	Get(ctx context.Context, sampleID uuid.UUID) (*annotationrepo.Sample, error)
 }
 
+type DatasetStore interface {
+	Get(ctx context.Context, id uuid.UUID) (*datasetrepo.Dataset, error)
+}
+
+type ProjectDatasetStore interface {
+	GetProjectDatasetLink(ctx context.Context, projectID, datasetID uuid.UUID) (*projectrepo.ProjectDatasetLink, error)
+}
+
 type AnnotationStore interface {
 	Create(ctx context.Context, params annotationrepo.CreateAnnotationParams) (*annotationrepo.Annotation, error)
-	ListBySample(ctx context.Context, sampleID uuid.UUID) ([]annotationrepo.Annotation, error)
+	ListByProjectSample(ctx context.Context, projectID, sampleID uuid.UUID) ([]annotationrepo.Annotation, error)
 }
 
 type Mapper interface {
@@ -27,25 +38,42 @@ type Mapper interface {
 
 type CreateAnnotationUseCase struct {
 	samples     SampleStore
+	datasets    DatasetStore
+	projects    ProjectDatasetStore
 	annotations AnnotationStore
 	mapper      Mapper
 }
 
-func NewCreateAnnotationUseCase(samples SampleStore, annotations AnnotationStore, mapper Mapper) *CreateAnnotationUseCase {
+func NewCreateAnnotationUseCase(samples SampleStore, datasets DatasetStore, projects ProjectDatasetStore, annotations AnnotationStore, mapper Mapper) *CreateAnnotationUseCase {
 	return &CreateAnnotationUseCase{
 		samples:     samples,
+		datasets:    datasets,
+		projects:    projects,
 		annotations: annotations,
 		mapper:      mapper,
 	}
 }
 
-func (u *CreateAnnotationUseCase) Execute(ctx context.Context, sampleID uuid.UUID, input annotationdomain.CreateInput) ([]annotationdomain.Annotation, error) {
+func (u *CreateAnnotationUseCase) Execute(ctx context.Context, projectID, sampleID uuid.UUID, input annotationdomain.CreateInput) ([]annotationdomain.Annotation, error) {
 	sample, err := u.samples.Get(ctx, sampleID)
 	if err != nil {
 		return nil, err
 	}
 	if sample == nil {
 		return nil, annotationdomain.ErrSampleNotFound
+	}
+	if u.projects != nil {
+		link, err := u.projects.GetProjectDatasetLink(ctx, projectID, sample.DatasetID)
+		if err != nil {
+			return nil, err
+		}
+		if link == nil {
+			return nil, annotationdomain.ErrSampleNotFound
+		}
+	}
+	dataset, err := u.loadDataset(ctx, sample.DatasetID)
+	if err != nil {
+		return nil, err
 	}
 
 	normalized, err := annotationdomain.NormalizeCreateInput(input)
@@ -54,6 +82,7 @@ func (u *CreateAnnotationUseCase) Execute(ctx context.Context, sampleID uuid.UUI
 	}
 
 	createParams := []annotationrepo.CreateAnnotationParams{{
+		ProjectID:      projectID,
 		SampleID:       sample.ID,
 		GroupID:        normalized.GroupID,
 		LabelID:        normalized.LabelID,
@@ -65,7 +94,7 @@ func (u *CreateAnnotationUseCase) Execute(ctx context.Context, sampleID uuid.UUI
 		IsGenerated:    false,
 	}}
 
-	mappedParams, err := u.buildMappedAnnotations(ctx, sample, normalized, input.Geometry)
+	mappedParams, err := u.buildMappedAnnotations(ctx, projectID, sample, dataset, normalized, input.Geometry)
 	if err != nil {
 		return nil, err
 	}
@@ -101,11 +130,11 @@ type fedoMappingMeta struct {
 	TimeGapThreshold int    `json:"time_gap_threshold"`
 }
 
-func (u *CreateAnnotationUseCase) buildMappedAnnotations(ctx context.Context, sample *annotationrepo.Sample, normalized annotationdomain.NormalizedCreateInput, sourceGeometry map[string]any) ([]annotationrepo.CreateAnnotationParams, error) {
-	if u.mapper == nil || sample == nil {
+func (u *CreateAnnotationUseCase) buildMappedAnnotations(ctx context.Context, projectID uuid.UUID, sample *annotationrepo.Sample, dataset *datasetrepo.Dataset, normalized annotationdomain.NormalizedCreateInput, sourceGeometry map[string]any) ([]annotationrepo.CreateAnnotationParams, error) {
+	if u.mapper == nil || sample == nil || dataset == nil {
 		return nil, nil
 	}
-	if sample.DatasetType != "fedo-dual-view" || normalized.AnnotationType != "obb" {
+	if dataset.Type != "fedo-dual-view" || normalized.AnnotationType != "obb" {
 		return nil, nil
 	}
 
@@ -135,6 +164,7 @@ func (u *CreateAnnotationUseCase) buildMappedAnnotations(ctx context.Context, sa
 			return nil, err
 		}
 		params = append(params, annotationrepo.CreateAnnotationParams{
+			ProjectID:      projectID,
 			SampleID:       sample.ID,
 			GroupID:        normalized.GroupID,
 			LabelID:        normalized.LabelID,
@@ -147,6 +177,20 @@ func (u *CreateAnnotationUseCase) buildMappedAnnotations(ctx context.Context, sa
 		})
 	}
 	return params, nil
+}
+
+func (u *CreateAnnotationUseCase) loadDataset(ctx context.Context, datasetID uuid.UUID) (*datasetrepo.Dataset, error) {
+	if u.datasets == nil {
+		return nil, nil
+	}
+	dataset, err := u.datasets.Get(ctx, datasetID)
+	if err != nil {
+		return nil, err
+	}
+	if dataset == nil {
+		return nil, errors.New("dataset not found")
+	}
+	return dataset, nil
 }
 
 type fedoMappingConfig struct {

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	importrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/importing/repo"
+	projectrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/project/repo"
 	"github.com/google/uuid"
 )
 
@@ -14,12 +15,26 @@ func TestExecuteProjectAnnotationsRejectsBlockingPreview(t *testing.T) {
 	t.Parallel()
 
 	previewToken := "preview-1"
+	projectID := uuid.New()
+	datasetID := uuid.New()
 	useCase := NewExecuteProjectAnnotationsUseCase(
+		fakeProjectStore{
+			links: map[string]*projectrepo.ProjectDatasetLink{
+				projectDatasetKey(projectID, datasetID): {
+					ProjectID: projectID,
+					DatasetID: datasetID,
+				},
+			},
+		},
 		fakePreviewLoader{
 			manifest: &importrepo.PreviewManifest{
-				Token: previewToken,
+				Token:     previewToken,
+				ProjectID: projectID,
+				DatasetID: datasetID,
 				Manifest: mustMarshalJSON(t, PreviewManifest{
-					Errors: []PrepareIssue{{Code: "UNSUPPORTED_GEOMETRY", Message: "polygon unsupported"}},
+					ProjectID: projectID,
+					DatasetID: datasetID,
+					Errors:    []PrepareIssue{{Code: "UNSUPPORTED_GEOMETRY", Message: "polygon unsupported"}},
 				}),
 			},
 		},
@@ -28,6 +43,8 @@ func TestExecuteProjectAnnotationsRejectsBlockingPreview(t *testing.T) {
 	)
 
 	_, err := useCase.Execute(context.Background(), ExecuteProjectAnnotationsInput{
+		ProjectID:    projectID,
+		DatasetID:    datasetID,
 		PreviewToken: previewToken,
 		UserID:       uuid.New(),
 	})
@@ -41,18 +58,30 @@ func TestExecuteProjectAnnotationsCreatesTaskAndRunsRunner(t *testing.T) {
 
 	previewToken := "preview-1"
 	projectID := uuid.New()
+	datasetID := uuid.New()
 	userID := uuid.New()
 	resourceID := projectID
 
 	runner := &fakeTaskRunner{}
 	taskStore := &fakeImportTaskStore{}
 	useCase := NewExecuteProjectAnnotationsUseCase(
+		fakeProjectStore{
+			links: map[string]*projectrepo.ProjectDatasetLink{
+				projectDatasetKey(projectID, datasetID): {
+					ProjectID: projectID,
+					DatasetID: datasetID,
+				},
+			},
+		},
 		fakePreviewLoader{
 			manifest: &importrepo.PreviewManifest{
-				Token: previewToken,
+				Token:     previewToken,
+				ProjectID: projectID,
+				DatasetID: datasetID,
 				Manifest: mustMarshalJSON(t, PreviewManifest{
 					Mode:            "project_annotations",
 					ProjectID:       projectID,
+					DatasetID:       datasetID,
 					UploadSessionID: uuid.New(),
 					FormatProfile:   "coco",
 					MatchedAnnotations: []MatchedAnnotationEntry{
@@ -66,6 +95,8 @@ func TestExecuteProjectAnnotationsCreatesTaskAndRunsRunner(t *testing.T) {
 	)
 
 	task, err := useCase.Execute(context.Background(), ExecuteProjectAnnotationsInput{
+		ProjectID:    projectID,
+		DatasetID:    datasetID,
 		PreviewToken: previewToken,
 		UserID:       userID,
 	})
@@ -83,6 +114,9 @@ func TestExecuteProjectAnnotationsCreatesTaskAndRunsRunner(t *testing.T) {
 	}
 	if !runner.called {
 		t.Fatal("expected runner to be invoked")
+	}
+	if got, want := runner.lastManifest.DatasetID, datasetID; got != want {
+		t.Fatalf("runner manifest dataset_id got %s want %s", got, want)
 	}
 }
 
@@ -112,11 +146,13 @@ func (s *fakeImportTaskStore) Create(ctx context.Context, params importrepo.Crea
 }
 
 type fakeTaskRunner struct {
-	called bool
+	called       bool
+	lastManifest PreviewManifest
 }
 
 func (r *fakeTaskRunner) Run(ctx context.Context, taskID uuid.UUID, manifest PreviewManifest) error {
 	r.called = true
+	r.lastManifest = manifest
 	return nil
 }
 

@@ -13,17 +13,18 @@ import (
 )
 
 type Sample struct {
-	ID          uuid.UUID
-	ProjectID   uuid.UUID
-	DatasetType string
-	Meta        []byte
-	CreatedAt   time.Time
+	ID        uuid.UUID
+	DatasetID uuid.UUID
+	Name      string
+	Meta      []byte
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 type CreateSampleParams struct {
-	ProjectID   uuid.UUID
-	DatasetType string
-	Meta        []byte
+	DatasetID uuid.UUID
+	Name      string
+	Meta      []byte
 }
 
 type SampleRepo struct {
@@ -36,20 +37,21 @@ func NewSampleRepo(pool *pgxpool.Pool) *SampleRepo {
 
 func (r *SampleRepo) Create(ctx context.Context, params CreateSampleParams) (*Sample, error) {
 	row, err := r.q.CreateSample(ctx, sqlcdb.CreateSampleParams{
-		ProjectID:   params.ProjectID,
-		DatasetType: params.DatasetType,
-		Meta:        params.Meta,
+		DatasetID: params.DatasetID,
+		Name:      params.Name,
+		Meta:      params.Meta,
 	})
 	if err != nil {
 		return nil, err
 	}
 
 	return &Sample{
-		ID:          row.ID,
-		ProjectID:   row.ProjectID,
-		DatasetType: row.DatasetType,
-		Meta:        row.Meta,
-		CreatedAt:   row.CreatedAt.Time,
+		ID:        row.ID,
+		DatasetID: row.DatasetID,
+		Name:      row.Name,
+		Meta:      row.Meta,
+		CreatedAt: row.CreatedAt.Time,
+		UpdatedAt: row.UpdatedAt.Time,
 	}, nil
 }
 
@@ -63,10 +65,11 @@ func (r *SampleRepo) Get(ctx context.Context, sampleID uuid.UUID) (*Sample, erro
 	}
 
 	return &Sample{
-		ID:          row.ID,
-		ProjectID:   row.ProjectID,
-		DatasetType: row.DatasetType,
-		Meta:        row.Meta,
-		CreatedAt:   row.CreatedAt.Time,
+		ID:        row.ID,
+		DatasetID: row.DatasetID,
+		Name:      row.Name,
+		Meta:      row.Meta,
+		CreatedAt: row.CreatedAt.Time,
+		UpdatedAt: row.UpdatedAt.Time,
 	}, nil
 }

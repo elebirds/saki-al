@@ -11,21 +11,33 @@ import (
 	authctx "github.com/elebirds/saki/saki-controlplane/internal/app/auth"
 	"github.com/elebirds/saki/saki-controlplane/internal/app/storage"
 	openapi "github.com/elebirds/saki/saki-controlplane/internal/gen/openapi"
+	accessapp "github.com/elebirds/saki/saki-controlplane/internal/modules/access/app"
 	assetapp "github.com/elebirds/saki/saki-controlplane/internal/modules/asset/app"
-	assetrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/asset/repo"
 	"github.com/go-faster/jx"
 	"github.com/google/uuid"
 	ogenhttp "github.com/ogen-go/ogen/http"
 )
 
-type Store interface {
-	CreatePending(ctx context.Context, params assetrepo.CreatePendingParams) (*assetrepo.Asset, error)
-	Get(ctx context.Context, id uuid.UUID) (*assetrepo.Asset, error)
-	MarkReady(ctx context.Context, params assetrepo.MarkReadyParams) (*assetrepo.Asset, error)
+type Store = assetapp.Store
+
+type InitUploadUseCase interface {
+	Execute(ctx context.Context, input assetapp.InitDurableUploadInput) (*assetapp.InitDurableUploadResult, error)
+}
+
+type CompleteUploadUseCase interface {
+	Execute(ctx context.Context, input assetapp.CompleteDurableUploadInput) (*assetapp.CompleteDurableUploadResult, error)
+}
+
+type CancelUploadUseCase interface {
+	Execute(ctx context.Context, assetID uuid.UUID) (*assetapp.CancelDurableUploadResult, error)
 }
 
 type Dependencies struct {
 	Store           Store
+	IntentStore     assetapp.IntentStore
+	InitUpload      InitUploadUseCase
+	CompleteUpload  CompleteUploadUseCase
+	CancelUpload    CancelUploadUseCase
 	Provider        storage.Provider
 	UploadURLExpiry time.Duration
 	DownloadExpiry  time.Duration
@@ -33,6 +45,10 @@ type Dependencies struct {
 
 type Handlers struct {
 	store          Store
+	intentStore    assetapp.IntentStore
+	initUpload     InitUploadUseCase
+	completeUpload CompleteUploadUseCase
+	cancelUpload   CancelUploadUseCase
 	provider       storage.Provider
 	uploadExpiry   time.Duration
 	downloadExpiry time.Duration
@@ -41,6 +57,10 @@ type Handlers struct {
 func NewHandlers(deps Dependencies) *Handlers {
 	return &Handlers{
 		store:          deps.Store,
+		intentStore:    deps.IntentStore,
+		initUpload:     deps.InitUpload,
+		completeUpload: deps.CompleteUpload,
+		cancelUpload:   deps.CancelUpload,
 		provider:       deps.Provider,
 		uploadExpiry:   deps.UploadURLExpiry,
 		downloadExpiry: deps.DownloadExpiry,
@@ -52,12 +72,19 @@ func (h *Handlers) Enabled() bool {
 }
 
 func (h *Handlers) InitAssetUpload(ctx context.Context, req *openapi.AssetUploadInitRequest) (*openapi.AssetUploadInitResponse, error) {
-	if err := h.requireEnabled(); err != nil {
-		return nil, err
+	if h == nil || h.initUpload == nil {
+		return nil, ogenhttp.ErrNotImplemented
 	}
 
 	userID, err := currentUserID(ctx)
 	if err != nil {
+		return nil, err
+	}
+	binding, err := parseOwnerBinding(req)
+	if err != nil {
+		return nil, badRequest(err.Error())
+	}
+	if err := requireOwnerWritePermission(ctx, binding); err != nil {
 		return nil, err
 	}
 	kind, err := assetapp.ParseAssetKind(normalizeKind(req.GetKind()))
@@ -69,93 +96,112 @@ func (h *Handlers) InitAssetUpload(ctx context.Context, req *openapi.AssetUpload
 		return nil, badRequest("invalid metadata")
 	}
 
-	created, err := h.store.CreatePending(ctx, assetrepo.CreatePendingParams{
-		Kind:           string(kind),
-		StorageBackend: "minio",
-		Bucket:         h.provider.Bucket(),
-		ObjectKey:      buildObjectKey(string(kind)),
-		ContentType:    strings.TrimSpace(req.GetContentType()),
-		Metadata:       metadata,
-		CreatedBy:      userID,
+	result, err := h.initUpload.Execute(ctx, assetapp.InitDurableUploadInput{
+		Binding:             binding,
+		Kind:                kind,
+		DeclaredContentType: strings.TrimSpace(req.GetContentType()),
+		Metadata:            metadata,
+		IdempotencyKey:      strings.TrimSpace(req.GetIdempotencyKey()),
+		CreatedBy:           userID,
 	})
 	if err != nil {
-		return nil, err
+		return nil, mapInitError(err)
+	}
+	if result == nil || result.Asset == nil || result.Intent == nil {
+		return nil, errors.New("asset init result is incomplete")
 	}
 
-	url, err := h.provider.SignPutObject(ctx, created.ObjectKey, h.uploadExpiry, created.ContentType)
-	if err != nil {
-		return nil, err
+	resp := &openapi.AssetUploadInitResponse{
+		Asset:       *toOpenAPIAsset(result.Asset),
+		IntentState: toOpenAPIInitIntentState(result.Intent.State),
 	}
-
-	return &openapi.AssetUploadInitResponse{
-		Asset:     *toOpenAPIAsset(created),
-		UploadURL: url,
-		ExpiresIn: int32(h.uploadExpiry / time.Second),
-	}, nil
+	if result.UploadTicket != nil {
+		resp.UploadURL.SetTo(result.UploadTicket.URL)
+		resp.ExpiresIn.SetTo(int32(h.uploadExpiry / time.Second))
+	} else {
+		resp.UploadURL.SetToNull()
+		resp.ExpiresIn.SetToNull()
+	}
+	return resp, nil
 }
 
 func (h *Handlers) CompleteAssetUpload(ctx context.Context, req *openapi.AssetCompleteRequest, params openapi.CompleteAssetUploadParams) (*openapi.Asset, error) {
-	if err := h.requireEnabled(); err != nil {
-		return nil, err
+	if h == nil || h.completeUpload == nil || h.intentStore == nil {
+		return nil, ogenhttp.ErrNotImplemented
 	}
 
 	assetID, err := parseAssetID(params.AssetID)
 	if err != nil {
 		return nil, badRequest(err.Error())
 	}
-	asset, err := h.store.Get(ctx, assetID)
+	intent, err := h.intentStore.GetUploadIntentByAssetID(ctx, assetID)
 	if err != nil {
 		return nil, err
 	}
-	if asset == nil {
+	if intent == nil {
 		return nil, notFound("asset not found")
 	}
-	if asset.Status != assetrepo.AssetStatusPendingUpload {
-		return nil, badRequest("asset is not pending upload")
-	}
-
-	stat, err := h.provider.StatObject(ctx, asset.ObjectKey)
-	if err != nil {
-		if errors.Is(err, storage.ErrObjectNotFound) {
-			return nil, badRequest("uploaded object not found")
-		}
+	if err := requireOwnerWritePermission(ctx, intent.Binding); err != nil {
 		return nil, err
 	}
-	if sizeBytes, ok := req.SizeBytes.Get(); ok && stat.Size != sizeBytes {
-		return nil, badRequest("size_bytes does not match uploaded object")
-	}
 
-	contentType := asset.ContentType
-	if stat.ContentType != "" {
-		contentType = stat.ContentType
+	input := assetapp.CompleteDurableUploadInput{AssetID: assetID}
+	if sizeBytes, ok := req.SizeBytes.Get(); ok {
+		input.RequestSizeBytes = &sizeBytes
 	}
-
-	var sha256Hex *string
 	if raw, ok := req.GetSHA256Hex().Get(); ok {
 		raw = strings.TrimSpace(raw)
 		if raw != "" {
-			sha256Hex = &raw
+			input.SHA256Hex = &raw
 		}
 	}
 
-	updated, err := h.store.MarkReady(ctx, assetrepo.MarkReadyParams{
-		ID:          asset.ID,
-		SizeBytes:   stat.Size,
-		Sha256Hex:   sha256Hex,
-		ContentType: contentType,
-	})
+	result, err := h.completeUpload.Execute(ctx, input)
+	if err != nil {
+		return nil, mapCompleteError(err)
+	}
+	if result == nil || result.Asset == nil {
+		return nil, errors.New("asset complete result is incomplete")
+	}
+	return toOpenAPIAsset(result.Asset), nil
+}
+
+func (h *Handlers) CancelAssetUpload(ctx context.Context, params openapi.CancelAssetUploadParams) (*openapi.AssetUploadCancelResponse, error) {
+	if h == nil || h.cancelUpload == nil || h.intentStore == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+
+	assetID, err := parseAssetID(params.AssetID)
+	if err != nil {
+		return nil, badRequest(err.Error())
+	}
+	intent, err := h.intentStore.GetUploadIntentByAssetID(ctx, assetID)
 	if err != nil {
 		return nil, err
 	}
-	if updated == nil {
-		return nil, badRequest("asset is not pending upload")
+	if intent == nil {
+		return nil, notFound("asset not found")
 	}
-	return toOpenAPIAsset(updated), nil
+	if err := requireOwnerWritePermission(ctx, intent.Binding); err != nil {
+		return nil, err
+	}
+
+	result, err := h.cancelUpload.Execute(ctx, assetID)
+	if err != nil {
+		return nil, mapCancelError(err)
+	}
+	if result == nil || result.Intent == nil {
+		return nil, errors.New("asset cancel result is incomplete")
+	}
+	return &openapi.AssetUploadCancelResponse{
+		AssetID:     result.Intent.AssetID,
+		IntentState: toOpenAPICancelIntentState(result.Intent.State),
+	}, nil
 }
 
 func (h *Handlers) GetAsset(ctx context.Context, params openapi.GetAssetParams) (*openapi.Asset, error) {
-	if err := h.requireEnabled(); err != nil {
-		return nil, err
+	if h == nil || h.store == nil {
+		return nil, ogenhttp.ErrNotImplemented
 	}
 
 	assetID, err := parseAssetID(params.AssetID)
@@ -173,8 +219,8 @@ func (h *Handlers) GetAsset(ctx context.Context, params openapi.GetAssetParams) 
 }
 
 func (h *Handlers) SignAssetDownload(ctx context.Context, req *openapi.AssetDownloadSignRequest, params openapi.SignAssetDownloadParams) (*openapi.AssetDownloadSignResponse, error) {
-	if err := h.requireEnabled(); err != nil {
-		return nil, err
+	if h == nil || h.store == nil || h.provider == nil {
+		return nil, ogenhttp.ErrNotImplemented
 	}
 
 	assetID, err := parseAssetID(params.AssetID)
@@ -182,7 +228,7 @@ func (h *Handlers) SignAssetDownload(ctx context.Context, req *openapi.AssetDown
 		return nil, badRequest(err.Error())
 	}
 
-	ticket, err := assetapp.NewIssueDownloadTicketUseCase(assetapp.NewRepoStore(h.store), h.provider, h.downloadExpiry).Execute(ctx, assetID)
+	ticket, err := assetapp.NewIssueDownloadTicketUseCase(h.store, h.provider, h.downloadExpiry).Execute(ctx, assetID)
 	if err != nil {
 		switch {
 		case errors.Is(err, assetapp.ErrAssetNotFound):
@@ -199,13 +245,6 @@ func (h *Handlers) SignAssetDownload(ctx context.Context, req *openapi.AssetDown
 		DownloadURL: ticket.URL,
 		ExpiresIn:   int32(h.downloadExpiry / time.Second),
 	}, nil
-}
-
-func (h *Handlers) requireEnabled() error {
-	if !h.Enabled() {
-		return ogenhttp.ErrNotImplemented
-	}
-	return nil
 }
 
 func currentUserID(ctx context.Context) (*uuid.UUID, error) {
@@ -226,6 +265,49 @@ func parseAssetID(raw string) (uuid.UUID, error) {
 		return uuid.Nil, errors.New("invalid asset_id")
 	}
 	return assetID, nil
+}
+
+func parseOwnerBinding(req *openapi.AssetUploadInitRequest) (assetapp.DurableOwnerBinding, error) {
+	ownerType, err := assetapp.ParseAssetOwnerType(strings.TrimSpace(string(req.GetOwnerType())))
+	if err != nil {
+		return assetapp.DurableOwnerBinding{}, err
+	}
+	role, err := assetapp.ParseAssetReferenceRole(strings.TrimSpace(string(req.GetRole())))
+	if err != nil {
+		return assetapp.DurableOwnerBinding{}, err
+	}
+	return assetapp.DurableOwnerBinding{
+		OwnerType: ownerType,
+		OwnerID:   req.GetOwnerID(),
+		Role:      role,
+		IsPrimary: req.GetIsPrimary(),
+	}, nil
+}
+
+func requireOwnerWritePermission(ctx context.Context, binding assetapp.DurableOwnerBinding) error {
+	claims, ok := authctx.ClaimsFromContext(ctx)
+	if !ok {
+		return unauthorized("authentication required")
+	}
+	permission := writePermissionForOwner(binding.OwnerType)
+	if permission == "" {
+		return accessapp.ErrForbidden
+	}
+	if !claims.HasPermission(permission) {
+		return accessapp.ErrForbidden
+	}
+	return nil
+}
+
+func writePermissionForOwner(ownerType assetapp.AssetOwnerType) string {
+	switch ownerType {
+	case assetapp.AssetOwnerTypeProject:
+		return "projects:write"
+	case assetapp.AssetOwnerTypeDataset, assetapp.AssetOwnerTypeSample:
+		return "datasets:write"
+	default:
+		return ""
+	}
 }
 
 func normalizeKind(raw string) string {
@@ -250,15 +332,15 @@ func normalizeKind(raw string) string {
 	return strings.Trim(b.String(), "-")
 }
 
-func buildObjectKey(kind string) string {
-	return kind + "/" + uuid.NewString()
-}
-
 func encodeMetadata(metadata map[string]jx.Raw) ([]byte, error) {
 	if len(metadata) == 0 {
 		return []byte(`{}`), nil
 	}
-	return json.Marshal(metadata)
+	encoded := make(map[string]json.RawMessage, len(metadata))
+	for key, value := range metadata {
+		encoded[key] = json.RawMessage(value)
+	}
+	return json.Marshal(encoded)
 }
 
 func decodeMetadata(raw []byte) (map[string]jx.Raw, error) {
@@ -276,7 +358,7 @@ func decodeMetadata(raw []byte) (map[string]jx.Raw, error) {
 	return result, nil
 }
 
-func toOpenAPIAsset(asset *assetrepo.Asset) *openapi.Asset {
+func toOpenAPIAsset(asset *assetapp.Asset) *openapi.Asset {
 	if asset == nil {
 		return nil
 	}
@@ -288,9 +370,9 @@ func toOpenAPIAsset(asset *assetrepo.Asset) *openapi.Asset {
 
 	result := &openapi.Asset{
 		ID:             asset.ID.String(),
-		Kind:           asset.Kind,
-		Status:         asset.Status,
-		StorageBackend: asset.StorageBackend,
+		Kind:           string(asset.Kind),
+		Status:         string(asset.Status),
+		StorageBackend: string(asset.StorageBackend),
 		Bucket:         asset.Bucket,
 		ObjectKey:      asset.ObjectKey,
 		ContentType:    asset.ContentType,
@@ -303,11 +385,95 @@ func toOpenAPIAsset(asset *assetrepo.Asset) *openapi.Asset {
 	return result
 }
 
+func toOpenAPIInitIntentState(state assetapp.AssetUploadIntentState) openapi.AssetUploadInitResponseIntentState {
+	switch state {
+	case assetapp.AssetUploadIntentStateInitiated:
+		return openapi.AssetUploadInitResponseIntentStateInitiated
+	case assetapp.AssetUploadIntentStateCompleted:
+		return openapi.AssetUploadInitResponseIntentStateCompleted
+	case assetapp.AssetUploadIntentStateCanceled:
+		return openapi.AssetUploadInitResponseIntentStateCanceled
+	default:
+		return openapi.AssetUploadInitResponseIntentStateExpired
+	}
+}
+
+func toOpenAPICancelIntentState(state assetapp.AssetUploadIntentState) openapi.AssetUploadCancelResponseIntentState {
+	switch state {
+	case assetapp.AssetUploadIntentStateInitiated:
+		return openapi.AssetUploadCancelResponseIntentStateInitiated
+	case assetapp.AssetUploadIntentStateCompleted:
+		return openapi.AssetUploadCancelResponseIntentStateCompleted
+	case assetapp.AssetUploadIntentStateCanceled:
+		return openapi.AssetUploadCancelResponseIntentStateCanceled
+	default:
+		return openapi.AssetUploadCancelResponseIntentStateExpired
+	}
+}
+
+func mapInitError(err error) error {
+	switch {
+	case errors.Is(err, assetapp.ErrAssetOwnerNotFound):
+		return notFound("asset owner not found")
+	case errors.Is(err, assetapp.ErrUnsupportedAssetOwnerType),
+		errors.Is(err, assetapp.ErrAssetOwnerIDRequired),
+		errors.Is(err, assetapp.ErrInvalidDurableOwnerBinding),
+		errors.Is(err, assetapp.ErrInvalidAssetKind):
+		return badRequest(err.Error())
+	case errors.Is(err, assetapp.ErrAssetUploadIdempotencyConflict),
+		errors.Is(err, assetapp.ErrAssetUploadIntentConflict):
+		return conflict(err.Error())
+	default:
+		return err
+	}
+}
+
+func mapCompleteError(err error) error {
+	switch {
+	case errors.Is(err, assetapp.ErrAssetNotFound):
+		return notFound("asset not found")
+	case errors.Is(err, assetapp.ErrAssetOwnerNotFound):
+		return notFound("asset owner not found")
+	case errors.Is(err, storage.ErrObjectNotFound):
+		return badRequest("uploaded object not found")
+	case errors.Is(err, assetapp.ErrAssetUploadObjectSizeMismatch),
+		errors.Is(err, assetapp.ErrAssetBucketMismatch):
+		return badRequest(err.Error())
+	case errors.Is(err, assetapp.ErrAssetUploadIntentExpired),
+		errors.Is(err, assetapp.ErrAssetUploadIntentNotCompletable),
+		errors.Is(err, assetapp.ErrDurableReferenceConflict):
+		return conflict(err.Error())
+	default:
+		return err
+	}
+}
+
+func mapCancelError(err error) error {
+	switch {
+	case errors.Is(err, assetapp.ErrAssetNotFound):
+		return notFound("asset not found")
+	case errors.Is(err, assetapp.ErrAssetUploadIntentNotCancelable):
+		return conflict(err.Error())
+	default:
+		return err
+	}
+}
+
 func badRequest(message string) error {
 	return &openapi.ErrorResponseStatusCode{
 		StatusCode: http.StatusBadRequest,
 		Response: openapi.ErrorResponse{
 			Code:    "bad_request",
+			Message: message,
+		},
+	}
+}
+
+func conflict(message string) error {
+	return &openapi.ErrorResponseStatusCode{
+		StatusCode: http.StatusConflict,
+		Response: openapi.ErrorResponse{
+			Code:    "conflict",
 			Message: message,
 		},
 	}

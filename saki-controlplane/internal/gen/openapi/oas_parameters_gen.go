@@ -79,6 +79,71 @@ func decodeAbortImportUploadSessionParams(args [1]string, argsEscaped bool, r *h
 	return params, nil
 }
 
+// CancelAssetUploadParams is parameters of cancelAssetUpload operation.
+type CancelAssetUploadParams struct {
+	AssetID string
+}
+
+func unpackCancelAssetUploadParams(packed middleware.Parameters) (params CancelAssetUploadParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "asset_id",
+			In:   "path",
+		}
+		params.AssetID = packed[key].(string)
+	}
+	return params
+}
+
+func decodeCancelAssetUploadParams(args [1]string, argsEscaped bool, r *http.Request) (params CancelAssetUploadParams, _ error) {
+	// Decode path: asset_id.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "asset_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.AssetID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "asset_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
 // CancelRuntimeTaskParams is parameters of cancelRuntimeTask operation.
 type CancelRuntimeTaskParams struct {
 	TaskID string

@@ -98,6 +98,7 @@ func TestPublicAPISmoke(t *testing.T) {
 	setSmokeBootstrapPrincipalEnv(t, dsn, importUserID, "Smoke Import User", []string{
 		"assets:read",
 		"assets:write",
+		"datasets:write",
 		"projects:read",
 		"projects:write",
 		"imports:read",
@@ -203,7 +204,7 @@ func TestPublicAPISmoke(t *testing.T) {
 	assetInitReq, err := http.NewRequest(
 		http.MethodPost,
 		httpServer.URL+"/assets/uploads:init",
-		bytes.NewBufferString(`{"kind":"image","content_type":"image/png","metadata":{"source":"smoke"}}`),
+		bytes.NewBufferString(`{"owner_type":"dataset","owner_id":"`+dataset.ID.String()+`","role":"attachment","is_primary":false,"idempotency_key":"asset-smoke-1","kind":"image","content_type":"image/png","metadata":{"source":"smoke"}}`),
 	)
 	if err != nil {
 		t.Fatalf("new asset init request: %v", err)
@@ -224,16 +225,21 @@ func TestPublicAPISmoke(t *testing.T) {
 			ID     string `json:"id"`
 			Status string `json:"status"`
 		} `json:"asset"`
-		UploadURL string `json:"upload_url"`
+		IntentState string  `json:"intent_state"`
+		UploadURL   *string `json:"upload_url"`
 	}
 	if err := json.NewDecoder(assetInitResp.Body).Decode(&assetInitBody); err != nil {
 		t.Fatalf("decode asset init response: %v", err)
 	}
-	if assetInitBody.Asset.ID == "" || assetInitBody.Asset.Status != "pending_upload" || assetInitBody.UploadURL == "" {
+	if assetInitBody.Asset.ID == "" ||
+		assetInitBody.Asset.Status != "pending_upload" ||
+		assetInitBody.IntentState != "initiated" ||
+		assetInitBody.UploadURL == nil ||
+		*assetInitBody.UploadURL == "" {
 		t.Fatalf("unexpected asset init body: %+v", assetInitBody)
 	}
 
-	assetUploadReq, err := http.NewRequest(http.MethodPut, assetInitBody.UploadURL, bytes.NewBufferString("asset-smoke-content"))
+	assetUploadReq, err := http.NewRequest(http.MethodPut, *assetInitBody.UploadURL, bytes.NewBufferString("asset-smoke-content"))
 	if err != nil {
 		t.Fatalf("new asset upload request: %v", err)
 	}
@@ -272,6 +278,33 @@ func TestPublicAPISmoke(t *testing.T) {
 	}
 	if assetCompleteBody["id"] != assetInitBody.Asset.ID || assetCompleteBody["status"] != "ready" {
 		t.Fatalf("unexpected asset complete body: %+v", assetCompleteBody)
+	}
+
+	assetCompleteReplayReq, err := http.NewRequest(
+		http.MethodPost,
+		httpServer.URL+"/assets/"+assetInitBody.Asset.ID+":complete",
+		bytes.NewBufferString(`{"size_bytes":19,"sha256_hex":"abc123"}`),
+	)
+	if err != nil {
+		t.Fatalf("new asset complete replay request: %v", err)
+	}
+	assetCompleteReplayReq.Header.Set("Authorization", "Bearer "+token)
+	assetCompleteReplayReq.Header.Set("Content-Type", "application/json")
+	assetCompleteReplayResp, err := http.DefaultClient.Do(assetCompleteReplayReq)
+	if err != nil {
+		t.Fatalf("post asset complete replay: %v", err)
+	}
+	defer assetCompleteReplayResp.Body.Close()
+	if assetCompleteReplayResp.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected asset complete replay status: %d", assetCompleteReplayResp.StatusCode)
+	}
+
+	var assetCompleteReplayBody map[string]any
+	if err := json.NewDecoder(assetCompleteReplayResp.Body).Decode(&assetCompleteReplayBody); err != nil {
+		t.Fatalf("decode asset complete replay response: %v", err)
+	}
+	if assetCompleteReplayBody["id"] != assetInitBody.Asset.ID || assetCompleteReplayBody["status"] != "ready" {
+		t.Fatalf("unexpected asset complete replay body: %+v", assetCompleteReplayBody)
 	}
 
 	assetGetReq, err := http.NewRequest(http.MethodGet, httpServer.URL+"/assets/"+assetInitBody.Asset.ID, nil)
@@ -320,6 +353,79 @@ func TestPublicAPISmoke(t *testing.T) {
 	}
 	if downloadURL, _ := assetSignBody["download_url"].(string); downloadURL == "" {
 		t.Fatalf("unexpected asset sign-download body: %+v", assetSignBody)
+	}
+
+	cancelInitReq, err := http.NewRequest(
+		http.MethodPost,
+		httpServer.URL+"/assets/uploads:init",
+		bytes.NewBufferString(`{"owner_type":"dataset","owner_id":"`+dataset.ID.String()+`","role":"attachment","is_primary":false,"idempotency_key":"asset-smoke-cancel-1","kind":"image","content_type":"image/png","metadata":{"source":"smoke-cancel"}}`),
+	)
+	if err != nil {
+		t.Fatalf("new cancel asset init request: %v", err)
+	}
+	cancelInitReq.Header.Set("Authorization", "Bearer "+token)
+	cancelInitReq.Header.Set("Content-Type", "application/json")
+	cancelInitResp, err := http.DefaultClient.Do(cancelInitReq)
+	if err != nil {
+		t.Fatalf("post cancel asset init: %v", err)
+	}
+	defer cancelInitResp.Body.Close()
+	if cancelInitResp.StatusCode != http.StatusCreated {
+		t.Fatalf("unexpected cancel asset init status: %d", cancelInitResp.StatusCode)
+	}
+
+	var cancelInitBody struct {
+		Asset struct {
+			ID string `json:"id"`
+		} `json:"asset"`
+		IntentState string `json:"intent_state"`
+	}
+	if err := json.NewDecoder(cancelInitResp.Body).Decode(&cancelInitBody); err != nil {
+		t.Fatalf("decode cancel asset init response: %v", err)
+	}
+	if cancelInitBody.Asset.ID == "" || cancelInitBody.IntentState != "initiated" {
+		t.Fatalf("unexpected cancel asset init body: %+v", cancelInitBody)
+	}
+
+	cancelReq, err := http.NewRequest(http.MethodPost, httpServer.URL+"/assets/"+cancelInitBody.Asset.ID+":cancel", nil)
+	if err != nil {
+		t.Fatalf("new asset cancel request: %v", err)
+	}
+	cancelReq.Header.Set("Authorization", "Bearer "+token)
+	cancelResp, err := http.DefaultClient.Do(cancelReq)
+	if err != nil {
+		t.Fatalf("post asset cancel: %v", err)
+	}
+	defer cancelResp.Body.Close()
+	if cancelResp.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected asset cancel status: %d", cancelResp.StatusCode)
+	}
+
+	var cancelBody map[string]any
+	if err := json.NewDecoder(cancelResp.Body).Decode(&cancelBody); err != nil {
+		t.Fatalf("decode asset cancel response: %v", err)
+	}
+	if cancelBody["asset_id"] != cancelInitBody.Asset.ID || cancelBody["intent_state"] != "canceled" {
+		t.Fatalf("unexpected asset cancel body: %+v", cancelBody)
+	}
+
+	cancelCompleteReq, err := http.NewRequest(
+		http.MethodPost,
+		httpServer.URL+"/assets/"+cancelInitBody.Asset.ID+":complete",
+		bytes.NewBufferString(`{"size_bytes":19}`),
+	)
+	if err != nil {
+		t.Fatalf("new canceled asset complete request: %v", err)
+	}
+	cancelCompleteReq.Header.Set("Authorization", "Bearer "+token)
+	cancelCompleteReq.Header.Set("Content-Type", "application/json")
+	cancelCompleteResp, err := http.DefaultClient.Do(cancelCompleteReq)
+	if err != nil {
+		t.Fatalf("post canceled asset complete: %v", err)
+	}
+	defer cancelCompleteResp.Body.Close()
+	if cancelCompleteResp.StatusCode != http.StatusConflict {
+		t.Fatalf("unexpected canceled asset complete status: %d", cancelCompleteResp.StatusCode)
 	}
 
 	importArchive := makeCOCOImportArchive(t)

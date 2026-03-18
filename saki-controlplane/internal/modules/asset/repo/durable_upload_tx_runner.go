@@ -68,6 +68,10 @@ type durableUploadTxStore struct {
 	intents    *AssetUploadIntentRepo
 }
 
+func (s durableUploadTxStore) Tx() pgx.Tx {
+	return s.tx
+}
+
 func (s durableUploadTxStore) CreatePendingAsset(ctx context.Context, params CreatePendingAssetTxParams) (*Asset, error) {
 	if params.BuildObjectKey == nil {
 		return nil, errors.New("build object key is required")

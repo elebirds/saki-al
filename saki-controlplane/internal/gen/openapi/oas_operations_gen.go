@@ -7,6 +7,7 @@ type OperationName = string
 
 const (
 	AbortImportUploadSessionOperation       OperationName = "AbortImportUploadSession"
+	CancelAssetUploadOperation              OperationName = "CancelAssetUpload"
 	CancelRuntimeTaskOperation              OperationName = "CancelRuntimeTask"
 	CompleteAssetUploadOperation            OperationName = "CompleteAssetUpload"
 	CompleteImportUploadSessionOperation    OperationName = "CompleteImportUploadSession"

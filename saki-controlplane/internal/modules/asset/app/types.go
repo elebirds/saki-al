@@ -61,6 +61,9 @@ var (
 	ErrInvalidAssetKind           = errors.New("invalid asset kind")
 	ErrInvalidAssetStatus         = errors.New("invalid asset status")
 	ErrInvalidAssetStorageBackend = errors.New("invalid asset storage backend")
+	ErrInvalidAssetReferenceRole  = errors.New("invalid asset reference role")
+	ErrInvalidAssetLifecycle      = errors.New("invalid asset lifecycle")
+	ErrInvalidAssetIntentState    = errors.New("invalid asset upload intent state")
 )
 
 func ParseAssetKind(raw string) (AssetKind, error) {
@@ -90,6 +93,46 @@ func ParseAssetStorageBackend(raw string) (AssetStorageBackend, error) {
 		return backend, nil
 	default:
 		return "", ErrInvalidAssetStorageBackend
+	}
+}
+
+func ParseAssetOwnerType(raw string) (AssetOwnerType, error) {
+	ownerType := AssetOwnerType(raw)
+	switch ownerType {
+	case AssetOwnerTypeProject, AssetOwnerTypeDataset, AssetOwnerTypeSample:
+		return ownerType, nil
+	default:
+		return "", ErrUnsupportedAssetOwnerType
+	}
+}
+
+func ParseAssetReferenceRole(raw string) (AssetReferenceRole, error) {
+	role := AssetReferenceRole(raw)
+	switch role {
+	case AssetReferenceRoleAttachment, AssetReferenceRolePrimary:
+		return role, nil
+	default:
+		return "", ErrInvalidAssetReferenceRole
+	}
+}
+
+func ParseAssetReferenceLifecycle(raw string) (AssetReferenceLifecycle, error) {
+	lifecycle := AssetReferenceLifecycle(raw)
+	switch lifecycle {
+	case AssetReferenceLifecycleDurable:
+		return lifecycle, nil
+	default:
+		return "", ErrInvalidAssetLifecycle
+	}
+}
+
+func ParseAssetUploadIntentState(raw string) (AssetUploadIntentState, error) {
+	state := AssetUploadIntentState(raw)
+	switch state {
+	case AssetUploadIntentStateInitiated, AssetUploadIntentStateCompleted, AssetUploadIntentStateCanceled, AssetUploadIntentStateExpired:
+		return state, nil
+	default:
+		return "", ErrInvalidAssetIntentState
 	}
 }
 

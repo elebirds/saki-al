@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/go-faster/errors"
 	"github.com/go-faster/jx"
+	"github.com/google/uuid"
 )
 
 func (s *ErrorResponseStatusCode) Error() string {
@@ -340,11 +342,122 @@ func (s *AssetMetadata) init() AssetMetadata {
 	return m
 }
 
+// Ref: #/components/schemas/AssetUploadCancelResponse
+type AssetUploadCancelResponse struct {
+	AssetID     uuid.UUID                            `json:"asset_id"`
+	IntentState AssetUploadCancelResponseIntentState `json:"intent_state"`
+}
+
+// GetAssetID returns the value of AssetID.
+func (s *AssetUploadCancelResponse) GetAssetID() uuid.UUID {
+	return s.AssetID
+}
+
+// GetIntentState returns the value of IntentState.
+func (s *AssetUploadCancelResponse) GetIntentState() AssetUploadCancelResponseIntentState {
+	return s.IntentState
+}
+
+// SetAssetID sets the value of AssetID.
+func (s *AssetUploadCancelResponse) SetAssetID(val uuid.UUID) {
+	s.AssetID = val
+}
+
+// SetIntentState sets the value of IntentState.
+func (s *AssetUploadCancelResponse) SetIntentState(val AssetUploadCancelResponseIntentState) {
+	s.IntentState = val
+}
+
+type AssetUploadCancelResponseIntentState string
+
+const (
+	AssetUploadCancelResponseIntentStateInitiated AssetUploadCancelResponseIntentState = "initiated"
+	AssetUploadCancelResponseIntentStateCompleted AssetUploadCancelResponseIntentState = "completed"
+	AssetUploadCancelResponseIntentStateCanceled  AssetUploadCancelResponseIntentState = "canceled"
+	AssetUploadCancelResponseIntentStateExpired   AssetUploadCancelResponseIntentState = "expired"
+)
+
+// AllValues returns all AssetUploadCancelResponseIntentState values.
+func (AssetUploadCancelResponseIntentState) AllValues() []AssetUploadCancelResponseIntentState {
+	return []AssetUploadCancelResponseIntentState{
+		AssetUploadCancelResponseIntentStateInitiated,
+		AssetUploadCancelResponseIntentStateCompleted,
+		AssetUploadCancelResponseIntentStateCanceled,
+		AssetUploadCancelResponseIntentStateExpired,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s AssetUploadCancelResponseIntentState) MarshalText() ([]byte, error) {
+	switch s {
+	case AssetUploadCancelResponseIntentStateInitiated:
+		return []byte(s), nil
+	case AssetUploadCancelResponseIntentStateCompleted:
+		return []byte(s), nil
+	case AssetUploadCancelResponseIntentStateCanceled:
+		return []byte(s), nil
+	case AssetUploadCancelResponseIntentStateExpired:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *AssetUploadCancelResponseIntentState) UnmarshalText(data []byte) error {
+	switch AssetUploadCancelResponseIntentState(data) {
+	case AssetUploadCancelResponseIntentStateInitiated:
+		*s = AssetUploadCancelResponseIntentStateInitiated
+		return nil
+	case AssetUploadCancelResponseIntentStateCompleted:
+		*s = AssetUploadCancelResponseIntentStateCompleted
+		return nil
+	case AssetUploadCancelResponseIntentStateCanceled:
+		*s = AssetUploadCancelResponseIntentStateCanceled
+		return nil
+	case AssetUploadCancelResponseIntentStateExpired:
+		*s = AssetUploadCancelResponseIntentStateExpired
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
 // Ref: #/components/schemas/AssetUploadInitRequest
 type AssetUploadInitRequest struct {
-	Kind        string                         `json:"kind"`
-	ContentType string                         `json:"content_type"`
-	Metadata    AssetUploadInitRequestMetadata `json:"metadata"`
+	OwnerType      AssetUploadInitRequestOwnerType `json:"owner_type"`
+	OwnerID        uuid.UUID                       `json:"owner_id"`
+	Role           AssetUploadInitRequestRole      `json:"role"`
+	IsPrimary      bool                            `json:"is_primary"`
+	IdempotencyKey string                          `json:"idempotency_key"`
+	Kind           string                          `json:"kind"`
+	ContentType    string                          `json:"content_type"`
+	Metadata       AssetUploadInitRequestMetadata  `json:"metadata"`
+}
+
+// GetOwnerType returns the value of OwnerType.
+func (s *AssetUploadInitRequest) GetOwnerType() AssetUploadInitRequestOwnerType {
+	return s.OwnerType
+}
+
+// GetOwnerID returns the value of OwnerID.
+func (s *AssetUploadInitRequest) GetOwnerID() uuid.UUID {
+	return s.OwnerID
+}
+
+// GetRole returns the value of Role.
+func (s *AssetUploadInitRequest) GetRole() AssetUploadInitRequestRole {
+	return s.Role
+}
+
+// GetIsPrimary returns the value of IsPrimary.
+func (s *AssetUploadInitRequest) GetIsPrimary() bool {
+	return s.IsPrimary
+}
+
+// GetIdempotencyKey returns the value of IdempotencyKey.
+func (s *AssetUploadInitRequest) GetIdempotencyKey() string {
+	return s.IdempotencyKey
 }
 
 // GetKind returns the value of Kind.
@@ -360,6 +473,31 @@ func (s *AssetUploadInitRequest) GetContentType() string {
 // GetMetadata returns the value of Metadata.
 func (s *AssetUploadInitRequest) GetMetadata() AssetUploadInitRequestMetadata {
 	return s.Metadata
+}
+
+// SetOwnerType sets the value of OwnerType.
+func (s *AssetUploadInitRequest) SetOwnerType(val AssetUploadInitRequestOwnerType) {
+	s.OwnerType = val
+}
+
+// SetOwnerID sets the value of OwnerID.
+func (s *AssetUploadInitRequest) SetOwnerID(val uuid.UUID) {
+	s.OwnerID = val
+}
+
+// SetRole sets the value of Role.
+func (s *AssetUploadInitRequest) SetRole(val AssetUploadInitRequestRole) {
+	s.Role = val
+}
+
+// SetIsPrimary sets the value of IsPrimary.
+func (s *AssetUploadInitRequest) SetIsPrimary(val bool) {
+	s.IsPrimary = val
+}
+
+// SetIdempotencyKey sets the value of IdempotencyKey.
+func (s *AssetUploadInitRequest) SetIdempotencyKey(val string) {
+	s.IdempotencyKey = val
 }
 
 // SetKind sets the value of Kind.
@@ -388,11 +526,101 @@ func (s *AssetUploadInitRequestMetadata) init() AssetUploadInitRequestMetadata {
 	return m
 }
 
+type AssetUploadInitRequestOwnerType string
+
+const (
+	AssetUploadInitRequestOwnerTypeProject AssetUploadInitRequestOwnerType = "project"
+	AssetUploadInitRequestOwnerTypeDataset AssetUploadInitRequestOwnerType = "dataset"
+	AssetUploadInitRequestOwnerTypeSample  AssetUploadInitRequestOwnerType = "sample"
+)
+
+// AllValues returns all AssetUploadInitRequestOwnerType values.
+func (AssetUploadInitRequestOwnerType) AllValues() []AssetUploadInitRequestOwnerType {
+	return []AssetUploadInitRequestOwnerType{
+		AssetUploadInitRequestOwnerTypeProject,
+		AssetUploadInitRequestOwnerTypeDataset,
+		AssetUploadInitRequestOwnerTypeSample,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s AssetUploadInitRequestOwnerType) MarshalText() ([]byte, error) {
+	switch s {
+	case AssetUploadInitRequestOwnerTypeProject:
+		return []byte(s), nil
+	case AssetUploadInitRequestOwnerTypeDataset:
+		return []byte(s), nil
+	case AssetUploadInitRequestOwnerTypeSample:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *AssetUploadInitRequestOwnerType) UnmarshalText(data []byte) error {
+	switch AssetUploadInitRequestOwnerType(data) {
+	case AssetUploadInitRequestOwnerTypeProject:
+		*s = AssetUploadInitRequestOwnerTypeProject
+		return nil
+	case AssetUploadInitRequestOwnerTypeDataset:
+		*s = AssetUploadInitRequestOwnerTypeDataset
+		return nil
+	case AssetUploadInitRequestOwnerTypeSample:
+		*s = AssetUploadInitRequestOwnerTypeSample
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+type AssetUploadInitRequestRole string
+
+const (
+	AssetUploadInitRequestRoleAttachment AssetUploadInitRequestRole = "attachment"
+	AssetUploadInitRequestRolePrimary    AssetUploadInitRequestRole = "primary"
+)
+
+// AllValues returns all AssetUploadInitRequestRole values.
+func (AssetUploadInitRequestRole) AllValues() []AssetUploadInitRequestRole {
+	return []AssetUploadInitRequestRole{
+		AssetUploadInitRequestRoleAttachment,
+		AssetUploadInitRequestRolePrimary,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s AssetUploadInitRequestRole) MarshalText() ([]byte, error) {
+	switch s {
+	case AssetUploadInitRequestRoleAttachment:
+		return []byte(s), nil
+	case AssetUploadInitRequestRolePrimary:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *AssetUploadInitRequestRole) UnmarshalText(data []byte) error {
+	switch AssetUploadInitRequestRole(data) {
+	case AssetUploadInitRequestRoleAttachment:
+		*s = AssetUploadInitRequestRoleAttachment
+		return nil
+	case AssetUploadInitRequestRolePrimary:
+		*s = AssetUploadInitRequestRolePrimary
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
 // Ref: #/components/schemas/AssetUploadInitResponse
 type AssetUploadInitResponse struct {
-	Asset     Asset  `json:"asset"`
-	UploadURL string `json:"upload_url"`
-	ExpiresIn int32  `json:"expires_in"`
+	Asset       Asset                              `json:"asset"`
+	IntentState AssetUploadInitResponseIntentState `json:"intent_state"`
+	UploadURL   OptNilString                       `json:"upload_url"`
+	ExpiresIn   OptNilInt32                        `json:"expires_in"`
 }
 
 // GetAsset returns the value of Asset.
@@ -400,13 +628,18 @@ func (s *AssetUploadInitResponse) GetAsset() Asset {
 	return s.Asset
 }
 
+// GetIntentState returns the value of IntentState.
+func (s *AssetUploadInitResponse) GetIntentState() AssetUploadInitResponseIntentState {
+	return s.IntentState
+}
+
 // GetUploadURL returns the value of UploadURL.
-func (s *AssetUploadInitResponse) GetUploadURL() string {
+func (s *AssetUploadInitResponse) GetUploadURL() OptNilString {
 	return s.UploadURL
 }
 
 // GetExpiresIn returns the value of ExpiresIn.
-func (s *AssetUploadInitResponse) GetExpiresIn() int32 {
+func (s *AssetUploadInitResponse) GetExpiresIn() OptNilInt32 {
 	return s.ExpiresIn
 }
 
@@ -415,14 +648,74 @@ func (s *AssetUploadInitResponse) SetAsset(val Asset) {
 	s.Asset = val
 }
 
+// SetIntentState sets the value of IntentState.
+func (s *AssetUploadInitResponse) SetIntentState(val AssetUploadInitResponseIntentState) {
+	s.IntentState = val
+}
+
 // SetUploadURL sets the value of UploadURL.
-func (s *AssetUploadInitResponse) SetUploadURL(val string) {
+func (s *AssetUploadInitResponse) SetUploadURL(val OptNilString) {
 	s.UploadURL = val
 }
 
 // SetExpiresIn sets the value of ExpiresIn.
-func (s *AssetUploadInitResponse) SetExpiresIn(val int32) {
+func (s *AssetUploadInitResponse) SetExpiresIn(val OptNilInt32) {
 	s.ExpiresIn = val
+}
+
+type AssetUploadInitResponseIntentState string
+
+const (
+	AssetUploadInitResponseIntentStateInitiated AssetUploadInitResponseIntentState = "initiated"
+	AssetUploadInitResponseIntentStateCompleted AssetUploadInitResponseIntentState = "completed"
+	AssetUploadInitResponseIntentStateCanceled  AssetUploadInitResponseIntentState = "canceled"
+	AssetUploadInitResponseIntentStateExpired   AssetUploadInitResponseIntentState = "expired"
+)
+
+// AllValues returns all AssetUploadInitResponseIntentState values.
+func (AssetUploadInitResponseIntentState) AllValues() []AssetUploadInitResponseIntentState {
+	return []AssetUploadInitResponseIntentState{
+		AssetUploadInitResponseIntentStateInitiated,
+		AssetUploadInitResponseIntentStateCompleted,
+		AssetUploadInitResponseIntentStateCanceled,
+		AssetUploadInitResponseIntentStateExpired,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s AssetUploadInitResponseIntentState) MarshalText() ([]byte, error) {
+	switch s {
+	case AssetUploadInitResponseIntentStateInitiated:
+		return []byte(s), nil
+	case AssetUploadInitResponseIntentStateCompleted:
+		return []byte(s), nil
+	case AssetUploadInitResponseIntentStateCanceled:
+		return []byte(s), nil
+	case AssetUploadInitResponseIntentStateExpired:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *AssetUploadInitResponseIntentState) UnmarshalText(data []byte) error {
+	switch AssetUploadInitResponseIntentState(data) {
+	case AssetUploadInitResponseIntentStateInitiated:
+		*s = AssetUploadInitResponseIntentStateInitiated
+		return nil
+	case AssetUploadInitResponseIntentStateCompleted:
+		*s = AssetUploadInitResponseIntentStateCompleted
+		return nil
+	case AssetUploadInitResponseIntentStateCanceled:
+		*s = AssetUploadInitResponseIntentStateCanceled
+		return nil
+	case AssetUploadInitResponseIntentStateExpired:
+		*s = AssetUploadInitResponseIntentStateExpired
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
 }
 
 // Ref: #/components/schemas/AuthTokenResponse
@@ -1902,6 +2195,69 @@ func (o OptInt64) Get() (v int64, ok bool) {
 
 // Or returns value if set, or given parameter if does not.
 func (o OptInt64) Or(d int64) int64 {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptNilInt32 returns new OptNilInt32 with value set to v.
+func NewOptNilInt32(v int32) OptNilInt32 {
+	return OptNilInt32{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptNilInt32 is optional nullable int32.
+type OptNilInt32 struct {
+	Value int32
+	Set   bool
+	Null  bool
+}
+
+// IsSet returns true if OptNilInt32 was set.
+func (o OptNilInt32) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptNilInt32) Reset() {
+	var v int32
+	o.Value = v
+	o.Set = false
+	o.Null = false
+}
+
+// SetTo sets value to v.
+func (o *OptNilInt32) SetTo(v int32) {
+	o.Set = true
+	o.Null = false
+	o.Value = v
+}
+
+// IsNull returns true if value is Null.
+func (o OptNilInt32) IsNull() bool { return o.Null }
+
+// SetToNull sets value to null.
+func (o *OptNilInt32) SetToNull() {
+	o.Set = true
+	o.Null = true
+	var v int32
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptNilInt32) Get() (v int32, ok bool) {
+	if o.Null {
+		return v, false
+	}
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptNilInt32) Or(d int32) int32 {
 	if v, ok := o.Get(); ok {
 		return v
 	}

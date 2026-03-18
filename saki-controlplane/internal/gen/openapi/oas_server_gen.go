@@ -12,6 +12,10 @@ type Handler interface {
 	//
 	// POST /imports/uploads/{session_id}:abort
 	AbortImportUploadSession(ctx context.Context, params AbortImportUploadSessionParams) (*ImportUploadAbortResponse, error)
+	// CancelAssetUpload implements cancelAssetUpload operation.
+	//
+	// POST /assets/{asset_id}:cancel
+	CancelAssetUpload(ctx context.Context, params CancelAssetUploadParams) (*AssetUploadCancelResponse, error)
 	// CancelRuntimeTask implements cancelRuntimeTask operation.
 	//
 	// POST /runtime/tasks/{task_id}/cancel

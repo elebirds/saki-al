@@ -936,6 +936,161 @@ func (s *AssetMetadata) UnmarshalJSON(data []byte) error {
 }
 
 // Encode implements json.Marshaler.
+func (s *AssetUploadCancelResponse) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *AssetUploadCancelResponse) encodeFields(e *jx.Encoder) {
+	{
+		e.FieldStart("asset_id")
+		json.EncodeUUID(e, s.AssetID)
+	}
+	{
+		e.FieldStart("intent_state")
+		s.IntentState.Encode(e)
+	}
+}
+
+var jsonFieldsNameOfAssetUploadCancelResponse = [2]string{
+	0: "asset_id",
+	1: "intent_state",
+}
+
+// Decode decodes AssetUploadCancelResponse from json.
+func (s *AssetUploadCancelResponse) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode AssetUploadCancelResponse to nil")
+	}
+	var requiredBitSet [1]uint8
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "asset_id":
+			requiredBitSet[0] |= 1 << 0
+			if err := func() error {
+				v, err := json.DecodeUUID(d)
+				s.AssetID = v
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"asset_id\"")
+			}
+		case "intent_state":
+			requiredBitSet[0] |= 1 << 1
+			if err := func() error {
+				if err := s.IntentState.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"intent_state\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode AssetUploadCancelResponse")
+	}
+	// Validate required fields.
+	var failures []validate.FieldError
+	for i, mask := range [1]uint8{
+		0b00000011,
+	} {
+		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
+			// Mask only required fields and check equality to mask using XOR.
+			//
+			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
+			// Bits of fields which would be set are actually bits of missed fields.
+			missed := bits.OnesCount8(result)
+			for bitN := 0; bitN < missed; bitN++ {
+				bitIdx := bits.TrailingZeros8(result)
+				fieldIdx := i*8 + bitIdx
+				var name string
+				if fieldIdx < len(jsonFieldsNameOfAssetUploadCancelResponse) {
+					name = jsonFieldsNameOfAssetUploadCancelResponse[fieldIdx]
+				} else {
+					name = strconv.Itoa(fieldIdx)
+				}
+				failures = append(failures, validate.FieldError{
+					Name:  name,
+					Error: validate.ErrFieldRequired,
+				})
+				// Reset bit.
+				result &^= 1 << bitIdx
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *AssetUploadCancelResponse) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *AssetUploadCancelResponse) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes AssetUploadCancelResponseIntentState as json.
+func (s AssetUploadCancelResponseIntentState) Encode(e *jx.Encoder) {
+	e.Str(string(s))
+}
+
+// Decode decodes AssetUploadCancelResponseIntentState from json.
+func (s *AssetUploadCancelResponseIntentState) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode AssetUploadCancelResponseIntentState to nil")
+	}
+	v, err := d.StrBytes()
+	if err != nil {
+		return err
+	}
+	// Try to use constant string.
+	switch AssetUploadCancelResponseIntentState(v) {
+	case AssetUploadCancelResponseIntentStateInitiated:
+		*s = AssetUploadCancelResponseIntentStateInitiated
+	case AssetUploadCancelResponseIntentStateCompleted:
+		*s = AssetUploadCancelResponseIntentStateCompleted
+	case AssetUploadCancelResponseIntentStateCanceled:
+		*s = AssetUploadCancelResponseIntentStateCanceled
+	case AssetUploadCancelResponseIntentStateExpired:
+		*s = AssetUploadCancelResponseIntentStateExpired
+	default:
+		*s = AssetUploadCancelResponseIntentState(v)
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s AssetUploadCancelResponseIntentState) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *AssetUploadCancelResponseIntentState) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
 func (s *AssetUploadInitRequest) Encode(e *jx.Encoder) {
 	e.ObjStart()
 	s.encodeFields(e)
@@ -944,6 +1099,26 @@ func (s *AssetUploadInitRequest) Encode(e *jx.Encoder) {
 
 // encodeFields encodes fields.
 func (s *AssetUploadInitRequest) encodeFields(e *jx.Encoder) {
+	{
+		e.FieldStart("owner_type")
+		s.OwnerType.Encode(e)
+	}
+	{
+		e.FieldStart("owner_id")
+		json.EncodeUUID(e, s.OwnerID)
+	}
+	{
+		e.FieldStart("role")
+		s.Role.Encode(e)
+	}
+	{
+		e.FieldStart("is_primary")
+		e.Bool(s.IsPrimary)
+	}
+	{
+		e.FieldStart("idempotency_key")
+		e.Str(s.IdempotencyKey)
+	}
 	{
 		e.FieldStart("kind")
 		e.Str(s.Kind)
@@ -958,10 +1133,15 @@ func (s *AssetUploadInitRequest) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfAssetUploadInitRequest = [3]string{
-	0: "kind",
-	1: "content_type",
-	2: "metadata",
+var jsonFieldsNameOfAssetUploadInitRequest = [8]string{
+	0: "owner_type",
+	1: "owner_id",
+	2: "role",
+	3: "is_primary",
+	4: "idempotency_key",
+	5: "kind",
+	6: "content_type",
+	7: "metadata",
 }
 
 // Decode decodes AssetUploadInitRequest from json.
@@ -973,8 +1153,64 @@ func (s *AssetUploadInitRequest) Decode(d *jx.Decoder) error {
 
 	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
 		switch string(k) {
-		case "kind":
+		case "owner_type":
 			requiredBitSet[0] |= 1 << 0
+			if err := func() error {
+				if err := s.OwnerType.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"owner_type\"")
+			}
+		case "owner_id":
+			requiredBitSet[0] |= 1 << 1
+			if err := func() error {
+				v, err := json.DecodeUUID(d)
+				s.OwnerID = v
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"owner_id\"")
+			}
+		case "role":
+			requiredBitSet[0] |= 1 << 2
+			if err := func() error {
+				if err := s.Role.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"role\"")
+			}
+		case "is_primary":
+			requiredBitSet[0] |= 1 << 3
+			if err := func() error {
+				v, err := d.Bool()
+				s.IsPrimary = bool(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"is_primary\"")
+			}
+		case "idempotency_key":
+			requiredBitSet[0] |= 1 << 4
+			if err := func() error {
+				v, err := d.Str()
+				s.IdempotencyKey = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"idempotency_key\"")
+			}
+		case "kind":
+			requiredBitSet[0] |= 1 << 5
 			if err := func() error {
 				v, err := d.Str()
 				s.Kind = string(v)
@@ -986,7 +1222,7 @@ func (s *AssetUploadInitRequest) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"kind\"")
 			}
 		case "content_type":
-			requiredBitSet[0] |= 1 << 1
+			requiredBitSet[0] |= 1 << 6
 			if err := func() error {
 				v, err := d.Str()
 				s.ContentType = string(v)
@@ -998,7 +1234,7 @@ func (s *AssetUploadInitRequest) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"content_type\"")
 			}
 		case "metadata":
-			requiredBitSet[0] |= 1 << 2
+			requiredBitSet[0] |= 1 << 7
 			if err := func() error {
 				if err := s.Metadata.Decode(d); err != nil {
 					return err
@@ -1017,7 +1253,7 @@ func (s *AssetUploadInitRequest) Decode(d *jx.Decoder) error {
 	// Validate required fields.
 	var failures []validate.FieldError
 	for i, mask := range [1]uint8{
-		0b00000111,
+		0b11111111,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.
@@ -1121,6 +1357,88 @@ func (s *AssetUploadInitRequestMetadata) UnmarshalJSON(data []byte) error {
 	return s.Decode(d)
 }
 
+// Encode encodes AssetUploadInitRequestOwnerType as json.
+func (s AssetUploadInitRequestOwnerType) Encode(e *jx.Encoder) {
+	e.Str(string(s))
+}
+
+// Decode decodes AssetUploadInitRequestOwnerType from json.
+func (s *AssetUploadInitRequestOwnerType) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode AssetUploadInitRequestOwnerType to nil")
+	}
+	v, err := d.StrBytes()
+	if err != nil {
+		return err
+	}
+	// Try to use constant string.
+	switch AssetUploadInitRequestOwnerType(v) {
+	case AssetUploadInitRequestOwnerTypeProject:
+		*s = AssetUploadInitRequestOwnerTypeProject
+	case AssetUploadInitRequestOwnerTypeDataset:
+		*s = AssetUploadInitRequestOwnerTypeDataset
+	case AssetUploadInitRequestOwnerTypeSample:
+		*s = AssetUploadInitRequestOwnerTypeSample
+	default:
+		*s = AssetUploadInitRequestOwnerType(v)
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s AssetUploadInitRequestOwnerType) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *AssetUploadInitRequestOwnerType) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes AssetUploadInitRequestRole as json.
+func (s AssetUploadInitRequestRole) Encode(e *jx.Encoder) {
+	e.Str(string(s))
+}
+
+// Decode decodes AssetUploadInitRequestRole from json.
+func (s *AssetUploadInitRequestRole) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode AssetUploadInitRequestRole to nil")
+	}
+	v, err := d.StrBytes()
+	if err != nil {
+		return err
+	}
+	// Try to use constant string.
+	switch AssetUploadInitRequestRole(v) {
+	case AssetUploadInitRequestRoleAttachment:
+		*s = AssetUploadInitRequestRoleAttachment
+	case AssetUploadInitRequestRolePrimary:
+		*s = AssetUploadInitRequestRolePrimary
+	default:
+		*s = AssetUploadInitRequestRole(v)
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s AssetUploadInitRequestRole) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *AssetUploadInitRequestRole) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
 // Encode implements json.Marshaler.
 func (s *AssetUploadInitResponse) Encode(e *jx.Encoder) {
 	e.ObjStart()
@@ -1135,19 +1453,28 @@ func (s *AssetUploadInitResponse) encodeFields(e *jx.Encoder) {
 		s.Asset.Encode(e)
 	}
 	{
-		e.FieldStart("upload_url")
-		e.Str(s.UploadURL)
+		e.FieldStart("intent_state")
+		s.IntentState.Encode(e)
 	}
 	{
-		e.FieldStart("expires_in")
-		e.Int32(s.ExpiresIn)
+		if s.UploadURL.Set {
+			e.FieldStart("upload_url")
+			s.UploadURL.Encode(e)
+		}
+	}
+	{
+		if s.ExpiresIn.Set {
+			e.FieldStart("expires_in")
+			s.ExpiresIn.Encode(e)
+		}
 	}
 }
 
-var jsonFieldsNameOfAssetUploadInitResponse = [3]string{
+var jsonFieldsNameOfAssetUploadInitResponse = [4]string{
 	0: "asset",
-	1: "upload_url",
-	2: "expires_in",
+	1: "intent_state",
+	2: "upload_url",
+	3: "expires_in",
 }
 
 // Decode decodes AssetUploadInitResponse from json.
@@ -1169,12 +1496,20 @@ func (s *AssetUploadInitResponse) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"asset\"")
 			}
-		case "upload_url":
+		case "intent_state":
 			requiredBitSet[0] |= 1 << 1
 			if err := func() error {
-				v, err := d.Str()
-				s.UploadURL = string(v)
-				if err != nil {
+				if err := s.IntentState.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"intent_state\"")
+			}
+		case "upload_url":
+			if err := func() error {
+				s.UploadURL.Reset()
+				if err := s.UploadURL.Decode(d); err != nil {
 					return err
 				}
 				return nil
@@ -1182,11 +1517,9 @@ func (s *AssetUploadInitResponse) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"upload_url\"")
 			}
 		case "expires_in":
-			requiredBitSet[0] |= 1 << 2
 			if err := func() error {
-				v, err := d.Int32()
-				s.ExpiresIn = int32(v)
-				if err != nil {
+				s.ExpiresIn.Reset()
+				if err := s.ExpiresIn.Decode(d); err != nil {
 					return err
 				}
 				return nil
@@ -1203,7 +1536,7 @@ func (s *AssetUploadInitResponse) Decode(d *jx.Decoder) error {
 	// Validate required fields.
 	var failures []validate.FieldError
 	for i, mask := range [1]uint8{
-		0b00000111,
+		0b00000011,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.
@@ -1245,6 +1578,50 @@ func (s *AssetUploadInitResponse) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
 func (s *AssetUploadInitResponse) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes AssetUploadInitResponseIntentState as json.
+func (s AssetUploadInitResponseIntentState) Encode(e *jx.Encoder) {
+	e.Str(string(s))
+}
+
+// Decode decodes AssetUploadInitResponseIntentState from json.
+func (s *AssetUploadInitResponseIntentState) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode AssetUploadInitResponseIntentState to nil")
+	}
+	v, err := d.StrBytes()
+	if err != nil {
+		return err
+	}
+	// Try to use constant string.
+	switch AssetUploadInitResponseIntentState(v) {
+	case AssetUploadInitResponseIntentStateInitiated:
+		*s = AssetUploadInitResponseIntentStateInitiated
+	case AssetUploadInitResponseIntentStateCompleted:
+		*s = AssetUploadInitResponseIntentStateCompleted
+	case AssetUploadInitResponseIntentStateCanceled:
+		*s = AssetUploadInitResponseIntentStateCanceled
+	case AssetUploadInitResponseIntentStateExpired:
+		*s = AssetUploadInitResponseIntentStateExpired
+	default:
+		*s = AssetUploadInitResponseIntentState(v)
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s AssetUploadInitResponseIntentState) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *AssetUploadInitResponseIntentState) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }
@@ -6102,6 +6479,57 @@ func (s OptInt64) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
 func (s *OptInt64) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes int32 as json.
+func (o OptNilInt32) Encode(e *jx.Encoder) {
+	if !o.Set {
+		return
+	}
+	if o.Null {
+		e.Null()
+		return
+	}
+	e.Int32(int32(o.Value))
+}
+
+// Decode decodes int32 from json.
+func (o *OptNilInt32) Decode(d *jx.Decoder) error {
+	if o == nil {
+		return errors.New("invalid: unable to decode OptNilInt32 to nil")
+	}
+	if d.Next() == jx.Null {
+		if err := d.Null(); err != nil {
+			return err
+		}
+
+		var v int32
+		o.Value = v
+		o.Set = true
+		o.Null = true
+		return nil
+	}
+	o.Set = true
+	o.Null = false
+	v, err := d.Int32()
+	if err != nil {
+		return err
+	}
+	o.Value = int32(v)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s OptNilInt32) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *OptNilInt32) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }

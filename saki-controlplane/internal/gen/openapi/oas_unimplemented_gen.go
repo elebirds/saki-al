@@ -20,6 +20,13 @@ func (UnimplementedHandler) AbortImportUploadSession(ctx context.Context, params
 	return r, ht.ErrNotImplemented
 }
 
+// CancelAssetUpload implements cancelAssetUpload operation.
+//
+// POST /assets/{asset_id}:cancel
+func (UnimplementedHandler) CancelAssetUpload(ctx context.Context, params CancelAssetUploadParams) (r *AssetUploadCancelResponse, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // CancelRuntimeTask implements cancelRuntimeTask operation.
 //
 // POST /runtime/tasks/{task_id}/cancel

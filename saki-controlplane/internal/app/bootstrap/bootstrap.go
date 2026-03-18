@@ -95,6 +95,15 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 	sampleRepo := annotationrepo.NewSampleRepo(pool)
 	annotationRepo := annotationrepo.NewAnnotationRepo(pool)
 	assetStore := assetrepo.NewAssetRepo(pool)
+	assetReadStore := assetapp.NewRepoStore(assetStore)
+	assetIntentStore := assetapp.NewRepoIntentStore(assetrepo.NewAssetUploadIntentRepo(pool))
+	durableUploadConfig := assetapp.DurableUploadConfig{
+		UploadURLExpiry:    15 * time.Minute,
+		IntentTTL:          15 * time.Minute,
+		UploadGraceWindow:  30 * time.Minute,
+		MaxObjectKeyTrials: 3,
+	}
+	assetDurableTx := assetapp.NewRepoDurableUploadTxRunner(assetrepo.NewDurableUploadTxRunner(pool))
 	datasetRepo := datasetrepo.NewDatasetRepo(pool)
 	datasetStore := datasetapp.NewRepoStore(datasetRepo)
 	projectRepo := projectrepo.NewProjectRepo(pool)
@@ -129,9 +138,13 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 		AnnotationDatasets:  datasetRepo,
 		AnnotationStore:     annotationRepo,
 		Asset: assetapi.Dependencies{
-			Store:           assetStore,
+			Store:           assetReadStore,
+			IntentStore:     assetIntentStore,
+			InitUpload:      assetapp.NewInitDurableUploadUseCase(assetDurableTx, objectProvider, durableUploadConfig),
+			CompleteUpload:  assetapp.NewCompleteDurableUploadUseCase(assetDurableTx, objectProvider, durableUploadConfig),
+			CancelUpload:    assetapp.NewCancelDurableUploadUseCase(assetDurableTx, durableUploadConfig),
 			Provider:        objectProvider,
-			UploadURLExpiry: 15 * time.Minute,
+			UploadURLExpiry: durableUploadConfig.UploadURLExpiry,
 			DownloadExpiry:  15 * time.Minute,
 		},
 		AnnotationMapper: annotationmapping.NewClient(annotationmapping.ClientConfig{

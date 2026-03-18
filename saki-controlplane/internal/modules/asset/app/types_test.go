@@ -23,6 +23,34 @@ func TestAssetTypedEnumConstantsExposeStrongTypes(t *testing.T) {
 	}
 }
 
+func TestAssetTypedEnumParsers(t *testing.T) {
+	if got, err := ParseAssetOwnerType("dataset"); err != nil || got != AssetOwnerTypeDataset {
+		t.Fatalf("ParseAssetOwnerType got=%q err=%v", got, err)
+	}
+	if got, err := ParseAssetReferenceRole("primary"); err != nil || got != AssetReferenceRolePrimary {
+		t.Fatalf("ParseAssetReferenceRole got=%q err=%v", got, err)
+	}
+	if got, err := ParseAssetReferenceLifecycle("durable"); err != nil || got != AssetReferenceLifecycleDurable {
+		t.Fatalf("ParseAssetReferenceLifecycle got=%q err=%v", got, err)
+	}
+	if got, err := ParseAssetUploadIntentState("completed"); err != nil || got != AssetUploadIntentStateCompleted {
+		t.Fatalf("ParseAssetUploadIntentState got=%q err=%v", got, err)
+	}
+
+	if _, err := ParseAssetOwnerType("runtime"); !errors.Is(err, ErrUnsupportedAssetOwnerType) {
+		t.Fatalf("expected ErrUnsupportedAssetOwnerType, got %v", err)
+	}
+	if _, err := ParseAssetReferenceRole("thumbnail"); !errors.Is(err, ErrInvalidAssetReferenceRole) {
+		t.Fatalf("expected ErrInvalidAssetReferenceRole, got %v", err)
+	}
+	if _, err := ParseAssetReferenceLifecycle("ephemeral"); !errors.Is(err, ErrInvalidAssetLifecycle) {
+		t.Fatalf("expected ErrInvalidAssetLifecycle, got %v", err)
+	}
+	if _, err := ParseAssetUploadIntentState("running"); !errors.Is(err, ErrInvalidAssetIntentState) {
+		t.Fatalf("expected ErrInvalidAssetIntentState, got %v", err)
+	}
+}
+
 func TestOwnerTypeRolePrimaryValidation(t *testing.T) {
 	validCases := []DurableOwnerBinding{
 		{

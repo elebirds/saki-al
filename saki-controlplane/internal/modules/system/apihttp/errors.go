@@ -9,9 +9,11 @@ import (
 	openapi "github.com/elebirds/saki/saki-controlplane/internal/gen/openapi"
 	accessapp "github.com/elebirds/saki/saki-controlplane/internal/modules/access/app"
 	ogenhttp "github.com/ogen-go/ogen/http"
+	"github.com/ogen-go/ogen/validate"
 )
 
 func mapError(err error) *openapi.ErrorResponseStatusCode {
+	var validateErr *validate.Error
 	switch {
 	case errors.Is(err, accessapp.ErrUnauthorized):
 		return &openapi.ErrorResponseStatusCode{
@@ -35,6 +37,14 @@ func mapError(err error) *openapi.ErrorResponseStatusCode {
 			Response: openapi.ErrorResponse{
 				Code:    "not_implemented",
 				Message: "operation not implemented",
+			},
+		}
+	case errors.As(err, &validateErr):
+		return &openapi.ErrorResponseStatusCode{
+			StatusCode: http.StatusBadRequest,
+			Response: openapi.ErrorResponse{
+				Code:    "bad_request",
+				Message: validateErr.Error(),
 			},
 		}
 	default:

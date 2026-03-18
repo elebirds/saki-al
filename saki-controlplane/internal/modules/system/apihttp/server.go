@@ -143,6 +143,13 @@ func (s *Server) InitAssetUpload(ctx context.Context, req *openapi.AssetUploadIn
 	return s.asset.InitAssetUpload(ctx, req)
 }
 
+func (s *Server) CancelAssetUpload(ctx context.Context, params openapi.CancelAssetUploadParams) (*openapi.AssetUploadCancelResponse, error) {
+	if s.asset == nil || !s.asset.Enabled() {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	return s.asset.CancelAssetUpload(ctx, params)
+}
+
 func (s *Server) CreateProject(ctx context.Context, req *openapi.CreateProjectRequest) (*openapi.Project, error) {
 	return s.project.CreateProject(ctx, req)
 }

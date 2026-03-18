@@ -69,6 +69,28 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /assets/{asset_id}:cancel:
+    post:
+      operationId: cancelAssetUpload
+      parameters:
+        - name: asset_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: canceled asset upload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssetUploadCancelResponse"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /assets/{asset_id}:
     get:
       operationId: getAsset
@@ -944,10 +966,33 @@ components:
       type: object
       additionalProperties: false
       required:
+        - owner_type
+        - owner_id
+        - role
+        - is_primary
+        - idempotency_key
         - kind
         - content_type
         - metadata
       properties:
+        owner_type:
+          type: string
+          enum:
+            - project
+            - dataset
+            - sample
+        owner_id:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum:
+            - attachment
+            - primary
+        is_primary:
+          type: boolean
+        idempotency_key:
+          type: string
         kind:
           type: string
         content_type:
@@ -959,16 +1004,40 @@ components:
       type: object
       required:
         - asset
-        - upload_url
-        - expires_in
+        - intent_state
       properties:
         asset:
           $ref: "#/components/schemas/Asset"
+        intent_state:
+          type: string
+          enum:
+            - initiated
+            - completed
+            - canceled
+            - expired
         upload_url:
           type: string
+          nullable: true
         expires_in:
           type: integer
           format: int32
+          nullable: true
+    AssetUploadCancelResponse:
+      type: object
+      required:
+        - asset_id
+        - intent_state
+      properties:
+        asset_id:
+          type: string
+          format: uuid
+        intent_state:
+          type: string
+          enum:
+            - initiated
+            - completed
+            - canceled
+            - expired
     AssetCompleteRequest:
       type: object
       additionalProperties: false

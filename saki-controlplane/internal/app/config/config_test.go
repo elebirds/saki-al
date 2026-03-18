@@ -57,3 +57,32 @@ func TestLoadConfigReadsAccessBootstrapPrincipals(t *testing.T) {
 		t.Fatalf("unexpected bootstrap permissions: %+v", principal)
 	}
 }
+
+func TestLoadIncludesObjectStorageConfig(t *testing.T) {
+	t.Setenv("MINIO_ENDPOINT", "127.0.0.1:9000")
+	t.Setenv("MINIO_ACCESS_KEY", "test-access")
+	t.Setenv("MINIO_SECRET_KEY", "test-secret")
+	t.Setenv("MINIO_BUCKET_NAME", "assets")
+	t.Setenv("MINIO_SECURE", "true")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if cfg.MinIOEndpoint != "127.0.0.1:9000" {
+		t.Fatalf("unexpected object storage endpoint: %q", cfg.MinIOEndpoint)
+	}
+	if cfg.MinIOAccessKey != "test-access" {
+		t.Fatalf("unexpected object storage access key: %q", cfg.MinIOAccessKey)
+	}
+	if cfg.MinIOSecretKey != "test-secret" {
+		t.Fatalf("unexpected object storage secret key: %q", cfg.MinIOSecretKey)
+	}
+	if cfg.MinIOBucketName != "assets" {
+		t.Fatalf("unexpected object storage bucket: %q", cfg.MinIOBucketName)
+	}
+	if !cfg.MinIOSecure {
+		t.Fatal("expected object storage secure to be true")
+	}
+}

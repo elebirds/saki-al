@@ -40,6 +40,11 @@ type Config struct {
 	AuthTokenSecret             string `env:"AUTH_TOKEN_SECRET" envDefault:"dev-secret"`
 	AuthTokenTTL                string `env:"AUTH_TOKEN_TTL" envDefault:"24h"`
 	AuthBootstrapPrincipals     BootstrapPrincipals `env:"AUTH_BOOTSTRAP_PRINCIPALS"`
+	MinIOEndpoint               string              `env:"MINIO_ENDPOINT"`
+	MinIOAccessKey              string              `env:"MINIO_ACCESS_KEY"`
+	MinIOSecretKey              string              `env:"MINIO_SECRET_KEY"`
+	MinIOBucketName             string              `env:"MINIO_BUCKET_NAME"`
+	MinIOSecure                 bool                `env:"MINIO_SECURE" envDefault:"false"`
 }
 
 func Load() (Config, error) {

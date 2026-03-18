@@ -16,6 +16,7 @@ func TestIssueUploadTicketRequiresPendingAsset(t *testing.T) {
 	store := &stubStore{
 		asset: &assetrepo.Asset{
 			ID:          assetID,
+			Bucket:      "assets",
 			Status:      AssetStatusReady,
 			ContentType: "image/png",
 			ObjectKey:   "assets/demo.png",
@@ -46,6 +47,12 @@ func TestIssueUploadTicketRequiresPendingAsset(t *testing.T) {
 	if got, want := provider.lastPutContentType, "image/png"; got != want {
 		t.Fatalf("provider content type got %q want %q", got, want)
 	}
+
+	store.asset.Bucket = "other-bucket"
+	ticket, err = uc.Execute(context.Background(), assetID)
+	if !errors.Is(err, ErrAssetBucketMismatch) {
+		t.Fatalf("expected ErrAssetBucketMismatch, got ticket=%+v err=%v", ticket, err)
+	}
 }
 
 func TestIssueDownloadTicketRequiresReadyAsset(t *testing.T) {
@@ -53,6 +60,7 @@ func TestIssueDownloadTicketRequiresReadyAsset(t *testing.T) {
 	store := &stubStore{
 		asset: &assetrepo.Asset{
 			ID:        assetID,
+			Bucket:    "assets",
 			Status:    AssetStatusPendingUpload,
 			ObjectKey: "assets/demo.png",
 		},
@@ -78,6 +86,12 @@ func TestIssueDownloadTicketRequiresReadyAsset(t *testing.T) {
 	}
 	if got, want := provider.lastGetObjectKey, "assets/demo.png"; got != want {
 		t.Fatalf("provider object key got %q want %q", got, want)
+	}
+
+	store.asset.Bucket = "other-bucket"
+	ticket, err = uc.Execute(context.Background(), assetID)
+	if !errors.Is(err, ErrAssetBucketMismatch) {
+		t.Fatalf("expected ErrAssetBucketMismatch, got ticket=%+v err=%v", ticket, err)
 	}
 }
 

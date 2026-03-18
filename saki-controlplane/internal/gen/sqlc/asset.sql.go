@@ -142,6 +142,7 @@ set status = 'ready',
     content_type = $3,
     updated_at = now()
 where id = $4
+  and status = 'pending_upload'
 returning id, kind, status, storage_backend, bucket, object_key, content_type, size_bytes, sha256_hex, metadata, created_by, created_at, updated_at
 `
 

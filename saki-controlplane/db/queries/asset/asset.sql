@@ -39,4 +39,5 @@ set status = 'ready',
     content_type = sqlc.arg(content_type),
     updated_at = now()
 where id = sqlc.arg(id)
+  and status = 'pending_upload'
 returning id, kind, status, storage_backend, bucket, object_key, content_type, size_bytes, sha256_hex, metadata, created_by, created_at, updated_at;

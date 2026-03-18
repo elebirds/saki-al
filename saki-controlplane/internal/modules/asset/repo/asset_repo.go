@@ -65,7 +65,7 @@ func (r *AssetRepo) CreatePending(ctx context.Context, params CreatePendingParam
 		Bucket:         params.Bucket,
 		ObjectKey:      params.ObjectKey,
 		ContentType:    params.ContentType,
-		Metadata:       params.Metadata,
+		Metadata:       normalizeMetadata(params.Metadata),
 		CreatedBy:      uuidToPgtype(params.CreatedBy),
 	})
 	if err != nil {
@@ -161,4 +161,11 @@ func pgTextToStringPtr(v pgtype.Text) *string {
 	}
 	s := v.String
 	return &s
+}
+
+func normalizeMetadata(v []byte) []byte {
+	if len(v) == 0 {
+		return []byte(`{}`)
+	}
+	return v
 }

@@ -111,6 +111,36 @@ func TestAssetRepoCreatePendingAndMarkReady(t *testing.T) {
 	if !updated.UpdatedAt.After(created.UpdatedAt) {
 		t.Fatalf("expected updated_at to move forward, created=%s updated=%s", created.UpdatedAt, updated.UpdatedAt)
 	}
+
+	repeated, err := repo.MarkReady(ctx, MarkReadyParams{
+		ID:          created.ID,
+		SizeBytes:   9999,
+		Sha256Hex:   stringPtr("should-not-apply"),
+		ContentType: "image/jpeg",
+	})
+	if err != nil {
+		t.Fatalf("repeat mark asset ready: %v", err)
+	}
+	if repeated != nil {
+		t.Fatalf("expected repeat mark ready to return nil, got %+v", repeated)
+	}
+
+	reloaded, err := repo.Get(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("reload asset after repeated mark ready: %v", err)
+	}
+	if reloaded == nil {
+		t.Fatal("expected asset to still exist")
+	}
+	if got, want := reloaded.SizeBytes, int64(1234); got != want {
+		t.Fatalf("reloaded asset size got %d want %d", got, want)
+	}
+	if reloaded.Sha256Hex == nil || *reloaded.Sha256Hex != "abc123" {
+		t.Fatalf("reloaded asset sha got %+v want abc123", reloaded.Sha256Hex)
+	}
+	if got, want := reloaded.ContentType, "image/webp"; got != want {
+		t.Fatalf("reloaded asset content_type got %q want %q", got, want)
+	}
 }
 
 func TestAssetRepoGetByStorageLocation(t *testing.T) {
@@ -166,6 +196,49 @@ func TestAssetRepoGetByStorageLocation(t *testing.T) {
 	}
 	if missing != nil {
 		t.Fatalf("expected missing asset lookup to return nil, got %+v", missing)
+	}
+}
+
+func TestAssetRepoCreatePendingNormalizesNilMetadata(t *testing.T) {
+	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+
+	ctx := context.Background()
+	container, dsn := startAssetPostgres(t, ctx)
+	defer func() {
+		_ = testcontainers.TerminateContainer(container)
+	}()
+
+	sqlDB, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("open sql db: %v", err)
+	}
+	defer sqlDB.Close()
+
+	goose.SetDialect("postgres")
+	if err := goose.Up(sqlDB, assetMigrationsDir(t)); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+
+	pool, err := appdb.NewPool(ctx, dsn)
+	if err != nil {
+		t.Fatalf("create pool: %v", err)
+	}
+	defer pool.Close()
+
+	repo := NewAssetRepo(pool)
+	created, err := repo.CreatePending(ctx, CreatePendingParams{
+		Kind:           "image",
+		StorageBackend: "minio",
+		Bucket:         "assets",
+		ObjectKey:      "raw/nil-metadata.png",
+		ContentType:    "image/png",
+		Metadata:       nil,
+	})
+	if err != nil {
+		t.Fatalf("create pending asset with nil metadata: %v", err)
+	}
+	if !jsonEqual(t, created.Metadata, []byte(`{}`)) {
+		t.Fatalf("asset metadata got %s want {}", created.Metadata)
 	}
 }
 

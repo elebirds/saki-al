@@ -11,6 +11,7 @@ import (
 
 var ErrAssetNotPendingUpload = errors.New("asset is not pending upload")
 var ErrAssetNotReady = errors.New("asset is not ready")
+var ErrAssetBucketMismatch = errors.New("asset bucket does not match storage provider bucket")
 
 type Ticket struct {
 	AssetID uuid.UUID
@@ -41,6 +42,9 @@ func (u *IssueUploadTicketUseCase) Execute(ctx context.Context, assetID uuid.UUI
 	}
 	if asset.Status != AssetStatusPendingUpload {
 		return nil, ErrAssetNotPendingUpload
+	}
+	if asset.Bucket != u.provider.Bucket() {
+		return nil, ErrAssetBucketMismatch
 	}
 
 	url, err := u.provider.SignPutObject(ctx, asset.ObjectKey, u.expiry, asset.ContentType)
@@ -77,6 +81,9 @@ func (u *IssueDownloadTicketUseCase) Execute(ctx context.Context, assetID uuid.U
 	}
 	if asset.Status != AssetStatusReady {
 		return nil, ErrAssetNotReady
+	}
+	if asset.Bucket != u.provider.Bucket() {
+		return nil, ErrAssetBucketMismatch
 	}
 
 	url, err := u.provider.SignGetObject(ctx, asset.ObjectKey, u.expiry)

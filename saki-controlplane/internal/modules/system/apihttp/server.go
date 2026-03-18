@@ -26,6 +26,7 @@ type Dependencies struct {
 	Authenticator       *accessapp.Authenticator
 	AccessStore         accessapp.Store
 	DatasetStore        datasetapp.Store
+	DatasetDelete       *datasetapp.DeleteDatasetUseCase
 	ProjectStore        projectapp.Store
 	RuntimeStore        runtimequeries.AdminStore
 	RuntimeTaskCanceler runtimequeries.RuntimeTaskCanceler
@@ -83,8 +84,11 @@ func NewHandler(deps Dependencies) (*Server, error) {
 			deps.AnnotationStore,
 			deps.AnnotationMapper,
 		),
-		asset:     assetapi.NewHandlers(deps.Asset),
-		dataset:   datasetapi.NewHandlers(deps.DatasetStore),
+		asset: assetapi.NewHandlers(deps.Asset),
+		dataset: datasetapi.NewHandlersWithDependencies(datasetapi.Dependencies{
+			Store:  deps.DatasetStore,
+			Delete: deps.DatasetDelete,
+		}),
 		importing: importingapi.NewHandlers(deps.Importing),
 		project:   projectapi.NewHandlers(deps.ProjectStore, deps.DatasetStore),
 		runtime: runtimeapi.NewHandlers(runtimeapi.Dependencies{

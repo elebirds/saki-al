@@ -159,18 +159,6 @@ func (u *UpdateDatasetUseCase) Execute(ctx context.Context, input UpdateDatasetI
 	return fromRepoDataset(row), nil
 }
 
-type DeleteDatasetUseCase struct {
-	store Store
-}
-
-func NewDeleteDatasetUseCase(store Store) *DeleteDatasetUseCase {
-	return &DeleteDatasetUseCase{store: store}
-}
-
-func (u *DeleteDatasetUseCase) Execute(ctx context.Context, id uuid.UUID) (bool, error) {
-	return u.store.Delete(ctx, id)
-}
-
 type MemoryStore struct {
 	mu    sync.RWMutex
 	items map[uuid.UUID]datasetrepo.Dataset

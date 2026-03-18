@@ -81,6 +81,26 @@ func (q *Queries) GetDataset(ctx context.Context, id uuid.UUID) (Dataset, error)
 	return i, err
 }
 
+const getDatasetForUpdate = `-- name: GetDatasetForUpdate :one
+select id, name, type, created_at, updated_at
+from dataset
+where id = $1
+for update
+`
+
+func (q *Queries) GetDatasetForUpdate(ctx context.Context, id uuid.UUID) (Dataset, error) {
+	row := q.db.QueryRow(ctx, getDatasetForUpdate, id)
+	var i Dataset
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Type,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const listDatasets = `-- name: ListDatasets :many
 select id, name, type, created_at, updated_at
 from dataset

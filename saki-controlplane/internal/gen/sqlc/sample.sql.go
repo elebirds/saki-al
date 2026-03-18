@@ -56,3 +56,30 @@ func (q *Queries) GetSample(ctx context.Context, id uuid.UUID) (Sample, error) {
 	)
 	return i, err
 }
+
+const listSampleIDsByDataset = `-- name: ListSampleIDsByDataset :many
+select id
+from sample
+where dataset_id = $1
+order by id
+`
+
+func (q *Queries) ListSampleIDsByDataset(ctx context.Context, datasetID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listSampleIDsByDataset, datasetID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

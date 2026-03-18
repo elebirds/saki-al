@@ -8,6 +8,12 @@ select id, name, type, created_at, updated_at
 from dataset
 where id = sqlc.arg(id);
 
+-- name: GetDatasetForUpdate :one
+select id, name, type, created_at, updated_at
+from dataset
+where id = sqlc.arg(id)
+for update;
+
 -- name: CountDatasets :one
 select count(*)
 from dataset

@@ -117,6 +117,9 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 	assetDurableTx := assetapp.NewRepoDurableUploadTxRunner(assetrepo.NewDurableUploadTxRunner(pool))
 	datasetRepo := datasetrepo.NewDatasetRepo(pool)
 	datasetStore := datasetapp.NewRepoStore(datasetRepo)
+	datasetDelete := datasetapp.NewDeleteDatasetUseCaseWithTx(
+		datasetapp.NewRepoDeleteDatasetTxRunner(datasetrepo.NewDeleteDatasetTxRunner(pool)),
+	)
 	projectRepo := projectrepo.NewProjectRepo(pool)
 	projectStore := projectapp.NewRepoStore(projectRepo)
 	importUploadRepo := importrepo.NewUploadRepo(pool)
@@ -153,6 +156,7 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 		Authenticator:       accessapp.NewAuthenticator(cfg.AuthTokenSecret, tokenTTL).WithStore(accessStore),
 		AccessStore:         accessStore,
 		DatasetStore:        datasetStore,
+		DatasetDelete:       datasetDelete,
 		ProjectStore:        projectStore,
 		RuntimeStore:        runtimequeries.NewRepoAdminStore(taskRepo, runtimerepo.NewExecutorRepo(pool)),
 		RuntimeTaskCanceler: runtimecommands.NewCancelTaskHandlerWithTx(runtimerepo.NewCancelTaskTxRunner(pool)),

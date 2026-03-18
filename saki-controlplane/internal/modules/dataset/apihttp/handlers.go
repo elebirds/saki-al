@@ -18,13 +18,26 @@ type Handlers struct {
 	delete *datasetapp.DeleteDatasetUseCase
 }
 
+type Dependencies struct {
+	Store  datasetapp.Store
+	Delete *datasetapp.DeleteDatasetUseCase
+}
+
 func NewHandlers(store datasetapp.Store) *Handlers {
+	return NewHandlersWithDependencies(Dependencies{Store: store})
+}
+
+func NewHandlersWithDependencies(deps Dependencies) *Handlers {
+	deleteUseCase := deps.Delete
+	if deleteUseCase == nil {
+		deleteUseCase = datasetapp.NewDeleteDatasetUseCase(deps.Store)
+	}
 	return &Handlers{
-		create: datasetapp.NewCreateDatasetUseCase(store),
-		list:   datasetapp.NewListDatasetsUseCase(store),
-		get:    datasetapp.NewGetDatasetUseCase(store),
-		update: datasetapp.NewUpdateDatasetUseCase(store),
-		delete: datasetapp.NewDeleteDatasetUseCase(store),
+		create: datasetapp.NewCreateDatasetUseCase(deps.Store),
+		list:   datasetapp.NewListDatasetsUseCase(deps.Store),
+		get:    datasetapp.NewGetDatasetUseCase(deps.Store),
+		update: datasetapp.NewUpdateDatasetUseCase(deps.Store),
+		delete: deleteUseCase,
 	}
 }
 

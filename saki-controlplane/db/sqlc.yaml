@@ -4,6 +4,7 @@ sql:
     schema: "migrations"
     queries:
       - "queries/access"
+      - "queries/asset"
       - "queries/annotation"
       - "queries/dataset"
       - "queries/importing"

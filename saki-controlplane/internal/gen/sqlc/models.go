@@ -40,6 +40,22 @@ type Annotation struct {
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 }
 
+type Asset struct {
+	ID             uuid.UUID          `json:"id"`
+	Kind           string             `json:"kind"`
+	Status         string             `json:"status"`
+	StorageBackend string             `json:"storage_backend"`
+	Bucket         string             `json:"bucket"`
+	ObjectKey      string             `json:"object_key"`
+	ContentType    string             `json:"content_type"`
+	SizeBytes      int64              `json:"size_bytes"`
+	Sha256Hex      pgtype.Text        `json:"sha256_hex"`
+	Metadata       []byte             `json:"metadata"`
+	CreatedBy      pgtype.UUID        `json:"created_by"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+}
+
 type Dataset struct {
 	ID        uuid.UUID          `json:"id"`
 	Name      string             `json:"name"`

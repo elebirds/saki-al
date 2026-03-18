@@ -349,6 +349,166 @@ func TestDurableUploadRepoListStalePendingAssets(t *testing.T) {
 	}
 }
 
+func TestAssetRepoListReadyOrphanedAssetsAndRecheckBeforeDelete(t *testing.T) {
+	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+
+	ctx := context.Background()
+	container, dsn := startAssetPostgres(t, ctx)
+	defer func() {
+		_ = testcontainers.TerminateContainer(container)
+	}()
+
+	sqlDB, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("open sql db: %v", err)
+	}
+	defer sqlDB.Close()
+
+	goose.SetDialect("postgres")
+	if err := goose.Up(sqlDB, assetMigrationsDir(t)); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+
+	pool, err := appdb.NewPool(ctx, dsn)
+	if err != nil {
+		t.Fatalf("create pool: %v", err)
+	}
+	defer pool.Close()
+
+	assetRepo := NewAssetRepo(pool)
+	referenceRepo := NewAssetReferenceRepo(pool)
+	txRunner := NewReadyOrphanGCTxRunner(pool)
+
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	cutoff := now.Add(-24 * time.Hour)
+	userID := uuid.New()
+
+	staleAsset, err := assetRepo.CreatePending(ctx, CreatePendingParams{
+		Kind:           "image",
+		StorageBackend: "minio",
+		Bucket:         "assets",
+		ObjectKey:      "ready/stale-orphan.png",
+		ContentType:    "image/png",
+		Metadata:       []byte(`{}`),
+		CreatedBy:      &userID,
+	})
+	if err != nil {
+		t.Fatalf("create stale asset: %v", err)
+	}
+	staleAsset, err = assetRepo.MarkReady(ctx, MarkReadyParams{
+		ID:          staleAsset.ID,
+		SizeBytes:   128,
+		Sha256Hex:   stringPtr("stale"),
+		ContentType: "image/png",
+	})
+	if err != nil {
+		t.Fatalf("mark stale asset ready: %v", err)
+	}
+	staleOwnerID := uuid.New()
+	if _, err := referenceRepo.CreateDurable(ctx, CreateAssetReferenceParams{
+		AssetID:   staleAsset.ID,
+		OwnerType: "dataset",
+		OwnerID:   staleOwnerID,
+		Role:      "attachment",
+		Lifecycle: "durable",
+		IsPrimary: false,
+		CreatedBy: &userID,
+	}); err != nil {
+		t.Fatalf("create stale durable reference: %v", err)
+	}
+	if _, err := referenceRepo.InvalidateForOwner(ctx, InvalidateAssetReferencesForOwnerParams{
+		OwnerType: "dataset",
+		OwnerID:   staleOwnerID,
+		DeletedAt: now,
+	}); err != nil {
+		t.Fatalf("invalidate stale durable reference: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `update asset set orphaned_at = $2 where id = $1`, staleAsset.ID, cutoff.Add(-time.Hour)); err != nil {
+		t.Fatalf("age stale orphaned_at: %v", err)
+	}
+
+	freshAsset, err := assetRepo.CreatePending(ctx, CreatePendingParams{
+		Kind:           "image",
+		StorageBackend: "minio",
+		Bucket:         "assets",
+		ObjectKey:      "ready/fresh-orphan.png",
+		ContentType:    "image/png",
+		Metadata:       []byte(`{}`),
+		CreatedBy:      &userID,
+	})
+	if err != nil {
+		t.Fatalf("create fresh asset: %v", err)
+	}
+	freshAsset, err = assetRepo.MarkReady(ctx, MarkReadyParams{
+		ID:          freshAsset.ID,
+		SizeBytes:   128,
+		Sha256Hex:   stringPtr("fresh"),
+		ContentType: "image/png",
+	})
+	if err != nil {
+		t.Fatalf("mark fresh asset ready: %v", err)
+	}
+	freshOwnerID := uuid.New()
+	if _, err := referenceRepo.CreateDurable(ctx, CreateAssetReferenceParams{
+		AssetID:   freshAsset.ID,
+		OwnerType: "dataset",
+		OwnerID:   freshOwnerID,
+		Role:      "attachment",
+		Lifecycle: "durable",
+		IsPrimary: false,
+		CreatedBy: &userID,
+	}); err != nil {
+		t.Fatalf("create fresh durable reference: %v", err)
+	}
+	if _, err := referenceRepo.InvalidateForOwner(ctx, InvalidateAssetReferencesForOwnerParams{
+		OwnerType: "dataset",
+		OwnerID:   freshOwnerID,
+		DeletedAt: now,
+	}); err != nil {
+		t.Fatalf("invalidate fresh durable reference: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `update asset set orphaned_at = $2 where id = $1`, freshAsset.ID, cutoff.Add(2*time.Hour)); err != nil {
+		t.Fatalf("age fresh orphaned_at: %v", err)
+	}
+
+	orphanedAssets, err := assetRepo.ListReadyOrphaned(ctx, ListReadyOrphanedAssetsParams{
+		Cutoff: cutoff,
+	})
+	if err != nil {
+		t.Fatalf("list ready orphaned assets: %v", err)
+	}
+	if len(orphanedAssets) != 1 || orphanedAssets[0].ID != staleAsset.ID {
+		t.Fatalf("unexpected ready orphaned assets: %+v", orphanedAssets)
+	}
+
+	reboundOwnerID := uuid.New()
+	if _, err := referenceRepo.CreateDurable(ctx, CreateAssetReferenceParams{
+		AssetID:   staleAsset.ID,
+		OwnerType: "project",
+		OwnerID:   reboundOwnerID,
+		Role:      "attachment",
+		Lifecycle: "durable",
+		IsPrimary: false,
+		CreatedBy: &userID,
+	}); err != nil {
+		t.Fatalf("rebound stale asset reference: %v", err)
+	}
+
+	err = txRunner.InTx(ctx, func(store ReadyOrphanGCTx) error {
+		locked, err := store.LockReadyOrphanedAsset(ctx, staleAsset.ID, cutoff)
+		if err != nil {
+			return err
+		}
+		if locked != nil {
+			t.Fatalf("expected lock recheck to miss after rebound, got %+v", locked)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("lock ready orphaned asset in tx: %v", err)
+	}
+}
+
 func TestDurableUploadRepoDeleteAssetCascadesIntent(t *testing.T) {
 	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
 

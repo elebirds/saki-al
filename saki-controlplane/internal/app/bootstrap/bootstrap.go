@@ -33,11 +33,23 @@ import (
 )
 
 var objectProviderFactory = storage.NewMinIOProvider
-var assetCleanerLoopFactory = func(store assetapp.StalePendingStore, provider storage.Provider, logger *slog.Logger) backgroundLoop {
-	cleaner := assetapp.NewStalePendingCleaner(store, provider, assetapp.StalePendingCleanerConfig{
+var assetCleanerLoopFactory = func(staleStore assetapp.StalePendingStore, readyStore assetapp.ReadyOrphanStore, readyTx assetapp.ReadyOrphanTxRunner, provider storage.Provider, logger *slog.Logger, readyRetentionWindow time.Duration) backgroundLoop {
+	staleCleaner := assetapp.NewStalePendingCleaner(staleStore, provider, assetapp.StalePendingCleanerConfig{
 		UploadGraceWindow: 30 * time.Minute,
 	})
-	return newBackgroundPollingLoop("asset-cleaner", 5*time.Minute, logger, cleaner.RunOnce)
+	readyCleaner := assetapp.NewReadyOrphanCleaner(readyStore, readyTx, provider, assetapp.ReadyOrphanCleanerConfig{
+		RetentionWindow: readyRetentionWindow,
+	})
+	return newBackgroundPollingLoop("asset-cleaner", 5*time.Minute, logger, func(ctx context.Context) error {
+		var firstErr error
+		if err := staleCleaner.RunOnce(ctx); err != nil && firstErr == nil {
+			firstErr = err
+		}
+		if err := readyCleaner.RunOnce(ctx); err != nil && firstErr == nil {
+			firstErr = err
+		}
+		return firstErr
+	})
 }
 
 type backgroundLoop interface {
@@ -65,6 +77,10 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 
 	logger := observe.NewLogger("public-api", observe.ParseLevel(cfg.LogLevel), cfg.LogFormat)
 	tokenTTL, err := time.ParseDuration(cfg.AuthTokenTTL)
+	if err != nil {
+		return nil, nil, err
+	}
+	readyRetentionWindow, err := time.ParseDuration(cfg.AssetReadyRetentionWindow)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -108,6 +124,8 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 	assetStore := assetrepo.NewAssetRepo(pool)
 	assetReadStore := assetapp.NewRepoStore(assetStore)
 	assetIntentStore := assetapp.NewRepoIntentStore(assetrepo.NewAssetUploadIntentRepo(pool))
+	assetReadyOrphanStore := assetapp.NewRepoReadyOrphanStore(assetStore)
+	assetReadyOrphanTx := assetapp.NewRepoReadyOrphanTxRunner(assetrepo.NewReadyOrphanGCTxRunner(pool))
 	durableUploadConfig := assetapp.DurableUploadConfig{
 		UploadURLExpiry:    15 * time.Minute,
 		IntentTTL:          15 * time.Minute,
@@ -206,7 +224,14 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 	}
 	cleanerCtx, cancelCleaner := context.WithCancel(ctx)
 	if objectProvider != nil {
-		cleanerLoop := assetCleanerLoopFactory(assetapp.NewRepoStalePendingStore(assetStore), objectProvider, logger)
+		cleanerLoop := assetCleanerLoopFactory(
+			assetapp.NewRepoStalePendingStore(assetStore),
+			assetReadyOrphanStore,
+			assetReadyOrphanTx,
+			objectProvider,
+			logger,
+			readyRetentionWindow,
+		)
 		if cleanerLoop != nil {
 			go func() {
 				if err := cleanerLoop.Run(cleanerCtx); err != nil && cleanerCtx.Err() == nil {

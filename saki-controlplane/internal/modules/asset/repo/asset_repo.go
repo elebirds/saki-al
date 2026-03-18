@@ -57,6 +57,15 @@ type ListStalePendingAssetsParams struct {
 	Cutoff time.Time
 }
 
+type ListReadyOrphanedAssetsParams struct {
+	Cutoff time.Time
+}
+
+type GetReadyOrphanedAssetForUpdateParams struct {
+	ID     uuid.UUID
+	Cutoff time.Time
+}
+
 type AssetRepo struct {
 	q *sqlcdb.Queries
 }
@@ -140,6 +149,33 @@ func (r *AssetRepo) ListStalePending(ctx context.Context, params ListStalePendin
 		assets = append(assets, *fromListStalePendingAssetsRow(row))
 	}
 	return assets, nil
+}
+
+func (r *AssetRepo) ListReadyOrphaned(ctx context.Context, params ListReadyOrphanedAssetsParams) ([]Asset, error) {
+	rows, err := r.q.ListReadyOrphanedAssets(ctx, pgTime(params.Cutoff))
+	if err != nil {
+		return nil, err
+	}
+
+	assets := make([]Asset, 0, len(rows))
+	for _, row := range rows {
+		assets = append(assets, *fromListReadyOrphanedAssetsRow(row))
+	}
+	return assets, nil
+}
+
+func (r *AssetRepo) GetReadyOrphanedForUpdate(ctx context.Context, params GetReadyOrphanedAssetForUpdateParams) (*Asset, error) {
+	row, err := r.q.GetReadyOrphanedAssetForUpdate(ctx, sqlcdb.GetReadyOrphanedAssetForUpdateParams{
+		ID:     params.ID,
+		Cutoff: pgTime(params.Cutoff),
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return fromGetReadyOrphanedAssetForUpdateRow(row), nil
 }
 
 func (r *AssetRepo) Delete(ctx context.Context, id uuid.UUID) (bool, error) {
@@ -231,6 +267,46 @@ func fromMarkAssetReadyRow(row sqlcdb.MarkAssetReadyRow) *Asset {
 }
 
 func fromListStalePendingAssetsRow(row sqlcdb.ListStalePendingAssetsRow) *Asset {
+	return newAssetFromFields(
+		row.ID,
+		row.Kind,
+		row.Status,
+		row.StorageBackend,
+		row.Bucket,
+		row.ObjectKey,
+		row.ContentType,
+		row.SizeBytes,
+		row.Sha256Hex,
+		row.Metadata,
+		row.CreatedBy,
+		row.ReadyAt,
+		row.OrphanedAt,
+		row.CreatedAt,
+		row.UpdatedAt,
+	)
+}
+
+func fromListReadyOrphanedAssetsRow(row sqlcdb.ListReadyOrphanedAssetsRow) *Asset {
+	return newAssetFromFields(
+		row.ID,
+		row.Kind,
+		row.Status,
+		row.StorageBackend,
+		row.Bucket,
+		row.ObjectKey,
+		row.ContentType,
+		row.SizeBytes,
+		row.Sha256Hex,
+		row.Metadata,
+		row.CreatedBy,
+		row.ReadyAt,
+		row.OrphanedAt,
+		row.CreatedAt,
+		row.UpdatedAt,
+	)
+}
+
+func fromGetReadyOrphanedAssetForUpdateRow(row sqlcdb.GetReadyOrphanedAssetForUpdateRow) *Asset {
 	return newAssetFromFields(
 		row.ID,
 		row.Kind,

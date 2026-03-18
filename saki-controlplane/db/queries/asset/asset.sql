@@ -64,6 +64,35 @@ where a.status = 'pending_upload'
   )
 order by a.created_at, a.id;
 
+-- name: ListReadyOrphanedAssets :many
+select a.id, a.kind, a.status, a.storage_backend, a.bucket, a.object_key, a.content_type, a.size_bytes, a.sha256_hex, a.metadata, a.created_by, a.ready_at, a.orphaned_at, a.created_at, a.updated_at
+from asset as a
+where a.status = 'ready'
+  and a.orphaned_at is not null
+  and a.orphaned_at <= sqlc.arg(cutoff)
+  and not exists (
+      select 1
+      from asset_reference as r
+      where r.asset_id = a.id
+        and r.deleted_at is null
+  )
+order by a.orphaned_at, a.id;
+
+-- name: GetReadyOrphanedAssetForUpdate :one
+select a.id, a.kind, a.status, a.storage_backend, a.bucket, a.object_key, a.content_type, a.size_bytes, a.sha256_hex, a.metadata, a.created_by, a.ready_at, a.orphaned_at, a.created_at, a.updated_at
+from asset as a
+where a.id = sqlc.arg(id)
+  and a.status = 'ready'
+  and a.orphaned_at is not null
+  and a.orphaned_at <= sqlc.arg(cutoff)
+  and not exists (
+      select 1
+      from asset_reference as r
+      where r.asset_id = a.id
+        and r.deleted_at is null
+  )
+for update;
+
 -- name: DeleteAsset :execrows
 delete from asset
 where id = sqlc.arg(id);

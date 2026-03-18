@@ -132,7 +132,7 @@ func TestPublicAPIBootstrapStartsAndStopsAssetCleaner(t *testing.T) {
 
 	started := make(chan struct{}, 1)
 	stopped := make(chan struct{}, 1)
-	restoreCleanerLoopFactory := overrideAssetCleanerLoopFactoryForTest(func(assetapp.StalePendingStore, storage.Provider, *slog.Logger) backgroundLoop {
+	restoreCleanerLoopFactory := overrideAssetCleanerLoopFactoryForTest(func(assetapp.StalePendingStore, assetapp.ReadyOrphanStore, assetapp.ReadyOrphanTxRunner, storage.Provider, *slog.Logger, time.Duration) backgroundLoop {
 		return backgroundLoopFunc(func(ctx context.Context) error {
 			select {
 			case started <- struct{}{}:
@@ -207,7 +207,7 @@ func TestNewPublicAPIAllowsMissingObjectStorageConfig(t *testing.T) {
 	defer restoreProviderFactory()
 
 	cleanerStarted := false
-	restoreCleanerLoopFactory := overrideAssetCleanerLoopFactoryForTest(func(assetapp.StalePendingStore, storage.Provider, *slog.Logger) backgroundLoop {
+	restoreCleanerLoopFactory := overrideAssetCleanerLoopFactoryForTest(func(assetapp.StalePendingStore, assetapp.ReadyOrphanStore, assetapp.ReadyOrphanTxRunner, storage.Provider, *slog.Logger, time.Duration) backgroundLoop {
 		cleanerStarted = true
 		return nil
 	})
@@ -291,7 +291,7 @@ func overrideObjectProviderFactoryForTest(factory func(storage.Config) (storage.
 	}
 }
 
-func overrideAssetCleanerLoopFactoryForTest(factory func(assetapp.StalePendingStore, storage.Provider, *slog.Logger) backgroundLoop) func() {
+func overrideAssetCleanerLoopFactoryForTest(factory func(assetapp.StalePendingStore, assetapp.ReadyOrphanStore, assetapp.ReadyOrphanTxRunner, storage.Provider, *slog.Logger, time.Duration) backgroundLoop) func() {
 	previous := assetCleanerLoopFactory
 	assetCleanerLoopFactory = factory
 	return func() {

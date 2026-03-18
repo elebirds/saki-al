@@ -207,6 +207,137 @@ func (q *Queries) GetAssetByStorageLocation(ctx context.Context, arg GetAssetByS
 	return i, err
 }
 
+const getReadyOrphanedAssetForUpdate = `-- name: GetReadyOrphanedAssetForUpdate :one
+select a.id, a.kind, a.status, a.storage_backend, a.bucket, a.object_key, a.content_type, a.size_bytes, a.sha256_hex, a.metadata, a.created_by, a.ready_at, a.orphaned_at, a.created_at, a.updated_at
+from asset as a
+where a.id = $1
+  and a.status = 'ready'
+  and a.orphaned_at is not null
+  and a.orphaned_at <= $2
+  and not exists (
+      select 1
+      from asset_reference as r
+      where r.asset_id = a.id
+        and r.deleted_at is null
+  )
+for update
+`
+
+type GetReadyOrphanedAssetForUpdateParams struct {
+	ID     uuid.UUID          `json:"id"`
+	Cutoff pgtype.Timestamptz `json:"cutoff"`
+}
+
+type GetReadyOrphanedAssetForUpdateRow struct {
+	ID             uuid.UUID           `json:"id"`
+	Kind           AssetKind           `json:"kind"`
+	Status         AssetStatus         `json:"status"`
+	StorageBackend AssetStorageBackend `json:"storage_backend"`
+	Bucket         string              `json:"bucket"`
+	ObjectKey      string              `json:"object_key"`
+	ContentType    string              `json:"content_type"`
+	SizeBytes      int64               `json:"size_bytes"`
+	Sha256Hex      pgtype.Text         `json:"sha256_hex"`
+	Metadata       []byte              `json:"metadata"`
+	CreatedBy      pgtype.UUID         `json:"created_by"`
+	ReadyAt        pgtype.Timestamptz  `json:"ready_at"`
+	OrphanedAt     pgtype.Timestamptz  `json:"orphaned_at"`
+	CreatedAt      pgtype.Timestamptz  `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz  `json:"updated_at"`
+}
+
+func (q *Queries) GetReadyOrphanedAssetForUpdate(ctx context.Context, arg GetReadyOrphanedAssetForUpdateParams) (GetReadyOrphanedAssetForUpdateRow, error) {
+	row := q.db.QueryRow(ctx, getReadyOrphanedAssetForUpdate, arg.ID, arg.Cutoff)
+	var i GetReadyOrphanedAssetForUpdateRow
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.Status,
+		&i.StorageBackend,
+		&i.Bucket,
+		&i.ObjectKey,
+		&i.ContentType,
+		&i.SizeBytes,
+		&i.Sha256Hex,
+		&i.Metadata,
+		&i.CreatedBy,
+		&i.ReadyAt,
+		&i.OrphanedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const listReadyOrphanedAssets = `-- name: ListReadyOrphanedAssets :many
+select a.id, a.kind, a.status, a.storage_backend, a.bucket, a.object_key, a.content_type, a.size_bytes, a.sha256_hex, a.metadata, a.created_by, a.ready_at, a.orphaned_at, a.created_at, a.updated_at
+from asset as a
+where a.status = 'ready'
+  and a.orphaned_at is not null
+  and a.orphaned_at <= $1
+  and not exists (
+      select 1
+      from asset_reference as r
+      where r.asset_id = a.id
+        and r.deleted_at is null
+  )
+order by a.orphaned_at, a.id
+`
+
+type ListReadyOrphanedAssetsRow struct {
+	ID             uuid.UUID           `json:"id"`
+	Kind           AssetKind           `json:"kind"`
+	Status         AssetStatus         `json:"status"`
+	StorageBackend AssetStorageBackend `json:"storage_backend"`
+	Bucket         string              `json:"bucket"`
+	ObjectKey      string              `json:"object_key"`
+	ContentType    string              `json:"content_type"`
+	SizeBytes      int64               `json:"size_bytes"`
+	Sha256Hex      pgtype.Text         `json:"sha256_hex"`
+	Metadata       []byte              `json:"metadata"`
+	CreatedBy      pgtype.UUID         `json:"created_by"`
+	ReadyAt        pgtype.Timestamptz  `json:"ready_at"`
+	OrphanedAt     pgtype.Timestamptz  `json:"orphaned_at"`
+	CreatedAt      pgtype.Timestamptz  `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz  `json:"updated_at"`
+}
+
+func (q *Queries) ListReadyOrphanedAssets(ctx context.Context, cutoff pgtype.Timestamptz) ([]ListReadyOrphanedAssetsRow, error) {
+	rows, err := q.db.Query(ctx, listReadyOrphanedAssets, cutoff)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListReadyOrphanedAssetsRow
+	for rows.Next() {
+		var i ListReadyOrphanedAssetsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Kind,
+			&i.Status,
+			&i.StorageBackend,
+			&i.Bucket,
+			&i.ObjectKey,
+			&i.ContentType,
+			&i.SizeBytes,
+			&i.Sha256Hex,
+			&i.Metadata,
+			&i.CreatedBy,
+			&i.ReadyAt,
+			&i.OrphanedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listStalePendingAssets = `-- name: ListStalePendingAssets :many
 select a.id, a.kind, a.status, a.storage_backend, a.bucket, a.object_key, a.content_type, a.size_bytes, a.sha256_hex, a.metadata, a.created_by, a.ready_at, a.orphaned_at, a.created_at, a.updated_at
 from asset as a

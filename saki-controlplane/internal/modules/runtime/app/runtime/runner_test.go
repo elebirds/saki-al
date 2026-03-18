@@ -14,16 +14,28 @@ import (
 	runtimerepo "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/repo"
 )
 
-func TestRuntimeRunnerStartsIngressSchedulerAndOutboxWorker(t *testing.T) {
-	called := false
+func TestRuntimeRunnerStartsRPCHandlersSchedulerAndOutboxWorker(t *testing.T) {
+	ingressCalled := false
+	artifactCalled := false
 
 	runner := newRunnerFromAssembly(assembly{
-		bind:        ":8081",
-		ingressPath: "/saki.runtime.v1.AgentIngress/",
-		ingressHandler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			called = true
-			w.WriteHeader(http.StatusAccepted)
-		}),
+		bind: ":8081",
+		rpcHandlers: []rpcHandlerMount{
+			{
+				path: "/saki.runtime.v1.AgentIngress/",
+				handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+					ingressCalled = true
+					w.WriteHeader(http.StatusAccepted)
+				}),
+			},
+			{
+				path: "/saki.runtime.v1.ArtifactService/",
+				handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+					artifactCalled = true
+					w.WriteHeader(http.StatusCreated)
+				}),
+			},
+		},
 		schedulerTicker: fakeSchedulerTicker{},
 		outboxWorker:    fakeOutboxWorker{},
 	})
@@ -37,15 +49,24 @@ func TestRuntimeRunnerStartsIngressSchedulerAndOutboxWorker(t *testing.T) {
 		t.Fatal("expected outbox worker loop to be wired")
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/saki.runtime.v1.AgentIngress/Register", nil)
-	resp := httptest.NewRecorder()
-	runner.server.Handler.ServeHTTP(resp, req)
-
-	if !called {
+	ingressReq := httptest.NewRequest(http.MethodPost, "/saki.runtime.v1.AgentIngress/Register", nil)
+	ingressResp := httptest.NewRecorder()
+	runner.server.Handler.ServeHTTP(ingressResp, ingressReq)
+	if !ingressCalled {
 		t.Fatal("expected ingress handler to be mounted")
 	}
-	if resp.Code != http.StatusAccepted {
-		t.Fatalf("unexpected ingress status: %d", resp.Code)
+	if ingressResp.Code != http.StatusAccepted {
+		t.Fatalf("unexpected ingress status: %d", ingressResp.Code)
+	}
+
+	artifactReq := httptest.NewRequest(http.MethodPost, "/saki.runtime.v1.ArtifactService/CreateUploadTicket", nil)
+	artifactResp := httptest.NewRecorder()
+	runner.server.Handler.ServeHTTP(artifactResp, artifactReq)
+	if !artifactCalled {
+		t.Fatal("expected artifact handler to be mounted")
+	}
+	if artifactResp.Code != http.StatusCreated {
+		t.Fatalf("unexpected artifact status: %d", artifactResp.Code)
 	}
 }
 

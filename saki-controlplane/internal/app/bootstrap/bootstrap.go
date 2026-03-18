@@ -15,6 +15,7 @@ import (
 	annotationmapping "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/app/mapping"
 	annotationrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/repo"
 	assetapi "github.com/elebirds/saki/saki-controlplane/internal/modules/asset/apihttp"
+	assetapp "github.com/elebirds/saki/saki-controlplane/internal/modules/asset/app"
 	assetrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/asset/repo"
 	datasetapp "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/app"
 	datasetrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/repo"
@@ -28,6 +29,7 @@ import (
 	runtimeapp "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/runtime"
 	runtimerepo "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/repo"
 	systemapi "github.com/elebirds/saki/saki-controlplane/internal/modules/system/apihttp"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 var objectProviderFactory = storage.NewMinIOProvider
@@ -162,10 +164,27 @@ func NewRuntime(ctx context.Context) (*runtimeapp.Runner, *slog.Logger, error) {
 	}
 
 	logger := observe.NewLogger("runtime", observe.ParseLevel(cfg.LogLevel), cfg.LogFormat)
+	objectProvider, err := objectProviderFactory(storage.Config{
+		Endpoint:  cfg.MinIOEndpoint,
+		AccessKey: cfg.MinIOAccessKey,
+		SecretKey: cfg.MinIOSecretKey,
+		Bucket:    cfg.MinIOBucketName,
+		Secure:    cfg.MinIOSecure,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
 	runner, err := runtimeapp.New(ctx, runtimeapp.Options{
 		Bind:                 cfg.RuntimeBind,
 		DatabaseDSN:          cfg.DatabaseDSN,
 		SchedulerTargetAgent: cfg.RuntimeSchedulerTargetAgent,
+		AssetStoreFactory: func(pool *pgxpool.Pool) assetapp.Store {
+			return assetrepo.NewAssetRepo(pool)
+		},
+		AssetProvider:        objectProvider,
+		UploadTicketExpiry:   15 * time.Minute,
+		DownloadTicketExpiry: 15 * time.Minute,
 	}, logger)
 	if err != nil {
 		return nil, nil, err

@@ -101,6 +101,31 @@ func TestAgentIngressTaskEventEnvelopeCodec(t *testing.T) {
 	}
 }
 
+func TestArtifactServiceTicketCodec(t *testing.T) {
+	service := requireServiceDescriptor(t, "saki.runtime.v1.ArtifactService")
+	assertMethodNames(t, service, "CreateDownloadTicket", "CreateUploadTicket")
+
+	method := requireMethodDescriptor(t, service, "CreateUploadTicket")
+	artifactIDField := requireFieldDescriptor(t, method.Input(), "artifact_id")
+
+	original := dynamicpb.NewMessage(method.Input())
+	original.Set(artifactIDField, protoreflect.ValueOfString("550e8400-e29b-41d4-a716-446655440000"))
+
+	wire, err := proto.Marshal(original)
+	if err != nil {
+		t.Fatalf("marshal create upload ticket request: %v", err)
+	}
+
+	decoded := dynamicpb.NewMessage(method.Input())
+	if err := proto.Unmarshal(wire, decoded); err != nil {
+		t.Fatalf("unmarshal create upload ticket request: %v", err)
+	}
+
+	if got, want := decoded.Get(artifactIDField).String(), "550e8400-e29b-41d4-a716-446655440000"; got != want {
+		t.Fatalf("unexpected decoded create upload ticket request artifact_id=%q", got)
+	}
+}
+
 func TestAgentControlAssignTaskCodec(t *testing.T) {
 	service := requireServiceDescriptor(t, "saki.runtime.v1.AgentControl")
 	assertMethodNames(t, service, "AssignTask", "StopTask")

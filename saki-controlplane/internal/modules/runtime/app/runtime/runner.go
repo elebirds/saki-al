@@ -10,13 +10,17 @@ import (
 	"time"
 
 	appdb "github.com/elebirds/saki/saki-controlplane/internal/app/db"
+	"github.com/elebirds/saki/saki-controlplane/internal/app/storage"
 	runtimev1 "github.com/elebirds/saki/saki-controlplane/internal/gen/proto/runtime/v1"
 	"github.com/elebirds/saki/saki-controlplane/internal/gen/proto/runtime/v1/runtimev1connect"
+	assetapp "github.com/elebirds/saki/saki-controlplane/internal/modules/asset/app"
+	assetrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/asset/repo"
 	runtimecommands "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/commands"
 	runtimescheduler "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/scheduler"
 	runtimeeffects "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/effects"
 	"github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/internalrpc"
 	runtimerepo "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/repo"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -27,12 +31,14 @@ const (
 	defaultShutdownTimeout       = 5 * time.Second
 	defaultSchedulerLeaseName    = "runtime-scheduler"
 	defaultSchedulerLeaseTTL     = 30 * time.Second
+	defaultArtifactTicketExpiry  = 15 * time.Minute
 	healthzPath                  = "/healthz"
 	healthzResponse              = "ok"
 	placeholderTransportLogLabel = "runtime agent control placeholder is active"
 )
 
 var errPlaceholderAgentControlTransport = errors.New("runtime agent control transport is not configured")
+var errRuntimeArtifactProviderRequired = errors.New("runtime artifact provider is required")
 
 type Options struct {
 	Bind                 string
@@ -44,6 +50,10 @@ type Options struct {
 	SchedulerHolder      string
 	SchedulerLeaseTTL    time.Duration
 	SchedulerTargetAgent string
+	AssetStoreFactory    func(pool *pgxpool.Pool) assetapp.Store
+	AssetProvider        storage.Provider
+	UploadTicketExpiry   time.Duration
+	DownloadTicketExpiry time.Duration
 }
 
 type Runner struct {
@@ -64,11 +74,15 @@ type outboxWorker interface {
 	RunOnce(ctx context.Context) error
 }
 
+type rpcHandlerMount struct {
+	path    string
+	handler http.Handler
+}
+
 type assembly struct {
 	bind              string
 	readHeaderTimeout time.Duration
-	ingressPath       string
-	ingressHandler    http.Handler
+	rpcHandlers       []rpcHandlerMount
 	schedulerTicker   schedulerTicker
 	outboxWorker      outboxWorker
 	schedulerInterval time.Duration
@@ -90,6 +104,15 @@ func New(ctx context.Context, opts Options, logger *slog.Logger) (*Runner, error
 	outboxRepo := runtimerepo.NewOutboxRepo(pool)
 	executorRepo := runtimerepo.NewExecutorRepo(pool)
 	outboxWriter := runtimerepo.NewCommandOutboxWriter(pool)
+	assetStore := cfg.assetStoreFactory()(pool)
+	if assetStore == nil {
+		pool.Close()
+		return nil, errors.New("runtime artifact store factory returned nil")
+	}
+	if cfg.AssetProvider == nil {
+		pool.Close()
+		return nil, errRuntimeArtifactProviderRequired
+	}
 
 	ingressServer := internalrpc.NewRuntimeServer(
 		runtimecommands.NewRegisterExecutorHandler(executorRepo),
@@ -100,6 +123,11 @@ func New(ctx context.Context, opts Options, logger *slog.Logger) (*Runner, error
 		runtimecommands.NewConfirmTaskCanceledHandler(taskRepo),
 	)
 	ingressPath, ingressHandler := runtimev1connect.NewAgentIngressHandler(ingressServer)
+	artifactServer := internalrpc.NewArtifactServer(
+		assetapp.NewIssueUploadTicketUseCase(assetStore, cfg.AssetProvider, cfg.UploadTicketExpiry),
+		assetapp.NewIssueDownloadTicketUseCase(assetStore, cfg.AssetProvider, cfg.DownloadTicketExpiry),
+	)
+	artifactPath, artifactHandler := runtimev1connect.NewArtifactServiceHandler(artifactServer)
 
 	assigner := runtimecommands.NewAssignTaskHandlerWithTx(runtimerepo.NewAssignTaskTxRunner(pool))
 	ticker := newSchedulerTicker(cfg, leaseRepo, assigner, log)
@@ -114,8 +142,16 @@ func New(ctx context.Context, opts Options, logger *slog.Logger) (*Runner, error
 	runner := newRunnerFromAssembly(assembly{
 		bind:              cfg.Bind,
 		readHeaderTimeout: cfg.ReadHeaderTimeout,
-		ingressPath:       ingressPath,
-		ingressHandler:    ingressHandler,
+		rpcHandlers: []rpcHandlerMount{
+			{
+				path:    ingressPath,
+				handler: ingressHandler,
+			},
+			{
+				path:    artifactPath,
+				handler: artifactHandler,
+			},
+		},
 		schedulerTicker:   ticker,
 		outboxWorker:      worker,
 		schedulerInterval: cfg.SchedulerInterval,
@@ -169,8 +205,11 @@ func newRunnerFromAssembly(parts assembly) *Runner {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(healthzResponse))
 	})
-	if parts.ingressPath != "" && parts.ingressHandler != nil {
-		mux.Handle(parts.ingressPath, parts.ingressHandler)
+	for _, mount := range parts.rpcHandlers {
+		if mount.path == "" || mount.handler == nil {
+			continue
+		}
+		mux.Handle(mount.path, mount.handler)
 	}
 
 	return &Runner{
@@ -326,7 +365,22 @@ func withDefaultOptions(opts Options) Options {
 	if opts.SchedulerLeaseTTL <= 0 {
 		opts.SchedulerLeaseTTL = defaultSchedulerLeaseTTL
 	}
+	if opts.UploadTicketExpiry <= 0 {
+		opts.UploadTicketExpiry = defaultArtifactTicketExpiry
+	}
+	if opts.DownloadTicketExpiry <= 0 {
+		opts.DownloadTicketExpiry = defaultArtifactTicketExpiry
+	}
 	return opts
+}
+
+func (o Options) assetStoreFactory() func(pool *pgxpool.Pool) assetapp.Store {
+	if o.AssetStoreFactory != nil {
+		return o.AssetStoreFactory
+	}
+	return func(pool *pgxpool.Pool) assetapp.Store {
+		return assetrepo.NewAssetRepo(pool)
+	}
 }
 
 func defaultSchedulerHolder() string {

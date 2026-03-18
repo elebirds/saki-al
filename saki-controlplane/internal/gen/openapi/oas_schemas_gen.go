@@ -149,6 +149,305 @@ func (s *AnnotationGeometry) init() AnnotationGeometry {
 	return m
 }
 
+// Ref: #/components/schemas/Asset
+type Asset struct {
+	ID             string        `json:"id"`
+	Kind           string        `json:"kind"`
+	Status         string        `json:"status"`
+	StorageBackend string        `json:"storage_backend"`
+	Bucket         string        `json:"bucket"`
+	ObjectKey      string        `json:"object_key"`
+	ContentType    string        `json:"content_type"`
+	SizeBytes      int64         `json:"size_bytes"`
+	SHA256Hex      OptNilString  `json:"sha256_hex"`
+	Metadata       AssetMetadata `json:"metadata"`
+}
+
+// GetID returns the value of ID.
+func (s *Asset) GetID() string {
+	return s.ID
+}
+
+// GetKind returns the value of Kind.
+func (s *Asset) GetKind() string {
+	return s.Kind
+}
+
+// GetStatus returns the value of Status.
+func (s *Asset) GetStatus() string {
+	return s.Status
+}
+
+// GetStorageBackend returns the value of StorageBackend.
+func (s *Asset) GetStorageBackend() string {
+	return s.StorageBackend
+}
+
+// GetBucket returns the value of Bucket.
+func (s *Asset) GetBucket() string {
+	return s.Bucket
+}
+
+// GetObjectKey returns the value of ObjectKey.
+func (s *Asset) GetObjectKey() string {
+	return s.ObjectKey
+}
+
+// GetContentType returns the value of ContentType.
+func (s *Asset) GetContentType() string {
+	return s.ContentType
+}
+
+// GetSizeBytes returns the value of SizeBytes.
+func (s *Asset) GetSizeBytes() int64 {
+	return s.SizeBytes
+}
+
+// GetSHA256Hex returns the value of SHA256Hex.
+func (s *Asset) GetSHA256Hex() OptNilString {
+	return s.SHA256Hex
+}
+
+// GetMetadata returns the value of Metadata.
+func (s *Asset) GetMetadata() AssetMetadata {
+	return s.Metadata
+}
+
+// SetID sets the value of ID.
+func (s *Asset) SetID(val string) {
+	s.ID = val
+}
+
+// SetKind sets the value of Kind.
+func (s *Asset) SetKind(val string) {
+	s.Kind = val
+}
+
+// SetStatus sets the value of Status.
+func (s *Asset) SetStatus(val string) {
+	s.Status = val
+}
+
+// SetStorageBackend sets the value of StorageBackend.
+func (s *Asset) SetStorageBackend(val string) {
+	s.StorageBackend = val
+}
+
+// SetBucket sets the value of Bucket.
+func (s *Asset) SetBucket(val string) {
+	s.Bucket = val
+}
+
+// SetObjectKey sets the value of ObjectKey.
+func (s *Asset) SetObjectKey(val string) {
+	s.ObjectKey = val
+}
+
+// SetContentType sets the value of ContentType.
+func (s *Asset) SetContentType(val string) {
+	s.ContentType = val
+}
+
+// SetSizeBytes sets the value of SizeBytes.
+func (s *Asset) SetSizeBytes(val int64) {
+	s.SizeBytes = val
+}
+
+// SetSHA256Hex sets the value of SHA256Hex.
+func (s *Asset) SetSHA256Hex(val OptNilString) {
+	s.SHA256Hex = val
+}
+
+// SetMetadata sets the value of Metadata.
+func (s *Asset) SetMetadata(val AssetMetadata) {
+	s.Metadata = val
+}
+
+// Ref: #/components/schemas/AssetCompleteRequest
+type AssetCompleteRequest struct {
+	SizeBytes OptInt64  `json:"size_bytes"`
+	SHA256Hex OptString `json:"sha256_hex"`
+}
+
+// GetSizeBytes returns the value of SizeBytes.
+func (s *AssetCompleteRequest) GetSizeBytes() OptInt64 {
+	return s.SizeBytes
+}
+
+// GetSHA256Hex returns the value of SHA256Hex.
+func (s *AssetCompleteRequest) GetSHA256Hex() OptString {
+	return s.SHA256Hex
+}
+
+// SetSizeBytes sets the value of SizeBytes.
+func (s *AssetCompleteRequest) SetSizeBytes(val OptInt64) {
+	s.SizeBytes = val
+}
+
+// SetSHA256Hex sets the value of SHA256Hex.
+func (s *AssetCompleteRequest) SetSHA256Hex(val OptString) {
+	s.SHA256Hex = val
+}
+
+// Ref: #/components/schemas/AssetDownloadSignRequest
+type AssetDownloadSignRequest struct{}
+
+// Ref: #/components/schemas/AssetDownloadSignResponse
+type AssetDownloadSignResponse struct {
+	AssetID     string `json:"asset_id"`
+	DownloadURL string `json:"download_url"`
+	ExpiresIn   int32  `json:"expires_in"`
+}
+
+// GetAssetID returns the value of AssetID.
+func (s *AssetDownloadSignResponse) GetAssetID() string {
+	return s.AssetID
+}
+
+// GetDownloadURL returns the value of DownloadURL.
+func (s *AssetDownloadSignResponse) GetDownloadURL() string {
+	return s.DownloadURL
+}
+
+// GetExpiresIn returns the value of ExpiresIn.
+func (s *AssetDownloadSignResponse) GetExpiresIn() int32 {
+	return s.ExpiresIn
+}
+
+// SetAssetID sets the value of AssetID.
+func (s *AssetDownloadSignResponse) SetAssetID(val string) {
+	s.AssetID = val
+}
+
+// SetDownloadURL sets the value of DownloadURL.
+func (s *AssetDownloadSignResponse) SetDownloadURL(val string) {
+	s.DownloadURL = val
+}
+
+// SetExpiresIn sets the value of ExpiresIn.
+func (s *AssetDownloadSignResponse) SetExpiresIn(val int32) {
+	s.ExpiresIn = val
+}
+
+type AssetMetadata map[string]jx.Raw
+
+func (s *AssetMetadata) init() AssetMetadata {
+	m := *s
+	if m == nil {
+		m = map[string]jx.Raw{}
+		*s = m
+	}
+	return m
+}
+
+// Ref: #/components/schemas/AssetUploadHeaders
+type AssetUploadHeaders map[string]string
+
+func (s *AssetUploadHeaders) init() AssetUploadHeaders {
+	m := *s
+	if m == nil {
+		m = map[string]string{}
+		*s = m
+	}
+	return m
+}
+
+// Ref: #/components/schemas/AssetUploadInitRequest
+type AssetUploadInitRequest struct {
+	Kind        string                         `json:"kind"`
+	ContentType string                         `json:"content_type"`
+	Metadata    AssetUploadInitRequestMetadata `json:"metadata"`
+}
+
+// GetKind returns the value of Kind.
+func (s *AssetUploadInitRequest) GetKind() string {
+	return s.Kind
+}
+
+// GetContentType returns the value of ContentType.
+func (s *AssetUploadInitRequest) GetContentType() string {
+	return s.ContentType
+}
+
+// GetMetadata returns the value of Metadata.
+func (s *AssetUploadInitRequest) GetMetadata() AssetUploadInitRequestMetadata {
+	return s.Metadata
+}
+
+// SetKind sets the value of Kind.
+func (s *AssetUploadInitRequest) SetKind(val string) {
+	s.Kind = val
+}
+
+// SetContentType sets the value of ContentType.
+func (s *AssetUploadInitRequest) SetContentType(val string) {
+	s.ContentType = val
+}
+
+// SetMetadata sets the value of Metadata.
+func (s *AssetUploadInitRequest) SetMetadata(val AssetUploadInitRequestMetadata) {
+	s.Metadata = val
+}
+
+type AssetUploadInitRequestMetadata map[string]jx.Raw
+
+func (s *AssetUploadInitRequestMetadata) init() AssetUploadInitRequestMetadata {
+	m := *s
+	if m == nil {
+		m = map[string]jx.Raw{}
+		*s = m
+	}
+	return m
+}
+
+// Ref: #/components/schemas/AssetUploadInitResponse
+type AssetUploadInitResponse struct {
+	Asset     Asset                 `json:"asset"`
+	UploadURL string                `json:"upload_url"`
+	ExpiresIn int32                 `json:"expires_in"`
+	Headers   OptAssetUploadHeaders `json:"headers"`
+}
+
+// GetAsset returns the value of Asset.
+func (s *AssetUploadInitResponse) GetAsset() Asset {
+	return s.Asset
+}
+
+// GetUploadURL returns the value of UploadURL.
+func (s *AssetUploadInitResponse) GetUploadURL() string {
+	return s.UploadURL
+}
+
+// GetExpiresIn returns the value of ExpiresIn.
+func (s *AssetUploadInitResponse) GetExpiresIn() int32 {
+	return s.ExpiresIn
+}
+
+// GetHeaders returns the value of Headers.
+func (s *AssetUploadInitResponse) GetHeaders() OptAssetUploadHeaders {
+	return s.Headers
+}
+
+// SetAsset sets the value of Asset.
+func (s *AssetUploadInitResponse) SetAsset(val Asset) {
+	s.Asset = val
+}
+
+// SetUploadURL sets the value of UploadURL.
+func (s *AssetUploadInitResponse) SetUploadURL(val string) {
+	s.UploadURL = val
+}
+
+// SetExpiresIn sets the value of ExpiresIn.
+func (s *AssetUploadInitResponse) SetExpiresIn(val int32) {
+	s.ExpiresIn = val
+}
+
+// SetHeaders sets the value of Headers.
+func (s *AssetUploadInitResponse) SetHeaders(val OptAssetUploadHeaders) {
+	s.Headers = val
+}
+
 // Ref: #/components/schemas/AuthTokenResponse
 type AuthTokenResponse struct {
 	Token       string   `json:"token"`
@@ -1448,6 +1747,52 @@ func (s *LoginRequest) SetUserID(val string) {
 	s.UserID = val
 }
 
+// NewOptAssetUploadHeaders returns new OptAssetUploadHeaders with value set to v.
+func NewOptAssetUploadHeaders(v AssetUploadHeaders) OptAssetUploadHeaders {
+	return OptAssetUploadHeaders{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptAssetUploadHeaders is optional AssetUploadHeaders.
+type OptAssetUploadHeaders struct {
+	Value AssetUploadHeaders
+	Set   bool
+}
+
+// IsSet returns true if OptAssetUploadHeaders was set.
+func (o OptAssetUploadHeaders) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptAssetUploadHeaders) Reset() {
+	var v AssetUploadHeaders
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptAssetUploadHeaders) SetTo(v AssetUploadHeaders) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptAssetUploadHeaders) Get() (v AssetUploadHeaders, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptAssetUploadHeaders) Or(d AssetUploadHeaders) AssetUploadHeaders {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptCreateAnnotationRequestAttrs returns new OptCreateAnnotationRequestAttrs with value set to v.
 func NewOptCreateAnnotationRequestAttrs(v CreateAnnotationRequestAttrs) OptCreateAnnotationRequestAttrs {
 	return OptCreateAnnotationRequestAttrs{
@@ -1580,6 +1925,115 @@ func (o OptInt32) Get() (v int32, ok bool) {
 
 // Or returns value if set, or given parameter if does not.
 func (o OptInt32) Or(d int32) int32 {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptInt64 returns new OptInt64 with value set to v.
+func NewOptInt64(v int64) OptInt64 {
+	return OptInt64{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptInt64 is optional int64.
+type OptInt64 struct {
+	Value int64
+	Set   bool
+}
+
+// IsSet returns true if OptInt64 was set.
+func (o OptInt64) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptInt64) Reset() {
+	var v int64
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptInt64) SetTo(v int64) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptInt64) Get() (v int64, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptInt64) Or(d int64) int64 {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptNilString returns new OptNilString with value set to v.
+func NewOptNilString(v string) OptNilString {
+	return OptNilString{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptNilString is optional nullable string.
+type OptNilString struct {
+	Value string
+	Set   bool
+	Null  bool
+}
+
+// IsSet returns true if OptNilString was set.
+func (o OptNilString) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptNilString) Reset() {
+	var v string
+	o.Value = v
+	o.Set = false
+	o.Null = false
+}
+
+// SetTo sets value to v.
+func (o *OptNilString) SetTo(v string) {
+	o.Set = true
+	o.Null = false
+	o.Value = v
+}
+
+// IsNull returns true if value is Null.
+func (o OptNilString) IsNull() bool { return o.Null }
+
+// SetToNull sets value to null.
+func (o *OptNilString) SetToNull() {
+	o.Set = true
+	o.Null = true
+	var v string
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptNilString) Get() (v string, ok bool) {
+	if o.Null {
+		return v, false
+	}
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptNilString) Or(d string) string {
 	if v, ok := o.Get(); ok {
 		return v
 	}

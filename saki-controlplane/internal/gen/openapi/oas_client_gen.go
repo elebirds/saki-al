@@ -35,6 +35,10 @@ type Invoker interface {
 	//
 	// POST /runtime/tasks/{task_id}/cancel
 	CancelRuntimeTask(ctx context.Context, params CancelRuntimeTaskParams) (*RuntimeCommandResponse, error)
+	// CompleteAssetUpload invokes completeAssetUpload operation.
+	//
+	// POST /assets/{asset_id}:complete
+	CompleteAssetUpload(ctx context.Context, request *AssetCompleteRequest, params CompleteAssetUploadParams) (*Asset, error)
 	// CompleteImportUploadSession invokes completeImportUploadSession operation.
 	//
 	// POST /imports/uploads/{session_id}:complete
@@ -59,6 +63,10 @@ type Invoker interface {
 	//
 	// POST /projects/{project_id}/datasets/{dataset_id}/imports/annotations:execute
 	ExecuteProjectAnnotationImport(ctx context.Context, request *ExecuteProjectAnnotationImportRequest, params ExecuteProjectAnnotationImportParams) (*ImportTaskCreateResponse, error)
+	// GetAsset invokes getAsset operation.
+	//
+	// GET /assets/{asset_id}
+	GetAsset(ctx context.Context, params GetAssetParams) (*Asset, error)
 	// GetCurrentUser invokes getCurrentUser operation.
 	//
 	// GET /auth/me
@@ -91,6 +99,10 @@ type Invoker interface {
 	//
 	// GET /healthz
 	Healthz(ctx context.Context) (*HealthResponse, error)
+	// InitAssetUpload invokes initAssetUpload operation.
+	//
+	// POST /assets/uploads:init
+	InitAssetUpload(ctx context.Context, request *AssetUploadInitRequest) (*AssetUploadInitResponse, error)
 	// InitImportUploadSession invokes initImportUploadSession operation.
 	//
 	// POST /imports/uploads:init
@@ -135,6 +147,10 @@ type Invoker interface {
 	//
 	// GET /auth/permissions/{permission}
 	RequirePermission(ctx context.Context, params RequirePermissionParams) error
+	// SignAssetDownload invokes signAssetDownload operation.
+	//
+	// POST /assets/{asset_id}:sign-download
+	SignAssetDownload(ctx context.Context, request *AssetDownloadSignRequest, params SignAssetDownloadParams) (*AssetDownloadSignResponse, error)
 	// SignImportUploadParts invokes signImportUploadParts operation.
 	//
 	// POST /imports/uploads/{session_id}/parts:sign
@@ -363,6 +379,100 @@ func (c *Client) sendCancelRuntimeTask(ctx context.Context, params CancelRuntime
 
 	stage = "DecodeResponse"
 	result, err := decodeCancelRuntimeTaskResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// CompleteAssetUpload invokes completeAssetUpload operation.
+//
+// POST /assets/{asset_id}:complete
+func (c *Client) CompleteAssetUpload(ctx context.Context, request *AssetCompleteRequest, params CompleteAssetUploadParams) (*Asset, error) {
+	res, err := c.sendCompleteAssetUpload(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendCompleteAssetUpload(ctx context.Context, request *AssetCompleteRequest, params CompleteAssetUploadParams) (res *Asset, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("completeAssetUpload"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/assets/{asset_id}:complete"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, CompleteAssetUploadOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/assets/"
+	{
+		// Encode "asset_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "asset_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.AssetID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = ":complete"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeCompleteAssetUploadRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeCompleteAssetUploadResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -923,6 +1033,96 @@ func (c *Client) sendExecuteProjectAnnotationImport(ctx context.Context, request
 
 	stage = "DecodeResponse"
 	result, err := decodeExecuteProjectAnnotationImportResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// GetAsset invokes getAsset operation.
+//
+// GET /assets/{asset_id}
+func (c *Client) GetAsset(ctx context.Context, params GetAssetParams) (*Asset, error) {
+	res, err := c.sendGetAsset(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendGetAsset(ctx context.Context, params GetAssetParams) (res *Asset, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("getAsset"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/assets/{asset_id}"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, GetAssetOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [2]string
+	pathParts[0] = "/assets/"
+	{
+		// Encode "asset_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "asset_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.AssetID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeGetAssetResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -1590,6 +1790,81 @@ func (c *Client) sendHealthz(ctx context.Context) (res *HealthResponse, err erro
 
 	stage = "DecodeResponse"
 	result, err := decodeHealthzResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// InitAssetUpload invokes initAssetUpload operation.
+//
+// POST /assets/uploads:init
+func (c *Client) InitAssetUpload(ctx context.Context, request *AssetUploadInitRequest) (*AssetUploadInitResponse, error) {
+	res, err := c.sendInitAssetUpload(ctx, request)
+	return res, err
+}
+
+func (c *Client) sendInitAssetUpload(ctx context.Context, request *AssetUploadInitRequest) (res *AssetUploadInitResponse, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("initAssetUpload"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/assets/uploads:init"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, InitAssetUploadOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/assets/uploads:init"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeInitAssetUploadRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeInitAssetUploadResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -2600,6 +2875,100 @@ func (c *Client) sendRequirePermission(ctx context.Context, params RequirePermis
 
 	stage = "DecodeResponse"
 	result, err := decodeRequirePermissionResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// SignAssetDownload invokes signAssetDownload operation.
+//
+// POST /assets/{asset_id}:sign-download
+func (c *Client) SignAssetDownload(ctx context.Context, request *AssetDownloadSignRequest, params SignAssetDownloadParams) (*AssetDownloadSignResponse, error) {
+	res, err := c.sendSignAssetDownload(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendSignAssetDownload(ctx context.Context, request *AssetDownloadSignRequest, params SignAssetDownloadParams) (res *AssetDownloadSignResponse, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("signAssetDownload"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/assets/{asset_id}:sign-download"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, SignAssetDownloadOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/assets/"
+	{
+		// Encode "asset_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "asset_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.AssetID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = ":sign-download"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeSignAssetDownloadRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeSignAssetDownloadResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}

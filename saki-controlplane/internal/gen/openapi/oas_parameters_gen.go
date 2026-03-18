@@ -144,6 +144,71 @@ func decodeCancelRuntimeTaskParams(args [1]string, argsEscaped bool, r *http.Req
 	return params, nil
 }
 
+// CompleteAssetUploadParams is parameters of completeAssetUpload operation.
+type CompleteAssetUploadParams struct {
+	AssetID string
+}
+
+func unpackCompleteAssetUploadParams(packed middleware.Parameters) (params CompleteAssetUploadParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "asset_id",
+			In:   "path",
+		}
+		params.AssetID = packed[key].(string)
+	}
+	return params
+}
+
+func decodeCompleteAssetUploadParams(args [1]string, argsEscaped bool, r *http.Request) (params CompleteAssetUploadParams, _ error) {
+	// Decode path: asset_id.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "asset_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.AssetID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "asset_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
 // CompleteImportUploadSessionParams is parameters of completeImportUploadSession operation.
 type CompleteImportUploadSessionParams struct {
 	SessionID string
@@ -503,6 +568,71 @@ func decodeExecuteProjectAnnotationImportParams(args [2]string, argsEscaped bool
 	}(); err != nil {
 		return params, &ogenerrors.DecodeParamError{
 			Name: "dataset_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
+// GetAssetParams is parameters of getAsset operation.
+type GetAssetParams struct {
+	AssetID string
+}
+
+func unpackGetAssetParams(packed middleware.Parameters) (params GetAssetParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "asset_id",
+			In:   "path",
+		}
+		params.AssetID = packed[key].(string)
+	}
+	return params
+}
+
+func decodeGetAssetParams(args [1]string, argsEscaped bool, r *http.Request) (params GetAssetParams, _ error) {
+	// Decode path: asset_id.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "asset_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.AssetID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "asset_id",
 			In:   "path",
 			Err:  err,
 		}
@@ -1550,6 +1680,71 @@ func decodeRequirePermissionParams(args [1]string, argsEscaped bool, r *http.Req
 	}(); err != nil {
 		return params, &ogenerrors.DecodeParamError{
 			Name: "permission",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
+// SignAssetDownloadParams is parameters of signAssetDownload operation.
+type SignAssetDownloadParams struct {
+	AssetID string
+}
+
+func unpackSignAssetDownloadParams(packed middleware.Parameters) (params SignAssetDownloadParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "asset_id",
+			In:   "path",
+		}
+		params.AssetID = packed[key].(string)
+	}
+	return params
+}
+
+func decodeSignAssetDownloadParams(args [1]string, argsEscaped bool, r *http.Request) (params SignAssetDownloadParams, _ error) {
+	// Decode path: asset_id.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "asset_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.AssetID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "asset_id",
 			In:   "path",
 			Err:  err,
 		}

@@ -9,10 +9,13 @@ import (
 	"github.com/elebirds/saki/saki-controlplane/internal/app/config"
 	appdb "github.com/elebirds/saki/saki-controlplane/internal/app/db"
 	"github.com/elebirds/saki/saki-controlplane/internal/app/observe"
+	"github.com/elebirds/saki/saki-controlplane/internal/app/storage"
 	accessapp "github.com/elebirds/saki/saki-controlplane/internal/modules/access/app"
 	accessrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/access/repo"
 	annotationmapping "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/app/mapping"
 	annotationrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/repo"
+	assetapi "github.com/elebirds/saki/saki-controlplane/internal/modules/asset/apihttp"
+	assetrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/asset/repo"
 	datasetapp "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/app"
 	datasetrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/repo"
 	importapi "github.com/elebirds/saki/saki-controlplane/internal/modules/importing/apihttp"
@@ -58,9 +61,21 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 		pool.Close()
 		return nil, nil, err
 	}
+	objectProvider, err := storage.NewMinIOProvider(storage.Config{
+		Endpoint:  cfg.MinIOEndpoint,
+		AccessKey: cfg.MinIOAccessKey,
+		SecretKey: cfg.MinIOSecretKey,
+		Bucket:    cfg.MinIOBucketName,
+		Secure:    cfg.MinIOSecure,
+	})
+	if err != nil {
+		pool.Close()
+		return nil, nil, err
+	}
 
 	sampleRepo := annotationrepo.NewSampleRepo(pool)
 	annotationRepo := annotationrepo.NewAnnotationRepo(pool)
+	assetStore := assetrepo.NewAssetRepo(pool)
 	datasetRepo := datasetrepo.NewDatasetRepo(pool)
 	datasetStore := datasetapp.NewRepoStore(datasetRepo)
 	projectRepo := projectrepo.NewProjectRepo(pool)
@@ -93,6 +108,12 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 		AnnotationSamples:   sampleRepo,
 		AnnotationDatasets:  datasetRepo,
 		AnnotationStore:     annotationRepo,
+		Asset: assetapi.Dependencies{
+			Store:           assetStore,
+			Provider:        objectProvider,
+			UploadURLExpiry: 15 * time.Minute,
+			DownloadExpiry:  15 * time.Minute,
+		},
 		AnnotationMapper: annotationmapping.NewClient(annotationmapping.ClientConfig{
 			Command: []string{
 				"uv",

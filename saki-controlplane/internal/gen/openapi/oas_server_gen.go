@@ -16,6 +16,10 @@ type Handler interface {
 	//
 	// POST /runtime/tasks/{task_id}/cancel
 	CancelRuntimeTask(ctx context.Context, params CancelRuntimeTaskParams) (*RuntimeCommandResponse, error)
+	// CompleteAssetUpload implements completeAssetUpload operation.
+	//
+	// POST /assets/{asset_id}:complete
+	CompleteAssetUpload(ctx context.Context, req *AssetCompleteRequest, params CompleteAssetUploadParams) (*Asset, error)
 	// CompleteImportUploadSession implements completeImportUploadSession operation.
 	//
 	// POST /imports/uploads/{session_id}:complete
@@ -40,6 +44,10 @@ type Handler interface {
 	//
 	// POST /projects/{project_id}/datasets/{dataset_id}/imports/annotations:execute
 	ExecuteProjectAnnotationImport(ctx context.Context, req *ExecuteProjectAnnotationImportRequest, params ExecuteProjectAnnotationImportParams) (*ImportTaskCreateResponse, error)
+	// GetAsset implements getAsset operation.
+	//
+	// GET /assets/{asset_id}
+	GetAsset(ctx context.Context, params GetAssetParams) (*Asset, error)
 	// GetCurrentUser implements getCurrentUser operation.
 	//
 	// GET /auth/me
@@ -72,6 +80,10 @@ type Handler interface {
 	//
 	// GET /healthz
 	Healthz(ctx context.Context) (*HealthResponse, error)
+	// InitAssetUpload implements initAssetUpload operation.
+	//
+	// POST /assets/uploads:init
+	InitAssetUpload(ctx context.Context, req *AssetUploadInitRequest) (*AssetUploadInitResponse, error)
 	// InitImportUploadSession implements initImportUploadSession operation.
 	//
 	// POST /imports/uploads:init
@@ -116,6 +128,10 @@ type Handler interface {
 	//
 	// GET /auth/permissions/{permission}
 	RequirePermission(ctx context.Context, params RequirePermissionParams) error
+	// SignAssetDownload implements signAssetDownload operation.
+	//
+	// POST /assets/{asset_id}:sign-download
+	SignAssetDownload(ctx context.Context, req *AssetDownloadSignRequest, params SignAssetDownloadParams) (*AssetDownloadSignResponse, error)
 	// SignImportUploadParts implements signImportUploadParts operation.
 	//
 	// POST /imports/uploads/{session_id}/parts:sign

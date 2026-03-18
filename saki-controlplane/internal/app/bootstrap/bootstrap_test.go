@@ -46,6 +46,11 @@ func TestNewPublicAPISeedsAccessBeforeHandler(t *testing.T) {
 	t.Setenv("AUTH_TOKEN_TTL", "1h")
 	t.Setenv("PUBLIC_API_BIND", "127.0.0.1:0")
 	t.Setenv("AUTH_BOOTSTRAP_PRINCIPALS", `[{"user_id":"seed-user","display_name":"Seed User","permissions":["projects:read","imports:read"]}]`)
+	t.Setenv("MINIO_ENDPOINT", "127.0.0.1:9000")
+	t.Setenv("MINIO_ACCESS_KEY", "test-access")
+	t.Setenv("MINIO_SECRET_KEY", "test-secret")
+	t.Setenv("MINIO_BUCKET_NAME", "assets")
+	t.Setenv("MINIO_SECURE", "false")
 
 	server, _, err := NewPublicAPI(ctx)
 	if err != nil {

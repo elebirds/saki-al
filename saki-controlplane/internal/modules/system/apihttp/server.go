@@ -11,6 +11,7 @@ import (
 	accessapp "github.com/elebirds/saki/saki-controlplane/internal/modules/access/app"
 	annotationapi "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/apihttp"
 	annotationapp "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/app"
+	assetapi "github.com/elebirds/saki/saki-controlplane/internal/modules/asset/apihttp"
 	datasetapi "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/apihttp"
 	datasetapp "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/app"
 	importingapi "github.com/elebirds/saki/saki-controlplane/internal/modules/importing/apihttp"
@@ -32,6 +33,7 @@ type Dependencies struct {
 	AnnotationDatasets  annotationapp.DatasetStore
 	AnnotationStore     annotationapp.AnnotationStore
 	AnnotationMapper    annotationapp.Mapper
+	Asset               assetapi.Dependencies
 	Importing           importingapi.Dependencies
 }
 
@@ -40,6 +42,7 @@ type Server struct {
 
 	access     *accessapi.Handlers
 	annotation *annotationapi.Handlers
+	asset      *assetapi.Handlers
 	dataset    *datasetapi.Handlers
 	importing  *importingapi.Handlers
 	project    *projectapi.Handlers
@@ -80,6 +83,7 @@ func NewHandler(deps Dependencies) (*Server, error) {
 			deps.AnnotationStore,
 			deps.AnnotationMapper,
 		),
+		asset:     assetapi.NewHandlers(deps.Asset),
 		dataset:   datasetapi.NewHandlers(deps.DatasetStore),
 		importing: importingapi.NewHandlers(deps.Importing),
 		project:   projectapi.NewHandlers(deps.ProjectStore, deps.DatasetStore),
@@ -130,6 +134,13 @@ func (s *Server) NewError(_ context.Context, err error) *openapi.ErrorResponseSt
 
 func (s *Server) Login(ctx context.Context, req *openapi.LoginRequest) (*openapi.AuthTokenResponse, error) {
 	return s.access.Login(ctx, req)
+}
+
+func (s *Server) InitAssetUpload(ctx context.Context, req *openapi.AssetUploadInitRequest) (*openapi.AssetUploadInitResponse, error) {
+	if s.asset == nil || !s.asset.Enabled() {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	return s.asset.InitAssetUpload(ctx, req)
 }
 
 func (s *Server) CreateProject(ctx context.Context, req *openapi.CreateProjectRequest) (*openapi.Project, error) {
@@ -211,8 +222,22 @@ func (s *Server) CreateSampleAnnotations(ctx context.Context, req *openapi.Creat
 	return s.annotation.CreateSampleAnnotations(ctx, req, params)
 }
 
+func (s *Server) CompleteAssetUpload(ctx context.Context, req *openapi.AssetCompleteRequest, params openapi.CompleteAssetUploadParams) (*openapi.Asset, error) {
+	if s.asset == nil || !s.asset.Enabled() {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	return s.asset.CompleteAssetUpload(ctx, req, params)
+}
+
 func (s *Server) GetCurrentUser(ctx context.Context) (*openapi.CurrentUserResponse, error) {
 	return s.access.GetCurrentUser(ctx)
+}
+
+func (s *Server) GetAsset(ctx context.Context, params openapi.GetAssetParams) (*openapi.Asset, error) {
+	if s.asset == nil || !s.asset.Enabled() {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	return s.asset.GetAsset(ctx, params)
 }
 
 func (s *Server) GetDataset(ctx context.Context, params openapi.GetDatasetParams) (openapi.GetDatasetRes, error) {
@@ -253,6 +278,13 @@ func (s *Server) ListRuntimeExecutors(ctx context.Context) ([]openapi.RuntimeExe
 
 func (s *Server) ListSampleAnnotations(ctx context.Context, params openapi.ListSampleAnnotationsParams) ([]openapi.Annotation, error) {
 	return s.annotation.ListSampleAnnotations(ctx, params)
+}
+
+func (s *Server) SignAssetDownload(ctx context.Context, req *openapi.AssetDownloadSignRequest, params openapi.SignAssetDownloadParams) (*openapi.AssetDownloadSignResponse, error) {
+	if s.asset == nil || !s.asset.Enabled() {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	return s.asset.SignAssetDownload(ctx, req, params)
 }
 
 func (s *Server) UpdateDataset(ctx context.Context, req *openapi.UpdateDatasetRequest, params openapi.UpdateDatasetParams) (openapi.UpdateDatasetRes, error) {

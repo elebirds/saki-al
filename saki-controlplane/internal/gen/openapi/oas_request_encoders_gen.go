@@ -10,6 +10,20 @@ import (
 	ht "github.com/ogen-go/ogen/http"
 )
 
+func encodeCompleteAssetUploadRequest(
+	req *AssetCompleteRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
 func encodeCompleteImportUploadSessionRequest(
 	req *ImportUploadCompleteRequest,
 	r *http.Request,
@@ -80,6 +94,20 @@ func encodeExecuteProjectAnnotationImportRequest(
 	return nil
 }
 
+func encodeInitAssetUploadRequest(
+	req *AssetUploadInitRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
 func encodeInitImportUploadSessionRequest(
 	req *ImportUploadInitRequest,
 	r *http.Request,
@@ -124,6 +152,20 @@ func encodeLoginRequest(
 
 func encodePrepareProjectAnnotationImportRequest(
 	req *PrepareProjectAnnotationImportRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodeSignAssetDownloadRequest(
+	req *AssetDownloadSignRequest,
 	r *http.Request,
 ) error {
 	const contentType = "application/json"

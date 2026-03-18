@@ -19,6 +19,106 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /assets/uploads:init:
+    post:
+      operationId: initAssetUpload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssetUploadInitRequest"
+      responses:
+        "201":
+          description: initialized asset upload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssetUploadInitResponse"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /assets/{asset_id}:complete:
+    post:
+      operationId: completeAssetUpload
+      parameters:
+        - name: asset_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssetCompleteRequest"
+      responses:
+        "200":
+          description: completed asset
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Asset"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /assets/{asset_id}:
+    get:
+      operationId: getAsset
+      parameters:
+        - name: asset_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: asset detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Asset"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /assets/{asset_id}:sign-download:
+    post:
+      operationId: signAssetDownload
+      parameters:
+        - name: asset_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssetDownloadSignRequest"
+      responses:
+        "200":
+          description: signed asset download
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssetDownloadSignResponse"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /projects:
     get:
       operationId: listProjects
@@ -804,6 +904,101 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
+    Asset:
+      type: object
+      required:
+        - id
+        - kind
+        - status
+        - storage_backend
+        - bucket
+        - object_key
+        - content_type
+        - size_bytes
+        - metadata
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+        status:
+          type: string
+        storage_backend:
+          type: string
+        bucket:
+          type: string
+        object_key:
+          type: string
+        content_type:
+          type: string
+        size_bytes:
+          type: integer
+          format: int64
+        sha256_hex:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+    AssetUploadInitRequest:
+      type: object
+      required:
+        - kind
+        - content_type
+        - metadata
+      properties:
+        kind:
+          type: string
+        content_type:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+    AssetUploadHeaders:
+      type: object
+      additionalProperties:
+        type: string
+    AssetUploadInitResponse:
+      type: object
+      required:
+        - asset
+        - upload_url
+        - expires_in
+      properties:
+        asset:
+          $ref: "#/components/schemas/Asset"
+        upload_url:
+          type: string
+        expires_in:
+          type: integer
+          format: int32
+        headers:
+          $ref: "#/components/schemas/AssetUploadHeaders"
+    AssetCompleteRequest:
+      type: object
+      properties:
+        size_bytes:
+          type: integer
+          format: int64
+        sha256_hex:
+          type: string
+    AssetDownloadSignRequest:
+      type: object
+      additionalProperties: false
+    AssetDownloadSignResponse:
+      type: object
+      required:
+        - asset_id
+        - download_url
+        - expires_in
+      properties:
+        asset_id:
+          type: string
+        download_url:
+          type: string
+        expires_in:
+          type: integer
+          format: int32
     HealthResponse:
       type: object
       required:

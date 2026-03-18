@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os/exec"
@@ -14,6 +15,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -94,11 +96,16 @@ func TestPublicAPISmoke(t *testing.T) {
 
 	importUserID := uuid.MustParse("00000000-0000-0000-0000-000000000200")
 	setSmokeBootstrapPrincipalEnv(t, dsn, importUserID, "Smoke Import User", []string{
+		"assets:read",
+		"assets:write",
 		"projects:read",
 		"projects:write",
 		"imports:read",
 		"imports:write",
 	})
+	objectServer := newSmokeObjectServer(t)
+	defer objectServer.Close()
+	setSmokeObjectStorageEnv(t, objectServer)
 
 	server, _, err := bootstrap.NewPublicAPI(context.Background())
 	if err != nil {
@@ -191,6 +198,128 @@ func TestPublicAPISmoke(t *testing.T) {
 	}
 	if len(listed) != 1 || listed[0]["view"] != "rgb" || listed[0]["annotation_type"] != "rect" {
 		t.Fatalf("unexpected list annotation body: %+v", listed)
+	}
+
+	assetInitReq, err := http.NewRequest(
+		http.MethodPost,
+		httpServer.URL+"/assets/uploads:init",
+		bytes.NewBufferString(`{"kind":"image","content_type":"image/png","metadata":{"source":"smoke"}}`),
+	)
+	if err != nil {
+		t.Fatalf("new asset init request: %v", err)
+	}
+	assetInitReq.Header.Set("Authorization", "Bearer "+token)
+	assetInitReq.Header.Set("Content-Type", "application/json")
+	assetInitResp, err := http.DefaultClient.Do(assetInitReq)
+	if err != nil {
+		t.Fatalf("post asset init: %v", err)
+	}
+	defer assetInitResp.Body.Close()
+	if assetInitResp.StatusCode != http.StatusCreated {
+		t.Fatalf("unexpected asset init status: %d", assetInitResp.StatusCode)
+	}
+
+	var assetInitBody struct {
+		Asset struct {
+			ID     string `json:"id"`
+			Status string `json:"status"`
+		} `json:"asset"`
+		UploadURL string `json:"upload_url"`
+	}
+	if err := json.NewDecoder(assetInitResp.Body).Decode(&assetInitBody); err != nil {
+		t.Fatalf("decode asset init response: %v", err)
+	}
+	if assetInitBody.Asset.ID == "" || assetInitBody.Asset.Status != "pending_upload" || assetInitBody.UploadURL == "" {
+		t.Fatalf("unexpected asset init body: %+v", assetInitBody)
+	}
+
+	assetUploadReq, err := http.NewRequest(http.MethodPut, assetInitBody.UploadURL, bytes.NewBufferString("asset-smoke-content"))
+	if err != nil {
+		t.Fatalf("new asset upload request: %v", err)
+	}
+	assetUploadReq.Header.Set("Content-Type", "image/png")
+	assetUploadResp, err := http.DefaultClient.Do(assetUploadReq)
+	if err != nil {
+		t.Fatalf("put asset content: %v", err)
+	}
+	defer assetUploadResp.Body.Close()
+	if assetUploadResp.StatusCode != http.StatusNoContent && assetUploadResp.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected asset upload status: %d", assetUploadResp.StatusCode)
+	}
+
+	assetCompleteReq, err := http.NewRequest(
+		http.MethodPost,
+		httpServer.URL+"/assets/"+assetInitBody.Asset.ID+":complete",
+		bytes.NewBufferString(`{"size_bytes":19,"sha256_hex":"abc123"}`),
+	)
+	if err != nil {
+		t.Fatalf("new asset complete request: %v", err)
+	}
+	assetCompleteReq.Header.Set("Authorization", "Bearer "+token)
+	assetCompleteReq.Header.Set("Content-Type", "application/json")
+	assetCompleteResp, err := http.DefaultClient.Do(assetCompleteReq)
+	if err != nil {
+		t.Fatalf("post asset complete: %v", err)
+	}
+	defer assetCompleteResp.Body.Close()
+	if assetCompleteResp.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected asset complete status: %d", assetCompleteResp.StatusCode)
+	}
+
+	var assetCompleteBody map[string]any
+	if err := json.NewDecoder(assetCompleteResp.Body).Decode(&assetCompleteBody); err != nil {
+		t.Fatalf("decode asset complete response: %v", err)
+	}
+	if assetCompleteBody["id"] != assetInitBody.Asset.ID || assetCompleteBody["status"] != "ready" {
+		t.Fatalf("unexpected asset complete body: %+v", assetCompleteBody)
+	}
+
+	assetGetReq, err := http.NewRequest(http.MethodGet, httpServer.URL+"/assets/"+assetInitBody.Asset.ID, nil)
+	if err != nil {
+		t.Fatalf("new asset get request: %v", err)
+	}
+	assetGetReq.Header.Set("Authorization", "Bearer "+token)
+	assetGetResp, err := http.DefaultClient.Do(assetGetReq)
+	if err != nil {
+		t.Fatalf("get asset: %v", err)
+	}
+	defer assetGetResp.Body.Close()
+	if assetGetResp.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected asset get status: %d", assetGetResp.StatusCode)
+	}
+
+	var assetGetBody map[string]any
+	if err := json.NewDecoder(assetGetResp.Body).Decode(&assetGetBody); err != nil {
+		t.Fatalf("decode asset get response: %v", err)
+	}
+	if assetGetBody["id"] != assetInitBody.Asset.ID || assetGetBody["status"] != "ready" {
+		t.Fatalf("unexpected asset get body: %+v", assetGetBody)
+	}
+
+	assetSignReq, err := http.NewRequest(http.MethodPost, httpServer.URL+"/assets/"+assetInitBody.Asset.ID+":sign-download", bytes.NewBufferString(`{}`))
+	if err != nil {
+		t.Fatalf("new asset sign request: %v", err)
+	}
+	assetSignReq.Header.Set("Authorization", "Bearer "+token)
+	assetSignReq.Header.Set("Content-Type", "application/json")
+	assetSignResp, err := http.DefaultClient.Do(assetSignReq)
+	if err != nil {
+		t.Fatalf("post asset sign-download: %v", err)
+	}
+	defer assetSignResp.Body.Close()
+	if assetSignResp.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected asset sign-download status: %d", assetSignResp.StatusCode)
+	}
+
+	var assetSignBody map[string]any
+	if err := json.NewDecoder(assetSignResp.Body).Decode(&assetSignBody); err != nil {
+		t.Fatalf("decode asset sign-download response: %v", err)
+	}
+	if assetSignBody["asset_id"] != assetInitBody.Asset.ID {
+		t.Fatalf("unexpected asset sign-download body: %+v", assetSignBody)
+	}
+	if downloadURL, _ := assetSignBody["download_url"].(string); downloadURL == "" {
+		t.Fatalf("unexpected asset sign-download body: %+v", assetSignBody)
 	}
 
 	importArchive := makeCOCOImportArchive(t)
@@ -533,6 +662,11 @@ func TestPublicAPICancelTaskWritesStopOutbox(t *testing.T) {
 	t.Setenv("AUTH_TOKEN_SECRET", "smoke-secret")
 	t.Setenv("AUTH_TOKEN_TTL", "1h")
 	t.Setenv("PUBLIC_API_BIND", "127.0.0.1:0")
+	t.Setenv("MINIO_ENDPOINT", "127.0.0.1:9000")
+	t.Setenv("MINIO_ACCESS_KEY", "test-access")
+	t.Setenv("MINIO_SECRET_KEY", "test-secret")
+	t.Setenv("MINIO_BUCKET_NAME", "assets")
+	t.Setenv("MINIO_SECURE", "false")
 
 	server, _, err := bootstrap.NewPublicAPI(context.Background())
 	if err != nil {
@@ -683,6 +817,11 @@ func setSmokeBootstrapPrincipalEnv(t *testing.T, dsn string, userID uuid.UUID, d
 	t.Setenv("AUTH_TOKEN_SECRET", "smoke-secret")
 	t.Setenv("AUTH_TOKEN_TTL", "1h")
 	t.Setenv("PUBLIC_API_BIND", "127.0.0.1:0")
+	t.Setenv("MINIO_ENDPOINT", "127.0.0.1:9000")
+	t.Setenv("MINIO_ACCESS_KEY", "test-access")
+	t.Setenv("MINIO_SECRET_KEY", "test-secret")
+	t.Setenv("MINIO_BUCKET_NAME", "assets")
+	t.Setenv("MINIO_SECURE", "false")
 
 	raw, err := json.Marshal([]map[string]any{
 		{
@@ -695,6 +834,16 @@ func setSmokeBootstrapPrincipalEnv(t *testing.T, dsn string, userID uuid.UUID, d
 		t.Fatalf("marshal bootstrap principal env: %v", err)
 	}
 	t.Setenv("AUTH_BOOTSTRAP_PRINCIPALS", string(raw))
+}
+
+func setSmokeObjectStorageEnv(t *testing.T, s *smokeObjectServer) {
+	t.Helper()
+
+	t.Setenv("MINIO_ENDPOINT", strings.TrimPrefix(s.server.URL, "http://"))
+	t.Setenv("MINIO_ACCESS_KEY", "test-access")
+	t.Setenv("MINIO_SECRET_KEY", "test-secret")
+	t.Setenv("MINIO_BUCKET_NAME", "assets")
+	t.Setenv("MINIO_SECURE", "false")
 }
 
 func loginSmokeUser(t *testing.T, baseURL string, userID string) (string, []string) {
@@ -771,4 +920,80 @@ func smokePostgresImageRef() string {
 		return "postgres:16-alpine"
 	}
 	return imageID
+}
+
+type smokeObjectServer struct {
+	server  *httptest.Server
+	mu      sync.RWMutex
+	objects map[string]smokeStoredObject
+}
+
+type smokeStoredObject struct {
+	body        []byte
+	contentType string
+}
+
+func newSmokeObjectServer(t *testing.T) *smokeObjectServer {
+	t.Helper()
+
+	s := &smokeObjectServer{
+		objects: make(map[string]smokeStoredObject),
+	}
+	s.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		key := strings.TrimPrefix(r.URL.Path, "/assets/")
+		if key == r.URL.Path || key == "" {
+			http.NotFound(w, r)
+			return
+		}
+
+		switch r.Method {
+		case http.MethodPut:
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			s.mu.Lock()
+			s.objects[key] = smokeStoredObject{
+				body:        body,
+				contentType: r.Header.Get("Content-Type"),
+			}
+			s.mu.Unlock()
+			w.WriteHeader(http.StatusNoContent)
+		case http.MethodHead:
+			s.mu.RLock()
+			obj, ok := s.objects[key]
+			s.mu.RUnlock()
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			w.Header().Set("ETag", "\"smoke-etag\"")
+			w.Header().Set("Last-Modified", "Mon, 02 Jan 2006 15:04:05 GMT")
+			w.Header().Set("Content-Length", strconv.Itoa(len(obj.body)))
+			w.Header().Set("Content-Type", obj.contentType)
+			w.WriteHeader(http.StatusOK)
+		case http.MethodGet:
+			s.mu.RLock()
+			obj, ok := s.objects[key]
+			s.mu.RUnlock()
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			w.Header().Set("ETag", "\"smoke-etag\"")
+			w.Header().Set("Last-Modified", "Mon, 02 Jan 2006 15:04:05 GMT")
+			w.Header().Set("Content-Length", strconv.Itoa(len(obj.body)))
+			w.Header().Set("Content-Type", obj.contentType)
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(obj.body)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))
+	return s
+}
+
+func (s *smokeObjectServer) Close() {
+	s.server.Close()
 }

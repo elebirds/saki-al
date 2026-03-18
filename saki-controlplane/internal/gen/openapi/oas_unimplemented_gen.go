@@ -27,6 +27,13 @@ func (UnimplementedHandler) CancelRuntimeTask(ctx context.Context, params Cancel
 	return r, ht.ErrNotImplemented
 }
 
+// CompleteAssetUpload implements completeAssetUpload operation.
+//
+// POST /assets/{asset_id}:complete
+func (UnimplementedHandler) CompleteAssetUpload(ctx context.Context, req *AssetCompleteRequest, params CompleteAssetUploadParams) (r *Asset, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // CompleteImportUploadSession implements completeImportUploadSession operation.
 //
 // POST /imports/uploads/{session_id}:complete
@@ -66,6 +73,13 @@ func (UnimplementedHandler) DeleteDataset(ctx context.Context, params DeleteData
 //
 // POST /projects/{project_id}/datasets/{dataset_id}/imports/annotations:execute
 func (UnimplementedHandler) ExecuteProjectAnnotationImport(ctx context.Context, req *ExecuteProjectAnnotationImportRequest, params ExecuteProjectAnnotationImportParams) (r *ImportTaskCreateResponse, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// GetAsset implements getAsset operation.
+//
+// GET /assets/{asset_id}
+func (UnimplementedHandler) GetAsset(ctx context.Context, params GetAssetParams) (r *Asset, _ error) {
 	return r, ht.ErrNotImplemented
 }
 
@@ -122,6 +136,13 @@ func (UnimplementedHandler) GetRuntimeSummary(ctx context.Context) (r *RuntimeSu
 //
 // GET /healthz
 func (UnimplementedHandler) Healthz(ctx context.Context) (r *HealthResponse, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// InitAssetUpload implements initAssetUpload operation.
+//
+// POST /assets/uploads:init
+func (UnimplementedHandler) InitAssetUpload(ctx context.Context, req *AssetUploadInitRequest) (r *AssetUploadInitResponse, _ error) {
 	return r, ht.ErrNotImplemented
 }
 
@@ -200,6 +221,13 @@ func (UnimplementedHandler) PrepareProjectAnnotationImport(ctx context.Context, 
 // GET /auth/permissions/{permission}
 func (UnimplementedHandler) RequirePermission(ctx context.Context, params RequirePermissionParams) error {
 	return ht.ErrNotImplemented
+}
+
+// SignAssetDownload implements signAssetDownload operation.
+//
+// POST /assets/{asset_id}:sign-download
+func (UnimplementedHandler) SignAssetDownload(ctx context.Context, req *AssetDownloadSignRequest, params SignAssetDownloadParams) (r *AssetDownloadSignResponse, _ error) {
+	return r, ht.ErrNotImplemented
 }
 
 // SignImportUploadParts implements signImportUploadParts operation.

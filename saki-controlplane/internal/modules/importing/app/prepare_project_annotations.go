@@ -6,9 +6,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
+	"github.com/elebirds/saki/saki-controlplane/internal/app/storage"
 	importrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/importing/repo"
 	projectrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/project/repo"
 	"github.com/google/uuid"
@@ -113,6 +118,7 @@ type PrepareProjectAnnotationsUseCase struct {
 	previews PreviewManifestStore
 	matches  SampleMatchFinder
 	parsers  ProjectAnnotationParser
+	provider storage.Provider
 }
 
 func NewPrepareProjectAnnotationsUseCase(
@@ -121,6 +127,7 @@ func NewPrepareProjectAnnotationsUseCase(
 	previews PreviewManifestStore,
 	matches SampleMatchFinder,
 	parsers ProjectAnnotationParser,
+	provider storage.Provider,
 ) *PrepareProjectAnnotationsUseCase {
 	return &PrepareProjectAnnotationsUseCase{
 		projects: projects,
@@ -128,6 +135,7 @@ func NewPrepareProjectAnnotationsUseCase(
 		previews: previews,
 		matches:  matches,
 		parsers:  parsers,
+		provider: provider,
 	}
 }
 
@@ -157,8 +165,17 @@ func (u *PrepareProjectAnnotationsUseCase) Execute(ctx context.Context, input Pr
 	if session.Status != "completed" {
 		return nil, errors.New("upload session is not completed")
 	}
+	if u.provider == nil {
+		return nil, errors.New("storage provider is not configured")
+	}
 
-	sourcePath, cleanup, err := resolveImportSourcePath(input.FormatProfile, session.ObjectKey)
+	downloadedPath, cleanupDownloaded, err := downloadImportObject(ctx, u.provider, session.ObjectKey)
+	if err != nil {
+		return nil, err
+	}
+	defer cleanupDownloaded()
+
+	sourcePath, cleanup, err := resolveImportSourcePath(input.FormatProfile, downloadedPath)
 	if err != nil {
 		return nil, err
 	}
@@ -302,6 +319,26 @@ func (u *PrepareProjectAnnotationsUseCase) Execute(ctx context.Context, input Pr
 
 	result.PreviewToken = previewToken
 	return result, nil
+}
+
+func downloadImportObject(ctx context.Context, provider storage.Provider, objectKey string) (string, func(), error) {
+	root, err := os.MkdirTemp("", "saki-import-remote-*")
+	if err != nil {
+		return "", nil, fmt.Errorf("create download temp dir: %w", err)
+	}
+	cleanup := func() {
+		_ = os.RemoveAll(root)
+	}
+	base := filepath.Base(strings.TrimSpace(objectKey))
+	if base == "" || base == "." || base == string(filepath.Separator) {
+		base = "import-object"
+	}
+	downloadedPath := filepath.Join(root, base)
+	if err := provider.DownloadObject(ctx, objectKey, downloadedPath); err != nil {
+		cleanup()
+		return "", nil, err
+	}
+	return downloadedPath, cleanup, nil
 }
 
 func collectLabelNames(batch *annotationirv1.DataBatchIR) []string {

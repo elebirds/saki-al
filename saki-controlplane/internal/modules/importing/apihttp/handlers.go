@@ -3,14 +3,16 @@ package apihttp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	authctx "github.com/elebirds/saki/saki-controlplane/internal/app/auth"
+	"github.com/elebirds/saki/saki-controlplane/internal/app/storage"
 	openapi "github.com/elebirds/saki/saki-controlplane/internal/gen/openapi"
 	importapp "github.com/elebirds/saki/saki-controlplane/internal/modules/importing/app"
 	importrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/importing/repo"
@@ -39,30 +41,40 @@ type ExecuteUseCase interface {
 }
 
 type Dependencies struct {
-	Uploads UploadStore
-	Tasks   TaskStore
-	Prepare PrepareUseCase
-	Execute ExecuteUseCase
+	Uploads         UploadStore
+	Tasks           TaskStore
+	Prepare         PrepareUseCase
+	Execute         ExecuteUseCase
+	Provider        storage.Provider
+	UploadURLExpiry time.Duration
 }
 
 type Handlers struct {
-	uploads UploadStore
-	tasks   TaskStore
-	prepare PrepareUseCase
-	execute ExecuteUseCase
+	uploads      UploadStore
+	tasks        TaskStore
+	prepare      PrepareUseCase
+	execute      ExecuteUseCase
+	provider     storage.Provider
+	uploadExpiry time.Duration
 }
 
 func NewHandlers(deps Dependencies) *Handlers {
+	expiry := deps.UploadURLExpiry
+	if expiry <= 0 {
+		expiry = 15 * time.Minute
+	}
 	return &Handlers{
-		uploads: deps.Uploads,
-		tasks:   deps.Tasks,
-		prepare: deps.Prepare,
-		execute: deps.Execute,
+		uploads:      deps.Uploads,
+		tasks:        deps.Tasks,
+		prepare:      deps.Prepare,
+		execute:      deps.Execute,
+		provider:     deps.Provider,
+		uploadExpiry: expiry,
 	}
 }
 
 func (h *Handlers) Enabled() bool {
-	return h != nil && h.uploads != nil && h.tasks != nil && h.prepare != nil && h.execute != nil
+	return h != nil && h.uploads != nil && h.tasks != nil && h.prepare != nil && h.execute != nil && h.provider != nil
 }
 
 func (h *Handlers) InitImportUploadSession(ctx context.Context, req *openapi.ImportUploadInitRequest) (*openapi.ImportUploadInitResponse, error) {
@@ -80,7 +92,7 @@ func (h *Handlers) InitImportUploadSession(ctx context.Context, req *openapi.Imp
 		return nil, badRequest("当前仅支持 project 资源导入上传")
 	}
 
-	objectKey := filepath.Join(uploadRootDir(), uuid.NewString()+"-"+sanitizeFilename(req.GetFilename()))
+	objectKey := buildUploadObjectKey(req.GetFilename())
 	session, err := h.uploads.Init(ctx, importrepo.InitUploadSessionParams{
 		UserID:      userID,
 		Mode:        req.GetMode(),
@@ -91,13 +103,17 @@ func (h *Handlers) InitImportUploadSession(ctx context.Context, req *openapi.Imp
 	if err != nil {
 		return nil, err
 	}
+	putURL, err := h.provider.SignPutObject(ctx, session.ObjectKey, h.uploadExpiry, session.ContentType)
+	if err != nil {
+		return nil, err
+	}
 
 	return &openapi.ImportUploadInitResponse{
 		SessionID: session.ID.String(),
 		Strategy:  "single_put",
 		Status:    session.Status,
 		ObjectKey: session.ObjectKey,
-		URL:       uploadContentURL(session.ID),
+		URL:       putURL,
 		Headers:   openapi.ImportUploadHeaders{},
 	}, nil
 }
@@ -127,21 +143,21 @@ func (h *Handlers) CompleteImportUploadSession(ctx context.Context, req *openapi
 	if err != nil {
 		return nil, err
 	}
-	info, err := os.Stat(session.ObjectKey)
+	info, err := h.provider.StatObject(ctx, session.ObjectKey)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, storage.ErrObjectNotFound) {
 			return nil, badRequest("上传内容不存在")
 		}
 		return nil, err
 	}
-	if req.GetSize() > 0 && info.Size() != req.GetSize() {
+	if req.GetSize() > 0 && info.Size != req.GetSize() {
 		return nil, badRequest("上传内容大小与 complete 请求不一致")
 	}
 	session, err = h.uploads.MarkCompleted(ctx, session.ID)
 	if err != nil {
 		return nil, err
 	}
-	return toOpenAPIUploadSession(session), nil
+	return h.toOpenAPIUploadSession(ctx, session), nil
 }
 
 func (h *Handlers) AbortImportUploadSession(ctx context.Context, params openapi.AbortImportUploadSessionParams) (*openapi.ImportUploadAbortResponse, error) {
@@ -156,7 +172,6 @@ func (h *Handlers) AbortImportUploadSession(ctx context.Context, params openapi.
 	if err != nil {
 		return nil, err
 	}
-	_ = os.Remove(session.ObjectKey)
 	return &openapi.ImportUploadAbortResponse{
 		SessionID: session.ID.String(),
 		Status:    session.Status,
@@ -171,7 +186,7 @@ func (h *Handlers) GetImportUploadSession(ctx context.Context, params openapi.Ge
 	if err != nil {
 		return nil, err
 	}
-	return toOpenAPIUploadSession(session), nil
+	return h.toOpenAPIUploadSession(ctx, session), nil
 }
 
 func (h *Handlers) PrepareProjectAnnotationImport(ctx context.Context, req *openapi.PrepareProjectAnnotationImportRequest, params openapi.PrepareProjectAnnotationImportParams) (*openapi.PrepareProjectAnnotationImportResponse, error) {
@@ -387,7 +402,11 @@ func toOpenAPIIssues(issues []importapp.PrepareIssue) []openapi.ImportIssue {
 	return result
 }
 
-func toOpenAPIUploadSession(session *importrepo.UploadSession) *openapi.ImportUploadSession {
+func (h *Handlers) toOpenAPIUploadSession(ctx context.Context, session *importrepo.UploadSession) *openapi.ImportUploadSession {
+	putURL := ""
+	if signed, err := h.provider.SignPutObject(ctx, session.ObjectKey, h.uploadExpiry, session.ContentType); err == nil {
+		putURL = signed
+	}
 	response := &openapi.ImportUploadSession{
 		SessionID:   session.ID.String(),
 		Mode:        session.Mode,
@@ -396,7 +415,7 @@ func toOpenAPIUploadSession(session *importrepo.UploadSession) *openapi.ImportUp
 		ContentType: session.ContentType,
 		Status:      session.Status,
 		Strategy:    "single_put",
-		URL:         uploadContentURL(session.ID),
+		URL:         putURL,
 	}
 	if session.CompletedAt != nil {
 		response.CompletedAt.SetTo(*session.CompletedAt)
@@ -442,12 +461,8 @@ func sanitizeFilename(name string) string {
 	return replacer.Replace(base)
 }
 
-func uploadRootDir() string {
-	return filepath.Join(os.TempDir(), "saki-controlplane-imports")
-}
-
-func uploadContentURL(sessionID uuid.UUID) string {
-	return "/imports/uploads/" + sessionID.String() + "/content"
+func buildUploadObjectKey(filename string) string {
+	return "imports/" + uuid.NewString() + "-" + sanitizeFilename(filename)
 }
 
 func parseAfterSeq(raw string) (int64, error) {

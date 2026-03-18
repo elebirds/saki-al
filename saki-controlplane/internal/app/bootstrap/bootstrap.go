@@ -30,6 +30,8 @@ import (
 	systemapi "github.com/elebirds/saki/saki-controlplane/internal/modules/system/apihttp"
 )
 
+var objectProviderFactory = storage.NewMinIOProvider
+
 func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 	cfg, err := config.Load()
 	if err != nil {
@@ -61,7 +63,7 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 		pool.Close()
 		return nil, nil, err
 	}
-	objectProvider, err := storage.NewMinIOProvider(storage.Config{
+	objectProvider, err := objectProviderFactory(storage.Config{
 		Endpoint:  cfg.MinIOEndpoint,
 		AccessKey: cfg.MinIOAccessKey,
 		SecretKey: cfg.MinIOSecretKey,
@@ -90,6 +92,7 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 		importPreviewRepo,
 		importMatchRepo,
 		importapp.NewParserRegistry(),
+		objectProvider,
 	)
 	importExecute := importapp.NewExecuteProjectAnnotationsUseCase(
 		projectRepo,
@@ -127,10 +130,12 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 			Timeout: 5 * time.Second,
 		}),
 		Importing: importapi.Dependencies{
-			Uploads: importUploadRepo,
-			Tasks:   importTaskRepo,
-			Prepare: importPrepare,
-			Execute: importExecute,
+			Uploads:         importUploadRepo,
+			Tasks:           importTaskRepo,
+			Prepare:         importPrepare,
+			Execute:         importExecute,
+			Provider:        objectProvider,
+			UploadURLExpiry: 15 * time.Minute,
 		},
 	})
 	if err != nil {

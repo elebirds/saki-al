@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os/exec"
@@ -13,7 +14,9 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/elebirds/saki/saki-controlplane/internal/app/storage"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 	"github.com/testcontainers/testcontainers-go"
@@ -51,6 +54,10 @@ func TestNewPublicAPISeedsAccessBeforeHandler(t *testing.T) {
 	t.Setenv("MINIO_SECRET_KEY", "test-secret")
 	t.Setenv("MINIO_BUCKET_NAME", "assets")
 	t.Setenv("MINIO_SECURE", "false")
+	restoreProviderFactory := overrideObjectProviderFactoryForTest(func(storage.Config) (storage.Provider, error) {
+		return &fakeBootstrapProvider{}, nil
+	})
+	defer restoreProviderFactory()
 
 	server, _, err := NewPublicAPI(ctx)
 	if err != nil {
@@ -133,4 +140,32 @@ func bootstrapPostgresImageRef() string {
 		return "postgres:16-alpine"
 	}
 	return imageID
+}
+
+func overrideObjectProviderFactoryForTest(factory func(storage.Config) (storage.Provider, error)) func() {
+	previous := objectProviderFactory
+	objectProviderFactory = factory
+	return func() {
+		objectProviderFactory = previous
+	}
+}
+
+type fakeBootstrapProvider struct{}
+
+func (fakeBootstrapProvider) Bucket() string { return "assets" }
+
+func (fakeBootstrapProvider) SignPutObject(context.Context, string, time.Duration, string) (string, error) {
+	return "", errors.New("not implemented")
+}
+
+func (fakeBootstrapProvider) SignGetObject(context.Context, string, time.Duration) (string, error) {
+	return "", errors.New("not implemented")
+}
+
+func (fakeBootstrapProvider) StatObject(context.Context, string) (*storage.ObjectStat, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (fakeBootstrapProvider) DownloadObject(context.Context, string, string) error {
+	return errors.New("not implemented")
 }

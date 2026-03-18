@@ -1,11 +1,18 @@
 package app
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/elebirds/saki/saki-controlplane/internal/app/storage"
 	importrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/importing/repo"
 	projectrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/project/repo"
 	"github.com/google/uuid"
@@ -25,7 +32,7 @@ func TestPrepareProjectAnnotationsCreatesPreviewManifest(t *testing.T) {
 		t.Fatalf("NewSampleRef failed: %v", err)
 	}
 
-	parser := fakeParser{
+	parser := &fakeParser{
 		result: &common.ParseProjectAnnotationsResult{
 			Batch: buildBatch(),
 			SampleRefs: []common.SampleRef{
@@ -49,6 +56,12 @@ func TestPrepareProjectAnnotationsCreatesPreviewManifest(t *testing.T) {
 			},
 		},
 	}
+	objectKey := "imports/" + sessionID.String() + "/annotations.zip"
+	provider := &fakePrepareObjectProvider{
+		downloadBodies: map[string][]byte{
+			objectKey: buildPrepareZipArchive(t, "annotations.json", `{"images":[],"categories":[],"annotations":[]}`),
+		},
+	}
 
 	previewStore := &fakePreviewStore{}
 	useCase := NewPrepareProjectAnnotationsUseCase(
@@ -61,7 +74,7 @@ func TestPrepareProjectAnnotationsCreatesPreviewManifest(t *testing.T) {
 				},
 			},
 		},
-		fakeUploadStore{session: &importrepo.UploadSession{ID: sessionID, Status: "completed", ObjectKey: "/tmp/archive", Mode: "project_annotations"}},
+		fakeUploadStore{session: &importrepo.UploadSession{ID: sessionID, Status: "completed", ObjectKey: objectKey, Mode: "project_annotations"}},
 		previewStore,
 		fakeMatchStore{
 			rows: map[string][]importrepo.SampleMatchRef{
@@ -71,14 +84,16 @@ func TestPrepareProjectAnnotationsCreatesPreviewManifest(t *testing.T) {
 			},
 		},
 		fakeParserRegistry{parser: parser},
+		provider,
 	)
 
-	result, err := useCase.Execute(context.Background(), PrepareProjectAnnotationsInput{
+	input := PrepareProjectAnnotationsInput{
 		ProjectID:       projectID,
 		DatasetID:       datasetID,
 		UploadSessionID: sessionID,
 		FormatProfile:   "coco",
-	})
+	}
+	result, err := useCase.Execute(context.Background(), input)
 	if err != nil {
 		t.Fatalf("Execute failed: %v", err)
 	}
@@ -103,6 +118,15 @@ func TestPrepareProjectAnnotationsCreatesPreviewManifest(t *testing.T) {
 	if got, want := previewStore.saved.DatasetID, datasetID; got != want {
 		t.Fatalf("saved preview dataset_id got %s want %s", got, want)
 	}
+	if got, want := provider.lastDownloadObjectKey, objectKey; got != want {
+		t.Fatalf("download object key got %q want %q", got, want)
+	}
+	if parser.lastReq.SourcePath == "" || parser.lastReq.SourcePath == objectKey {
+		t.Fatalf("expected parser source path resolved from downloaded file, got %q", parser.lastReq.SourcePath)
+	}
+	if !strings.HasSuffix(strings.ToLower(parser.lastReq.SourcePath), ".json") {
+		t.Fatalf("expected parser source path to point to extracted coco json, got %q", parser.lastReq.SourcePath)
+	}
 
 	var manifest PreviewManifest
 	if err := json.Unmarshal(previewStore.saved.Manifest, &manifest); err != nil {
@@ -114,6 +138,12 @@ func TestPrepareProjectAnnotationsCreatesPreviewManifest(t *testing.T) {
 	if got, want := manifest.MatchedAnnotations[0].ResolvedSampleID, sampleID; got != want {
 		t.Fatalf("manifest resolved sample id got %s want %s", got, want)
 	}
+	if got, want := manifest.SourcePath, objectKey; got != want {
+		t.Fatalf("manifest source path got %q want %q", got, want)
+	}
+	if got, want := previewStore.saved.ParamsHash, paramsHash(input, objectKey); got != want {
+		t.Fatalf("params hash got %q want %q", got, want)
+	}
 }
 
 func TestPrepareProjectAnnotationsCarriesBlockingErrors(t *testing.T) {
@@ -122,6 +152,13 @@ func TestPrepareProjectAnnotationsCarriesBlockingErrors(t *testing.T) {
 	projectID := uuid.New()
 	datasetID := uuid.New()
 	sessionID := uuid.New()
+
+	objectKey := "imports/" + sessionID.String() + "/annotations.zip"
+	provider := &fakePrepareObjectProvider{
+		downloadBodies: map[string][]byte{
+			objectKey: buildPrepareZipArchive(t, "annotations.json", `{"images":[],"categories":[],"annotations":[]}`),
+		},
+	}
 
 	useCase := NewPrepareProjectAnnotationsUseCase(
 		fakeProjectStore{
@@ -133,11 +170,11 @@ func TestPrepareProjectAnnotationsCarriesBlockingErrors(t *testing.T) {
 				},
 			},
 		},
-		fakeUploadStore{session: &importrepo.UploadSession{ID: sessionID, Status: "completed", ObjectKey: "/tmp/archive", Mode: "project_annotations"}},
+		fakeUploadStore{session: &importrepo.UploadSession{ID: sessionID, Status: "completed", ObjectKey: objectKey, Mode: "project_annotations"}},
 		&fakePreviewStore{},
 		fakeMatchStore{},
 		fakeParserRegistry{
-			parser: fakeParser{
+			parser: &fakeParser{
 				result: &common.ParseProjectAnnotationsResult{
 					Batch: &annotationirv1.DataBatchIR{},
 					Report: common.ConversionReport{
@@ -147,6 +184,7 @@ func TestPrepareProjectAnnotationsCarriesBlockingErrors(t *testing.T) {
 				},
 			},
 		},
+		provider,
 	)
 
 	result, err := useCase.Execute(context.Background(), PrepareProjectAnnotationsInput{
@@ -211,20 +249,59 @@ func projectDatasetKey(projectID, datasetID uuid.UUID) string {
 }
 
 type fakeParserRegistry struct {
-	parser fakeParser
+	parser *fakeParser
 }
 
 func (r fakeParserRegistry) ParseProjectAnnotations(ctx context.Context, req ParseProjectAnnotationsRequest) (*common.ParseProjectAnnotationsResult, error) {
+	if r.parser == nil {
+		return nil, errors.New("parser is nil")
+	}
 	return r.parser.ParseProjectAnnotations(ctx, req)
 }
 
 type fakeParser struct {
-	result *common.ParseProjectAnnotationsResult
-	err    error
+	result  *common.ParseProjectAnnotationsResult
+	err     error
+	lastReq ParseProjectAnnotationsRequest
 }
 
-func (p fakeParser) ParseProjectAnnotations(ctx context.Context, req ParseProjectAnnotationsRequest) (*common.ParseProjectAnnotationsResult, error) {
+func (p *fakeParser) ParseProjectAnnotations(ctx context.Context, req ParseProjectAnnotationsRequest) (*common.ParseProjectAnnotationsResult, error) {
+	p.lastReq = req
 	return p.result, p.err
+}
+
+type fakePrepareObjectProvider struct {
+	downloadBodies map[string][]byte
+
+	lastDownloadObjectKey string
+	lastDownloadDst       string
+}
+
+func (p *fakePrepareObjectProvider) Bucket() string { return "imports" }
+
+func (p *fakePrepareObjectProvider) SignPutObject(context.Context, string, time.Duration, string) (string, error) {
+	return "", nil
+}
+
+func (p *fakePrepareObjectProvider) SignGetObject(context.Context, string, time.Duration) (string, error) {
+	return "", nil
+}
+
+func (p *fakePrepareObjectProvider) StatObject(context.Context, string) (*storage.ObjectStat, error) {
+	return nil, nil
+}
+
+func (p *fakePrepareObjectProvider) DownloadObject(_ context.Context, objectKey string, dst string) error {
+	p.lastDownloadObjectKey = objectKey
+	p.lastDownloadDst = dst
+	body, ok := p.downloadBodies[objectKey]
+	if !ok {
+		return errors.New("missing downloaded object")
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(dst, body, 0o644)
 }
 
 func buildBatch() *annotationirv1.DataBatchIR {
@@ -258,4 +335,22 @@ func buildBatch() *annotationirv1.DataBatchIR {
 			},
 		},
 	}
+}
+
+func buildPrepareZipArchive(t *testing.T, entryName string, content string) []byte {
+	t.Helper()
+
+	var buf bytes.Buffer
+	archive := zip.NewWriter(&buf)
+	writer, err := archive.Create(entryName)
+	if err != nil {
+		t.Fatalf("create archive entry: %v", err)
+	}
+	if _, err := writer.Write([]byte(content)); err != nil {
+		t.Fatalf("write archive entry: %v", err)
+	}
+	if err := archive.Close(); err != nil {
+		t.Fatalf("close archive: %v", err)
+	}
+	return buf.Bytes()
 }

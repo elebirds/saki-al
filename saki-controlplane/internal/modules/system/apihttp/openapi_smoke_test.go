@@ -352,8 +352,11 @@ func TestPublicAPISmoke(t *testing.T) {
 	if sessionID == "" || uploadURL == "" {
 		t.Fatalf("unexpected upload init body: %+v", initBody)
 	}
+	if strings.HasPrefix(uploadURL, "/imports/uploads/") {
+		t.Fatalf("expected signed object storage url, got local upload route: %s", uploadURL)
+	}
 
-	uploadReq, err := http.NewRequest(http.MethodPut, httpServer.URL+uploadURL, bytes.NewReader(importArchive))
+	uploadReq, err := http.NewRequest(http.MethodPut, uploadURL, bytes.NewReader(importArchive))
 	if err != nil {
 		t.Fatalf("new upload content request: %v", err)
 	}

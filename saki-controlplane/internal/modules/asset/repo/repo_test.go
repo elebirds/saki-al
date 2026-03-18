@@ -70,6 +70,12 @@ func TestAssetRepoCreatePendingAndMarkReady(t *testing.T) {
 	if got, want := created.SizeBytes, int64(0); got != want {
 		t.Fatalf("asset size got %d want %d", got, want)
 	}
+	if created.ReadyAt != nil {
+		t.Fatalf("pending asset ready_at got %v want nil", created.ReadyAt)
+	}
+	if created.OrphanedAt != nil {
+		t.Fatalf("pending asset orphaned_at got %v want nil", created.OrphanedAt)
+	}
 	if !jsonEqual(t, created.Metadata, []byte(`{"source":"camera"}`)) {
 		t.Fatalf("asset metadata got %s want %s", created.Metadata, `{"source":"camera"}`)
 	}
@@ -107,6 +113,12 @@ func TestAssetRepoCreatePendingAndMarkReady(t *testing.T) {
 	}
 	if got, want := updated.ContentType, "image/webp"; got != want {
 		t.Fatalf("updated asset content_type got %q want %q", got, want)
+	}
+	if updated.ReadyAt == nil {
+		t.Fatal("expected ready asset ready_at to be populated")
+	}
+	if updated.OrphanedAt != nil {
+		t.Fatalf("ready asset orphaned_at got %v want nil", updated.OrphanedAt)
 	}
 	if !updated.UpdatedAt.After(created.UpdatedAt) {
 		t.Fatalf("expected updated_at to move forward, created=%s updated=%s", created.UpdatedAt, updated.UpdatedAt)

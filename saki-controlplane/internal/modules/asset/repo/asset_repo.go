@@ -29,6 +29,8 @@ type Asset struct {
 	Sha256Hex      *string
 	Metadata       []byte
 	CreatedBy      *uuid.UUID
+	ReadyAt        *time.Time
+	OrphanedAt     *time.Time
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 }
@@ -50,18 +52,27 @@ type MarkReadyParams struct {
 	ContentType string
 }
 
+type ListStalePendingAssetsParams struct {
+	Now    time.Time
+	Cutoff time.Time
+}
+
 type AssetRepo struct {
 	q *sqlcdb.Queries
 }
 
 func NewAssetRepo(pool *pgxpool.Pool) *AssetRepo {
-	return &AssetRepo{q: sqlcdb.New(pool)}
+	return newAssetRepo(sqlcdb.New(pool))
+}
+
+func newAssetRepo(q *sqlcdb.Queries) *AssetRepo {
+	return &AssetRepo{q: q}
 }
 
 func (r *AssetRepo) CreatePending(ctx context.Context, params CreatePendingParams) (*Asset, error) {
 	row, err := r.q.CreatePendingAsset(ctx, sqlcdb.CreatePendingAssetParams{
-		Kind:           params.Kind,
-		StorageBackend: params.StorageBackend,
+		Kind:           sqlcdb.AssetKind(params.Kind),
+		StorageBackend: sqlcdb.AssetStorageBackend(params.StorageBackend),
 		Bucket:         params.Bucket,
 		ObjectKey:      params.ObjectKey,
 		ContentType:    params.ContentType,
@@ -71,7 +82,7 @@ func (r *AssetRepo) CreatePending(ctx context.Context, params CreatePendingParam
 	if err != nil {
 		return nil, err
 	}
-	return fromSQLCAsset(row), nil
+	return fromCreatePendingAssetRow(row), nil
 }
 
 func (r *AssetRepo) Get(ctx context.Context, id uuid.UUID) (*Asset, error) {
@@ -82,7 +93,7 @@ func (r *AssetRepo) Get(ctx context.Context, id uuid.UUID) (*Asset, error) {
 		}
 		return nil, err
 	}
-	return fromSQLCAsset(row), nil
+	return fromGetAssetRow(row), nil
 }
 
 func (r *AssetRepo) GetByStorageLocation(ctx context.Context, bucket string, objectKey string) (*Asset, error) {
@@ -96,7 +107,7 @@ func (r *AssetRepo) GetByStorageLocation(ctx context.Context, bucket string, obj
 		}
 		return nil, err
 	}
-	return fromSQLCAsset(row), nil
+	return fromGetAssetByStorageLocationRow(row), nil
 }
 
 func (r *AssetRepo) MarkReady(ctx context.Context, params MarkReadyParams) (*Asset, error) {
@@ -112,24 +123,166 @@ func (r *AssetRepo) MarkReady(ctx context.Context, params MarkReadyParams) (*Ass
 		}
 		return nil, err
 	}
-	return fromSQLCAsset(row), nil
+	return fromMarkAssetReadyRow(row), nil
 }
 
-func fromSQLCAsset(row sqlcdb.Asset) *Asset {
+func (r *AssetRepo) ListStalePending(ctx context.Context, params ListStalePendingAssetsParams) ([]Asset, error) {
+	rows, err := r.q.ListStalePendingAssets(ctx, sqlcdb.ListStalePendingAssetsParams{
+		Now:    pgTime(params.Now),
+		Cutoff: pgTime(params.Cutoff),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	assets := make([]Asset, 0, len(rows))
+	for _, row := range rows {
+		assets = append(assets, *fromListStalePendingAssetsRow(row))
+	}
+	return assets, nil
+}
+
+func (r *AssetRepo) Delete(ctx context.Context, id uuid.UUID) (bool, error) {
+	rows, err := r.q.DeleteAsset(ctx, id)
+	if err != nil {
+		return false, err
+	}
+	return rows > 0, nil
+}
+
+func fromCreatePendingAssetRow(row sqlcdb.CreatePendingAssetRow) *Asset {
+	return newAssetFromFields(
+		row.ID,
+		row.Kind,
+		row.Status,
+		row.StorageBackend,
+		row.Bucket,
+		row.ObjectKey,
+		row.ContentType,
+		row.SizeBytes,
+		row.Sha256Hex,
+		row.Metadata,
+		row.CreatedBy,
+		row.ReadyAt,
+		row.OrphanedAt,
+		row.CreatedAt,
+		row.UpdatedAt,
+	)
+}
+
+func fromGetAssetRow(row sqlcdb.GetAssetRow) *Asset {
+	return newAssetFromFields(
+		row.ID,
+		row.Kind,
+		row.Status,
+		row.StorageBackend,
+		row.Bucket,
+		row.ObjectKey,
+		row.ContentType,
+		row.SizeBytes,
+		row.Sha256Hex,
+		row.Metadata,
+		row.CreatedBy,
+		row.ReadyAt,
+		row.OrphanedAt,
+		row.CreatedAt,
+		row.UpdatedAt,
+	)
+}
+
+func fromGetAssetByStorageLocationRow(row sqlcdb.GetAssetByStorageLocationRow) *Asset {
+	return newAssetFromFields(
+		row.ID,
+		row.Kind,
+		row.Status,
+		row.StorageBackend,
+		row.Bucket,
+		row.ObjectKey,
+		row.ContentType,
+		row.SizeBytes,
+		row.Sha256Hex,
+		row.Metadata,
+		row.CreatedBy,
+		row.ReadyAt,
+		row.OrphanedAt,
+		row.CreatedAt,
+		row.UpdatedAt,
+	)
+}
+
+func fromMarkAssetReadyRow(row sqlcdb.MarkAssetReadyRow) *Asset {
+	return newAssetFromFields(
+		row.ID,
+		row.Kind,
+		row.Status,
+		row.StorageBackend,
+		row.Bucket,
+		row.ObjectKey,
+		row.ContentType,
+		row.SizeBytes,
+		row.Sha256Hex,
+		row.Metadata,
+		row.CreatedBy,
+		row.ReadyAt,
+		row.OrphanedAt,
+		row.CreatedAt,
+		row.UpdatedAt,
+	)
+}
+
+func fromListStalePendingAssetsRow(row sqlcdb.ListStalePendingAssetsRow) *Asset {
+	return newAssetFromFields(
+		row.ID,
+		row.Kind,
+		row.Status,
+		row.StorageBackend,
+		row.Bucket,
+		row.ObjectKey,
+		row.ContentType,
+		row.SizeBytes,
+		row.Sha256Hex,
+		row.Metadata,
+		row.CreatedBy,
+		row.ReadyAt,
+		row.OrphanedAt,
+		row.CreatedAt,
+		row.UpdatedAt,
+	)
+}
+
+func newAssetFromFields(
+	id uuid.UUID,
+	kind sqlcdb.AssetKind,
+	status sqlcdb.AssetStatus,
+	storageBackend sqlcdb.AssetStorageBackend,
+	bucket string,
+	objectKey string,
+	contentType string,
+	sizeBytes int64,
+	sha256Hex pgtype.Text,
+	metadata []byte,
+	createdBy pgtype.UUID,
+	readyAt pgtype.Timestamptz,
+	orphanedAt pgtype.Timestamptz,
+	createdAt pgtype.Timestamptz,
+	updatedAt pgtype.Timestamptz,
+) *Asset {
 	return &Asset{
-		ID:             row.ID,
-		Kind:           row.Kind,
-		Status:         row.Status,
-		StorageBackend: row.StorageBackend,
-		Bucket:         row.Bucket,
-		ObjectKey:      row.ObjectKey,
-		ContentType:    row.ContentType,
-		SizeBytes:      row.SizeBytes,
-		Sha256Hex:      pgTextToStringPtr(row.Sha256Hex),
-		Metadata:       row.Metadata,
-		CreatedBy:      pgUUIDToUUIDPtr(row.CreatedBy),
-		CreatedAt:      row.CreatedAt.Time,
-		UpdatedAt:      row.UpdatedAt.Time,
+		ID:             id,
+		Kind:           string(kind),
+		Status:         string(status),
+		StorageBackend: string(storageBackend),
+		Bucket:         bucket,
+		ObjectKey:      objectKey,
+		ContentType:    contentType,
+		SizeBytes:      sizeBytes,
+		Sha256Hex:      pgTextToStringPtr(sha256Hex),
+		Metadata:       metadata,
+		CreatedBy:      pgUUIDToUUIDPtr(createdBy),
+		ReadyAt:        pgTimestamptzToTimePtr(readyAt),
+		OrphanedAt:     pgTimestamptzToTimePtr(orphanedAt),
+		CreatedAt:      createdAt.Time,
+		UpdatedAt:      updatedAt.Time,
 	}
 }
 
@@ -161,6 +314,18 @@ func pgTextToStringPtr(v pgtype.Text) *string {
 	}
 	s := v.String
 	return &s
+}
+
+func pgTime(v time.Time) pgtype.Timestamptz {
+	return pgtype.Timestamptz{Time: v, Valid: !v.IsZero()}
+}
+
+func pgTimestamptzToTimePtr(v pgtype.Timestamptz) *time.Time {
+	if !v.Valid {
+		return nil
+	}
+	t := v.Time
+	return &t
 }
 
 func normalizeMetadata(v []byte) []byte {

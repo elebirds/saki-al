@@ -5,9 +5,310 @@
 package sqlcdb
 
 import (
+	"database/sql/driver"
+	"fmt"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+type AssetKind string
+
+const (
+	AssetKindImage    AssetKind = "image"
+	AssetKindVideo    AssetKind = "video"
+	AssetKindArchive  AssetKind = "archive"
+	AssetKindDocument AssetKind = "document"
+	AssetKindBinary   AssetKind = "binary"
+)
+
+func (e *AssetKind) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = AssetKind(s)
+	case string:
+		*e = AssetKind(s)
+	default:
+		return fmt.Errorf("unsupported scan type for AssetKind: %T", src)
+	}
+	return nil
+}
+
+type NullAssetKind struct {
+	AssetKind AssetKind `json:"asset_kind"`
+	Valid     bool      `json:"valid"` // Valid is true if AssetKind is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullAssetKind) Scan(value interface{}) error {
+	if value == nil {
+		ns.AssetKind, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.AssetKind.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullAssetKind) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.AssetKind), nil
+}
+
+type AssetOwnerType string
+
+const (
+	AssetOwnerTypeProject AssetOwnerType = "project"
+	AssetOwnerTypeDataset AssetOwnerType = "dataset"
+	AssetOwnerTypeSample  AssetOwnerType = "sample"
+)
+
+func (e *AssetOwnerType) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = AssetOwnerType(s)
+	case string:
+		*e = AssetOwnerType(s)
+	default:
+		return fmt.Errorf("unsupported scan type for AssetOwnerType: %T", src)
+	}
+	return nil
+}
+
+type NullAssetOwnerType struct {
+	AssetOwnerType AssetOwnerType `json:"asset_owner_type"`
+	Valid          bool           `json:"valid"` // Valid is true if AssetOwnerType is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullAssetOwnerType) Scan(value interface{}) error {
+	if value == nil {
+		ns.AssetOwnerType, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.AssetOwnerType.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullAssetOwnerType) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.AssetOwnerType), nil
+}
+
+type AssetReferenceLifecycle string
+
+const (
+	AssetReferenceLifecycleDurable AssetReferenceLifecycle = "durable"
+)
+
+func (e *AssetReferenceLifecycle) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = AssetReferenceLifecycle(s)
+	case string:
+		*e = AssetReferenceLifecycle(s)
+	default:
+		return fmt.Errorf("unsupported scan type for AssetReferenceLifecycle: %T", src)
+	}
+	return nil
+}
+
+type NullAssetReferenceLifecycle struct {
+	AssetReferenceLifecycle AssetReferenceLifecycle `json:"asset_reference_lifecycle"`
+	Valid                   bool                    `json:"valid"` // Valid is true if AssetReferenceLifecycle is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullAssetReferenceLifecycle) Scan(value interface{}) error {
+	if value == nil {
+		ns.AssetReferenceLifecycle, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.AssetReferenceLifecycle.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullAssetReferenceLifecycle) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.AssetReferenceLifecycle), nil
+}
+
+type AssetReferenceRole string
+
+const (
+	AssetReferenceRoleAttachment AssetReferenceRole = "attachment"
+	AssetReferenceRolePrimary    AssetReferenceRole = "primary"
+)
+
+func (e *AssetReferenceRole) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = AssetReferenceRole(s)
+	case string:
+		*e = AssetReferenceRole(s)
+	default:
+		return fmt.Errorf("unsupported scan type for AssetReferenceRole: %T", src)
+	}
+	return nil
+}
+
+type NullAssetReferenceRole struct {
+	AssetReferenceRole AssetReferenceRole `json:"asset_reference_role"`
+	Valid              bool               `json:"valid"` // Valid is true if AssetReferenceRole is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullAssetReferenceRole) Scan(value interface{}) error {
+	if value == nil {
+		ns.AssetReferenceRole, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.AssetReferenceRole.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullAssetReferenceRole) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.AssetReferenceRole), nil
+}
+
+type AssetStatus string
+
+const (
+	AssetStatusPendingUpload AssetStatus = "pending_upload"
+	AssetStatusReady         AssetStatus = "ready"
+)
+
+func (e *AssetStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = AssetStatus(s)
+	case string:
+		*e = AssetStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for AssetStatus: %T", src)
+	}
+	return nil
+}
+
+type NullAssetStatus struct {
+	AssetStatus AssetStatus `json:"asset_status"`
+	Valid       bool        `json:"valid"` // Valid is true if AssetStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullAssetStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.AssetStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.AssetStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullAssetStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.AssetStatus), nil
+}
+
+type AssetStorageBackend string
+
+const (
+	AssetStorageBackendMinio AssetStorageBackend = "minio"
+)
+
+func (e *AssetStorageBackend) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = AssetStorageBackend(s)
+	case string:
+		*e = AssetStorageBackend(s)
+	default:
+		return fmt.Errorf("unsupported scan type for AssetStorageBackend: %T", src)
+	}
+	return nil
+}
+
+type NullAssetStorageBackend struct {
+	AssetStorageBackend AssetStorageBackend `json:"asset_storage_backend"`
+	Valid               bool                `json:"valid"` // Valid is true if AssetStorageBackend is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullAssetStorageBackend) Scan(value interface{}) error {
+	if value == nil {
+		ns.AssetStorageBackend, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.AssetStorageBackend.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullAssetStorageBackend) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.AssetStorageBackend), nil
+}
+
+type AssetUploadIntentState string
+
+const (
+	AssetUploadIntentStateInitiated AssetUploadIntentState = "initiated"
+	AssetUploadIntentStateCompleted AssetUploadIntentState = "completed"
+	AssetUploadIntentStateCanceled  AssetUploadIntentState = "canceled"
+	AssetUploadIntentStateExpired   AssetUploadIntentState = "expired"
+)
+
+func (e *AssetUploadIntentState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = AssetUploadIntentState(s)
+	case string:
+		*e = AssetUploadIntentState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for AssetUploadIntentState: %T", src)
+	}
+	return nil
+}
+
+type NullAssetUploadIntentState struct {
+	AssetUploadIntentState AssetUploadIntentState `json:"asset_upload_intent_state"`
+	Valid                  bool                   `json:"valid"` // Valid is true if AssetUploadIntentState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullAssetUploadIntentState) Scan(value interface{}) error {
+	if value == nil {
+		ns.AssetUploadIntentState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.AssetUploadIntentState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullAssetUploadIntentState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.AssetUploadIntentState), nil
+}
 
 type AccessPermissionGrant struct {
 	PrincipalID uuid.UUID          `json:"principal_id"`
@@ -41,19 +342,53 @@ type Annotation struct {
 }
 
 type Asset struct {
-	ID             uuid.UUID          `json:"id"`
-	Kind           string             `json:"kind"`
-	Status         string             `json:"status"`
-	StorageBackend string             `json:"storage_backend"`
-	Bucket         string             `json:"bucket"`
-	ObjectKey      string             `json:"object_key"`
-	ContentType    string             `json:"content_type"`
-	SizeBytes      int64              `json:"size_bytes"`
-	Sha256Hex      pgtype.Text        `json:"sha256_hex"`
-	Metadata       []byte             `json:"metadata"`
-	CreatedBy      pgtype.UUID        `json:"created_by"`
-	CreatedAt      pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+	ID             uuid.UUID           `json:"id"`
+	Kind           AssetKind           `json:"kind"`
+	Status         AssetStatus         `json:"status"`
+	StorageBackend AssetStorageBackend `json:"storage_backend"`
+	Bucket         string              `json:"bucket"`
+	ObjectKey      string              `json:"object_key"`
+	ContentType    string              `json:"content_type"`
+	SizeBytes      int64               `json:"size_bytes"`
+	Sha256Hex      pgtype.Text         `json:"sha256_hex"`
+	Metadata       []byte              `json:"metadata"`
+	CreatedBy      pgtype.UUID         `json:"created_by"`
+	CreatedAt      pgtype.Timestamptz  `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz  `json:"updated_at"`
+	ReadyAt        pgtype.Timestamptz  `json:"ready_at"`
+	OrphanedAt     pgtype.Timestamptz  `json:"orphaned_at"`
+}
+
+type AssetReference struct {
+	ID        uuid.UUID               `json:"id"`
+	AssetID   uuid.UUID               `json:"asset_id"`
+	OwnerType AssetOwnerType          `json:"owner_type"`
+	OwnerID   uuid.UUID               `json:"owner_id"`
+	Role      AssetReferenceRole      `json:"role"`
+	Lifecycle AssetReferenceLifecycle `json:"lifecycle"`
+	IsPrimary bool                    `json:"is_primary"`
+	Metadata  []byte                  `json:"metadata"`
+	CreatedBy pgtype.UUID             `json:"created_by"`
+	CreatedAt pgtype.Timestamptz      `json:"created_at"`
+	DeletedAt pgtype.Timestamptz      `json:"deleted_at"`
+}
+
+type AssetUploadIntent struct {
+	ID                  uuid.UUID              `json:"id"`
+	AssetID             uuid.UUID              `json:"asset_id"`
+	OwnerType           AssetOwnerType         `json:"owner_type"`
+	OwnerID             uuid.UUID              `json:"owner_id"`
+	Role                AssetReferenceRole     `json:"role"`
+	IsPrimary           bool                   `json:"is_primary"`
+	DeclaredContentType string                 `json:"declared_content_type"`
+	State               AssetUploadIntentState `json:"state"`
+	IdempotencyKey      string                 `json:"idempotency_key"`
+	ExpiresAt           pgtype.Timestamptz     `json:"expires_at"`
+	CreatedBy           pgtype.UUID            `json:"created_by"`
+	CompletedAt         pgtype.Timestamptz     `json:"completed_at"`
+	CanceledAt          pgtype.Timestamptz     `json:"canceled_at"`
+	CreatedAt           pgtype.Timestamptz     `json:"created_at"`
+	UpdatedAt           pgtype.Timestamptz     `json:"updated_at"`
 }
 
 type Dataset struct {

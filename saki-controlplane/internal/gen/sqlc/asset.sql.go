@@ -32,20 +32,38 @@ insert into asset (
     $6,
     $7::uuid
 )
-returning id, kind, status, storage_backend, bucket, object_key, content_type, size_bytes, sha256_hex, metadata, created_by, created_at, updated_at
+returning id, kind, status, storage_backend, bucket, object_key, content_type, size_bytes, sha256_hex, metadata, created_by, ready_at, orphaned_at, created_at, updated_at
 `
 
 type CreatePendingAssetParams struct {
-	Kind           string      `json:"kind"`
-	StorageBackend string      `json:"storage_backend"`
-	Bucket         string      `json:"bucket"`
-	ObjectKey      string      `json:"object_key"`
-	ContentType    string      `json:"content_type"`
-	Metadata       []byte      `json:"metadata"`
-	CreatedBy      pgtype.UUID `json:"created_by"`
+	Kind           AssetKind           `json:"kind"`
+	StorageBackend AssetStorageBackend `json:"storage_backend"`
+	Bucket         string              `json:"bucket"`
+	ObjectKey      string              `json:"object_key"`
+	ContentType    string              `json:"content_type"`
+	Metadata       []byte              `json:"metadata"`
+	CreatedBy      pgtype.UUID         `json:"created_by"`
 }
 
-func (q *Queries) CreatePendingAsset(ctx context.Context, arg CreatePendingAssetParams) (Asset, error) {
+type CreatePendingAssetRow struct {
+	ID             uuid.UUID           `json:"id"`
+	Kind           AssetKind           `json:"kind"`
+	Status         AssetStatus         `json:"status"`
+	StorageBackend AssetStorageBackend `json:"storage_backend"`
+	Bucket         string              `json:"bucket"`
+	ObjectKey      string              `json:"object_key"`
+	ContentType    string              `json:"content_type"`
+	SizeBytes      int64               `json:"size_bytes"`
+	Sha256Hex      pgtype.Text         `json:"sha256_hex"`
+	Metadata       []byte              `json:"metadata"`
+	CreatedBy      pgtype.UUID         `json:"created_by"`
+	ReadyAt        pgtype.Timestamptz  `json:"ready_at"`
+	OrphanedAt     pgtype.Timestamptz  `json:"orphaned_at"`
+	CreatedAt      pgtype.Timestamptz  `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz  `json:"updated_at"`
+}
+
+func (q *Queries) CreatePendingAsset(ctx context.Context, arg CreatePendingAssetParams) (CreatePendingAssetRow, error) {
 	row := q.db.QueryRow(ctx, createPendingAsset,
 		arg.Kind,
 		arg.StorageBackend,
@@ -55,7 +73,7 @@ func (q *Queries) CreatePendingAsset(ctx context.Context, arg CreatePendingAsset
 		arg.Metadata,
 		arg.CreatedBy,
 	)
-	var i Asset
+	var i CreatePendingAssetRow
 	err := row.Scan(
 		&i.ID,
 		&i.Kind,
@@ -68,21 +86,54 @@ func (q *Queries) CreatePendingAsset(ctx context.Context, arg CreatePendingAsset
 		&i.Sha256Hex,
 		&i.Metadata,
 		&i.CreatedBy,
+		&i.ReadyAt,
+		&i.OrphanedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
 	return i, err
 }
 
+const deleteAsset = `-- name: DeleteAsset :execrows
+delete from asset
+where id = $1
+`
+
+func (q *Queries) DeleteAsset(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteAsset, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getAsset = `-- name: GetAsset :one
-select id, kind, status, storage_backend, bucket, object_key, content_type, size_bytes, sha256_hex, metadata, created_by, created_at, updated_at
+select id, kind, status, storage_backend, bucket, object_key, content_type, size_bytes, sha256_hex, metadata, created_by, ready_at, orphaned_at, created_at, updated_at
 from asset
 where id = $1
 `
 
-func (q *Queries) GetAsset(ctx context.Context, id uuid.UUID) (Asset, error) {
+type GetAssetRow struct {
+	ID             uuid.UUID           `json:"id"`
+	Kind           AssetKind           `json:"kind"`
+	Status         AssetStatus         `json:"status"`
+	StorageBackend AssetStorageBackend `json:"storage_backend"`
+	Bucket         string              `json:"bucket"`
+	ObjectKey      string              `json:"object_key"`
+	ContentType    string              `json:"content_type"`
+	SizeBytes      int64               `json:"size_bytes"`
+	Sha256Hex      pgtype.Text         `json:"sha256_hex"`
+	Metadata       []byte              `json:"metadata"`
+	CreatedBy      pgtype.UUID         `json:"created_by"`
+	ReadyAt        pgtype.Timestamptz  `json:"ready_at"`
+	OrphanedAt     pgtype.Timestamptz  `json:"orphaned_at"`
+	CreatedAt      pgtype.Timestamptz  `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz  `json:"updated_at"`
+}
+
+func (q *Queries) GetAsset(ctx context.Context, id uuid.UUID) (GetAssetRow, error) {
 	row := q.db.QueryRow(ctx, getAsset, id)
-	var i Asset
+	var i GetAssetRow
 	err := row.Scan(
 		&i.ID,
 		&i.Kind,
@@ -95,6 +146,8 @@ func (q *Queries) GetAsset(ctx context.Context, id uuid.UUID) (Asset, error) {
 		&i.Sha256Hex,
 		&i.Metadata,
 		&i.CreatedBy,
+		&i.ReadyAt,
+		&i.OrphanedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -102,7 +155,7 @@ func (q *Queries) GetAsset(ctx context.Context, id uuid.UUID) (Asset, error) {
 }
 
 const getAssetByStorageLocation = `-- name: GetAssetByStorageLocation :one
-select id, kind, status, storage_backend, bucket, object_key, content_type, size_bytes, sha256_hex, metadata, created_by, created_at, updated_at
+select id, kind, status, storage_backend, bucket, object_key, content_type, size_bytes, sha256_hex, metadata, created_by, ready_at, orphaned_at, created_at, updated_at
 from asset
 where bucket = $1
   and object_key = $2
@@ -113,9 +166,27 @@ type GetAssetByStorageLocationParams struct {
 	ObjectKey string `json:"object_key"`
 }
 
-func (q *Queries) GetAssetByStorageLocation(ctx context.Context, arg GetAssetByStorageLocationParams) (Asset, error) {
+type GetAssetByStorageLocationRow struct {
+	ID             uuid.UUID           `json:"id"`
+	Kind           AssetKind           `json:"kind"`
+	Status         AssetStatus         `json:"status"`
+	StorageBackend AssetStorageBackend `json:"storage_backend"`
+	Bucket         string              `json:"bucket"`
+	ObjectKey      string              `json:"object_key"`
+	ContentType    string              `json:"content_type"`
+	SizeBytes      int64               `json:"size_bytes"`
+	Sha256Hex      pgtype.Text         `json:"sha256_hex"`
+	Metadata       []byte              `json:"metadata"`
+	CreatedBy      pgtype.UUID         `json:"created_by"`
+	ReadyAt        pgtype.Timestamptz  `json:"ready_at"`
+	OrphanedAt     pgtype.Timestamptz  `json:"orphaned_at"`
+	CreatedAt      pgtype.Timestamptz  `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz  `json:"updated_at"`
+}
+
+func (q *Queries) GetAssetByStorageLocation(ctx context.Context, arg GetAssetByStorageLocationParams) (GetAssetByStorageLocationRow, error) {
 	row := q.db.QueryRow(ctx, getAssetByStorageLocation, arg.Bucket, arg.ObjectKey)
-	var i Asset
+	var i GetAssetByStorageLocationRow
 	err := row.Scan(
 		&i.ID,
 		&i.Kind,
@@ -128,10 +199,92 @@ func (q *Queries) GetAssetByStorageLocation(ctx context.Context, arg GetAssetByS
 		&i.Sha256Hex,
 		&i.Metadata,
 		&i.CreatedBy,
+		&i.ReadyAt,
+		&i.OrphanedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const listStalePendingAssets = `-- name: ListStalePendingAssets :many
+select a.id, a.kind, a.status, a.storage_backend, a.bucket, a.object_key, a.content_type, a.size_bytes, a.sha256_hex, a.metadata, a.created_by, a.ready_at, a.orphaned_at, a.created_at, a.updated_at
+from asset as a
+where a.status = 'pending_upload'
+  and a.created_at <= $1
+  and not exists (
+      select 1
+      from asset_upload_intent as i
+      where i.asset_id = a.id
+        and i.state = 'initiated'
+        and i.expires_at > $2
+  )
+  and not exists (
+      select 1
+      from asset_reference as r
+      where r.asset_id = a.id
+        and r.deleted_at is null
+  )
+order by a.created_at, a.id
+`
+
+type ListStalePendingAssetsParams struct {
+	Cutoff pgtype.Timestamptz `json:"cutoff"`
+	Now    pgtype.Timestamptz `json:"now"`
+}
+
+type ListStalePendingAssetsRow struct {
+	ID             uuid.UUID           `json:"id"`
+	Kind           AssetKind           `json:"kind"`
+	Status         AssetStatus         `json:"status"`
+	StorageBackend AssetStorageBackend `json:"storage_backend"`
+	Bucket         string              `json:"bucket"`
+	ObjectKey      string              `json:"object_key"`
+	ContentType    string              `json:"content_type"`
+	SizeBytes      int64               `json:"size_bytes"`
+	Sha256Hex      pgtype.Text         `json:"sha256_hex"`
+	Metadata       []byte              `json:"metadata"`
+	CreatedBy      pgtype.UUID         `json:"created_by"`
+	ReadyAt        pgtype.Timestamptz  `json:"ready_at"`
+	OrphanedAt     pgtype.Timestamptz  `json:"orphaned_at"`
+	CreatedAt      pgtype.Timestamptz  `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz  `json:"updated_at"`
+}
+
+func (q *Queries) ListStalePendingAssets(ctx context.Context, arg ListStalePendingAssetsParams) ([]ListStalePendingAssetsRow, error) {
+	rows, err := q.db.Query(ctx, listStalePendingAssets, arg.Cutoff, arg.Now)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListStalePendingAssetsRow
+	for rows.Next() {
+		var i ListStalePendingAssetsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Kind,
+			&i.Status,
+			&i.StorageBackend,
+			&i.Bucket,
+			&i.ObjectKey,
+			&i.ContentType,
+			&i.SizeBytes,
+			&i.Sha256Hex,
+			&i.Metadata,
+			&i.CreatedBy,
+			&i.ReadyAt,
+			&i.OrphanedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const markAssetReady = `-- name: MarkAssetReady :one
@@ -140,10 +293,12 @@ set status = 'ready',
     size_bytes = $1,
     sha256_hex = $2::text,
     content_type = $3,
+    ready_at = coalesce(ready_at, now()),
+    orphaned_at = null,
     updated_at = now()
 where id = $4
   and status = 'pending_upload'
-returning id, kind, status, storage_backend, bucket, object_key, content_type, size_bytes, sha256_hex, metadata, created_by, created_at, updated_at
+returning id, kind, status, storage_backend, bucket, object_key, content_type, size_bytes, sha256_hex, metadata, created_by, ready_at, orphaned_at, created_at, updated_at
 `
 
 type MarkAssetReadyParams struct {
@@ -153,14 +308,32 @@ type MarkAssetReadyParams struct {
 	ID          uuid.UUID   `json:"id"`
 }
 
-func (q *Queries) MarkAssetReady(ctx context.Context, arg MarkAssetReadyParams) (Asset, error) {
+type MarkAssetReadyRow struct {
+	ID             uuid.UUID           `json:"id"`
+	Kind           AssetKind           `json:"kind"`
+	Status         AssetStatus         `json:"status"`
+	StorageBackend AssetStorageBackend `json:"storage_backend"`
+	Bucket         string              `json:"bucket"`
+	ObjectKey      string              `json:"object_key"`
+	ContentType    string              `json:"content_type"`
+	SizeBytes      int64               `json:"size_bytes"`
+	Sha256Hex      pgtype.Text         `json:"sha256_hex"`
+	Metadata       []byte              `json:"metadata"`
+	CreatedBy      pgtype.UUID         `json:"created_by"`
+	ReadyAt        pgtype.Timestamptz  `json:"ready_at"`
+	OrphanedAt     pgtype.Timestamptz  `json:"orphaned_at"`
+	CreatedAt      pgtype.Timestamptz  `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz  `json:"updated_at"`
+}
+
+func (q *Queries) MarkAssetReady(ctx context.Context, arg MarkAssetReadyParams) (MarkAssetReadyRow, error) {
 	row := q.db.QueryRow(ctx, markAssetReady,
 		arg.SizeBytes,
 		arg.Sha256Hex,
 		arg.ContentType,
 		arg.ID,
 	)
-	var i Asset
+	var i MarkAssetReadyRow
 	err := row.Scan(
 		&i.ID,
 		&i.Kind,
@@ -173,6 +346,8 @@ func (q *Queries) MarkAssetReady(ctx context.Context, arg MarkAssetReadyParams) 
 		&i.Sha256Hex,
 		&i.Metadata,
 		&i.CreatedBy,
+		&i.ReadyAt,
+		&i.OrphanedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

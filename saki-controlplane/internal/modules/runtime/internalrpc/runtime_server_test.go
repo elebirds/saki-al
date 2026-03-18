@@ -20,6 +20,7 @@ import (
 	appdb "github.com/elebirds/saki/saki-controlplane/internal/app/db"
 	"github.com/elebirds/saki/saki-controlplane/internal/gen/proto/runtime/v1"
 	"github.com/elebirds/saki/saki-controlplane/internal/gen/proto/runtime/v1/runtimev1connect"
+	assetapp "github.com/elebirds/saki/saki-controlplane/internal/modules/asset/app"
 	"github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/commands"
 	runtimerepo "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/repo"
 	"github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/state"
@@ -146,6 +147,65 @@ func TestRuntimeServerPushTaskEventCompletesTask(t *testing.T) {
 	}
 	if got := store.mustGet(t, taskID); got.Status != string(state.TaskStatusSucceeded) {
 		t.Fatalf("expected task to be succeeded, got %+v", got)
+	}
+}
+
+func TestRuntimeInternalRPCMountsAgentIngressAndArtifactService(t *testing.T) {
+	assetID := uuid.New()
+	registrar := &fakeRegisterExecutorHandler{}
+	uploads := &fakeIssueUploadTicketHandler{
+		result: &assetapp.Ticket{
+			AssetID: assetID,
+			URL:     "https://upload.example.test",
+		},
+	}
+	runtimeServer := NewRuntimeServer(
+		registrar,
+		&fakeHeartbeatExecutorHandler{},
+		&fakeStartTaskHandler{},
+		&fakeCompleteTaskHandler{},
+		&fakeFailTaskHandler{},
+		&fakeConfirmCanceledTaskHandler{},
+	)
+	artifactServer := NewArtifactServer(uploads, &fakeIssueDownloadTicketHandler{})
+
+	mux := http.NewServeMux()
+	ingressPath, ingressHandler := runtimev1connect.NewAgentIngressHandler(runtimeServer)
+	mux.Handle(ingressPath, ingressHandler)
+	artifactPath, artifactHandler := runtimev1connect.NewArtifactServiceHandler(artifactServer)
+	mux.Handle(artifactPath, artifactHandler)
+
+	httpServer := httptest.NewServer(mux)
+	defer httpServer.Close()
+
+	ingressClient := runtimev1connect.NewAgentIngressClient(http.DefaultClient, httpServer.URL)
+	ingressResp, err := ingressClient.Register(context.Background(), connect.NewRequest(&runtimev1.RegisterRequest{
+		AgentId:      "agent-combined",
+		Version:      "1.2.3",
+		Capabilities: []string{"gpu"},
+	}))
+	if err != nil {
+		t.Fatalf("agent ingress register: %v", err)
+	}
+	if !ingressResp.Msg.GetAccepted() {
+		t.Fatalf("expected register accepted, got %+v", ingressResp.Msg)
+	}
+	if registrar.last.ExecutorID != "agent-combined" {
+		t.Fatalf("unexpected register command: %+v", registrar.last)
+	}
+
+	artifactClient := runtimev1connect.NewArtifactServiceClient(http.DefaultClient, httpServer.URL)
+	artifactResp, err := artifactClient.CreateUploadTicket(context.Background(), connect.NewRequest(&runtimev1.CreateUploadTicketRequest{
+		ArtifactId: assetID.String(),
+	}))
+	if err != nil {
+		t.Fatalf("artifact create upload ticket: %v", err)
+	}
+	if uploads.lastAssetID != assetID {
+		t.Fatalf("unexpected upload ticket asset id: got=%s want=%s", uploads.lastAssetID, assetID)
+	}
+	if got, want := artifactResp.Msg.GetUrl(), "https://upload.example.test"; got != want {
+		t.Fatalf("unexpected upload ticket url: got=%q want=%q", got, want)
 	}
 }
 

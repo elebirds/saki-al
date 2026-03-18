@@ -522,6 +522,124 @@ func decodeDeleteDatasetParams(args [1]string, argsEscaped bool, r *http.Request
 	return params, nil
 }
 
+// DeleteDatasetSampleParams is parameters of deleteDatasetSample operation.
+type DeleteDatasetSampleParams struct {
+	DatasetID string
+	SampleID  string
+}
+
+func unpackDeleteDatasetSampleParams(packed middleware.Parameters) (params DeleteDatasetSampleParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "dataset_id",
+			In:   "path",
+		}
+		params.DatasetID = packed[key].(string)
+	}
+	{
+		key := middleware.ParameterKey{
+			Name: "sample_id",
+			In:   "path",
+		}
+		params.SampleID = packed[key].(string)
+	}
+	return params
+}
+
+func decodeDeleteDatasetSampleParams(args [2]string, argsEscaped bool, r *http.Request) (params DeleteDatasetSampleParams, _ error) {
+	// Decode path: dataset_id.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "dataset_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.DatasetID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "dataset_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	// Decode path: sample_id.
+	if err := func() error {
+		param := args[1]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[1])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "sample_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.SampleID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "sample_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
 // ExecuteProjectAnnotationImportParams is parameters of executeProjectAnnotationImport operation.
 type ExecuteProjectAnnotationImportParams struct {
 	ProjectID string

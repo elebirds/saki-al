@@ -26,6 +26,7 @@ import (
 	datasetapi "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/apihttp"
 	datasetapp "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/app"
 	datasetrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/repo"
+	importrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/importing/repo"
 	projectapp "github.com/elebirds/saki/saki-controlplane/internal/modules/project/app"
 	projectrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/project/repo"
 	runtimecommands "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/commands"
@@ -534,6 +535,415 @@ func TestDeleteDatasetKeepsAssetLiveWhenOtherOwnerReferencesRemain(t *testing.T)
 	assertAssetNotOrphaned(t, assetStore, asset.ID)
 }
 
+func TestDeleteDatasetSampleInvalidatesSampleAssetReferences(t *testing.T) {
+	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+
+	ctx := context.Background()
+	container, dsn := startPostgres(t, ctx)
+	defer func() {
+		_ = testcontainers.TerminateContainer(container)
+	}()
+
+	sqlDB, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("open sql db: %v", err)
+	}
+	defer sqlDB.Close()
+
+	goose.SetDialect("postgres")
+	if err := goose.Up(sqlDB, migrationsDir(t)); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+
+	pool, err := appdb.NewPool(ctx, dsn)
+	if err != nil {
+		t.Fatalf("create pool: %v", err)
+	}
+	defer pool.Close()
+
+	datasetRepo := datasetrepo.NewDatasetRepo(pool)
+	projectRepo := projectrepo.NewProjectRepo(pool)
+	sampleRepo := annotationrepo.NewSampleRepo(pool)
+	annotationRepo := annotationrepo.NewAnnotationRepo(pool)
+	matchRepo := importrepo.NewSampleMatchRefRepo(pool)
+	assetStore := assetrepo.NewAssetRepo(pool)
+	referenceRepo := assetrepo.NewAssetReferenceRepo(pool)
+
+	datasetRow, err := datasetRepo.Create(ctx, datasetrepo.CreateDatasetParams{
+		Name: "dataset-with-sample-delete",
+		Type: "image",
+	})
+	if err != nil {
+		t.Fatalf("create dataset: %v", err)
+	}
+
+	projectRow, err := projectRepo.CreateProject(ctx, projectrepo.CreateProjectParams{Name: "project-a"})
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	if _, err := sqlDB.ExecContext(ctx, `insert into project_dataset (project_id, dataset_id) values ($1, $2)`, projectRow.ID, datasetRow.ID); err != nil {
+		t.Fatalf("seed project dataset link: %v", err)
+	}
+
+	sampleRow, err := sampleRepo.Create(ctx, annotationrepo.CreateSampleParams{
+		DatasetID: datasetRow.ID,
+		Name:      "sample-a",
+		Meta:      []byte(`{}`),
+	})
+	if err != nil {
+		t.Fatalf("create sample: %v", err)
+	}
+
+	if _, err := annotationRepo.Create(ctx, annotationrepo.CreateAnnotationParams{
+		ProjectID:      projectRow.ID,
+		SampleID:       sampleRow.ID,
+		GroupID:        "group-a",
+		LabelID:        "car",
+		View:           "rgb",
+		AnnotationType: "rect",
+		Geometry:       []byte(`{"x":1,"y":2,"w":3,"h":4}`),
+		Attrs:          []byte(`{}`),
+		Source:         "manual",
+		IsGenerated:    false,
+	}); err != nil {
+		t.Fatalf("create annotation: %v", err)
+	}
+	if _, err := matchRepo.Put(ctx, importrepo.PutSampleMatchRefParams{
+		DatasetID: datasetRow.ID,
+		SampleID:  sampleRow.ID,
+		RefType:   "sample_name",
+		RefValue:  sampleRow.Name,
+		IsPrimary: true,
+	}); err != nil {
+		t.Fatalf("put sample match ref: %v", err)
+	}
+
+	sampleAsset, err := createReadyAssetForDatasetDeleteTest(ctx, assetStore, "assets/sample-primary")
+	if err != nil {
+		t.Fatalf("create sample asset: %v", err)
+	}
+	if _, err := referenceRepo.CreateDurable(ctx, assetrepo.CreateAssetReferenceParams{
+		AssetID:   sampleAsset.ID,
+		OwnerType: "sample",
+		OwnerID:   sampleRow.ID,
+		Role:      "primary",
+		Lifecycle: "durable",
+		IsPrimary: true,
+	}); err != nil {
+		t.Fatalf("create sample reference: %v", err)
+	}
+
+	t.Setenv("DATABASE_DSN", dsn)
+	t.Setenv("AUTH_TOKEN_SECRET", "test-secret")
+	t.Setenv("AUTH_TOKEN_TTL", "1h")
+	t.Setenv("PUBLIC_API_BIND", freeAddr(t))
+	t.Setenv("MINIO_ENDPOINT", "")
+	t.Setenv("MINIO_ACCESS_KEY", "")
+	t.Setenv("MINIO_SECRET_KEY", "")
+	t.Setenv("MINIO_BUCKET_NAME", "")
+
+	server, _, err := appbootstrap.NewPublicAPI(ctx)
+	if err != nil {
+		t.Fatalf("new public api: %v", err)
+	}
+	defer func() {
+		_ = server.Shutdown(context.Background())
+	}()
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/datasets/"+datasetRow.ID.String()+"/samples/"+sampleRow.ID.String(), nil)
+	deleteRec := httptest.NewRecorder()
+	server.Handler.ServeHTTP(deleteRec, deleteReq)
+	if deleteRec.Code != http.StatusNoContent {
+		t.Fatalf("unexpected delete status: %d body=%s", deleteRec.Code, deleteRec.Body.String())
+	}
+
+	assertAssetReferenceDeleted(t, sqlDB, "sample", sampleRow.ID)
+	assertAssetOrphaned(t, assetStore, sampleAsset.ID)
+	assertSampleDeleted(t, sampleRepo, sampleRow.ID)
+	assertAnnotationCountForSample(t, sqlDB, sampleRow.ID, 0)
+	assertSampleMatchRefCountForSample(t, sqlDB, sampleRow.ID, 0)
+}
+
+func TestDeleteDatasetSampleKeepsAssetLiveWhenOtherOwnerReferencesRemain(t *testing.T) {
+	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+
+	ctx := context.Background()
+	container, dsn := startPostgres(t, ctx)
+	defer func() {
+		_ = testcontainers.TerminateContainer(container)
+	}()
+
+	sqlDB, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("open sql db: %v", err)
+	}
+	defer sqlDB.Close()
+
+	goose.SetDialect("postgres")
+	if err := goose.Up(sqlDB, migrationsDir(t)); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+
+	pool, err := appdb.NewPool(ctx, dsn)
+	if err != nil {
+		t.Fatalf("create pool: %v", err)
+	}
+	defer pool.Close()
+
+	datasetRepo := datasetrepo.NewDatasetRepo(pool)
+	projectRepo := projectrepo.NewProjectRepo(pool)
+	sampleRepo := annotationrepo.NewSampleRepo(pool)
+	assetStore := assetrepo.NewAssetRepo(pool)
+	referenceRepo := assetrepo.NewAssetReferenceRepo(pool)
+
+	datasetRow, err := datasetRepo.Create(ctx, datasetrepo.CreateDatasetParams{
+		Name: "dataset-shared-sample-asset",
+		Type: "image",
+	})
+	if err != nil {
+		t.Fatalf("create dataset: %v", err)
+	}
+
+	sampleRow, err := sampleRepo.Create(ctx, annotationrepo.CreateSampleParams{
+		DatasetID: datasetRow.ID,
+		Name:      "sample-a",
+		Meta:      []byte(`{}`),
+	})
+	if err != nil {
+		t.Fatalf("create sample: %v", err)
+	}
+
+	projectRow, err := projectRepo.CreateProject(ctx, projectrepo.CreateProjectParams{Name: "project-a"})
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+
+	asset, err := createReadyAssetForDatasetDeleteTest(ctx, assetStore, "assets/shared-sample")
+	if err != nil {
+		t.Fatalf("create ready asset: %v", err)
+	}
+	if _, err := referenceRepo.CreateDurable(ctx, assetrepo.CreateAssetReferenceParams{
+		AssetID:   asset.ID,
+		OwnerType: "sample",
+		OwnerID:   sampleRow.ID,
+		Role:      "attachment",
+		Lifecycle: "durable",
+		IsPrimary: false,
+	}); err != nil {
+		t.Fatalf("create sample reference: %v", err)
+	}
+	if _, err := referenceRepo.CreateDurable(ctx, assetrepo.CreateAssetReferenceParams{
+		AssetID:   asset.ID,
+		OwnerType: "project",
+		OwnerID:   projectRow.ID,
+		Role:      "attachment",
+		Lifecycle: "durable",
+		IsPrimary: false,
+	}); err != nil {
+		t.Fatalf("create project reference: %v", err)
+	}
+
+	t.Setenv("DATABASE_DSN", dsn)
+	t.Setenv("AUTH_TOKEN_SECRET", "test-secret")
+	t.Setenv("AUTH_TOKEN_TTL", "1h")
+	t.Setenv("PUBLIC_API_BIND", freeAddr(t))
+	t.Setenv("MINIO_ENDPOINT", "")
+	t.Setenv("MINIO_ACCESS_KEY", "")
+	t.Setenv("MINIO_SECRET_KEY", "")
+	t.Setenv("MINIO_BUCKET_NAME", "")
+
+	server, _, err := appbootstrap.NewPublicAPI(ctx)
+	if err != nil {
+		t.Fatalf("new public api: %v", err)
+	}
+	defer func() {
+		_ = server.Shutdown(context.Background())
+	}()
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/datasets/"+datasetRow.ID.String()+"/samples/"+sampleRow.ID.String(), nil)
+	deleteRec := httptest.NewRecorder()
+	server.Handler.ServeHTTP(deleteRec, deleteReq)
+	if deleteRec.Code != http.StatusNoContent {
+		t.Fatalf("unexpected delete status: %d body=%s", deleteRec.Code, deleteRec.Body.String())
+	}
+
+	assertAssetReferenceDeleted(t, sqlDB, "sample", sampleRow.ID)
+	assertAssetReferenceStillActive(t, sqlDB, "project", projectRow.ID)
+	assertAssetNotOrphaned(t, assetStore, asset.ID)
+	assertSampleDeleted(t, sampleRepo, sampleRow.ID)
+}
+
+func TestDeleteDatasetSampleRejectsDatasetSampleMismatch(t *testing.T) {
+	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+
+	ctx := context.Background()
+	container, dsn := startPostgres(t, ctx)
+	defer func() {
+		_ = testcontainers.TerminateContainer(container)
+	}()
+
+	sqlDB, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("open sql db: %v", err)
+	}
+	defer sqlDB.Close()
+
+	goose.SetDialect("postgres")
+	if err := goose.Up(sqlDB, migrationsDir(t)); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+
+	pool, err := appdb.NewPool(ctx, dsn)
+	if err != nil {
+		t.Fatalf("create pool: %v", err)
+	}
+	defer pool.Close()
+
+	datasetRepo := datasetrepo.NewDatasetRepo(pool)
+	sampleRepo := annotationrepo.NewSampleRepo(pool)
+	assetStore := assetrepo.NewAssetRepo(pool)
+	referenceRepo := assetrepo.NewAssetReferenceRepo(pool)
+
+	datasetA, err := datasetRepo.Create(ctx, datasetrepo.CreateDatasetParams{Name: "dataset-a", Type: "image"})
+	if err != nil {
+		t.Fatalf("create dataset a: %v", err)
+	}
+	datasetB, err := datasetRepo.Create(ctx, datasetrepo.CreateDatasetParams{Name: "dataset-b", Type: "image"})
+	if err != nil {
+		t.Fatalf("create dataset b: %v", err)
+	}
+
+	sampleRow, err := sampleRepo.Create(ctx, annotationrepo.CreateSampleParams{
+		DatasetID: datasetA.ID,
+		Name:      "sample-a",
+		Meta:      []byte(`{}`),
+	})
+	if err != nil {
+		t.Fatalf("create sample: %v", err)
+	}
+
+	asset, err := createReadyAssetForDatasetDeleteTest(ctx, assetStore, "assets/mismatch")
+	if err != nil {
+		t.Fatalf("create ready asset: %v", err)
+	}
+	if _, err := referenceRepo.CreateDurable(ctx, assetrepo.CreateAssetReferenceParams{
+		AssetID:   asset.ID,
+		OwnerType: "sample",
+		OwnerID:   sampleRow.ID,
+		Role:      "attachment",
+		Lifecycle: "durable",
+		IsPrimary: false,
+	}); err != nil {
+		t.Fatalf("create sample reference: %v", err)
+	}
+
+	t.Setenv("DATABASE_DSN", dsn)
+	t.Setenv("AUTH_TOKEN_SECRET", "test-secret")
+	t.Setenv("AUTH_TOKEN_TTL", "1h")
+	t.Setenv("PUBLIC_API_BIND", freeAddr(t))
+	t.Setenv("MINIO_ENDPOINT", "")
+	t.Setenv("MINIO_ACCESS_KEY", "")
+	t.Setenv("MINIO_SECRET_KEY", "")
+	t.Setenv("MINIO_BUCKET_NAME", "")
+
+	server, _, err := appbootstrap.NewPublicAPI(ctx)
+	if err != nil {
+		t.Fatalf("new public api: %v", err)
+	}
+	defer func() {
+		_ = server.Shutdown(context.Background())
+	}()
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/datasets/"+datasetB.ID.String()+"/samples/"+sampleRow.ID.String(), nil)
+	deleteRec := httptest.NewRecorder()
+	server.Handler.ServeHTTP(deleteRec, deleteReq)
+	if deleteRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected delete mismatch to return 400, got status=%d body=%s", deleteRec.Code, deleteRec.Body.String())
+	}
+
+	assertAssetReferenceStillActive(t, sqlDB, "sample", sampleRow.ID)
+	assertAssetNotOrphaned(t, assetStore, asset.ID)
+}
+
+func TestDeleteDatasetSampleReturnsNotFoundForMissingSample(t *testing.T) {
+	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+
+	ctx := context.Background()
+	container, dsn := startPostgres(t, ctx)
+	defer func() {
+		_ = testcontainers.TerminateContainer(container)
+	}()
+
+	sqlDB, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("open sql db: %v", err)
+	}
+	defer sqlDB.Close()
+
+	goose.SetDialect("postgres")
+	if err := goose.Up(sqlDB, migrationsDir(t)); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+
+	pool, err := appdb.NewPool(ctx, dsn)
+	if err != nil {
+		t.Fatalf("create pool: %v", err)
+	}
+	defer pool.Close()
+
+	datasetRepo := datasetrepo.NewDatasetRepo(pool)
+	assetStore := assetrepo.NewAssetRepo(pool)
+	referenceRepo := assetrepo.NewAssetReferenceRepo(pool)
+
+	datasetRow, err := datasetRepo.Create(ctx, datasetrepo.CreateDatasetParams{Name: "dataset-a", Type: "image"})
+	if err != nil {
+		t.Fatalf("create dataset: %v", err)
+	}
+
+	missingSampleID := uuid.New()
+	asset, err := createReadyAssetForDatasetDeleteTest(ctx, assetStore, "assets/missing-sample")
+	if err != nil {
+		t.Fatalf("create ready asset: %v", err)
+	}
+	if _, err := referenceRepo.CreateDurable(ctx, assetrepo.CreateAssetReferenceParams{
+		AssetID:   asset.ID,
+		OwnerType: "sample",
+		OwnerID:   missingSampleID,
+		Role:      "attachment",
+		Lifecycle: "durable",
+		IsPrimary: false,
+	}); err != nil {
+		t.Fatalf("create sample reference: %v", err)
+	}
+
+	t.Setenv("DATABASE_DSN", dsn)
+	t.Setenv("AUTH_TOKEN_SECRET", "test-secret")
+	t.Setenv("AUTH_TOKEN_TTL", "1h")
+	t.Setenv("PUBLIC_API_BIND", freeAddr(t))
+	t.Setenv("MINIO_ENDPOINT", "")
+	t.Setenv("MINIO_ACCESS_KEY", "")
+	t.Setenv("MINIO_SECRET_KEY", "")
+	t.Setenv("MINIO_BUCKET_NAME", "")
+
+	server, _, err := appbootstrap.NewPublicAPI(ctx)
+	if err != nil {
+		t.Fatalf("new public api: %v", err)
+	}
+	defer func() {
+		_ = server.Shutdown(context.Background())
+	}()
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/datasets/"+datasetRow.ID.String()+"/samples/"+missingSampleID.String(), nil)
+	deleteRec := httptest.NewRecorder()
+	server.Handler.ServeHTTP(deleteRec, deleteReq)
+	if deleteRec.Code != http.StatusNotFound {
+		t.Fatalf("expected delete missing sample to return 404, got status=%d body=%s", deleteRec.Code, deleteRec.Body.String())
+	}
+
+	assertAssetReferenceStillActive(t, sqlDB, "sample", missingSampleID)
+	assertAssetNotOrphaned(t, assetStore, asset.ID)
+}
+
 func TestGetDatasetRejectsInvalidDatasetID(t *testing.T) {
 	handler, err := newTestHTTPHandler()
 	if err != nil {
@@ -817,6 +1227,42 @@ func assertAssetNotOrphaned(t *testing.T, repo *assetrepo.AssetRepo, assetID uui
 	}
 	if asset == nil || asset.OrphanedAt != nil {
 		t.Fatalf("expected asset %s to remain non-orphaned, got %+v", assetID, asset)
+	}
+}
+
+func assertSampleDeleted(t *testing.T, repo *annotationrepo.SampleRepo, sampleID uuid.UUID) {
+	t.Helper()
+
+	sample, err := repo.Get(context.Background(), sampleID)
+	if err != nil {
+		t.Fatalf("get sample %s: %v", sampleID, err)
+	}
+	if sample != nil {
+		t.Fatalf("expected sample %s to be deleted, got %+v", sampleID, sample)
+	}
+}
+
+func assertAnnotationCountForSample(t *testing.T, db *sql.DB, sampleID uuid.UUID, want int) {
+	t.Helper()
+
+	var got int
+	if err := db.QueryRowContext(context.Background(), `select count(*) from annotation where sample_id = $1`, sampleID).Scan(&got); err != nil {
+		t.Fatalf("count annotations for sample %s: %v", sampleID, err)
+	}
+	if got != want {
+		t.Fatalf("annotation count for sample %s got %d want %d", sampleID, got, want)
+	}
+}
+
+func assertSampleMatchRefCountForSample(t *testing.T, db *sql.DB, sampleID uuid.UUID, want int) {
+	t.Helper()
+
+	var got int
+	if err := db.QueryRowContext(context.Background(), `select count(*) from sample_match_ref where sample_id = $1`, sampleID).Scan(&got); err != nil {
+		t.Fatalf("count sample_match_ref for sample %s: %v", sampleID, err)
+	}
+	if got != want {
+		t.Fatalf("sample_match_ref count for sample %s got %d want %d", sampleID, got, want)
 	}
 }
 

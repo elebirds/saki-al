@@ -4,12 +4,15 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -237,6 +240,9 @@ func TestRuntimeTaskLifecycle_CancelPathWritesStopOutbox(t *testing.T) {
 	t.Setenv("AUTH_TOKEN_SECRET", "runtime-e2e-secret")
 	t.Setenv("AUTH_TOKEN_TTL", "1h")
 	t.Setenv("PUBLIC_API_BIND", "127.0.0.1:0")
+	objectServer := newRuntimeObjectServer(t)
+	defer objectServer.Close()
+	setRuntimeObjectStorageEnv(t, objectServer)
 
 	server, _, err := bootstrap.NewPublicAPI(ctx)
 	if err != nil {
@@ -355,6 +361,92 @@ func (s *recordingAgentControlServer) AssignTask(_ context.Context, req *connect
 func (s *recordingAgentControlServer) StopTask(_ context.Context, req *connect.Request[runtimev1.StopTaskRequest]) (*connect.Response[runtimev1.StopTaskResponse], error) {
 	s.stopTask = req.Msg
 	return connect.NewResponse(&runtimev1.StopTaskResponse{Accepted: true}), nil
+}
+
+type runtimeObjectServer struct {
+	server  *httptest.Server
+	mu      sync.RWMutex
+	objects map[string]runtimeStoredObject
+}
+
+type runtimeStoredObject struct {
+	body        []byte
+	contentType string
+}
+
+func newRuntimeObjectServer(t *testing.T) *runtimeObjectServer {
+	t.Helper()
+
+	s := &runtimeObjectServer{
+		objects: make(map[string]runtimeStoredObject),
+	}
+	s.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		key := strings.TrimPrefix(r.URL.Path, "/assets/")
+		if key == r.URL.Path || key == "" {
+			http.NotFound(w, r)
+			return
+		}
+
+		switch r.Method {
+		case http.MethodPut:
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			s.mu.Lock()
+			s.objects[key] = runtimeStoredObject{
+				body:        body,
+				contentType: r.Header.Get("Content-Type"),
+			}
+			s.mu.Unlock()
+			w.WriteHeader(http.StatusNoContent)
+		case http.MethodHead:
+			s.mu.RLock()
+			obj, ok := s.objects[key]
+			s.mu.RUnlock()
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			w.Header().Set("ETag", "\"runtime-etag\"")
+			w.Header().Set("Last-Modified", "Mon, 02 Jan 2006 15:04:05 GMT")
+			w.Header().Set("Content-Length", strconv.Itoa(len(obj.body)))
+			w.Header().Set("Content-Type", obj.contentType)
+			w.WriteHeader(http.StatusOK)
+		case http.MethodGet:
+			s.mu.RLock()
+			obj, ok := s.objects[key]
+			s.mu.RUnlock()
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			w.Header().Set("ETag", "\"runtime-etag\"")
+			w.Header().Set("Last-Modified", "Mon, 02 Jan 2006 15:04:05 GMT")
+			w.Header().Set("Content-Length", strconv.Itoa(len(obj.body)))
+			w.Header().Set("Content-Type", obj.contentType)
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(obj.body)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))
+	return s
+}
+
+func (s *runtimeObjectServer) Close() {
+	s.server.Close()
+}
+
+func setRuntimeObjectStorageEnv(t *testing.T, s *runtimeObjectServer) {
+	t.Helper()
+
+	t.Setenv("MINIO_ENDPOINT", strings.TrimPrefix(s.server.URL, "http://"))
+	t.Setenv("MINIO_ACCESS_KEY", "test-access")
+	t.Setenv("MINIO_SECRET_KEY", "test-secret")
+	t.Setenv("MINIO_BUCKET_NAME", "assets")
+	t.Setenv("MINIO_SECURE", "false")
 }
 
 func startRuntimePostgres(t *testing.T, ctx context.Context) (*postgres.PostgresContainer, string) {

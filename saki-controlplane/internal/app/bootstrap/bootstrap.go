@@ -138,6 +138,9 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 	datasetDelete := datasetapp.NewDeleteDatasetUseCaseWithTx(
 		datasetapp.NewRepoDeleteDatasetTxRunner(datasetrepo.NewDeleteDatasetTxRunner(pool)),
 	)
+	sampleDelete := datasetapp.NewDeleteSampleUseCaseWithTx(
+		datasetapp.NewRepoDeleteSampleTxRunner(datasetrepo.NewDeleteSampleTxRunner(pool)),
+	)
 	projectRepo := projectrepo.NewProjectRepo(pool)
 	projectStore := projectapp.NewRepoStore(projectRepo)
 	importUploadRepo := importrepo.NewUploadRepo(pool)
@@ -175,6 +178,7 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 		AccessStore:         accessStore,
 		DatasetStore:        datasetStore,
 		DatasetDelete:       datasetDelete,
+		DatasetDeleteSample: sampleDelete,
 		ProjectStore:        projectStore,
 		RuntimeStore:        runtimequeries.NewRepoAdminStore(taskRepo, runtimerepo.NewExecutorRepo(pool)),
 		RuntimeTaskCanceler: runtimecommands.NewCancelTaskHandlerWithTx(runtimerepo.NewCancelTaskTxRunner(pool)),

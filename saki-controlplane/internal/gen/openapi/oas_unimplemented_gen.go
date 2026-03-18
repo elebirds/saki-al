@@ -76,6 +76,13 @@ func (UnimplementedHandler) DeleteDataset(ctx context.Context, params DeleteData
 	return r, ht.ErrNotImplemented
 }
 
+// DeleteDatasetSample implements deleteDatasetSample operation.
+//
+// DELETE /datasets/{dataset_id}/samples/{sample_id}
+func (UnimplementedHandler) DeleteDatasetSample(ctx context.Context, params DeleteDatasetSampleParams) (r DeleteDatasetSampleRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // ExecuteProjectAnnotationImport implements executeProjectAnnotationImport operation.
 //
 // POST /projects/{project_id}/datasets/{dataset_id}/imports/annotations:execute

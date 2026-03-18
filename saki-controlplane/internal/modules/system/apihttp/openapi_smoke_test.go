@@ -625,6 +625,43 @@ func TestPublicAPISmoke(t *testing.T) {
 	if len(importedListed) != 2 {
 		t.Fatalf("expected imported annotation to be persisted, got %+v", importedListed)
 	}
+
+	deleteSampleReq, err := http.NewRequest(http.MethodDelete, httpServer.URL+"/datasets/"+dataset.ID.String()+"/samples/"+sample.ID.String(), nil)
+	if err != nil {
+		t.Fatalf("new delete sample request: %v", err)
+	}
+	deleteSampleResp, err := http.DefaultClient.Do(deleteSampleReq)
+	if err != nil {
+		t.Fatalf("delete smoke sample: %v", err)
+	}
+	defer deleteSampleResp.Body.Close()
+	if deleteSampleResp.StatusCode != http.StatusNoContent {
+		t.Fatalf("unexpected delete smoke sample status: %d", deleteSampleResp.StatusCode)
+	}
+
+	deletedSample, err := sampleRepo.Get(ctx, sample.ID)
+	if err != nil {
+		t.Fatalf("get deleted smoke sample: %v", err)
+	}
+	if deletedSample != nil {
+		t.Fatalf("expected smoke sample to be deleted, got %+v", deletedSample)
+	}
+
+	var annotationCount int
+	if err := sqlDB.QueryRowContext(ctx, `select count(*) from annotation where sample_id = $1`, sample.ID).Scan(&annotationCount); err != nil {
+		t.Fatalf("count smoke sample annotations: %v", err)
+	}
+	if annotationCount != 0 {
+		t.Fatalf("expected smoke sample annotations to be deleted, got %d", annotationCount)
+	}
+
+	var matchRefCount int
+	if err := sqlDB.QueryRowContext(ctx, `select count(*) from sample_match_ref where sample_id = $1`, sample.ID).Scan(&matchRefCount); err != nil {
+		t.Fatalf("count smoke sample match refs: %v", err)
+	}
+	if matchRefCount != 0 {
+		t.Fatalf("expected smoke sample match refs to be deleted, got %d", matchRefCount)
+	}
 }
 
 func TestPublicAPISmoke_AccessLoginAndMe(t *testing.T) {

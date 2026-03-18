@@ -1048,6 +1048,19 @@ type DeleteDatasetNotFound ErrorResponse
 
 func (*DeleteDatasetNotFound) deleteDatasetRes() {}
 
+type DeleteDatasetSampleBadRequest ErrorResponse
+
+func (*DeleteDatasetSampleBadRequest) deleteDatasetSampleRes() {}
+
+// DeleteDatasetSampleNoContent is response for DeleteDatasetSample operation.
+type DeleteDatasetSampleNoContent struct{}
+
+func (*DeleteDatasetSampleNoContent) deleteDatasetSampleRes() {}
+
+type DeleteDatasetSampleNotFound ErrorResponse
+
+func (*DeleteDatasetSampleNotFound) deleteDatasetSampleRes() {}
+
 // Ref: #/components/schemas/ErrorResponse
 type ErrorResponse struct {
 	Code    string `json:"code"`

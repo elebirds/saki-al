@@ -517,6 +517,41 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /datasets/{dataset_id}/samples/{sample_id}:
+    delete:
+      operationId: deleteDatasetSample
+      parameters:
+        - name: dataset_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: sample_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: sample deleted
+        "400":
+          description: invalid dataset id, invalid sample id, or sample does not belong to dataset
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: sample not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /auth/login:
     post:
       operationId: login

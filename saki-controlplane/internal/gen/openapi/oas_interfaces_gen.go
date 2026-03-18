@@ -5,6 +5,10 @@ type DeleteDatasetRes interface {
 	deleteDatasetRes()
 }
 
+type DeleteDatasetSampleRes interface {
+	deleteDatasetSampleRes()
+}
+
 type GetDatasetRes interface {
 	getDatasetRes()
 }

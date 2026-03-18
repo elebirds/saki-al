@@ -15,6 +15,7 @@ const (
 	CreateProjectOperation                  OperationName = "CreateProject"
 	CreateSampleAnnotationsOperation        OperationName = "CreateSampleAnnotations"
 	DeleteDatasetOperation                  OperationName = "DeleteDataset"
+	DeleteDatasetSampleOperation            OperationName = "DeleteDatasetSample"
 	ExecuteProjectAnnotationImportOperation OperationName = "ExecuteProjectAnnotationImport"
 	GetAssetOperation                       OperationName = "GetAsset"
 	GetCurrentUserOperation                 OperationName = "GetCurrentUser"

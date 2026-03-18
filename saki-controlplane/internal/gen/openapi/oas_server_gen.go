@@ -44,6 +44,10 @@ type Handler interface {
 	//
 	// DELETE /datasets/{dataset_id}
 	DeleteDataset(ctx context.Context, params DeleteDatasetParams) (DeleteDatasetRes, error)
+	// DeleteDatasetSample implements deleteDatasetSample operation.
+	//
+	// DELETE /datasets/{dataset_id}/samples/{sample_id}
+	DeleteDatasetSample(ctx context.Context, params DeleteDatasetSampleParams) (DeleteDatasetSampleRes, error)
 	// ExecuteProjectAnnotationImport implements executeProjectAnnotationImport operation.
 	//
 	// POST /projects/{project_id}/datasets/{dataset_id}/imports/annotations:execute

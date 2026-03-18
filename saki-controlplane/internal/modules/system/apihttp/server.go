@@ -27,6 +27,7 @@ type Dependencies struct {
 	AccessStore         accessapp.Store
 	DatasetStore        datasetapp.Store
 	DatasetDelete       *datasetapp.DeleteDatasetUseCase
+	DatasetDeleteSample *datasetapp.DeleteSampleUseCase
 	ProjectStore        projectapp.Store
 	RuntimeStore        runtimequeries.AdminStore
 	RuntimeTaskCanceler runtimequeries.RuntimeTaskCanceler
@@ -86,8 +87,9 @@ func NewHandler(deps Dependencies) (*Server, error) {
 		),
 		asset: assetapi.NewHandlers(deps.Asset),
 		dataset: datasetapi.NewHandlersWithDependencies(datasetapi.Dependencies{
-			Store:  deps.DatasetStore,
-			Delete: deps.DatasetDelete,
+			Store:        deps.DatasetStore,
+			Delete:       deps.DatasetDelete,
+			DeleteSample: deps.DatasetDeleteSample,
 		}),
 		importing: importingapi.NewHandlers(deps.Importing),
 		project:   projectapi.NewHandlers(deps.ProjectStore, deps.DatasetStore),
@@ -308,6 +310,10 @@ func (s *Server) UnlinkProjectDatasets(ctx context.Context, req *openapi.Project
 
 func (s *Server) DeleteDataset(ctx context.Context, params openapi.DeleteDatasetParams) (openapi.DeleteDatasetRes, error) {
 	return s.dataset.DeleteDataset(ctx, params)
+}
+
+func (s *Server) DeleteDatasetSample(ctx context.Context, params openapi.DeleteDatasetSampleParams) (openapi.DeleteDatasetSampleRes, error) {
+	return s.dataset.DeleteDatasetSample(ctx, params)
 }
 
 func (s *Server) RequirePermission(ctx context.Context, params openapi.RequirePermissionParams) error {

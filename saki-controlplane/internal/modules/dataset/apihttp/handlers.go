@@ -8,6 +8,7 @@ import (
 	openapi "github.com/elebirds/saki/saki-controlplane/internal/gen/openapi"
 	datasetapp "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/app"
 	"github.com/google/uuid"
+	ogenhttp "github.com/ogen-go/ogen/http"
 )
 
 type Handlers struct {
@@ -16,11 +17,13 @@ type Handlers struct {
 	get    *datasetapp.GetDatasetUseCase
 	update *datasetapp.UpdateDatasetUseCase
 	delete *datasetapp.DeleteDatasetUseCase
+	sample *datasetapp.DeleteSampleUseCase
 }
 
 type Dependencies struct {
-	Store  datasetapp.Store
-	Delete *datasetapp.DeleteDatasetUseCase
+	Store        datasetapp.Store
+	Delete       *datasetapp.DeleteDatasetUseCase
+	DeleteSample *datasetapp.DeleteSampleUseCase
 }
 
 func NewHandlers(store datasetapp.Store) *Handlers {
@@ -38,6 +41,7 @@ func NewHandlersWithDependencies(deps Dependencies) *Handlers {
 		get:    datasetapp.NewGetDatasetUseCase(deps.Store),
 		update: datasetapp.NewUpdateDatasetUseCase(deps.Store),
 		delete: deleteUseCase,
+		sample: deps.DeleteSample,
 	}
 }
 
@@ -162,12 +166,59 @@ func (h *Handlers) DeleteDataset(ctx context.Context, params openapi.DeleteDatas
 	return &openapi.DeleteDatasetNoContent{}, nil
 }
 
+func (h *Handlers) DeleteDatasetSample(ctx context.Context, params openapi.DeleteDatasetSampleParams) (openapi.DeleteDatasetSampleRes, error) {
+	if h == nil || h.sample == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+
+	datasetID, err := parseDatasetID(params.DatasetID)
+	if err != nil {
+		return &openapi.DeleteDatasetSampleBadRequest{
+			Code:    "bad_request",
+			Message: err.Error(),
+		}, nil
+	}
+	sampleID, err := parseSampleID(params.SampleID)
+	if err != nil {
+		return &openapi.DeleteDatasetSampleBadRequest{
+			Code:    "bad_request",
+			Message: err.Error(),
+		}, nil
+	}
+
+	deleted, err := h.sample.Execute(ctx, datasetID, sampleID)
+	if err != nil {
+		if errors.Is(err, datasetapp.ErrSampleDatasetMismatch) {
+			return &openapi.DeleteDatasetSampleBadRequest{
+				Code:    "bad_request",
+				Message: "sample does not belong to dataset",
+			}, nil
+		}
+		return nil, err
+	}
+	if !deleted {
+		return &openapi.DeleteDatasetSampleNotFound{
+			Code:    "not_found",
+			Message: "sample not found",
+		}, nil
+	}
+	return &openapi.DeleteDatasetSampleNoContent{}, nil
+}
+
 func parseDatasetID(raw string) (uuid.UUID, error) {
 	datasetID, err := uuid.Parse(raw)
 	if err != nil {
 		return uuid.Nil, errors.New("invalid dataset_id")
 	}
 	return datasetID, nil
+}
+
+func parseSampleID(raw string) (uuid.UUID, error) {
+	sampleID, err := uuid.Parse(raw)
+	if err != nil {
+		return uuid.Nil, errors.New("invalid sample_id")
+	}
+	return sampleID, nil
 }
 
 func toOpenAPIDataset(dataset *datasetapp.Dataset) *openapi.Dataset {

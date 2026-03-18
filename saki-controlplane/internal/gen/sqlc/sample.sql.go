@@ -37,6 +37,19 @@ func (q *Queries) CreateSample(ctx context.Context, arg CreateSampleParams) (Sam
 	return i, err
 }
 
+const deleteSample = `-- name: DeleteSample :execrows
+delete from sample
+where id = $1
+`
+
+func (q *Queries) DeleteSample(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteSample, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getSample = `-- name: GetSample :one
 select id, dataset_id, name, meta, created_at, updated_at
 from sample
@@ -45,6 +58,27 @@ where id = $1
 
 func (q *Queries) GetSample(ctx context.Context, id uuid.UUID) (Sample, error) {
 	row := q.db.QueryRow(ctx, getSample, id)
+	var i Sample
+	err := row.Scan(
+		&i.ID,
+		&i.DatasetID,
+		&i.Name,
+		&i.Meta,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getSampleForUpdate = `-- name: GetSampleForUpdate :one
+select id, dataset_id, name, meta, created_at, updated_at
+from sample
+where id = $1
+for update
+`
+
+func (q *Queries) GetSampleForUpdate(ctx context.Context, id uuid.UUID) (Sample, error) {
+	row := q.db.QueryRow(ctx, getSampleForUpdate, id)
 	var i Sample
 	err := row.Scan(
 		&i.ID,

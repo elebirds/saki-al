@@ -160,6 +160,234 @@ func TestGetImportUploadSessionReturnsSignedPutURL(t *testing.T) {
 	}
 }
 
+func TestAbortThenGetAndCompleteCannotResumeUpload(t *testing.T) {
+	userID := uuid.New()
+	sessionID := uuid.New()
+	abortedAt := time.Now().UTC()
+	initiated := &importrepo.UploadSession{
+		ID:        sessionID,
+		UserID:    userID,
+		Mode:      "project_annotations",
+		FileName:  "annotations.zip",
+		ObjectKey: "imports/u/annotations.zip",
+		Status:    "initiated",
+	}
+	aborted := &importrepo.UploadSession{
+		ID:        sessionID,
+		UserID:    userID,
+		Mode:      "project_annotations",
+		FileName:  "annotations.zip",
+		ObjectKey: initiated.ObjectKey,
+		Status:    "aborted",
+		AbortedAt: &abortedAt,
+	}
+	store := &fakeUploadStore{
+		getSession:   initiated,
+		abortSession: aborted,
+	}
+	provider := &fakeObjectProvider{
+		putURL: "http://object.test/imports/signed-upload-get",
+		stat:   &storage.ObjectStat{Size: 128},
+	}
+	handler := NewHandlers(Dependencies{
+		Uploads:  store,
+		Tasks:    &fakeTaskStore{},
+		Prepare:  fakePrepareUseCase{},
+		Execute:  fakeExecuteUseCase{},
+		Provider: provider,
+	})
+
+	abortResp, err := handler.AbortImportUploadSession(contextWithUser(userID), openapi.AbortImportUploadSessionParams{
+		SessionID: sessionID.String(),
+	})
+	if err != nil {
+		t.Fatalf("abort import upload session: %v", err)
+	}
+	if got, want := abortResp.Status, "aborted"; got != want {
+		t.Fatalf("abort status got %q want %q", got, want)
+	}
+	store.getSession = aborted
+	provider.lastSignPutObjectKey = ""
+
+	getResp, err := handler.GetImportUploadSession(contextWithUser(userID), openapi.GetImportUploadSessionParams{
+		SessionID: sessionID.String(),
+	})
+	if err != nil {
+		t.Fatalf("get import upload session: %v", err)
+	}
+	if got := getResp.URL; got != "" {
+		t.Fatalf("expected empty upload url for aborted session, got %q", got)
+	}
+	if got := provider.lastSignPutObjectKey; got != "" {
+		t.Fatalf("expected aborted session to skip signing, got sign key %q", got)
+	}
+
+	_, err = handler.CompleteImportUploadSession(
+		contextWithUser(userID),
+		&openapi.ImportUploadCompleteRequest{Size: 128},
+		openapi.CompleteImportUploadSessionParams{SessionID: sessionID.String()},
+	)
+	if err == nil {
+		t.Fatal("expected complete on aborted session to fail")
+	}
+	mapped, ok := err.(*openapi.ErrorResponseStatusCode)
+	if !ok || mapped.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected bad request error, got %#v", err)
+	}
+	if got := store.lastMarkCompletedID; got != uuid.Nil {
+		t.Fatalf("mark completed should not be called, got %s", got)
+	}
+}
+
+func TestGetImportUploadSessionSkipsSigningForCompletedSession(t *testing.T) {
+	userID := uuid.New()
+	completedAt := time.Now().UTC()
+	session := &importrepo.UploadSession{
+		ID:          uuid.New(),
+		UserID:      userID,
+		Mode:        "project_annotations",
+		FileName:    "annotations.zip",
+		ObjectKey:   "imports/u/annotations.zip",
+		Status:      "completed",
+		CompletedAt: &completedAt,
+	}
+	provider := &fakeObjectProvider{
+		putURL: "http://object.test/imports/signed-upload-get",
+	}
+	handler := NewHandlers(Dependencies{
+		Uploads:  &fakeUploadStore{getSession: session},
+		Tasks:    &fakeTaskStore{},
+		Prepare:  fakePrepareUseCase{},
+		Execute:  fakeExecuteUseCase{},
+		Provider: provider,
+	})
+
+	resp, err := handler.GetImportUploadSession(contextWithUser(userID), openapi.GetImportUploadSessionParams{
+		SessionID: session.ID.String(),
+	})
+	if err != nil {
+		t.Fatalf("get import upload session: %v", err)
+	}
+	if got := resp.URL; got != "" {
+		t.Fatalf("expected empty upload url for completed session, got %q", got)
+	}
+	if got := provider.lastSignPutObjectKey; got != "" {
+		t.Fatalf("expected completed session to skip signing, got sign key %q", got)
+	}
+}
+
+func TestGetImportUploadSessionReturnsErrorWhenSigningFails(t *testing.T) {
+	userID := uuid.New()
+	session := &importrepo.UploadSession{
+		ID:        uuid.New(),
+		UserID:    userID,
+		Mode:      "project_annotations",
+		FileName:  "annotations.zip",
+		ObjectKey: "imports/u/annotations.zip",
+		Status:    "initiated",
+	}
+	handler := NewHandlers(Dependencies{
+		Uploads: &fakeUploadStore{getSession: session},
+		Tasks:   &fakeTaskStore{},
+		Prepare: fakePrepareUseCase{},
+		Execute: fakeExecuteUseCase{},
+		Provider: &fakeObjectProvider{
+			signPutErr: errors.New("sign put failed"),
+		},
+	})
+
+	_, err := handler.GetImportUploadSession(contextWithUser(userID), openapi.GetImportUploadSessionParams{
+		SessionID: session.ID.String(),
+	})
+	if err == nil {
+		t.Fatal("expected get upload session to fail when sign put fails")
+	}
+}
+
+func TestCompleteImportUploadSessionReturnsErrorWhenSigningFails(t *testing.T) {
+	userID := uuid.New()
+	sessionID := uuid.New()
+	session := &importrepo.UploadSession{
+		ID:        sessionID,
+		UserID:    userID,
+		Mode:      "project_annotations",
+		FileName:  "annotations.zip",
+		ObjectKey: "imports/u/annotations.zip",
+		Status:    "initiated",
+	}
+	uploadStore := &fakeUploadStore{
+		getSession: session,
+		completeSession: &importrepo.UploadSession{
+			ID:        sessionID,
+			UserID:    userID,
+			Mode:      "project_annotations",
+			FileName:  "annotations.zip",
+			ObjectKey: "imports/u/annotations.zip",
+			Status:    "initiated",
+		},
+	}
+	handler := NewHandlers(Dependencies{
+		Uploads: uploadStore,
+		Tasks:   &fakeTaskStore{},
+		Prepare: fakePrepareUseCase{},
+		Execute: fakeExecuteUseCase{},
+		Provider: &fakeObjectProvider{
+			stat:       &storage.ObjectStat{Size: 128},
+			signPutErr: errors.New("sign put failed"),
+		},
+	})
+
+	_, err := handler.CompleteImportUploadSession(
+		contextWithUser(userID),
+		&openapi.ImportUploadCompleteRequest{Size: 128},
+		openapi.CompleteImportUploadSessionParams{SessionID: sessionID.String()},
+	)
+	if err == nil {
+		t.Fatal("expected complete upload session to fail when sign put fails")
+	}
+}
+
+func TestCompleteImportUploadSessionRejectsCompletedSession(t *testing.T) {
+	userID := uuid.New()
+	sessionID := uuid.New()
+	session := &importrepo.UploadSession{
+		ID:        sessionID,
+		UserID:    userID,
+		Mode:      "project_annotations",
+		FileName:  "annotations.zip",
+		ObjectKey: "imports/u/annotations.zip",
+		Status:    "completed",
+	}
+	store := &fakeUploadStore{
+		getSession: session,
+	}
+	handler := NewHandlers(Dependencies{
+		Uploads: store,
+		Tasks:   &fakeTaskStore{},
+		Prepare: fakePrepareUseCase{},
+		Execute: fakeExecuteUseCase{},
+		Provider: &fakeObjectProvider{
+			stat: &storage.ObjectStat{Size: 128},
+		},
+	})
+
+	_, err := handler.CompleteImportUploadSession(
+		contextWithUser(userID),
+		&openapi.ImportUploadCompleteRequest{Size: 128},
+		openapi.CompleteImportUploadSessionParams{SessionID: sessionID.String()},
+	)
+	if err == nil {
+		t.Fatal("expected complete upload session to fail for completed status")
+	}
+	mapped, ok := err.(*openapi.ErrorResponseStatusCode)
+	if !ok || mapped.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected bad request error, got %#v", err)
+	}
+	if got := store.lastMarkCompletedID; got != uuid.Nil {
+		t.Fatalf("mark completed should not be called, got %s", got)
+	}
+}
+
 func TestTryServeHTTPStreamsTaskEvents(t *testing.T) {
 	userID := uuid.New()
 	taskID := uuid.New()
@@ -221,6 +449,7 @@ func contextWithUser(userID uuid.UUID) context.Context {
 type fakeUploadStore struct {
 	initSession         *importrepo.UploadSession
 	getSession          *importrepo.UploadSession
+	abortSession        *importrepo.UploadSession
 	lastInit            importrepo.InitUploadSessionParams
 	completeSession     *importrepo.UploadSession
 	lastMarkCompletedID uuid.UUID
@@ -261,6 +490,9 @@ func (s *fakeUploadStore) MarkCompleted(_ context.Context, id uuid.UUID) (*impor
 }
 
 func (s *fakeUploadStore) Abort(_ context.Context, _ uuid.UUID) (*importrepo.UploadSession, error) {
+	if s.abortSession != nil {
+		return s.abortSession, nil
+	}
 	return s.getSession, nil
 }
 
@@ -296,8 +528,9 @@ func (fakeExecuteUseCase) Execute(context.Context, importapp.ExecuteProjectAnnot
 }
 
 type fakeObjectProvider struct {
-	putURL string
-	stat   *storage.ObjectStat
+	putURL     string
+	stat       *storage.ObjectStat
+	signPutErr error
 
 	lastSignPutObjectKey string
 	lastStatObjectKey    string
@@ -307,6 +540,9 @@ func (p *fakeObjectProvider) Bucket() string { return "imports" }
 
 func (p *fakeObjectProvider) SignPutObject(_ context.Context, objectKey string, _ time.Duration, _ string) (string, error) {
 	p.lastSignPutObjectKey = objectKey
+	if p.signPutErr != nil {
+		return "", p.signPutErr
+	}
 	if p.putURL == "" {
 		return "http://object.test/" + objectKey, nil
 	}

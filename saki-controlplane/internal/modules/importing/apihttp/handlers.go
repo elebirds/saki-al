@@ -143,6 +143,9 @@ func (h *Handlers) CompleteImportUploadSession(ctx context.Context, req *openapi
 	if err != nil {
 		return nil, err
 	}
+	if session.Status != "initiated" {
+		return nil, badRequest("上传会话状态不允许 complete")
+	}
 	info, err := h.provider.StatObject(ctx, session.ObjectKey)
 	if err != nil {
 		if errors.Is(err, storage.ErrObjectNotFound) {
@@ -157,7 +160,11 @@ func (h *Handlers) CompleteImportUploadSession(ctx context.Context, req *openapi
 	if err != nil {
 		return nil, err
 	}
-	return h.toOpenAPIUploadSession(ctx, session), nil
+	resp, err := h.toOpenAPIUploadSession(ctx, session)
+	if err != nil {
+		return nil, err
+	}
+	return resp, nil
 }
 
 func (h *Handlers) AbortImportUploadSession(ctx context.Context, params openapi.AbortImportUploadSessionParams) (*openapi.ImportUploadAbortResponse, error) {
@@ -186,7 +193,11 @@ func (h *Handlers) GetImportUploadSession(ctx context.Context, params openapi.Ge
 	if err != nil {
 		return nil, err
 	}
-	return h.toOpenAPIUploadSession(ctx, session), nil
+	resp, err := h.toOpenAPIUploadSession(ctx, session)
+	if err != nil {
+		return nil, err
+	}
+	return resp, nil
 }
 
 func (h *Handlers) PrepareProjectAnnotationImport(ctx context.Context, req *openapi.PrepareProjectAnnotationImportRequest, params openapi.PrepareProjectAnnotationImportParams) (*openapi.PrepareProjectAnnotationImportResponse, error) {
@@ -402,9 +413,13 @@ func toOpenAPIIssues(issues []importapp.PrepareIssue) []openapi.ImportIssue {
 	return result
 }
 
-func (h *Handlers) toOpenAPIUploadSession(ctx context.Context, session *importrepo.UploadSession) *openapi.ImportUploadSession {
+func (h *Handlers) toOpenAPIUploadSession(ctx context.Context, session *importrepo.UploadSession) (*openapi.ImportUploadSession, error) {
 	putURL := ""
-	if signed, err := h.provider.SignPutObject(ctx, session.ObjectKey, h.uploadExpiry, session.ContentType); err == nil {
+	if session.Status == "initiated" {
+		signed, err := h.provider.SignPutObject(ctx, session.ObjectKey, h.uploadExpiry, session.ContentType)
+		if err != nil {
+			return nil, err
+		}
 		putURL = signed
 	}
 	response := &openapi.ImportUploadSession{
@@ -423,7 +438,7 @@ func (h *Handlers) toOpenAPIUploadSession(ctx context.Context, session *importre
 	if session.AbortedAt != nil {
 		response.AbortedAt.SetTo(*session.AbortedAt)
 	}
-	return response
+	return response, nil
 }
 
 func toOpenAPITaskCreate(task *importrepo.ImportTask) *openapi.ImportTaskCreateResponse {

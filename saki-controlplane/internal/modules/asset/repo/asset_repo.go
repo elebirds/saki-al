@@ -91,7 +91,7 @@ func (r *AssetRepo) CreatePending(ctx context.Context, params CreatePendingParam
 	if err != nil {
 		return nil, err
 	}
-	return fromCreatePendingAssetRow(row), nil
+	return fromAssetRow(row), nil
 }
 
 func (r *AssetRepo) Get(ctx context.Context, id uuid.UUID) (*Asset, error) {
@@ -102,7 +102,7 @@ func (r *AssetRepo) Get(ctx context.Context, id uuid.UUID) (*Asset, error) {
 		}
 		return nil, err
 	}
-	return fromGetAssetRow(row), nil
+	return fromAssetRow(row), nil
 }
 
 func (r *AssetRepo) GetByStorageLocation(ctx context.Context, bucket string, objectKey string) (*Asset, error) {
@@ -116,7 +116,7 @@ func (r *AssetRepo) GetByStorageLocation(ctx context.Context, bucket string, obj
 		}
 		return nil, err
 	}
-	return fromGetAssetByStorageLocationRow(row), nil
+	return fromAssetRow(row), nil
 }
 
 func (r *AssetRepo) MarkReady(ctx context.Context, params MarkReadyParams) (*Asset, error) {
@@ -132,7 +132,7 @@ func (r *AssetRepo) MarkReady(ctx context.Context, params MarkReadyParams) (*Ass
 		}
 		return nil, err
 	}
-	return fromMarkAssetReadyRow(row), nil
+	return fromAssetRow(row), nil
 }
 
 func (r *AssetRepo) ListStalePending(ctx context.Context, params ListStalePendingAssetsParams) ([]Asset, error) {
@@ -146,7 +146,7 @@ func (r *AssetRepo) ListStalePending(ctx context.Context, params ListStalePendin
 
 	assets := make([]Asset, 0, len(rows))
 	for _, row := range rows {
-		assets = append(assets, *fromListStalePendingAssetsRow(row))
+		assets = append(assets, *fromAssetRow(row))
 	}
 	return assets, nil
 }
@@ -159,7 +159,7 @@ func (r *AssetRepo) ListReadyOrphaned(ctx context.Context, params ListReadyOrpha
 
 	assets := make([]Asset, 0, len(rows))
 	for _, row := range rows {
-		assets = append(assets, *fromListReadyOrphanedAssetsRow(row))
+		assets = append(assets, *fromAssetRow(row))
 	}
 	return assets, nil
 }
@@ -175,7 +175,7 @@ func (r *AssetRepo) GetReadyOrphanedForUpdate(ctx context.Context, params GetRea
 		}
 		return nil, err
 	}
-	return fromGetReadyOrphanedAssetForUpdateRow(row), nil
+	return fromAssetRow(row), nil
 }
 
 func (r *AssetRepo) Delete(ctx context.Context, id uuid.UUID) (bool, error) {
@@ -186,127 +186,7 @@ func (r *AssetRepo) Delete(ctx context.Context, id uuid.UUID) (bool, error) {
 	return rows > 0, nil
 }
 
-func fromCreatePendingAssetRow(row sqlcdb.CreatePendingAssetRow) *Asset {
-	return newAssetFromFields(
-		row.ID,
-		row.Kind,
-		row.Status,
-		row.StorageBackend,
-		row.Bucket,
-		row.ObjectKey,
-		row.ContentType,
-		row.SizeBytes,
-		row.Sha256Hex,
-		row.Metadata,
-		row.CreatedBy,
-		row.ReadyAt,
-		row.OrphanedAt,
-		row.CreatedAt,
-		row.UpdatedAt,
-	)
-}
-
-func fromGetAssetRow(row sqlcdb.GetAssetRow) *Asset {
-	return newAssetFromFields(
-		row.ID,
-		row.Kind,
-		row.Status,
-		row.StorageBackend,
-		row.Bucket,
-		row.ObjectKey,
-		row.ContentType,
-		row.SizeBytes,
-		row.Sha256Hex,
-		row.Metadata,
-		row.CreatedBy,
-		row.ReadyAt,
-		row.OrphanedAt,
-		row.CreatedAt,
-		row.UpdatedAt,
-	)
-}
-
-func fromGetAssetByStorageLocationRow(row sqlcdb.GetAssetByStorageLocationRow) *Asset {
-	return newAssetFromFields(
-		row.ID,
-		row.Kind,
-		row.Status,
-		row.StorageBackend,
-		row.Bucket,
-		row.ObjectKey,
-		row.ContentType,
-		row.SizeBytes,
-		row.Sha256Hex,
-		row.Metadata,
-		row.CreatedBy,
-		row.ReadyAt,
-		row.OrphanedAt,
-		row.CreatedAt,
-		row.UpdatedAt,
-	)
-}
-
-func fromMarkAssetReadyRow(row sqlcdb.MarkAssetReadyRow) *Asset {
-	return newAssetFromFields(
-		row.ID,
-		row.Kind,
-		row.Status,
-		row.StorageBackend,
-		row.Bucket,
-		row.ObjectKey,
-		row.ContentType,
-		row.SizeBytes,
-		row.Sha256Hex,
-		row.Metadata,
-		row.CreatedBy,
-		row.ReadyAt,
-		row.OrphanedAt,
-		row.CreatedAt,
-		row.UpdatedAt,
-	)
-}
-
-func fromListStalePendingAssetsRow(row sqlcdb.ListStalePendingAssetsRow) *Asset {
-	return newAssetFromFields(
-		row.ID,
-		row.Kind,
-		row.Status,
-		row.StorageBackend,
-		row.Bucket,
-		row.ObjectKey,
-		row.ContentType,
-		row.SizeBytes,
-		row.Sha256Hex,
-		row.Metadata,
-		row.CreatedBy,
-		row.ReadyAt,
-		row.OrphanedAt,
-		row.CreatedAt,
-		row.UpdatedAt,
-	)
-}
-
-func fromListReadyOrphanedAssetsRow(row sqlcdb.ListReadyOrphanedAssetsRow) *Asset {
-	return newAssetFromFields(
-		row.ID,
-		row.Kind,
-		row.Status,
-		row.StorageBackend,
-		row.Bucket,
-		row.ObjectKey,
-		row.ContentType,
-		row.SizeBytes,
-		row.Sha256Hex,
-		row.Metadata,
-		row.CreatedBy,
-		row.ReadyAt,
-		row.OrphanedAt,
-		row.CreatedAt,
-		row.UpdatedAt,
-	)
-}
-
-func fromGetReadyOrphanedAssetForUpdateRow(row sqlcdb.GetReadyOrphanedAssetForUpdateRow) *Asset {
+func fromAssetRow(row sqlcdb.Asset) *Asset {
 	return newAssetFromFields(
 		row.ID,
 		row.Kind,

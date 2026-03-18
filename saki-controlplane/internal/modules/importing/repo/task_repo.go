@@ -105,7 +105,7 @@ func (r *TaskRepo) AppendEvent(ctx context.Context, params AppendTaskEventParams
 	row, err := r.q.AppendImportTaskEvent(ctx, sqlcdb.AppendImportTaskEventParams{
 		TaskID:  params.TaskID,
 		Event:   params.Event,
-		Phase:   params.Phase,
+		Phase:   importTaskEventPhase(params.Phase),
 		Payload: params.Payload,
 	})
 	if err != nil {
@@ -115,7 +115,7 @@ func (r *TaskRepo) AppendEvent(ctx context.Context, params AppendTaskEventParams
 		Seq:       row.Seq,
 		TaskID:    row.TaskID,
 		Event:     row.Event,
-		Phase:     row.Phase,
+		Phase:     string(row.Phase),
 		Payload:   row.Payload,
 		CreatedAt: row.CreatedAt.Time,
 	}, nil
@@ -136,7 +136,7 @@ func (r *TaskRepo) ListEventsAfter(ctx context.Context, taskID uuid.UUID, afterS
 			Seq:       row.Seq,
 			TaskID:    row.TaskID,
 			Event:     row.Event,
-			Phase:     row.Phase,
+			Phase:     string(row.Phase),
 			Payload:   row.Payload,
 			CreatedAt: row.CreatedAt.Time,
 		})
@@ -151,10 +151,14 @@ func mapImportTask(row sqlcdb.ImportTask) *ImportTask {
 		Mode:         row.Mode,
 		ResourceType: row.ResourceType,
 		ResourceID:   row.ResourceID,
-		Status:       row.Status,
+		Status:       string(row.Status),
 		Payload:      row.Payload,
 		Result:       row.Result,
 		CreatedAt:    row.CreatedAt.Time,
 		UpdatedAt:    row.UpdatedAt.Time,
 	}
+}
+
+func importTaskEventPhase(phase string) sqlcdb.ImportTaskEventPhase {
+	return sqlcdb.ImportTaskEventPhase(phase)
 }

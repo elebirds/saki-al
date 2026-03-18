@@ -77,9 +77,9 @@ func (r *TaskRepo) GetTask(ctx context.Context, taskID uuid.UUID) (*commands.Tas
 
 	return &commands.TaskRecord{
 		ID:                 row.ID,
-		TaskKind:           row.TaskKind,
+		TaskKind:           string(row.TaskKind),
 		TaskType:           row.TaskType,
-		Status:             row.Status,
+		Status:             string(row.Status),
 		CurrentExecutionID: textValue(row.CurrentExecutionID),
 		AssignedAgentID:    textValue(row.AssignedAgentID),
 		Attempt:            row.Attempt,
@@ -92,10 +92,10 @@ func (r *TaskRepo) GetTask(ctx context.Context, taskID uuid.UUID) (*commands.Tas
 
 func (r *TaskRepo) AdvanceTaskByExecution(ctx context.Context, params commands.AdvanceTaskByExecutionParams) (*commands.TaskRecord, error) {
 	row, err := r.q.AdvanceRuntimeTaskByExecution(ctx, sqlcdb.AdvanceRuntimeTaskByExecutionParams{
-		ToStatus:     params.ToStatus,
+		ToStatus:     runtimeTaskStatus(params.ToStatus),
 		ID:           params.ID,
 		ExecutionID:  nullableText(params.ExecutionID),
-		FromStatuses: append([]string(nil), params.FromStatuses...),
+		FromStatuses: runtimeTaskStatuses(params.FromStatuses),
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -106,9 +106,9 @@ func (r *TaskRepo) AdvanceTaskByExecution(ctx context.Context, params commands.A
 
 	return &commands.TaskRecord{
 		ID:                 row.ID,
-		TaskKind:           row.TaskKind,
+		TaskKind:           string(row.TaskKind),
 		TaskType:           row.TaskType,
-		Status:             row.Status,
+		Status:             string(row.Status),
 		CurrentExecutionID: textValue(row.CurrentExecutionID),
 		AssignedAgentID:    textValue(row.AssignedAgentID),
 		Attempt:            row.Attempt,
@@ -122,7 +122,7 @@ func (r *TaskRepo) AdvanceTaskByExecution(ctx context.Context, params commands.A
 func (r *TaskRepo) UpdateTask(ctx context.Context, update commands.TaskUpdate) error {
 	return r.q.UpdateRuntimeTask(ctx, sqlcdb.UpdateRuntimeTaskParams{
 		ID:              update.ID,
-		Status:          update.Status,
+		Status:          runtimeTaskStatus(update.Status),
 		AssignedAgentID: nullableText(update.AssignedAgentID),
 		LeaderEpoch:     nullableInt64(update.LeaderEpoch),
 	})
@@ -169,19 +169,31 @@ func nullableInt64(value int64) pgtype.Int8 {
 	return pgtype.Int8{Int64: value, Valid: true}
 }
 
-func taskKindOrDefault(taskKind string) string {
+func taskKindOrDefault(taskKind string) sqlcdb.RuntimeTaskKind {
 	if taskKind == "" {
-		return "PREDICTION"
+		return sqlcdb.RuntimeTaskKindPREDICTION
 	}
-	return taskKind
+	return sqlcdb.RuntimeTaskKind(taskKind)
+}
+
+func runtimeTaskStatus(status string) sqlcdb.RuntimeTaskStatus {
+	return sqlcdb.RuntimeTaskStatus(status)
+}
+
+func runtimeTaskStatuses(statuses []string) []sqlcdb.RuntimeTaskStatus {
+	items := make([]sqlcdb.RuntimeTaskStatus, 0, len(statuses))
+	for _, status := range statuses {
+		items = append(items, runtimeTaskStatus(status))
+	}
+	return items
 }
 
 func claimedTaskFromAssignedRow(row sqlcdb.AssignPendingTaskRow) *commands.ClaimedTask {
 	return &commands.ClaimedTask{
 		ID:                 row.ID,
-		TaskKind:           row.TaskKind,
+		TaskKind:           string(row.TaskKind),
 		TaskType:           row.TaskType,
-		Status:             row.Status,
+		Status:             string(row.Status),
 		CurrentExecutionID: textValue(row.CurrentExecutionID),
 		AssignedAgentID:    textValue(row.AssignedAgentID),
 		Attempt:            row.Attempt,

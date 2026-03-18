@@ -45,25 +45,7 @@ type CreatePendingAssetParams struct {
 	CreatedBy      pgtype.UUID         `json:"created_by"`
 }
 
-type CreatePendingAssetRow struct {
-	ID             uuid.UUID           `json:"id"`
-	Kind           AssetKind           `json:"kind"`
-	Status         AssetStatus         `json:"status"`
-	StorageBackend AssetStorageBackend `json:"storage_backend"`
-	Bucket         string              `json:"bucket"`
-	ObjectKey      string              `json:"object_key"`
-	ContentType    string              `json:"content_type"`
-	SizeBytes      int64               `json:"size_bytes"`
-	Sha256Hex      pgtype.Text         `json:"sha256_hex"`
-	Metadata       []byte              `json:"metadata"`
-	CreatedBy      pgtype.UUID         `json:"created_by"`
-	ReadyAt        pgtype.Timestamptz  `json:"ready_at"`
-	OrphanedAt     pgtype.Timestamptz  `json:"orphaned_at"`
-	CreatedAt      pgtype.Timestamptz  `json:"created_at"`
-	UpdatedAt      pgtype.Timestamptz  `json:"updated_at"`
-}
-
-func (q *Queries) CreatePendingAsset(ctx context.Context, arg CreatePendingAssetParams) (CreatePendingAssetRow, error) {
+func (q *Queries) CreatePendingAsset(ctx context.Context, arg CreatePendingAssetParams) (Asset, error) {
 	row := q.db.QueryRow(ctx, createPendingAsset,
 		arg.Kind,
 		arg.StorageBackend,
@@ -73,7 +55,7 @@ func (q *Queries) CreatePendingAsset(ctx context.Context, arg CreatePendingAsset
 		arg.Metadata,
 		arg.CreatedBy,
 	)
-	var i CreatePendingAssetRow
+	var i Asset
 	err := row.Scan(
 		&i.ID,
 		&i.Kind,
@@ -113,27 +95,9 @@ from asset
 where id = $1
 `
 
-type GetAssetRow struct {
-	ID             uuid.UUID           `json:"id"`
-	Kind           AssetKind           `json:"kind"`
-	Status         AssetStatus         `json:"status"`
-	StorageBackend AssetStorageBackend `json:"storage_backend"`
-	Bucket         string              `json:"bucket"`
-	ObjectKey      string              `json:"object_key"`
-	ContentType    string              `json:"content_type"`
-	SizeBytes      int64               `json:"size_bytes"`
-	Sha256Hex      pgtype.Text         `json:"sha256_hex"`
-	Metadata       []byte              `json:"metadata"`
-	CreatedBy      pgtype.UUID         `json:"created_by"`
-	ReadyAt        pgtype.Timestamptz  `json:"ready_at"`
-	OrphanedAt     pgtype.Timestamptz  `json:"orphaned_at"`
-	CreatedAt      pgtype.Timestamptz  `json:"created_at"`
-	UpdatedAt      pgtype.Timestamptz  `json:"updated_at"`
-}
-
-func (q *Queries) GetAsset(ctx context.Context, id uuid.UUID) (GetAssetRow, error) {
+func (q *Queries) GetAsset(ctx context.Context, id uuid.UUID) (Asset, error) {
 	row := q.db.QueryRow(ctx, getAsset, id)
-	var i GetAssetRow
+	var i Asset
 	err := row.Scan(
 		&i.ID,
 		&i.Kind,
@@ -166,27 +130,9 @@ type GetAssetByStorageLocationParams struct {
 	ObjectKey string `json:"object_key"`
 }
 
-type GetAssetByStorageLocationRow struct {
-	ID             uuid.UUID           `json:"id"`
-	Kind           AssetKind           `json:"kind"`
-	Status         AssetStatus         `json:"status"`
-	StorageBackend AssetStorageBackend `json:"storage_backend"`
-	Bucket         string              `json:"bucket"`
-	ObjectKey      string              `json:"object_key"`
-	ContentType    string              `json:"content_type"`
-	SizeBytes      int64               `json:"size_bytes"`
-	Sha256Hex      pgtype.Text         `json:"sha256_hex"`
-	Metadata       []byte              `json:"metadata"`
-	CreatedBy      pgtype.UUID         `json:"created_by"`
-	ReadyAt        pgtype.Timestamptz  `json:"ready_at"`
-	OrphanedAt     pgtype.Timestamptz  `json:"orphaned_at"`
-	CreatedAt      pgtype.Timestamptz  `json:"created_at"`
-	UpdatedAt      pgtype.Timestamptz  `json:"updated_at"`
-}
-
-func (q *Queries) GetAssetByStorageLocation(ctx context.Context, arg GetAssetByStorageLocationParams) (GetAssetByStorageLocationRow, error) {
+func (q *Queries) GetAssetByStorageLocation(ctx context.Context, arg GetAssetByStorageLocationParams) (Asset, error) {
 	row := q.db.QueryRow(ctx, getAssetByStorageLocation, arg.Bucket, arg.ObjectKey)
-	var i GetAssetByStorageLocationRow
+	var i Asset
 	err := row.Scan(
 		&i.ID,
 		&i.Kind,
@@ -228,27 +174,9 @@ type GetReadyOrphanedAssetForUpdateParams struct {
 	Cutoff pgtype.Timestamptz `json:"cutoff"`
 }
 
-type GetReadyOrphanedAssetForUpdateRow struct {
-	ID             uuid.UUID           `json:"id"`
-	Kind           AssetKind           `json:"kind"`
-	Status         AssetStatus         `json:"status"`
-	StorageBackend AssetStorageBackend `json:"storage_backend"`
-	Bucket         string              `json:"bucket"`
-	ObjectKey      string              `json:"object_key"`
-	ContentType    string              `json:"content_type"`
-	SizeBytes      int64               `json:"size_bytes"`
-	Sha256Hex      pgtype.Text         `json:"sha256_hex"`
-	Metadata       []byte              `json:"metadata"`
-	CreatedBy      pgtype.UUID         `json:"created_by"`
-	ReadyAt        pgtype.Timestamptz  `json:"ready_at"`
-	OrphanedAt     pgtype.Timestamptz  `json:"orphaned_at"`
-	CreatedAt      pgtype.Timestamptz  `json:"created_at"`
-	UpdatedAt      pgtype.Timestamptz  `json:"updated_at"`
-}
-
-func (q *Queries) GetReadyOrphanedAssetForUpdate(ctx context.Context, arg GetReadyOrphanedAssetForUpdateParams) (GetReadyOrphanedAssetForUpdateRow, error) {
+func (q *Queries) GetReadyOrphanedAssetForUpdate(ctx context.Context, arg GetReadyOrphanedAssetForUpdateParams) (Asset, error) {
 	row := q.db.QueryRow(ctx, getReadyOrphanedAssetForUpdate, arg.ID, arg.Cutoff)
-	var i GetReadyOrphanedAssetForUpdateRow
+	var i Asset
 	err := row.Scan(
 		&i.ID,
 		&i.Kind,
@@ -284,33 +212,15 @@ where a.status = 'ready'
 order by a.orphaned_at, a.id
 `
 
-type ListReadyOrphanedAssetsRow struct {
-	ID             uuid.UUID           `json:"id"`
-	Kind           AssetKind           `json:"kind"`
-	Status         AssetStatus         `json:"status"`
-	StorageBackend AssetStorageBackend `json:"storage_backend"`
-	Bucket         string              `json:"bucket"`
-	ObjectKey      string              `json:"object_key"`
-	ContentType    string              `json:"content_type"`
-	SizeBytes      int64               `json:"size_bytes"`
-	Sha256Hex      pgtype.Text         `json:"sha256_hex"`
-	Metadata       []byte              `json:"metadata"`
-	CreatedBy      pgtype.UUID         `json:"created_by"`
-	ReadyAt        pgtype.Timestamptz  `json:"ready_at"`
-	OrphanedAt     pgtype.Timestamptz  `json:"orphaned_at"`
-	CreatedAt      pgtype.Timestamptz  `json:"created_at"`
-	UpdatedAt      pgtype.Timestamptz  `json:"updated_at"`
-}
-
-func (q *Queries) ListReadyOrphanedAssets(ctx context.Context, cutoff pgtype.Timestamptz) ([]ListReadyOrphanedAssetsRow, error) {
+func (q *Queries) ListReadyOrphanedAssets(ctx context.Context, cutoff pgtype.Timestamptz) ([]Asset, error) {
 	rows, err := q.db.Query(ctx, listReadyOrphanedAssets, cutoff)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListReadyOrphanedAssetsRow
+	var items []Asset
 	for rows.Next() {
-		var i ListReadyOrphanedAssetsRow
+		var i Asset
 		if err := rows.Scan(
 			&i.ID,
 			&i.Kind,
@@ -364,33 +274,15 @@ type ListStalePendingAssetsParams struct {
 	Now    pgtype.Timestamptz `json:"now"`
 }
 
-type ListStalePendingAssetsRow struct {
-	ID             uuid.UUID           `json:"id"`
-	Kind           AssetKind           `json:"kind"`
-	Status         AssetStatus         `json:"status"`
-	StorageBackend AssetStorageBackend `json:"storage_backend"`
-	Bucket         string              `json:"bucket"`
-	ObjectKey      string              `json:"object_key"`
-	ContentType    string              `json:"content_type"`
-	SizeBytes      int64               `json:"size_bytes"`
-	Sha256Hex      pgtype.Text         `json:"sha256_hex"`
-	Metadata       []byte              `json:"metadata"`
-	CreatedBy      pgtype.UUID         `json:"created_by"`
-	ReadyAt        pgtype.Timestamptz  `json:"ready_at"`
-	OrphanedAt     pgtype.Timestamptz  `json:"orphaned_at"`
-	CreatedAt      pgtype.Timestamptz  `json:"created_at"`
-	UpdatedAt      pgtype.Timestamptz  `json:"updated_at"`
-}
-
-func (q *Queries) ListStalePendingAssets(ctx context.Context, arg ListStalePendingAssetsParams) ([]ListStalePendingAssetsRow, error) {
+func (q *Queries) ListStalePendingAssets(ctx context.Context, arg ListStalePendingAssetsParams) ([]Asset, error) {
 	rows, err := q.db.Query(ctx, listStalePendingAssets, arg.Cutoff, arg.Now)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListStalePendingAssetsRow
+	var items []Asset
 	for rows.Next() {
-		var i ListStalePendingAssetsRow
+		var i Asset
 		if err := rows.Scan(
 			&i.ID,
 			&i.Kind,
@@ -439,32 +331,14 @@ type MarkAssetReadyParams struct {
 	ID          uuid.UUID   `json:"id"`
 }
 
-type MarkAssetReadyRow struct {
-	ID             uuid.UUID           `json:"id"`
-	Kind           AssetKind           `json:"kind"`
-	Status         AssetStatus         `json:"status"`
-	StorageBackend AssetStorageBackend `json:"storage_backend"`
-	Bucket         string              `json:"bucket"`
-	ObjectKey      string              `json:"object_key"`
-	ContentType    string              `json:"content_type"`
-	SizeBytes      int64               `json:"size_bytes"`
-	Sha256Hex      pgtype.Text         `json:"sha256_hex"`
-	Metadata       []byte              `json:"metadata"`
-	CreatedBy      pgtype.UUID         `json:"created_by"`
-	ReadyAt        pgtype.Timestamptz  `json:"ready_at"`
-	OrphanedAt     pgtype.Timestamptz  `json:"orphaned_at"`
-	CreatedAt      pgtype.Timestamptz  `json:"created_at"`
-	UpdatedAt      pgtype.Timestamptz  `json:"updated_at"`
-}
-
-func (q *Queries) MarkAssetReady(ctx context.Context, arg MarkAssetReadyParams) (MarkAssetReadyRow, error) {
+func (q *Queries) MarkAssetReady(ctx context.Context, arg MarkAssetReadyParams) (Asset, error) {
 	row := q.db.QueryRow(ctx, markAssetReady,
 		arg.SizeBytes,
 		arg.Sha256Hex,
 		arg.ContentType,
 		arg.ID,
 	)
-	var i MarkAssetReadyRow
+	var i Asset
 	err := row.Scan(
 		&i.ID,
 		&i.Kind,

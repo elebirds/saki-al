@@ -30,14 +30,14 @@ type UpsertBootstrapPrincipalParams struct {
 }
 
 type PrincipalRepo struct {
-	q    *sqlcdb.Queries
-	tx   *appdb.TxRunner
+	q  *sqlcdb.Queries
+	tx *appdb.TxRunner
 }
 
 func NewPrincipalRepo(pool *pgxpool.Pool) *PrincipalRepo {
 	return &PrincipalRepo{
-		q:    sqlcdb.New(pool),
-		tx:   appdb.NewTxRunner(pool),
+		q:  sqlcdb.New(pool),
+		tx: appdb.NewTxRunner(pool),
 	}
 }
 
@@ -114,7 +114,7 @@ func mapPrincipal(row sqlcdb.AccessPrincipal) *Principal {
 		SubjectType: row.SubjectType,
 		SubjectKey:  row.SubjectKey,
 		DisplayName: row.DisplayName,
-		Status:      row.Status,
+		Status:      string(row.Status),
 		CreatedAt:   row.CreatedAt.Time,
 		UpdatedAt:   row.UpdatedAt.Time,
 	}

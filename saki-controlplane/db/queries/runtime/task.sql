@@ -80,7 +80,7 @@ set status = sqlc.arg(to_status),
     updated_at = now()
 where id = sqlc.arg(id)
   and current_execution_id = sqlc.arg(execution_id)
-  and status = any(sqlc.arg(from_statuses)::text[])
+  and status = any(sqlc.arg(from_statuses)::runtime_task_status[])
 returning
     id,
     task_kind,

@@ -12,6 +12,48 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AccessPrincipalStatus string
+
+const (
+	AccessPrincipalStatusActive   AccessPrincipalStatus = "active"
+	AccessPrincipalStatusDisabled AccessPrincipalStatus = "disabled"
+)
+
+func (e *AccessPrincipalStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = AccessPrincipalStatus(s)
+	case string:
+		*e = AccessPrincipalStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for AccessPrincipalStatus: %T", src)
+	}
+	return nil
+}
+
+type NullAccessPrincipalStatus struct {
+	AccessPrincipalStatus AccessPrincipalStatus `json:"access_principal_status"`
+	Valid                 bool                  `json:"valid"` // Valid is true if AccessPrincipalStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullAccessPrincipalStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.AccessPrincipalStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.AccessPrincipalStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullAccessPrincipalStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.AccessPrincipalStatus), nil
+}
+
 type AssetKind string
 
 const (
@@ -310,6 +352,265 @@ func (ns NullAssetUploadIntentState) Value() (driver.Value, error) {
 	return string(ns.AssetUploadIntentState), nil
 }
 
+type ImportTaskEventPhase string
+
+const (
+	ImportTaskEventPhasePrepare                   ImportTaskEventPhase = "prepare"
+	ImportTaskEventPhaseProjectAnnotationsExecute ImportTaskEventPhase = "project_annotations_execute"
+	ImportTaskEventPhaseApplyAnnotations          ImportTaskEventPhase = "apply_annotations"
+)
+
+func (e *ImportTaskEventPhase) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ImportTaskEventPhase(s)
+	case string:
+		*e = ImportTaskEventPhase(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ImportTaskEventPhase: %T", src)
+	}
+	return nil
+}
+
+type NullImportTaskEventPhase struct {
+	ImportTaskEventPhase ImportTaskEventPhase `json:"import_task_event_phase"`
+	Valid                bool                 `json:"valid"` // Valid is true if ImportTaskEventPhase is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullImportTaskEventPhase) Scan(value interface{}) error {
+	if value == nil {
+		ns.ImportTaskEventPhase, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ImportTaskEventPhase.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullImportTaskEventPhase) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ImportTaskEventPhase), nil
+}
+
+type ImportTaskStatus string
+
+const (
+	ImportTaskStatusQueued    ImportTaskStatus = "queued"
+	ImportTaskStatusRunning   ImportTaskStatus = "running"
+	ImportTaskStatusCompleted ImportTaskStatus = "completed"
+	ImportTaskStatusFailed    ImportTaskStatus = "failed"
+)
+
+func (e *ImportTaskStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ImportTaskStatus(s)
+	case string:
+		*e = ImportTaskStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ImportTaskStatus: %T", src)
+	}
+	return nil
+}
+
+type NullImportTaskStatus struct {
+	ImportTaskStatus ImportTaskStatus `json:"import_task_status"`
+	Valid            bool             `json:"valid"` // Valid is true if ImportTaskStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullImportTaskStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.ImportTaskStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ImportTaskStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullImportTaskStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ImportTaskStatus), nil
+}
+
+type ImportUploadSessionStatus string
+
+const (
+	ImportUploadSessionStatusInitiated ImportUploadSessionStatus = "initiated"
+	ImportUploadSessionStatusCompleted ImportUploadSessionStatus = "completed"
+	ImportUploadSessionStatusAborted   ImportUploadSessionStatus = "aborted"
+)
+
+func (e *ImportUploadSessionStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ImportUploadSessionStatus(s)
+	case string:
+		*e = ImportUploadSessionStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ImportUploadSessionStatus: %T", src)
+	}
+	return nil
+}
+
+type NullImportUploadSessionStatus struct {
+	ImportUploadSessionStatus ImportUploadSessionStatus `json:"import_upload_session_status"`
+	Valid                     bool                      `json:"valid"` // Valid is true if ImportUploadSessionStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullImportUploadSessionStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.ImportUploadSessionStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ImportUploadSessionStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullImportUploadSessionStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ImportUploadSessionStatus), nil
+}
+
+type RuntimeExecutorStatus string
+
+const (
+	RuntimeExecutorStatusOnline RuntimeExecutorStatus = "online"
+)
+
+func (e *RuntimeExecutorStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = RuntimeExecutorStatus(s)
+	case string:
+		*e = RuntimeExecutorStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for RuntimeExecutorStatus: %T", src)
+	}
+	return nil
+}
+
+type NullRuntimeExecutorStatus struct {
+	RuntimeExecutorStatus RuntimeExecutorStatus `json:"runtime_executor_status"`
+	Valid                 bool                  `json:"valid"` // Valid is true if RuntimeExecutorStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullRuntimeExecutorStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.RuntimeExecutorStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.RuntimeExecutorStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullRuntimeExecutorStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.RuntimeExecutorStatus), nil
+}
+
+type RuntimeTaskKind string
+
+const (
+	RuntimeTaskKindPREDICTION RuntimeTaskKind = "PREDICTION"
+)
+
+func (e *RuntimeTaskKind) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = RuntimeTaskKind(s)
+	case string:
+		*e = RuntimeTaskKind(s)
+	default:
+		return fmt.Errorf("unsupported scan type for RuntimeTaskKind: %T", src)
+	}
+	return nil
+}
+
+type NullRuntimeTaskKind struct {
+	RuntimeTaskKind RuntimeTaskKind `json:"runtime_task_kind"`
+	Valid           bool            `json:"valid"` // Valid is true if RuntimeTaskKind is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullRuntimeTaskKind) Scan(value interface{}) error {
+	if value == nil {
+		ns.RuntimeTaskKind, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.RuntimeTaskKind.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullRuntimeTaskKind) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.RuntimeTaskKind), nil
+}
+
+type RuntimeTaskStatus string
+
+const (
+	RuntimeTaskStatusPending         RuntimeTaskStatus = "pending"
+	RuntimeTaskStatusAssigned        RuntimeTaskStatus = "assigned"
+	RuntimeTaskStatusRunning         RuntimeTaskStatus = "running"
+	RuntimeTaskStatusCancelRequested RuntimeTaskStatus = "cancel_requested"
+	RuntimeTaskStatusSucceeded       RuntimeTaskStatus = "succeeded"
+	RuntimeTaskStatusFailed          RuntimeTaskStatus = "failed"
+	RuntimeTaskStatusCanceled        RuntimeTaskStatus = "canceled"
+)
+
+func (e *RuntimeTaskStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = RuntimeTaskStatus(s)
+	case string:
+		*e = RuntimeTaskStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for RuntimeTaskStatus: %T", src)
+	}
+	return nil
+}
+
+type NullRuntimeTaskStatus struct {
+	RuntimeTaskStatus RuntimeTaskStatus `json:"runtime_task_status"`
+	Valid             bool              `json:"valid"` // Valid is true if RuntimeTaskStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullRuntimeTaskStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.RuntimeTaskStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.RuntimeTaskStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullRuntimeTaskStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.RuntimeTaskStatus), nil
+}
+
 type AccessPermissionGrant struct {
 	PrincipalID uuid.UUID          `json:"principal_id"`
 	Permission  string             `json:"permission"`
@@ -317,13 +618,13 @@ type AccessPermissionGrant struct {
 }
 
 type AccessPrincipal struct {
-	ID          uuid.UUID          `json:"id"`
-	SubjectType string             `json:"subject_type"`
-	SubjectKey  string             `json:"subject_key"`
-	DisplayName string             `json:"display_name"`
-	Status      string             `json:"status"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	ID          uuid.UUID             `json:"id"`
+	SubjectType string                `json:"subject_type"`
+	SubjectKey  string                `json:"subject_key"`
+	DisplayName string                `json:"display_name"`
+	Status      AccessPrincipalStatus `json:"status"`
+	CreatedAt   pgtype.Timestamptz    `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz    `json:"updated_at"`
 }
 
 type Annotation struct {
@@ -353,10 +654,10 @@ type Asset struct {
 	Sha256Hex      pgtype.Text         `json:"sha256_hex"`
 	Metadata       []byte              `json:"metadata"`
 	CreatedBy      pgtype.UUID         `json:"created_by"`
-	CreatedAt      pgtype.Timestamptz  `json:"created_at"`
-	UpdatedAt      pgtype.Timestamptz  `json:"updated_at"`
 	ReadyAt        pgtype.Timestamptz  `json:"ready_at"`
 	OrphanedAt     pgtype.Timestamptz  `json:"orphaned_at"`
+	CreatedAt      pgtype.Timestamptz  `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz  `json:"updated_at"`
 }
 
 type AssetReference struct {
@@ -417,7 +718,7 @@ type ImportTask struct {
 	Mode         string             `json:"mode"`
 	ResourceType string             `json:"resource_type"`
 	ResourceID   uuid.UUID          `json:"resource_id"`
-	Status       string             `json:"status"`
+	Status       ImportTaskStatus   `json:"status"`
 	Payload      []byte             `json:"payload"`
 	Result       []byte             `json:"result"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
@@ -425,26 +726,26 @@ type ImportTask struct {
 }
 
 type ImportTaskEvent struct {
-	Seq       int64              `json:"seq"`
-	TaskID    uuid.UUID          `json:"task_id"`
-	Event     string             `json:"event"`
-	Phase     string             `json:"phase"`
-	Payload   []byte             `json:"payload"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	Seq       int64                `json:"seq"`
+	TaskID    uuid.UUID            `json:"task_id"`
+	Event     string               `json:"event"`
+	Phase     ImportTaskEventPhase `json:"phase"`
+	Payload   []byte               `json:"payload"`
+	CreatedAt pgtype.Timestamptz   `json:"created_at"`
 }
 
 type ImportUploadSession struct {
-	ID          uuid.UUID          `json:"id"`
-	UserID      uuid.UUID          `json:"user_id"`
-	Mode        string             `json:"mode"`
-	FileName    string             `json:"file_name"`
-	ObjectKey   string             `json:"object_key"`
-	ContentType string             `json:"content_type"`
-	Status      string             `json:"status"`
-	CompletedAt pgtype.Timestamptz `json:"completed_at"`
-	AbortedAt   pgtype.Timestamptz `json:"aborted_at"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	ID          uuid.UUID                 `json:"id"`
+	UserID      uuid.UUID                 `json:"user_id"`
+	Mode        string                    `json:"mode"`
+	FileName    string                    `json:"file_name"`
+	ObjectKey   string                    `json:"object_key"`
+	ContentType string                    `json:"content_type"`
+	Status      ImportUploadSessionStatus `json:"status"`
+	CompletedAt pgtype.Timestamptz        `json:"completed_at"`
+	AbortedAt   pgtype.Timestamptz        `json:"aborted_at"`
+	CreatedAt   pgtype.Timestamptz        `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz        `json:"updated_at"`
 }
 
 type Project struct {
@@ -461,13 +762,13 @@ type ProjectDataset struct {
 }
 
 type RuntimeExecutor struct {
-	ID           string             `json:"id"`
-	Version      string             `json:"version"`
-	Capabilities []string           `json:"capabilities"`
-	Status       string             `json:"status"`
-	LastSeenAt   pgtype.Timestamptz `json:"last_seen_at"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+	ID           string                `json:"id"`
+	Version      string                `json:"version"`
+	Capabilities []string              `json:"capabilities"`
+	Status       RuntimeExecutorStatus `json:"status"`
+	LastSeenAt   pgtype.Timestamptz    `json:"last_seen_at"`
+	CreatedAt    pgtype.Timestamptz    `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz    `json:"updated_at"`
 }
 
 type RuntimeLease struct {
@@ -481,32 +782,31 @@ type RuntimeLease struct {
 type RuntimeOutbox struct {
 	ID             int64              `json:"id"`
 	Topic          string             `json:"topic"`
-	AggregateID    string             `json:"aggregate_id"`
-	Payload        []byte             `json:"payload"`
-	CreatedAt      pgtype.Timestamptz `json:"created_at"`
-	PublishedAt    pgtype.Timestamptz `json:"published_at"`
 	AggregateType  string             `json:"aggregate_type"`
+	AggregateID    string             `json:"aggregate_id"`
 	IdempotencyKey string             `json:"idempotency_key"`
+	Payload        []byte             `json:"payload"`
 	AvailableAt    pgtype.Timestamptz `json:"available_at"`
 	AttemptCount   int32              `json:"attempt_count"`
 	LastError      pgtype.Text        `json:"last_error"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	PublishedAt    pgtype.Timestamptz `json:"published_at"`
 }
 
 type RuntimeTask struct {
 	ID                 uuid.UUID          `json:"id"`
+	TaskKind           RuntimeTaskKind    `json:"task_kind"`
 	TaskType           string             `json:"task_type"`
-	Status             string             `json:"status"`
-	ClaimedBy          pgtype.Text        `json:"claimed_by"`
-	LeaderEpoch        pgtype.Int8        `json:"leader_epoch"`
-	CreatedAt          pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
+	Status             RuntimeTaskStatus  `json:"status"`
 	AssignedAgentID    pgtype.Text        `json:"assigned_agent_id"`
-	TaskKind           string             `json:"task_kind"`
 	CurrentExecutionID pgtype.Text        `json:"current_execution_id"`
 	Attempt            int32              `json:"attempt"`
 	MaxAttempts        int32              `json:"max_attempts"`
 	ResolvedParams     []byte             `json:"resolved_params"`
 	DependsOnTaskIds   []uuid.UUID        `json:"depends_on_task_ids"`
+	LeaderEpoch        pgtype.Int8        `json:"leader_epoch"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
 }
 
 type Sample struct {

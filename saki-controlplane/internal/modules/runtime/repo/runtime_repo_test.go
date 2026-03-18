@@ -823,7 +823,7 @@ where id = $1
 	}
 }
 
-func TestRuntimeCoreAlignmentMigrationKeepsLegacyClaimedByUnmapped(t *testing.T) {
+func TestRuntimeBaseMigrationIncludesAlignedTaskColumns(t *testing.T) {
 	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
 
 	ctx := context.Background()
@@ -846,45 +846,70 @@ func TestRuntimeCoreAlignmentMigrationKeepsLegacyClaimedByUnmapped(t *testing.T)
 
 	taskID := uuid.New()
 	if _, err := sqlDB.ExecContext(ctx, `
-insert into runtime_task (id, task_type, status, claimed_by, claimed_at, leader_epoch)
-values ($1, 'predict', 'dispatching', 'runtime-holder-1', now(), 7)
+insert into runtime_task (id, task_type)
+values ($1, 'predict')
 `, taskID); err != nil {
-		t.Fatalf("insert legacy runtime task: %v", err)
-	}
-
-	if err := goose.UpTo(sqlDB, migrationsDir, 31); err != nil {
-		t.Fatalf("run migrations to 31: %v", err)
+		t.Fatalf("insert aligned runtime task: %v", err)
 	}
 
 	var (
+		taskKind           string
 		status             string
-		legacyClaimedBy    sql.NullString
 		assignedAgentID    sql.NullString
 		currentExecutionID sql.NullString
+		attempt            int32
+		maxAttempts        int32
+		resolvedParams     string
+		dependsOnTaskIDs   string
 	)
 	if err := sqlDB.QueryRowContext(ctx, `
-select status, claimed_by, assigned_agent_id, current_execution_id
+select task_kind::text, status::text, assigned_agent_id, current_execution_id, attempt, max_attempts, resolved_params::text, coalesce(array_to_json(depends_on_task_ids)::text, '[]')
 from runtime_task
 where id = $1
-`, taskID).Scan(&status, &legacyClaimedBy, &assignedAgentID, &currentExecutionID); err != nil {
-		t.Fatalf("load aligned runtime task: %v", err)
+`, taskID).Scan(&taskKind, &status, &assignedAgentID, &currentExecutionID, &attempt, &maxAttempts, &resolvedParams, &dependsOnTaskIDs); err != nil {
+		t.Fatalf("load runtime task defaults: %v", err)
 	}
 
-	if status != "assigned" {
-		t.Fatalf("expected migrated status assigned, got %q", status)
+	if taskKind != "PREDICTION" {
+		t.Fatalf("expected default task kind PREDICTION, got %q", taskKind)
 	}
-	if !legacyClaimedBy.Valid || legacyClaimedBy.String != "runtime-holder-1" {
-		t.Fatalf("expected legacy claimed_by to be preserved, got %+v", legacyClaimedBy)
+	if status != "pending" {
+		t.Fatalf("expected default status pending, got %q", status)
 	}
 	if assignedAgentID.Valid {
-		t.Fatalf("expected assigned_agent_id to stay null for legacy row, got %q", assignedAgentID.String)
+		t.Fatalf("expected assigned_agent_id to default null, got %q", assignedAgentID.String)
 	}
-	if !currentExecutionID.Valid || currentExecutionID.String == "" {
-		t.Fatalf("expected current_execution_id to be backfilled, got %+v", currentExecutionID)
+	if currentExecutionID.Valid {
+		t.Fatalf("expected current_execution_id to default null, got %+v", currentExecutionID)
+	}
+	if attempt != 0 || maxAttempts != 1 {
+		t.Fatalf("unexpected attempt defaults: attempt=%d max_attempts=%d", attempt, maxAttempts)
+	}
+	if resolvedParams != "{}" {
+		t.Fatalf("expected default resolved_params {}, got %s", resolvedParams)
+	}
+	if dependsOnTaskIDs != "[]" {
+		t.Fatalf("expected default depends_on_task_ids [], got %s", dependsOnTaskIDs)
+	}
+
+	var claimedByExists bool
+	if err := sqlDB.QueryRowContext(ctx, `
+select exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'runtime_task'
+      and column_name = 'claimed_by'
+)
+`).Scan(&claimedByExists); err != nil {
+		t.Fatalf("query runtime_task columns: %v", err)
+	}
+	if claimedByExists {
+		t.Fatal("expected claimed_by to be absent after history rewrite")
 	}
 }
 
-func TestRuntimeCoreAlignmentMigrationDownIsForwardOnly(t *testing.T) {
+func TestRuntimeCoreAlignmentMigrationIsNoopAfterHistoryRewrite(t *testing.T) {
 	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
 
 	ctx := context.Background()
@@ -905,12 +930,44 @@ func TestRuntimeCoreAlignmentMigrationDownIsForwardOnly(t *testing.T) {
 		t.Fatalf("run migrations to 31: %v", err)
 	}
 
-	err = goose.DownTo(sqlDB, migrationsDir, 30)
-	if err == nil {
-		t.Fatal("expected 000031 down migration to refuse rollback")
+	taskID := uuid.New()
+	if _, err := sqlDB.ExecContext(ctx, `
+insert into runtime_task (id, task_type, task_kind, status, assigned_agent_id, current_execution_id, leader_epoch)
+values ($1, 'predict', 'PREDICTION', 'assigned', 'agent-1', 'exec-1', 7)
+`, taskID); err != nil {
+		t.Fatalf("insert runtime task at version 31: %v", err)
 	}
-	if !strings.Contains(err.Error(), "forward-only") {
-		t.Fatalf("expected forward-only rollback error, got %v", err)
+
+	if err := goose.DownTo(sqlDB, migrationsDir, 30); err != nil {
+		t.Fatalf("down to 30 after no-op 31: %v", err)
+	}
+
+	version, err := goose.GetDBVersion(sqlDB)
+	if err != nil {
+		t.Fatalf("get db version: %v", err)
+	}
+	if version != 30 {
+		t.Fatalf("expected db version 30 after down, got %d", version)
+	}
+
+	var (
+		taskKind        string
+		status          string
+		assignedAgentID string
+		executionID     string
+	)
+	if err := sqlDB.QueryRowContext(ctx, `
+select task_kind::text, status::text, assigned_agent_id, current_execution_id
+from runtime_task
+where id = $1
+`, taskID).Scan(&taskKind, &status, &assignedAgentID, &executionID); err != nil {
+		t.Fatalf("load runtime task after down to 30: %v", err)
+	}
+	if taskKind != "PREDICTION" || status != "assigned" {
+		t.Fatalf("expected runtime task row to survive no-op rollback, got task_kind=%q status=%q", taskKind, status)
+	}
+	if assignedAgentID != "agent-1" || executionID != "exec-1" {
+		t.Fatalf("unexpected runtime task payload after rollback: assigned_agent_id=%q execution_id=%q", assignedAgentID, executionID)
 	}
 }
 

@@ -67,7 +67,7 @@ func (r *ExecutorRepo) List(ctx context.Context) ([]RuntimeExecutor, error) {
 			ID:           row.ID,
 			Version:      row.Version,
 			Capabilities: slices.Clone(row.Capabilities),
-			Status:       row.Status,
+			Status:       string(row.Status),
 			LastSeenAt:   row.LastSeenAt.Time,
 		})
 	}

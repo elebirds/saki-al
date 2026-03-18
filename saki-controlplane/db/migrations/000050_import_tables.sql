@@ -1,4 +1,8 @@
 -- +goose Up
+create type import_upload_session_status as enum ('initiated', 'completed', 'aborted');
+create type import_task_status as enum ('queued', 'running', 'completed', 'failed');
+create type import_task_event_phase as enum ('prepare', 'project_annotations_execute', 'apply_annotations');
+
 create table import_upload_session (
     id uuid primary key default gen_random_uuid(),
     user_id uuid not null,
@@ -6,7 +10,7 @@ create table import_upload_session (
     file_name text not null,
     object_key text not null,
     content_type text not null default '',
-    status text not null,
+    status import_upload_session_status not null default 'initiated',
     completed_at timestamptz,
     aborted_at timestamptz,
     created_at timestamptz not null default now(),
@@ -35,7 +39,7 @@ create table import_task (
     mode text not null,
     resource_type text not null,
     resource_id uuid not null,
-    status text not null,
+    status import_task_status not null default 'queued',
     payload jsonb not null default '{}'::jsonb,
     result jsonb not null default '{}'::jsonb,
     created_at timestamptz not null default now(),
@@ -48,7 +52,7 @@ create table import_task_event (
     seq bigserial primary key,
     task_id uuid not null references import_task(id) on delete cascade,
     event text not null,
-    phase text not null default '',
+    phase import_task_event_phase not null,
     payload jsonb not null default '{}'::jsonb,
     created_at timestamptz not null default now()
 );
@@ -73,3 +77,6 @@ drop table if exists import_task_event;
 drop table if exists import_task;
 drop table if exists import_preview_manifest;
 drop table if exists import_upload_session;
+drop type if exists import_task_event_phase;
+drop type if exists import_task_status;
+drop type if exists import_upload_session_status;

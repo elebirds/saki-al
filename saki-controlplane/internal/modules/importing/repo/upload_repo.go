@@ -90,7 +90,7 @@ func mapUploadSession(row sqlcdb.ImportUploadSession) *UploadSession {
 		FileName:    row.FileName,
 		ObjectKey:   row.ObjectKey,
 		ContentType: row.ContentType,
-		Status:      row.Status,
+		Status:      string(row.Status),
 		CompletedAt: optionalTime(row.CompletedAt),
 		AbortedAt:   optionalTime(row.AbortedAt),
 		CreatedAt:   row.CreatedAt.Time,

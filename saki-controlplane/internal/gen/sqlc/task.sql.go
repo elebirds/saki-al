@@ -18,7 +18,7 @@ set status = $1,
     updated_at = now()
 where id = $2
   and current_execution_id = $3
-  and status = any($4::text[])
+  and status = any($4::runtime_task_status[])
 returning
     id,
     task_kind,
@@ -36,17 +36,17 @@ returning
 `
 
 type AdvanceRuntimeTaskByExecutionParams struct {
-	ToStatus     string      `json:"to_status"`
-	ID           uuid.UUID   `json:"id"`
-	ExecutionID  pgtype.Text `json:"execution_id"`
-	FromStatuses []string    `json:"from_statuses"`
+	ToStatus     RuntimeTaskStatus   `json:"to_status"`
+	ID           uuid.UUID           `json:"id"`
+	ExecutionID  pgtype.Text         `json:"execution_id"`
+	FromStatuses []RuntimeTaskStatus `json:"from_statuses"`
 }
 
 type AdvanceRuntimeTaskByExecutionRow struct {
 	ID                 uuid.UUID          `json:"id"`
-	TaskKind           string             `json:"task_kind"`
+	TaskKind           RuntimeTaskKind    `json:"task_kind"`
 	TaskType           string             `json:"task_type"`
-	Status             string             `json:"status"`
+	Status             RuntimeTaskStatus  `json:"status"`
 	CurrentExecutionID pgtype.Text        `json:"current_execution_id"`
 	AssignedAgentID    pgtype.Text        `json:"assigned_agent_id"`
 	Attempt            int32              `json:"attempt"`
@@ -101,10 +101,10 @@ returning seq, task_id, event, phase, payload, created_at
 `
 
 type AppendImportTaskEventParams struct {
-	TaskID  uuid.UUID `json:"task_id"`
-	Event   string    `json:"event"`
-	Phase   string    `json:"phase"`
-	Payload []byte    `json:"payload"`
+	TaskID  uuid.UUID            `json:"task_id"`
+	Event   string               `json:"event"`
+	Phase   ImportTaskEventPhase `json:"phase"`
+	Payload []byte               `json:"payload"`
 }
 
 func (q *Queries) AppendImportTaskEvent(ctx context.Context, arg AppendImportTaskEventParams) (ImportTaskEvent, error) {
@@ -166,9 +166,9 @@ type AssignPendingTaskParams struct {
 
 type AssignPendingTaskRow struct {
 	ID                 uuid.UUID          `json:"id"`
-	TaskKind           string             `json:"task_kind"`
+	TaskKind           RuntimeTaskKind    `json:"task_kind"`
 	TaskType           string             `json:"task_type"`
-	Status             string             `json:"status"`
+	Status             RuntimeTaskStatus  `json:"status"`
 	CurrentExecutionID pgtype.Text        `json:"current_execution_id"`
 	AssignedAgentID    pgtype.Text        `json:"assigned_agent_id"`
 	Attempt            int32              `json:"attempt"`
@@ -279,16 +279,16 @@ returning
 `
 
 type CreateRuntimeTaskParams struct {
-	ID       uuid.UUID `json:"id"`
-	TaskKind string    `json:"task_kind"`
-	TaskType string    `json:"task_type"`
+	ID       uuid.UUID       `json:"id"`
+	TaskKind RuntimeTaskKind `json:"task_kind"`
+	TaskType string          `json:"task_type"`
 }
 
 type CreateRuntimeTaskRow struct {
 	ID                 uuid.UUID          `json:"id"`
-	TaskKind           string             `json:"task_kind"`
+	TaskKind           RuntimeTaskKind    `json:"task_kind"`
 	TaskType           string             `json:"task_type"`
-	Status             string             `json:"status"`
+	Status             RuntimeTaskStatus  `json:"status"`
 	CurrentExecutionID pgtype.Text        `json:"current_execution_id"`
 	AssignedAgentID    pgtype.Text        `json:"assigned_agent_id"`
 	Attempt            int32              `json:"attempt"`
@@ -387,9 +387,9 @@ where id = $1
 
 type GetRuntimeTaskRow struct {
 	ID                 uuid.UUID          `json:"id"`
-	TaskKind           string             `json:"task_kind"`
+	TaskKind           RuntimeTaskKind    `json:"task_kind"`
 	TaskType           string             `json:"task_type"`
-	Status             string             `json:"status"`
+	Status             RuntimeTaskStatus  `json:"status"`
 	CurrentExecutionID pgtype.Text        `json:"current_execution_id"`
 	AssignedAgentID    pgtype.Text        `json:"assigned_agent_id"`
 	Attempt            int32              `json:"attempt"`
@@ -522,10 +522,10 @@ where id = $4
 `
 
 type UpdateRuntimeTaskParams struct {
-	Status          string      `json:"status"`
-	AssignedAgentID pgtype.Text `json:"assigned_agent_id"`
-	LeaderEpoch     pgtype.Int8 `json:"leader_epoch"`
-	ID              uuid.UUID   `json:"id"`
+	Status          RuntimeTaskStatus `json:"status"`
+	AssignedAgentID pgtype.Text       `json:"assigned_agent_id"`
+	LeaderEpoch     pgtype.Int8       `json:"leader_epoch"`
+	ID              uuid.UUID         `json:"id"`
 }
 
 func (q *Queries) UpdateRuntimeTask(ctx context.Context, arg UpdateRuntimeTaskParams) error {

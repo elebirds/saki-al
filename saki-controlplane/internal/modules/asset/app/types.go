@@ -53,7 +53,40 @@ var (
 	ErrUnsupportedAssetOwnerType  = errors.New("unsupported asset owner type")
 	ErrAssetOwnerIDRequired       = errors.New("asset owner id required")
 	ErrInvalidDurableOwnerBinding = errors.New("invalid durable owner binding")
+	ErrInvalidAssetKind           = errors.New("invalid asset kind")
+	ErrInvalidAssetStatus         = errors.New("invalid asset status")
+	ErrInvalidAssetStorageBackend = errors.New("invalid asset storage backend")
 )
+
+func ParseAssetKind(raw string) (AssetKind, error) {
+	kind := AssetKind(raw)
+	switch kind {
+	case AssetKindImage, AssetKindVideo, AssetKindArchive, AssetKindDocument, AssetKindBinary:
+		return kind, nil
+	default:
+		return "", ErrInvalidAssetKind
+	}
+}
+
+func ParseAssetStatus(raw string) (AssetStatus, error) {
+	status := AssetStatus(raw)
+	switch status {
+	case AssetStatusPendingUpload, AssetStatusReady:
+		return status, nil
+	default:
+		return "", ErrInvalidAssetStatus
+	}
+}
+
+func ParseAssetStorageBackend(raw string) (AssetStorageBackend, error) {
+	backend := AssetStorageBackend(raw)
+	switch backend {
+	case AssetStorageBackendMinio:
+		return backend, nil
+	default:
+		return "", ErrInvalidAssetStorageBackend
+	}
+}
 
 // DurableOwnerBinding is a validated, typed representation of (owner_type,
 // owner_id, role, is_primary). It is intended for durable references (persisted).

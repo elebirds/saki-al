@@ -63,6 +63,26 @@ func TestNewRepoStoreMapsRepoAssetToTypedAsset(t *testing.T) {
 	}
 }
 
+func TestNewRepoStoreRejectsInvalidTypedValues(t *testing.T) {
+	id := uuid.New()
+	store := NewRepoStore(&stubRepoGetter{
+		asset: &assetrepo.Asset{
+			ID:             id,
+			Kind:           string(AssetKindImage),
+			Status:         "broken",
+			StorageBackend: string(AssetStorageBackendMinio),
+			Bucket:         "assets",
+			ObjectKey:      "image/demo.png",
+			ContentType:    "image/png",
+		},
+	})
+
+	asset, err := store.Get(context.Background(), id)
+	if !errors.Is(err, ErrInvalidAssetStatus) {
+		t.Fatalf("expected ErrInvalidAssetStatus, got asset=%+v err=%v", asset, err)
+	}
+}
+
 func TestIssueUploadTicketRequiresPendingAsset(t *testing.T) {
 	assetID := uuid.New()
 	store := &stubStore{

@@ -125,6 +125,46 @@ func TestInitAssetUploadRejectsUnknownFields(t *testing.T) {
 	}
 }
 
+func TestInitAssetUploadRejectsUnsupportedKind(t *testing.T) {
+	userID := uuid.New()
+	handler, token := newAssetHTTPHandler(t, userID, newFakeAssetStore(), &fakeProvider{
+		bucket: "assets",
+		putURL: "https://object.test/upload",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/assets/uploads:init", bytes.NewBufferString(`{"kind":"runtime-task","content_type":"image/png","metadata":{}}`))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected invalid kind to be rejected, got status=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestInitAssetUploadDoesNotRequireFollowupGetAfterCreate(t *testing.T) {
+	userID := uuid.New()
+	store := newFakeAssetStore()
+	store.getErr = errors.New("unexpected get")
+	provider := &fakeProvider{
+		bucket: "assets",
+		putURL: "https://object.test/upload",
+	}
+
+	handler, token := newAssetHTTPHandler(t, userID, store, provider)
+	req := httptest.NewRequest(http.MethodPost, "/assets/uploads:init", bytes.NewBufferString(`{"kind":"image","content_type":"image/png","metadata":{}}`))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected init upload to avoid followup get, got status=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestCompleteAssetUploadMarksAssetReady(t *testing.T) {
 	userID := uuid.New()
 	store := newFakeAssetStore()
@@ -339,6 +379,7 @@ type fakeAssetStore struct {
 	items         map[uuid.UUID]assetrepo.Asset
 	lastCreate    assetrepo.CreatePendingParams
 	lastMarkReady assetrepo.MarkReadyParams
+	getErr        error
 }
 
 func newFakeAssetStore() *fakeAssetStore {
@@ -367,6 +408,9 @@ func (s *fakeAssetStore) CreatePending(_ context.Context, params assetrepo.Creat
 }
 
 func (s *fakeAssetStore) Get(_ context.Context, id uuid.UUID) (*assetrepo.Asset, error) {
+	if s.getErr != nil {
+		return nil, s.getErr
+	}
 	asset, ok := s.items[id]
 	if !ok {
 		return nil, nil

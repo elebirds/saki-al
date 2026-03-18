@@ -60,8 +60,8 @@ func (h *Handlers) InitAssetUpload(ctx context.Context, req *openapi.AssetUpload
 	if err != nil {
 		return nil, err
 	}
-	kind := normalizeKind(req.GetKind())
-	if kind == "" {
+	kind, err := assetapp.ParseAssetKind(normalizeKind(req.GetKind()))
+	if err != nil {
 		return nil, badRequest("invalid kind")
 	}
 	metadata, err := encodeMetadata(req.GetMetadata())
@@ -70,10 +70,10 @@ func (h *Handlers) InitAssetUpload(ctx context.Context, req *openapi.AssetUpload
 	}
 
 	created, err := h.store.CreatePending(ctx, assetrepo.CreatePendingParams{
-		Kind:           kind,
+		Kind:           string(kind),
 		StorageBackend: "minio",
 		Bucket:         h.provider.Bucket(),
-		ObjectKey:      buildObjectKey(kind),
+		ObjectKey:      buildObjectKey(string(kind)),
 		ContentType:    strings.TrimSpace(req.GetContentType()),
 		Metadata:       metadata,
 		CreatedBy:      userID,
@@ -82,14 +82,14 @@ func (h *Handlers) InitAssetUpload(ctx context.Context, req *openapi.AssetUpload
 		return nil, err
 	}
 
-	ticket, err := assetapp.NewIssueUploadTicketUseCase(assetapp.NewRepoStore(h.store), h.provider, h.uploadExpiry).Execute(ctx, created.ID)
+	url, err := h.provider.SignPutObject(ctx, created.ObjectKey, h.uploadExpiry, created.ContentType)
 	if err != nil {
 		return nil, err
 	}
 
 	return &openapi.AssetUploadInitResponse{
 		Asset:     *toOpenAPIAsset(created),
-		UploadURL: ticket.URL,
+		UploadURL: url,
 		ExpiresIn: int32(h.uploadExpiry / time.Second),
 	}, nil
 }

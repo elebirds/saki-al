@@ -53,19 +53,32 @@ func (s *repoStore) Get(ctx context.Context, id uuid.UUID) (*Asset, error) {
 	if err != nil {
 		return nil, err
 	}
-	return fromRepoAsset(asset), nil
+	return fromRepoAsset(asset)
 }
 
-func fromRepoAsset(asset *assetrepo.Asset) *Asset {
+func fromRepoAsset(asset *assetrepo.Asset) (*Asset, error) {
 	if asset == nil {
-		return nil
+		return nil, nil
+	}
+
+	kind, err := ParseAssetKind(asset.Kind)
+	if err != nil {
+		return nil, err
+	}
+	status, err := ParseAssetStatus(asset.Status)
+	if err != nil {
+		return nil, err
+	}
+	backend, err := ParseAssetStorageBackend(asset.StorageBackend)
+	if err != nil {
+		return nil, err
 	}
 
 	return &Asset{
 		ID:             asset.ID,
-		Kind:           AssetKind(asset.Kind),
-		Status:         AssetStatus(asset.Status),
-		StorageBackend: AssetStorageBackend(asset.StorageBackend),
+		Kind:           kind,
+		Status:         status,
+		StorageBackend: backend,
 		Bucket:         asset.Bucket,
 		ObjectKey:      asset.ObjectKey,
 		ContentType:    asset.ContentType,
@@ -77,7 +90,7 @@ func fromRepoAsset(asset *assetrepo.Asset) *Asset {
 		OrphanedAt:     cloneTimePtr(asset.OrphanedAt),
 		CreatedAt:      asset.CreatedAt,
 		UpdatedAt:      asset.UpdatedAt,
-	}
+	}, nil
 }
 
 func cloneStringPtr(value *string) *string {

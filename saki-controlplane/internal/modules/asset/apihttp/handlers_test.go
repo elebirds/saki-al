@@ -67,6 +67,9 @@ func TestInitAssetUploadReturnsPendingAssetAndSignedPutURL(t *testing.T) {
 	if body.UploadURL != provider.putURL || body.ExpiresIn <= 0 {
 		t.Fatalf("unexpected init response: %+v", body)
 	}
+	if bytes.Contains(rec.Body.Bytes(), []byte(`"headers"`)) {
+		t.Fatalf("expected init response to omit headers, got %s", rec.Body.String())
+	}
 	if got := store.lastCreate.CreatedBy; got == nil || *got != userID {
 		t.Fatalf("unexpected created_by: %+v", store.lastCreate.CreatedBy)
 	}
@@ -78,6 +81,47 @@ func TestInitAssetUploadReturnsPendingAssetAndSignedPutURL(t *testing.T) {
 	}
 	if got := store.lastCreate.ObjectKey; !strings.HasPrefix(got, "image/") {
 		t.Fatalf("unexpected object key: %q", got)
+	}
+}
+
+func TestInitAssetUploadAllowsNonUUIDUserID(t *testing.T) {
+	store := newFakeAssetStore()
+	provider := &fakeProvider{
+		bucket: "assets",
+		putURL: "https://object.test/upload",
+	}
+
+	handler, token := newAssetHTTPHandlerWithSubjectKey(t, "user-plain-text", store, provider)
+	req := httptest.NewRequest(http.MethodPost, "/assets/uploads:init", bytes.NewBufferString(`{"kind":"image","content_type":"image/png","metadata":{}}`))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("unexpected init status: %d body=%s", rec.Code, rec.Body.String())
+	}
+	if store.lastCreate.CreatedBy != nil {
+		t.Fatalf("expected created_by to be nil for non-uuid user id, got %+v", store.lastCreate.CreatedBy)
+	}
+}
+
+func TestInitAssetUploadRejectsUnknownFields(t *testing.T) {
+	userID := uuid.New()
+	handler, token := newAssetHTTPHandler(t, userID, newFakeAssetStore(), &fakeProvider{
+		bucket: "assets",
+		putURL: "https://object.test/upload",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/assets/uploads:init", bytes.NewBufferString(`{"kind":"image","content_type":"image/png","metadata":{},"unexpected":true}`))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code == http.StatusCreated {
+		t.Fatalf("expected unknown init field to be rejected, got status=%d body=%s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -129,6 +173,40 @@ func TestCompleteAssetUploadMarksAssetReady(t *testing.T) {
 	}
 	if got, want := store.lastMarkReady.ContentType, "image/webp"; got != want {
 		t.Fatalf("content type got %q want %q", got, want)
+	}
+}
+
+func TestCompleteAssetUploadRejectsUnknownFields(t *testing.T) {
+	userID := uuid.New()
+	store := newFakeAssetStore()
+	asset := &assetrepo.Asset{
+		ID:             uuid.New(),
+		Kind:           "image",
+		Status:         assetrepo.AssetStatusPendingUpload,
+		StorageBackend: "minio",
+		Bucket:         "assets",
+		ObjectKey:      "image/demo-object",
+		ContentType:    "image/png",
+		CreatedBy:      &userID,
+	}
+	store.items[asset.ID] = *asset
+
+	handler, token := newAssetHTTPHandler(t, userID, store, &fakeProvider{
+		bucket: "assets",
+		stat: &storage.ObjectStat{
+			Size:        20,
+			ContentType: "image/png",
+		},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/assets/"+asset.ID.String()+":complete", bytes.NewBufferString(`{"size_bytes":20,"unknown":"x"}`))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code == http.StatusOK {
+		t.Fatalf("expected unknown complete field to be rejected, got status=%d body=%s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -221,9 +299,15 @@ func TestSignAssetDownloadReturnsSignedGetURL(t *testing.T) {
 func newAssetHTTPHandler(t *testing.T, userID uuid.UUID, store *fakeAssetStore, provider *fakeProvider) (http.Handler, string) {
 	t.Helper()
 
-	accessStore := newFakeAccessStore(userID)
+	return newAssetHTTPHandlerWithSubjectKey(t, userID.String(), store, provider)
+}
+
+func newAssetHTTPHandlerWithSubjectKey(t *testing.T, subjectKey string, store *fakeAssetStore, provider *fakeProvider) (http.Handler, string) {
+	t.Helper()
+
+	accessStore := newFakeAccessStore(subjectKey)
 	authenticator := accessapp.NewAuthenticator("test-secret", time.Hour).WithStore(accessStore)
-	token, err := authenticator.IssueTokenContext(context.Background(), userID.String())
+	token, err := authenticator.IssueTokenContext(context.Background(), subjectKey)
 	if err != nil {
 		t.Fatalf("issue token: %v", err)
 	}
@@ -347,13 +431,13 @@ type fakeAccessStore struct {
 	permissions []string
 }
 
-func newFakeAccessStore(userID uuid.UUID) *fakeAccessStore {
+func newFakeAccessStore(subjectKey string) *fakeAccessStore {
 	return &fakeAccessStore{
 		principal: &accessdomain.Principal{
 			ID:          uuid.New(),
 			SubjectType: "user",
-			SubjectKey:  userID.String(),
-			DisplayName: userID.String(),
+			SubjectKey:  subjectKey,
+			DisplayName: subjectKey,
 			Status:      accessdomain.PrincipalStatusActive,
 		},
 		permissions: []string{"assets:read", "assets:write"},

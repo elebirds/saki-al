@@ -942,6 +942,7 @@ components:
           additionalProperties: true
     AssetUploadInitRequest:
       type: object
+      additionalProperties: false
       required:
         - kind
         - content_type
@@ -954,10 +955,6 @@ components:
         metadata:
           type: object
           additionalProperties: true
-    AssetUploadHeaders:
-      type: object
-      additionalProperties:
-        type: string
     AssetUploadInitResponse:
       type: object
       required:
@@ -972,10 +969,9 @@ components:
         expires_in:
           type: integer
           format: int32
-        headers:
-          $ref: "#/components/schemas/AssetUploadHeaders"
     AssetCompleteRequest:
       type: object
+      additionalProperties: false
       properties:
         size_bytes:
           type: integer

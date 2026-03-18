@@ -340,18 +340,6 @@ func (s *AssetMetadata) init() AssetMetadata {
 	return m
 }
 
-// Ref: #/components/schemas/AssetUploadHeaders
-type AssetUploadHeaders map[string]string
-
-func (s *AssetUploadHeaders) init() AssetUploadHeaders {
-	m := *s
-	if m == nil {
-		m = map[string]string{}
-		*s = m
-	}
-	return m
-}
-
 // Ref: #/components/schemas/AssetUploadInitRequest
 type AssetUploadInitRequest struct {
 	Kind        string                         `json:"kind"`
@@ -402,10 +390,9 @@ func (s *AssetUploadInitRequestMetadata) init() AssetUploadInitRequestMetadata {
 
 // Ref: #/components/schemas/AssetUploadInitResponse
 type AssetUploadInitResponse struct {
-	Asset     Asset                 `json:"asset"`
-	UploadURL string                `json:"upload_url"`
-	ExpiresIn int32                 `json:"expires_in"`
-	Headers   OptAssetUploadHeaders `json:"headers"`
+	Asset     Asset  `json:"asset"`
+	UploadURL string `json:"upload_url"`
+	ExpiresIn int32  `json:"expires_in"`
 }
 
 // GetAsset returns the value of Asset.
@@ -423,11 +410,6 @@ func (s *AssetUploadInitResponse) GetExpiresIn() int32 {
 	return s.ExpiresIn
 }
 
-// GetHeaders returns the value of Headers.
-func (s *AssetUploadInitResponse) GetHeaders() OptAssetUploadHeaders {
-	return s.Headers
-}
-
 // SetAsset sets the value of Asset.
 func (s *AssetUploadInitResponse) SetAsset(val Asset) {
 	s.Asset = val
@@ -441,11 +423,6 @@ func (s *AssetUploadInitResponse) SetUploadURL(val string) {
 // SetExpiresIn sets the value of ExpiresIn.
 func (s *AssetUploadInitResponse) SetExpiresIn(val int32) {
 	s.ExpiresIn = val
-}
-
-// SetHeaders sets the value of Headers.
-func (s *AssetUploadInitResponse) SetHeaders(val OptAssetUploadHeaders) {
-	s.Headers = val
 }
 
 // Ref: #/components/schemas/AuthTokenResponse
@@ -1745,52 +1722,6 @@ func (s *LoginRequest) GetUserID() string {
 // SetUserID sets the value of UserID.
 func (s *LoginRequest) SetUserID(val string) {
 	s.UserID = val
-}
-
-// NewOptAssetUploadHeaders returns new OptAssetUploadHeaders with value set to v.
-func NewOptAssetUploadHeaders(v AssetUploadHeaders) OptAssetUploadHeaders {
-	return OptAssetUploadHeaders{
-		Value: v,
-		Set:   true,
-	}
-}
-
-// OptAssetUploadHeaders is optional AssetUploadHeaders.
-type OptAssetUploadHeaders struct {
-	Value AssetUploadHeaders
-	Set   bool
-}
-
-// IsSet returns true if OptAssetUploadHeaders was set.
-func (o OptAssetUploadHeaders) IsSet() bool { return o.Set }
-
-// Reset unsets value.
-func (o *OptAssetUploadHeaders) Reset() {
-	var v AssetUploadHeaders
-	o.Value = v
-	o.Set = false
-}
-
-// SetTo sets value to v.
-func (o *OptAssetUploadHeaders) SetTo(v AssetUploadHeaders) {
-	o.Set = true
-	o.Value = v
-}
-
-// Get returns value and boolean that denotes whether value was set.
-func (o OptAssetUploadHeaders) Get() (v AssetUploadHeaders, ok bool) {
-	if !o.Set {
-		return v, false
-	}
-	return o.Value, true
-}
-
-// Or returns value if set, or given parameter if does not.
-func (o OptAssetUploadHeaders) Or(d AssetUploadHeaders) AssetUploadHeaders {
-	if v, ok := o.Get(); ok {
-		return v
-	}
-	return d
 }
 
 // NewOptCreateAnnotationRequestAttrs returns new OptCreateAnnotationRequestAttrs with value set to v.

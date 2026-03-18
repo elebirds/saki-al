@@ -76,7 +76,7 @@ func (h *Handlers) InitAssetUpload(ctx context.Context, req *openapi.AssetUpload
 		ObjectKey:      buildObjectKey(kind),
 		ContentType:    strings.TrimSpace(req.GetContentType()),
 		Metadata:       metadata,
-		CreatedBy:      &userID,
+		CreatedBy:      userID,
 	})
 	if err != nil {
 		return nil, err
@@ -91,7 +91,6 @@ func (h *Handlers) InitAssetUpload(ctx context.Context, req *openapi.AssetUpload
 		Asset:     *toOpenAPIAsset(created),
 		UploadURL: ticket.URL,
 		ExpiresIn: int32(h.uploadExpiry / time.Second),
-		Headers:   openapi.NewOptAssetUploadHeaders(openapi.AssetUploadHeaders{}),
 	}, nil
 }
 
@@ -209,16 +208,16 @@ func (h *Handlers) requireEnabled() error {
 	return nil
 }
 
-func currentUserID(ctx context.Context) (uuid.UUID, error) {
+func currentUserID(ctx context.Context) (*uuid.UUID, error) {
 	claims, ok := authctx.ClaimsFromContext(ctx)
 	if !ok {
-		return uuid.Nil, unauthorized("authentication required")
+		return nil, unauthorized("authentication required")
 	}
 	userID, err := uuid.Parse(claims.UserID)
 	if err != nil {
-		return uuid.Nil, badRequest("asset endpoints require UUID user id")
+		return nil, nil
 	}
-	return userID, nil
+	return &userID, nil
 }
 
 func parseAssetID(raw string) (uuid.UUID, error) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/elebirds/saki/saki-controlplane/internal/app/config"
@@ -49,6 +50,13 @@ func (f backgroundLoopFunc) Run(ctx context.Context) error {
 	return f(ctx)
 }
 
+func hasObjectStorageConfig(cfg config.Config) bool {
+	return strings.TrimSpace(cfg.MinIOEndpoint) != "" ||
+		strings.TrimSpace(cfg.MinIOAccessKey) != "" ||
+		strings.TrimSpace(cfg.MinIOSecretKey) != "" ||
+		strings.TrimSpace(cfg.MinIOBucketName) != ""
+}
+
 func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 	cfg, err := config.Load()
 	if err != nil {
@@ -80,16 +88,19 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 		pool.Close()
 		return nil, nil, err
 	}
-	objectProvider, err := objectProviderFactory(storage.Config{
-		Endpoint:  cfg.MinIOEndpoint,
-		AccessKey: cfg.MinIOAccessKey,
-		SecretKey: cfg.MinIOSecretKey,
-		Bucket:    cfg.MinIOBucketName,
-		Secure:    cfg.MinIOSecure,
-	})
-	if err != nil {
-		pool.Close()
-		return nil, nil, err
+	var objectProvider storage.Provider
+	if hasObjectStorageConfig(cfg) {
+		objectProvider, err = objectProviderFactory(storage.Config{
+			Endpoint:  cfg.MinIOEndpoint,
+			AccessKey: cfg.MinIOAccessKey,
+			SecretKey: cfg.MinIOSecretKey,
+			Bucket:    cfg.MinIOBucketName,
+			Secure:    cfg.MinIOSecure,
+		})
+		if err != nil {
+			pool.Close()
+			return nil, nil, err
+		}
 	}
 
 	sampleRepo := annotationrepo.NewSampleRepo(pool)
@@ -112,20 +123,31 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 	importPreviewRepo := importrepo.NewPreviewRepo(pool)
 	importTaskRepo := importrepo.NewTaskRepo(pool)
 	importMatchRepo := importrepo.NewSampleMatchRefRepo(pool)
-	importPrepare := importapp.NewPrepareProjectAnnotationsUseCase(
-		projectRepo,
-		importUploadRepo,
-		importPreviewRepo,
-		importMatchRepo,
-		importapp.NewParserRegistry(),
-		objectProvider,
-	)
-	importExecute := importapp.NewExecuteProjectAnnotationsUseCase(
-		projectRepo,
-		importPreviewRepo,
-		importTaskRepo,
-		importapp.NewProjectAnnotationsTaskRunner(sampleRepo, annotationRepo, importTaskRepo),
-	)
+	var importDeps importapi.Dependencies
+	if objectProvider != nil {
+		importPrepare := importapp.NewPrepareProjectAnnotationsUseCase(
+			projectRepo,
+			importUploadRepo,
+			importPreviewRepo,
+			importMatchRepo,
+			importapp.NewParserRegistry(),
+			objectProvider,
+		)
+		importExecute := importapp.NewExecuteProjectAnnotationsUseCase(
+			projectRepo,
+			importPreviewRepo,
+			importTaskRepo,
+			importapp.NewProjectAnnotationsTaskRunner(sampleRepo, annotationRepo, importTaskRepo),
+		)
+		importDeps = importapi.Dependencies{
+			Uploads:         importUploadRepo,
+			Tasks:           importTaskRepo,
+			Prepare:         importPrepare,
+			Execute:         importExecute,
+			Provider:        objectProvider,
+			UploadURLExpiry: 15 * time.Minute,
+		}
+	}
 
 	handler, err := systemapi.NewHTTPHandler(systemapi.Dependencies{
 		Authenticator:       accessapp.NewAuthenticator(cfg.AuthTokenSecret, tokenTTL).WithStore(accessStore),
@@ -160,12 +182,12 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 			Timeout: 5 * time.Second,
 		}),
 		Importing: importapi.Dependencies{
-			Uploads:         importUploadRepo,
-			Tasks:           importTaskRepo,
-			Prepare:         importPrepare,
-			Execute:         importExecute,
-			Provider:        objectProvider,
-			UploadURLExpiry: 15 * time.Minute,
+			Uploads:         importDeps.Uploads,
+			Tasks:           importDeps.Tasks,
+			Prepare:         importDeps.Prepare,
+			Execute:         importDeps.Execute,
+			Provider:        importDeps.Provider,
+			UploadURLExpiry: importDeps.UploadURLExpiry,
 		},
 	})
 	if err != nil {
@@ -179,13 +201,15 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	cleanerCtx, cancelCleaner := context.WithCancel(ctx)
-	cleanerLoop := assetCleanerLoopFactory(assetapp.NewRepoStalePendingStore(assetStore), objectProvider, logger)
-	if cleanerLoop != nil {
-		go func() {
-			if err := cleanerLoop.Run(cleanerCtx); err != nil && cleanerCtx.Err() == nil {
-				logger.Error("asset cleaner loop failed", "err", err)
-			}
-		}()
+	if objectProvider != nil {
+		cleanerLoop := assetCleanerLoopFactory(assetapp.NewRepoStalePendingStore(assetStore), objectProvider, logger)
+		if cleanerLoop != nil {
+			go func() {
+				if err := cleanerLoop.Run(cleanerCtx); err != nil && cleanerCtx.Err() == nil {
+					logger.Error("asset cleaner loop failed", "err", err)
+				}
+			}()
+		}
 	}
 	server.RegisterOnShutdown(func() {
 		cancelCleaner()

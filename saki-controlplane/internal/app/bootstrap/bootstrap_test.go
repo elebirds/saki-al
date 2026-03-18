@@ -170,6 +170,69 @@ func TestPublicAPIBootstrapStartsAndStopsAssetCleaner(t *testing.T) {
 	}
 }
 
+func TestNewPublicAPIAllowsMissingObjectStorageConfig(t *testing.T) {
+	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+
+	ctx := context.Background()
+	container, dsn := startBootstrapPostgres(t, ctx)
+	defer func() {
+		_ = testcontainers.TerminateContainer(container)
+	}()
+
+	sqlDB, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("open sql db: %v", err)
+	}
+	defer sqlDB.Close()
+
+	goose.SetDialect("postgres")
+	if err := goose.Up(sqlDB, bootstrapMigrationsDir(t)); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+
+	t.Setenv("DATABASE_DSN", dsn)
+	t.Setenv("AUTH_TOKEN_SECRET", "test-secret")
+	t.Setenv("AUTH_TOKEN_TTL", "1h")
+	t.Setenv("PUBLIC_API_BIND", "127.0.0.1:0")
+	t.Setenv("AUTH_BOOTSTRAP_PRINCIPALS", `[]`)
+	t.Setenv("MINIO_ENDPOINT", "")
+	t.Setenv("MINIO_ACCESS_KEY", "")
+	t.Setenv("MINIO_SECRET_KEY", "")
+	t.Setenv("MINIO_BUCKET_NAME", "")
+
+	restoreProviderFactory := overrideObjectProviderFactoryForTest(func(storage.Config) (storage.Provider, error) {
+		t.Fatal("object provider factory should not be called when storage config is absent")
+		return nil, nil
+	})
+	defer restoreProviderFactory()
+
+	cleanerStarted := false
+	restoreCleanerLoopFactory := overrideAssetCleanerLoopFactoryForTest(func(assetapp.StalePendingStore, storage.Provider, *slog.Logger) backgroundLoop {
+		cleanerStarted = true
+		return nil
+	})
+	defer restoreCleanerLoopFactory()
+
+	server, _, err := NewPublicAPI(ctx)
+	if err != nil {
+		t.Fatalf("new public api without object storage: %v", err)
+	}
+	defer func() {
+		_ = server.Shutdown(context.Background())
+	}()
+
+	if cleanerStarted {
+		t.Fatal("asset cleaner should not start when object storage is disabled")
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	rec := httptest.NewRecorder()
+	server.Handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unexpected healthz status: %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func startBootstrapPostgres(t *testing.T, ctx context.Context) (*postgres.PostgresContainer, string) {
 	t.Helper()
 

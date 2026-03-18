@@ -82,7 +82,7 @@ func (h *Handlers) InitAssetUpload(ctx context.Context, req *openapi.AssetUpload
 		return nil, err
 	}
 
-	ticket, err := assetapp.NewIssueUploadTicketUseCase(h.store, h.provider, h.uploadExpiry).Execute(ctx, created.ID)
+	ticket, err := assetapp.NewIssueUploadTicketUseCase(assetapp.NewRepoStore(h.store), h.provider, h.uploadExpiry).Execute(ctx, created.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -182,7 +182,7 @@ func (h *Handlers) SignAssetDownload(ctx context.Context, req *openapi.AssetDown
 		return nil, badRequest(err.Error())
 	}
 
-	ticket, err := assetapp.NewIssueDownloadTicketUseCase(h.store, h.provider, h.downloadExpiry).Execute(ctx, assetID)
+	ticket, err := assetapp.NewIssueDownloadTicketUseCase(assetapp.NewRepoStore(h.store), h.provider, h.downloadExpiry).Execute(ctx, assetID)
 	if err != nil {
 		switch {
 		case errors.Is(err, assetapp.ErrAssetNotFound):

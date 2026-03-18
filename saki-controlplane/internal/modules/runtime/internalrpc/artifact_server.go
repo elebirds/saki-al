@@ -81,6 +81,10 @@ func parseArtifactID(raw string) (uuid.UUID, error) {
 
 func mapArtifactTicketError(err error) error {
 	switch {
+	case errors.Is(err, context.Canceled):
+		return connect.NewError(connect.CodeCanceled, err)
+	case errors.Is(err, context.DeadlineExceeded):
+		return connect.NewError(connect.CodeDeadlineExceeded, err)
 	case errors.Is(err, assetapp.ErrAssetNotFound):
 		return connect.NewError(connect.CodeNotFound, err)
 	case errors.Is(err, assetapp.ErrAssetNotPendingUpload),

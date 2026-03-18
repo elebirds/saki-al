@@ -106,6 +106,64 @@ func TestArtifactServerCreateDownloadTicketForReadyAsset(t *testing.T) {
 	}
 }
 
+func TestArtifactServerMapsCanceledError(t *testing.T) {
+	server := NewArtifactServer(
+		&fakeIssueUploadTicketHandler{err: context.Canceled},
+		&fakeIssueDownloadTicketHandler{},
+	)
+
+	mux := http.NewServeMux()
+	path, handler := runtimev1connect.NewArtifactServiceHandler(server)
+	mux.Handle(path, handler)
+	httpServer := httptest.NewServer(mux)
+	defer httpServer.Close()
+
+	client := runtimev1connect.NewArtifactServiceClient(http.DefaultClient, httpServer.URL)
+	_, err := client.CreateUploadTicket(context.Background(), connect.NewRequest(&runtimev1.CreateUploadTicketRequest{
+		ArtifactId: uuid.NewString(),
+	}))
+	if err == nil {
+		t.Fatal("expected create upload ticket to fail")
+	}
+
+	connectErr := new(connect.Error)
+	if !errors.As(err, &connectErr) {
+		t.Fatalf("expected connect error, got %T", err)
+	}
+	if got, want := connectErr.Code(), connect.CodeCanceled; got != want {
+		t.Fatalf("unexpected connect code: got=%s want=%s", got, want)
+	}
+}
+
+func TestArtifactServerMapsDeadlineExceededError(t *testing.T) {
+	server := NewArtifactServer(
+		&fakeIssueUploadTicketHandler{},
+		&fakeIssueDownloadTicketHandler{err: context.DeadlineExceeded},
+	)
+
+	mux := http.NewServeMux()
+	path, handler := runtimev1connect.NewArtifactServiceHandler(server)
+	mux.Handle(path, handler)
+	httpServer := httptest.NewServer(mux)
+	defer httpServer.Close()
+
+	client := runtimev1connect.NewArtifactServiceClient(http.DefaultClient, httpServer.URL)
+	_, err := client.CreateDownloadTicket(context.Background(), connect.NewRequest(&runtimev1.CreateDownloadTicketRequest{
+		ArtifactId: uuid.NewString(),
+	}))
+	if err == nil {
+		t.Fatal("expected create download ticket to fail")
+	}
+
+	connectErr := new(connect.Error)
+	if !errors.As(err, &connectErr) {
+		t.Fatalf("expected connect error, got %T", err)
+	}
+	if got, want := connectErr.Code(), connect.CodeDeadlineExceeded; got != want {
+		t.Fatalf("unexpected connect code: got=%s want=%s", got, want)
+	}
+}
+
 type fakeIssueUploadTicketHandler struct {
 	lastAssetID uuid.UUID
 	result      *assetapp.Ticket

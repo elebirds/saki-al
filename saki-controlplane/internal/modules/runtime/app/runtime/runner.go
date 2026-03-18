@@ -93,6 +93,12 @@ type assembly struct {
 func New(ctx context.Context, opts Options, logger *slog.Logger) (*Runner, error) {
 	cfg := withDefaultOptions(opts)
 	log := loggerOrDefault(logger)
+	if cfg.AssetProvider == nil {
+		return nil, errRuntimeArtifactProviderRequired
+	}
+	if err := probeArtifactProvider(ctx, cfg.AssetProvider); err != nil {
+		return nil, fmt.Errorf("runtime artifact storage probe failed: %w", err)
+	}
 
 	pool, err := appdb.NewPool(ctx, cfg.DatabaseDSN)
 	if err != nil {
@@ -108,10 +114,6 @@ func New(ctx context.Context, opts Options, logger *slog.Logger) (*Runner, error
 	if assetStore == nil {
 		pool.Close()
 		return nil, errors.New("runtime artifact store factory returned nil")
-	}
-	if cfg.AssetProvider == nil {
-		pool.Close()
-		return nil, errRuntimeArtifactProviderRequired
 	}
 
 	ingressServer := internalrpc.NewRuntimeServer(
@@ -196,6 +198,19 @@ func (r *Runner) Run(ctx context.Context) error {
 	})
 
 	return group.Wait()
+}
+
+func probeArtifactProvider(ctx context.Context, provider storage.Provider) error {
+	if provider == nil {
+		return errRuntimeArtifactProviderRequired
+	}
+
+	probeKey := fmt.Sprintf("runtime/probe/%d", time.Now().UnixNano())
+	_, err := provider.StatObject(ctx, probeKey)
+	if err == nil || errors.Is(err, storage.ErrObjectNotFound) {
+		return nil
+	}
+	return err
 }
 
 func newRunnerFromAssembly(parts assembly) *Runner {

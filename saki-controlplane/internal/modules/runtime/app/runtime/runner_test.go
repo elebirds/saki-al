@@ -2,13 +2,16 @@ package runtime
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/elebirds/saki/saki-controlplane/internal/app/storage"
 	"github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/commands"
 	runtimeeffects "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/effects"
 	runtimerepo "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/repo"
@@ -133,6 +136,43 @@ func TestNewSchedulerTickerSkipsLeaderElectionWhenTargetAgentIsUnset(t *testing.
 	}
 }
 
+func TestProbeArtifactProviderTreatsObjectNotFoundAsReady(t *testing.T) {
+	provider := &fakeRuntimeStorageProvider{statErr: storage.ErrObjectNotFound}
+	if err := probeArtifactProvider(context.Background(), provider); err != nil {
+		t.Fatalf("expected probe to pass on object not found, got %v", err)
+	}
+	if provider.lastStatKey == "" {
+		t.Fatal("expected probe to call StatObject")
+	}
+}
+
+func TestProbeArtifactProviderFailsOnUnexpectedError(t *testing.T) {
+	wantErr := errors.New("minio unavailable")
+	provider := &fakeRuntimeStorageProvider{statErr: wantErr}
+	err := probeArtifactProvider(context.Background(), provider)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected probe error %v, got %v", wantErr, err)
+	}
+}
+
+func TestRuntimeNewFailsWhenArtifactProviderProbeFails(t *testing.T) {
+	runner, err := New(context.Background(), Options{
+		DatabaseDSN: "://bad-dsn",
+		AssetProvider: &fakeRuntimeStorageProvider{
+			statErr: errors.New("probe boom"),
+		},
+	}, nil)
+	if err == nil {
+		t.Fatal("expected New to fail")
+	}
+	if runner != nil {
+		t.Fatalf("expected nil runner on startup failure, got %#v", runner)
+	}
+	if !strings.Contains(err.Error(), "probe") {
+		t.Fatalf("expected probe failure in error, got %v", err)
+	}
+}
+
 type fakeSchedulerTicker struct{}
 
 func (fakeSchedulerTicker) Tick(context.Context) error {
@@ -198,4 +238,30 @@ type fakeRuntimeDispatchTaskAssigner struct {
 func (f *fakeRuntimeDispatchTaskAssigner) Handle(context.Context, commands.AssignTaskCommand) (*commands.TaskRecord, error) {
 	f.calls++
 	return nil, nil
+}
+
+type fakeRuntimeStorageProvider struct {
+	statErr     error
+	lastStatKey string
+}
+
+func (f *fakeRuntimeStorageProvider) Bucket() string {
+	return "assets"
+}
+
+func (f *fakeRuntimeStorageProvider) SignPutObject(context.Context, string, time.Duration, string) (string, error) {
+	return "", nil
+}
+
+func (f *fakeRuntimeStorageProvider) SignGetObject(context.Context, string, time.Duration) (string, error) {
+	return "", nil
+}
+
+func (f *fakeRuntimeStorageProvider) StatObject(_ context.Context, objectKey string) (*storage.ObjectStat, error) {
+	f.lastStatKey = objectKey
+	return nil, f.statErr
+}
+
+func (f *fakeRuntimeStorageProvider) DownloadObject(context.Context, string, string) error {
+	return nil
 }

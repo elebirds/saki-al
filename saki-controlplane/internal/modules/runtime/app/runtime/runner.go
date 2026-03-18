@@ -394,7 +394,7 @@ func (o Options) assetStoreFactory() func(pool *pgxpool.Pool) assetapp.Store {
 		return o.AssetStoreFactory
 	}
 	return func(pool *pgxpool.Pool) assetapp.Store {
-		return assetrepo.NewAssetRepo(pool)
+		return assetapp.NewRepoStore(assetrepo.NewAssetRepo(pool))
 	}
 }
 

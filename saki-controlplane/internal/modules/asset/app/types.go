@@ -12,6 +12,7 @@ type AssetStatus string
 type AssetStorageBackend string
 type AssetOwnerType string
 type AssetReferenceRole string
+type AssetReferenceLifecycle string
 type AssetUploadIntentState string
 
 const (
@@ -40,6 +41,10 @@ const (
 const (
 	AssetReferenceRoleAttachment AssetReferenceRole = "attachment"
 	AssetReferenceRolePrimary    AssetReferenceRole = "primary"
+)
+
+const (
+	AssetReferenceLifecycleDurable AssetReferenceLifecycle = "durable"
 )
 
 const (

@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os/exec"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	"github.com/elebirds/saki/saki-controlplane/internal/app/storage"
+	assetapp "github.com/elebirds/saki/saki-controlplane/internal/modules/asset/app"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 	"github.com/testcontainers/testcontainers-go"
@@ -92,6 +94,82 @@ func TestNewPublicAPISeedsAccessBeforeHandler(t *testing.T) {
 	}
 }
 
+func TestPublicAPIBootstrapStartsAndStopsAssetCleaner(t *testing.T) {
+	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+
+	ctx := context.Background()
+	container, dsn := startBootstrapPostgres(t, ctx)
+	defer func() {
+		_ = testcontainers.TerminateContainer(container)
+	}()
+
+	sqlDB, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("open sql db: %v", err)
+	}
+	defer sqlDB.Close()
+
+	goose.SetDialect("postgres")
+	if err := goose.Up(sqlDB, bootstrapMigrationsDir(t)); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+
+	t.Setenv("DATABASE_DSN", dsn)
+	t.Setenv("AUTH_TOKEN_SECRET", "test-secret")
+	t.Setenv("AUTH_TOKEN_TTL", "1h")
+	t.Setenv("PUBLIC_API_BIND", "127.0.0.1:0")
+	t.Setenv("AUTH_BOOTSTRAP_PRINCIPALS", `[]`)
+	t.Setenv("MINIO_ENDPOINT", "127.0.0.1:9000")
+	t.Setenv("MINIO_ACCESS_KEY", "test-access")
+	t.Setenv("MINIO_SECRET_KEY", "test-secret")
+	t.Setenv("MINIO_BUCKET_NAME", "assets")
+	t.Setenv("MINIO_SECURE", "false")
+
+	restoreProviderFactory := overrideObjectProviderFactoryForTest(func(storage.Config) (storage.Provider, error) {
+		return &fakeBootstrapProvider{}, nil
+	})
+	defer restoreProviderFactory()
+
+	started := make(chan struct{}, 1)
+	stopped := make(chan struct{}, 1)
+	restoreCleanerLoopFactory := overrideAssetCleanerLoopFactoryForTest(func(assetapp.StalePendingStore, storage.Provider, *slog.Logger) backgroundLoop {
+		return backgroundLoopFunc(func(ctx context.Context) error {
+			select {
+			case started <- struct{}{}:
+			default:
+			}
+			<-ctx.Done()
+			select {
+			case stopped <- struct{}{}:
+			default:
+			}
+			return nil
+		})
+	})
+	defer restoreCleanerLoopFactory()
+
+	server, _, err := NewPublicAPI(ctx)
+	if err != nil {
+		t.Fatalf("new public api: %v", err)
+	}
+
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("asset cleaner did not start")
+	}
+
+	if err := server.Shutdown(context.Background()); err != nil {
+		t.Fatalf("shutdown server: %v", err)
+	}
+
+	select {
+	case <-stopped:
+	case <-time.After(2 * time.Second):
+		t.Fatal("asset cleaner did not stop")
+	}
+}
+
 func startBootstrapPostgres(t *testing.T, ctx context.Context) (*postgres.PostgresContainer, string) {
 	t.Helper()
 
@@ -147,6 +225,14 @@ func overrideObjectProviderFactoryForTest(factory func(storage.Config) (storage.
 	objectProviderFactory = factory
 	return func() {
 		objectProviderFactory = previous
+	}
+}
+
+func overrideAssetCleanerLoopFactoryForTest(factory func(assetapp.StalePendingStore, storage.Provider, *slog.Logger) backgroundLoop) func() {
+	previous := assetCleanerLoopFactory
+	assetCleanerLoopFactory = factory
+	return func() {
+		assetCleanerLoopFactory = previous
 	}
 }
 

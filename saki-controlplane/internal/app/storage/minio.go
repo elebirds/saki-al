@@ -126,6 +126,14 @@ func (p *minioProvider) DownloadObject(ctx context.Context, objectKey string, ds
 	return nil
 }
 
+func (p *minioProvider) DeleteObject(ctx context.Context, objectKey string) error {
+	err := p.client.RemoveObject(ctx, p.bucket, objectKey, minio.RemoveObjectOptions{})
+	if err != nil {
+		return wrapMinIOError("delete", objectKey, err)
+	}
+	return nil
+}
+
 func normalizeEndpoint(raw string, secure bool) (string, bool) {
 	trimmed := strings.TrimSpace(raw)
 	if !strings.Contains(trimmed, "://") {

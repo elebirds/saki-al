@@ -15,6 +15,7 @@ import (
 	annotationmapping "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/app/mapping"
 	annotationrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/repo"
 	assetapi "github.com/elebirds/saki/saki-controlplane/internal/modules/asset/apihttp"
+	assetapp "github.com/elebirds/saki/saki-controlplane/internal/modules/asset/app"
 	assetrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/asset/repo"
 	datasetapp "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/app"
 	datasetrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/repo"
@@ -31,6 +32,22 @@ import (
 )
 
 var objectProviderFactory = storage.NewMinIOProvider
+var assetCleanerLoopFactory = func(store assetapp.StalePendingStore, provider storage.Provider, logger *slog.Logger) backgroundLoop {
+	cleaner := assetapp.NewStalePendingCleaner(store, provider, assetapp.StalePendingCleanerConfig{
+		UploadGraceWindow: 30 * time.Minute,
+	})
+	return newBackgroundPollingLoop("asset-cleaner", 5*time.Minute, logger, cleaner.RunOnce)
+}
+
+type backgroundLoop interface {
+	Run(ctx context.Context) error
+}
+
+type backgroundLoopFunc func(ctx context.Context) error
+
+func (f backgroundLoopFunc) Run(ctx context.Context) error {
+	return f(ctx)
+}
 
 func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 	cfg, err := config.Load()
@@ -148,7 +165,17 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
+	cleanerCtx, cancelCleaner := context.WithCancel(ctx)
+	cleanerLoop := assetCleanerLoopFactory(assetapp.NewRepoStalePendingStore(assetStore), objectProvider, logger)
+	if cleanerLoop != nil {
+		go func() {
+			if err := cleanerLoop.Run(cleanerCtx); err != nil && cleanerCtx.Err() == nil {
+				logger.Error("asset cleaner loop failed", "err", err)
+			}
+		}()
+	}
 	server.RegisterOnShutdown(func() {
+		cancelCleaner()
 		pool.Close()
 	})
 
@@ -186,4 +213,37 @@ func NewRuntime(ctx context.Context) (*runtimeapp.Runner, *slog.Logger, error) {
 	}
 
 	return runner, logger, nil
+}
+
+func newBackgroundPollingLoop(name string, interval time.Duration, logger *slog.Logger, runOnce func(ctx context.Context) error) backgroundLoop {
+	log := logger
+	if log == nil {
+		log = slog.Default()
+	}
+	if interval <= 0 {
+		interval = 5 * time.Minute
+	}
+	if runOnce == nil {
+		return backgroundLoopFunc(func(context.Context) error { return nil })
+	}
+
+	return backgroundLoopFunc(func(ctx context.Context) error {
+		if err := runOnce(ctx); err != nil && ctx.Err() == nil {
+			log.Error("background loop tick failed", "loop", name, "err", err)
+		}
+
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-ticker.C:
+				if err := runOnce(ctx); err != nil && ctx.Err() == nil {
+					log.Error("background loop tick failed", "loop", name, "err", err)
+				}
+			}
+		}
+	})
 }

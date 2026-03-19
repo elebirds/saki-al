@@ -7,51 +7,82 @@ import (
 	"time"
 
 	runtimev1 "github.com/elebirds/saki/saki-controlplane/internal/gen/proto/runtime/v1"
-	"github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/commands"
-	runtimerepo "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/repo"
+	"github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/repo"
+	"github.com/google/uuid"
 )
 
-func TestStopEffectStopTaskTopicInvokesControlClient(t *testing.T) {
-	client := &fakeStopClient{}
-	effect := NewStopEffect(client)
+func TestStopEffect_UsesAgentCommandRepoNotStaticBaseURL(t *testing.T) {
+	clientA := &fakeAgentControlClient{}
+	clientB := &fakeAgentControlClient{}
+	effect := NewStopEffect(NewTransportRegistry(
+		NewDirectTransport(
+			&fakeAgentLookupStore{
+				agents: map[string]*repo.Agent{
+					"agent-a": {
+						ID:             "agent-a",
+						TransportMode:  "direct",
+						ControlBaseURL: "http://agent-a.control",
+					},
+					"agent-b": {
+						ID:             "agent-b",
+						TransportMode:  "direct",
+						ControlBaseURL: "http://agent-b.control",
+					},
+				},
+			},
+			AgentControlClientFactoryFunc(func(baseURL string) AgentControlClient {
+				switch baseURL {
+				case "http://agent-a.control":
+					return clientA
+				case "http://agent-b.control":
+					return clientB
+				default:
+					t.Fatalf("unexpected base url: %s", baseURL)
+					return nil
+				}
+			}),
+		),
+		NewPullTransport(),
+	))
 
-	err := effect.Apply(context.Background(), commands.OutboxEvent{
-		Topic:       "runtime.task.stop.v1",
-		AggregateID: "550e8400-e29b-41d4-a716-446655440000",
-		Payload:     []byte(`{"task_id":"550e8400-e29b-41d4-a716-446655440000","execution_id":"exec-1","agent_id":"agent-1","reason":"cancel_requested","leader_epoch":7}`),
+	err := effect.Apply(context.Background(), repo.AgentCommand{
+		CommandID:     uuid.New(),
+		AgentID:       "agent-b",
+		CommandType:   "cancel",
+		TransportMode: "direct",
+		Payload:       []byte(`{"task_id":"550e8400-e29b-41d4-a716-446655440000","execution_id":"exec-1","agent_id":"agent-b","reason":"cancel_requested","leader_epoch":7}`),
 	})
 	if err != nil {
 		t.Fatalf("apply stop effect: %v", err)
 	}
 
-	if client.last == nil {
-		t.Fatal("expected stop request")
+	if clientB.stop == nil {
+		t.Fatal("expected stop request to use agent-b transport")
 	}
-	if client.last.TaskId != "550e8400-e29b-41d4-a716-446655440000" {
-		t.Fatalf("unexpected stop request task id: %+v", client.last)
+	if clientB.stop.TaskId != "550e8400-e29b-41d4-a716-446655440000" || clientB.stop.ExecutionId != "exec-1" || clientB.stop.Reason != "cancel_requested" {
+		t.Fatalf("unexpected stop request: %+v", clientB.stop)
 	}
-	if client.last.ExecutionId != "exec-1" || client.last.Reason != "cancel_requested" {
-		t.Fatalf("unexpected stop request: %+v", client.last)
+	if clientA.stop != nil {
+		t.Fatalf("expected command to avoid unrelated transport, got %+v", clientA.stop)
 	}
 }
 
-func TestWorkerMarksPublishedWhenEffectsSucceed(t *testing.T) {
+func TestWorkerAcksAndFinishesCommandWhenEffectSucceeds(t *testing.T) {
 	now := time.Unix(1700000000, 0)
-	store := &fakeOutboxStore{
-		claimed: []runtimerepo.OutboxEntry{
+	claimToken := uuid.New()
+	store := &fakeAgentCommandStore{
+		claimed: []repo.AgentCommand{
 			{
-				ID:             1,
-				Topic:          commands.AssignTaskOutboxTopic,
-				AggregateID:    "task-1",
-				IdempotencyKey: "runtime.task.assign.v1:exec-1",
-				Payload:        []byte(`{"task_id":"task-1"}`),
-				AvailableAt:    now.Add(30 * time.Second),
+				CommandID:     uuid.New(),
+				AgentID:       "agent-1",
+				CommandType:   "assign",
+				TransportMode: "direct",
+				Payload:       []byte(`{"task_id":"task-1"}`),
+				ClaimToken:    &claimToken,
 			},
 		},
 	}
-	assignEffect := &fakeEffect{topic: commands.AssignTaskOutboxTopic}
-	stopEffect := &fakeEffect{topic: commands.StopTaskOutboxTopic}
-	worker := NewWorker(store, assignEffect, stopEffect)
+	worker := NewWorker(store, &fakeCommandEffect{commandType: "assign"})
 	worker.now = func() time.Time { return now }
 	worker.claimLimit = 1
 	worker.claimTTL = 30 * time.Second
@@ -61,42 +92,36 @@ func TestWorkerMarksPublishedWhenEffectsSucceed(t *testing.T) {
 		t.Fatalf("run worker once: %v", err)
 	}
 
-	if len(assignEffect.applied) != 1 {
-		t.Fatalf("expected assign effect to be applied once, got %d", len(assignEffect.applied))
+	if store.ack == nil {
+		t.Fatal("expected command ack")
 	}
-	if len(stopEffect.applied) != 0 {
-		t.Fatalf("expected stop effect to be skipped, got %d", len(stopEffect.applied))
+	if store.finish == nil {
+		t.Fatal("expected command finish")
 	}
-	if store.markPublished == nil {
-		t.Fatal("expected mark published")
+	if store.ack.commandID != store.claimed[0].CommandID || store.finish.commandID != store.claimed[0].CommandID {
+		t.Fatalf("unexpected ack/finish calls: ack=%+v finish=%+v", store.ack, store.finish)
 	}
-	if store.markPublished.id != 1 {
-		t.Fatalf("unexpected published id: %+v", store.markPublished)
-	}
-	if !store.markPublished.claimAvailableAt.Equal(now.Add(30 * time.Second)) {
-		t.Fatalf("unexpected claim available at: %+v", store.markPublished)
-	}
-	if store.markRetry != nil {
-		t.Fatalf("expected no retry mark, got %+v", store.markRetry)
+	if store.retry != nil {
+		t.Fatalf("expected no retry on success, got %+v", store.retry)
 	}
 }
 
 func TestWorkerMarksRetryWhenEffectFails(t *testing.T) {
 	now := time.Unix(1700000000, 0)
-	store := &fakeOutboxStore{
-		claimed: []runtimerepo.OutboxEntry{
+	claimToken := uuid.New()
+	store := &fakeAgentCommandStore{
+		claimed: []repo.AgentCommand{
 			{
-				ID:             7,
-				Topic:          "runtime.task.stop.v1",
-				AggregateID:    "task-7",
-				IdempotencyKey: "runtime.task.stop.v1:exec-7",
-				Payload:        []byte(`{"task_id":"task-7"}`),
-				AvailableAt:    now.Add(15 * time.Second),
+				CommandID:     uuid.New(),
+				AgentID:       "agent-1",
+				CommandType:   "cancel",
+				TransportMode: "relay",
+				Payload:       []byte(`{"task_id":"task-7"}`),
+				ClaimToken:    &claimToken,
 			},
 		},
 	}
-	effect := &fakeEffect{topic: commands.StopTaskOutboxTopic, err: errors.New("client unavailable")}
-	worker := NewWorker(store, effect)
+	worker := NewWorker(store, &fakeCommandEffect{commandType: "cancel", err: errors.New("transport unavailable")})
 	worker.now = func() time.Time { return now }
 	worker.claimLimit = 1
 	worker.claimTTL = 15 * time.Second
@@ -106,41 +131,36 @@ func TestWorkerMarksRetryWhenEffectFails(t *testing.T) {
 		t.Fatalf("run worker once: %v", err)
 	}
 
-	if store.markPublished != nil {
-		t.Fatalf("expected no publish mark, got %+v", store.markPublished)
+	if store.ack != nil || store.finish != nil {
+		t.Fatalf("expected failed dispatch to avoid ack/finish, got ack=%+v finish=%+v", store.ack, store.finish)
 	}
-	if store.markRetry == nil {
+	if store.retry == nil {
 		t.Fatal("expected retry mark")
 	}
-	if store.markRetry.id != 7 {
-		t.Fatalf("unexpected retry id: %+v", store.markRetry)
+	if store.retry.commandID != store.claimed[0].CommandID {
+		t.Fatalf("unexpected retry call: %+v", store.retry)
 	}
-	if !store.markRetry.claimAvailableAt.Equal(now.Add(15 * time.Second)) {
-		t.Fatalf("unexpected retry claim available at: %+v", store.markRetry)
-	}
-	if !store.markRetry.nextAvailableAt.Equal(now.Add(2 * time.Minute)) {
-		t.Fatalf("unexpected retry next available at: %+v", store.markRetry)
-	}
-	if store.markRetry.lastError != "client unavailable" {
-		t.Fatalf("unexpected retry error: %+v", store.markRetry)
+	if store.retry.lastError != "transport unavailable" {
+		t.Fatalf("unexpected retry error: %+v", store.retry)
 	}
 }
 
-func TestWorkerMarksRetryWhenNoEffectRegisteredForTopic(t *testing.T) {
+func TestWorkerMarksRetryWhenNoEffectRegisteredForCommandType(t *testing.T) {
 	now := time.Unix(1700000000, 0)
-	store := &fakeOutboxStore{
-		claimed: []runtimerepo.OutboxEntry{
+	claimToken := uuid.New()
+	store := &fakeAgentCommandStore{
+		claimed: []repo.AgentCommand{
 			{
-				ID:             11,
-				Topic:          "runtime.task.legacy",
-				AggregateID:    "task-11",
-				IdempotencyKey: "runtime.task.legacy:11",
-				Payload:        []byte(`{"task_id":"task-11"}`),
-				AvailableAt:    now.Add(10 * time.Second),
+				CommandID:     uuid.New(),
+				AgentID:       "agent-1",
+				CommandType:   "legacy",
+				TransportMode: "direct",
+				Payload:       []byte(`{"task_id":"task-11"}`),
+				ClaimToken:    &claimToken,
 			},
 		},
 	}
-	worker := NewWorker(store, &fakeEffect{topic: commands.AssignTaskOutboxTopic})
+	worker := NewWorker(store, &fakeCommandEffect{commandType: "assign"})
 	worker.now = func() time.Time { return now }
 	worker.claimLimit = 1
 	worker.claimTTL = 10 * time.Second
@@ -150,82 +170,114 @@ func TestWorkerMarksRetryWhenNoEffectRegisteredForTopic(t *testing.T) {
 		t.Fatalf("run worker once: %v", err)
 	}
 
-	if store.markPublished != nil {
-		t.Fatalf("expected no publish mark, got %+v", store.markPublished)
+	if store.retry == nil {
+		t.Fatal("expected retry mark for unknown command type")
 	}
-	if store.markRetry == nil {
-		t.Fatal("expected retry mark for unknown topic")
-	}
-	if store.markRetry.id != 11 {
-		t.Fatalf("unexpected retry id: %+v", store.markRetry)
-	}
-	if store.markRetry.lastError != "no effect registered for topic runtime.task.legacy" {
-		t.Fatalf("unexpected retry error: %+v", store.markRetry)
+	if store.retry.lastError != "no effect registered for command type legacy" {
+		t.Fatalf("unexpected retry error: %+v", store.retry)
 	}
 }
 
-type fakeStopClient struct {
-	last *runtimev1.StopTaskRequest
+type fakeAgentControlClient struct {
+	assign *runtimev1.AssignTaskRequest
+	stop   *runtimev1.StopTaskRequest
 }
 
-func (f *fakeStopClient) StopTask(_ context.Context, req *runtimev1.StopTaskRequest) error {
-	f.last = req
+func (f *fakeAgentControlClient) AssignTask(_ context.Context, req *runtimev1.AssignTaskRequest) error {
+	f.assign = req
 	return nil
 }
 
-type fakeEffect struct {
-	topic   string
-	applied []commands.OutboxEvent
-	err     error
+func (f *fakeAgentControlClient) StopTask(_ context.Context, req *runtimev1.StopTaskRequest) error {
+	f.stop = req
+	return nil
 }
 
-func (f *fakeEffect) Topic() string {
-	return f.topic
+type fakeAgentLookupStore struct {
+	agents map[string]*repo.Agent
 }
 
-func (f *fakeEffect) Apply(_ context.Context, event commands.OutboxEvent) error {
-	f.applied = append(f.applied, event)
+func (f *fakeAgentLookupStore) GetByID(_ context.Context, agentID string) (*repo.Agent, error) {
+	if f.agents == nil {
+		return nil, nil
+	}
+	return f.agents[agentID], nil
+}
+
+type fakeCommandEffect struct {
+	commandType string
+	applied     []repo.AgentCommand
+	err         error
+}
+
+func (f *fakeCommandEffect) CommandType() string {
+	return f.commandType
+}
+
+func (f *fakeCommandEffect) Apply(_ context.Context, cmd repo.AgentCommand) error {
+	f.applied = append(f.applied, cmd)
 	return f.err
 }
 
-type fakeOutboxStore struct {
-	claimed []runtimerepo.OutboxEntry
+type fakeAgentCommandStore struct {
+	claimed []repo.AgentCommand
 
-	markPublished *markPublishedCall
-	markRetry     *markRetryCall
+	ack    *agentCommandAckCall
+	finish *agentCommandFinishCall
+	retry  *agentCommandRetryCall
 }
 
-func (f *fakeOutboxStore) ClaimDue(_ context.Context, limit int32, claimUntil time.Time) ([]runtimerepo.OutboxEntry, error) {
+func (f *fakeAgentCommandStore) ClaimForPush(_ context.Context, limit int32, claimUntil time.Time) ([]repo.AgentCommand, error) {
 	if limit != 1 {
 		panic("unexpected limit")
 	}
 	_ = claimUntil
-	return append([]runtimerepo.OutboxEntry(nil), f.claimed...), nil
+	return append([]repo.AgentCommand(nil), f.claimed...), nil
 }
 
-func (f *fakeOutboxStore) MarkPublished(_ context.Context, id int64, claimAvailableAt time.Time) error {
-	f.markPublished = &markPublishedCall{id: id, claimAvailableAt: claimAvailableAt}
-	return nil
-}
-
-func (f *fakeOutboxStore) MarkRetry(_ context.Context, id int64, claimAvailableAt, nextAvailableAt time.Time, lastError string) error {
-	f.markRetry = &markRetryCall{
-		id:               id,
-		claimAvailableAt: claimAvailableAt,
-		nextAvailableAt:  nextAvailableAt,
-		lastError:        lastError,
+func (f *fakeAgentCommandStore) Ack(_ context.Context, commandID, claimToken uuid.UUID, ackAt time.Time) error {
+	f.ack = &agentCommandAckCall{
+		commandID:  commandID,
+		claimToken: claimToken,
+		at:         ackAt,
 	}
 	return nil
 }
 
-type markPublishedCall struct {
-	id               int64
-	claimAvailableAt time.Time
+func (f *fakeAgentCommandStore) MarkFinished(_ context.Context, commandID, claimToken uuid.UUID, finishedAt time.Time) error {
+	f.finish = &agentCommandFinishCall{
+		commandID:  commandID,
+		claimToken: claimToken,
+		at:         finishedAt,
+	}
+	return nil
 }
 
-type markRetryCall struct {
-	id               int64
-	claimAvailableAt time.Time
-	nextAvailableAt  time.Time
-	lastError        string
+func (f *fakeAgentCommandStore) MarkRetry(_ context.Context, commandID, claimToken uuid.UUID, nextAvailableAt time.Time, lastError string) error {
+	f.retry = &agentCommandRetryCall{
+		commandID:       commandID,
+		claimToken:      claimToken,
+		nextAvailableAt: nextAvailableAt,
+		lastError:       lastError,
+	}
+	return nil
+}
+
+type agentCommandAckCall struct {
+	commandID  uuid.UUID
+	claimToken uuid.UUID
+	at         time.Time
+}
+
+type agentCommandFinishCall struct {
+	commandID  uuid.UUID
+	claimToken uuid.UUID
+	at         time.Time
+}
+
+type agentCommandRetryCall struct {
+	commandID       uuid.UUID
+	claimToken      uuid.UUID
+	nextAvailableAt time.Time
+	lastError       string
 }

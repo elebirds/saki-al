@@ -1708,6 +1708,20 @@ func (s failingCancelTaskTxStore) UpdateTask(ctx context.Context, update command
 	return s.tasks.UpdateTask(ctx, update)
 }
 
+// 这个回滚用例构造的是没有 assignment 真相的老 assigned 任务；
+// 因此 cancel handler 不会走 agent_command 分支，这里只需要给接口补最小桩实现。
+func (failingCancelTaskTxStore) GetTaskAssignmentByExecutionID(context.Context, string) (*commands.TaskAssignmentRecord, error) {
+	return nil, nil
+}
+
+func (failingCancelTaskTxStore) GetAgentByID(context.Context, string) (*commands.AgentRecord, error) {
+	return nil, nil
+}
+
+func (failingCancelTaskTxStore) AppendCancelCommand(context.Context, commands.AppendCancelTaskCommandParams) error {
+	return nil
+}
+
 func (failingCancelTaskTxStore) Append(context.Context, commands.OutboxEvent) error {
 	return errors.New("append failed")
 }

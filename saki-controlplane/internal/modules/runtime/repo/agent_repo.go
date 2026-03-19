@@ -2,9 +2,11 @@ package repo
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -123,6 +125,17 @@ func (r *AgentRepo) List(ctx context.Context) ([]Agent, error) {
 		agents = append(agents, *agentFromModel(row))
 	}
 	return agents, nil
+}
+
+func (r *AgentRepo) GetByID(ctx context.Context, agentID string) (*Agent, error) {
+	row, err := r.q.GetAgentByID(ctx, agentID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return agentFromModel(row), nil
 }
 
 func normalizeTextArray(items []string) []string {

@@ -81,3 +81,19 @@ select
     updated_at
 from agent
 order by id;
+
+-- name: GetAgentByID :one
+select
+    id,
+    version,
+    capabilities,
+    transport_mode,
+    control_base_url,
+    max_concurrency,
+    running_task_ids,
+    status,
+    last_seen_at,
+    created_at,
+    updated_at
+from agent
+where id = sqlc.arg(id);

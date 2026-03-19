@@ -49,6 +49,7 @@ func TestRuntimeTaskLifecycle_AssignRunSucceed(t *testing.T) {
 
 	taskRepo := runtimerepo.NewTaskRepo(pool)
 	agentRepo := runtimerepo.NewAgentRepo(pool)
+	commandRepo := runtimerepo.NewAgentCommandRepo(pool)
 	taskID := uuid.New()
 	if err := taskRepo.CreateTask(ctx, runtimerepo.CreateTaskParams{
 		ID:       taskID,
@@ -105,11 +106,13 @@ func TestRuntimeTaskLifecycle_AssignRunSucceed(t *testing.T) {
 	var assignPayloadBytes []byte
 	if err := pool.QueryRow(ctx, `
 select payload
-from runtime_outbox
-where aggregate_id = $1
-  and topic = $2
-`, taskID.String(), commands.AssignTaskOutboxTopic).Scan(&assignPayloadBytes); err != nil {
-		t.Fatalf("load assign outbox: %v", err)
+from agent_command
+where task_id = $1
+  and command_type = 'assign'
+order by created_at desc
+limit 1
+`, taskID).Scan(&assignPayloadBytes); err != nil {
+		t.Fatalf("load assign command: %v", err)
 	}
 
 	var assignPayload commands.AssignTaskOutboxPayload
@@ -120,12 +123,7 @@ where aggregate_id = $1
 		t.Fatalf("unexpected assign outbox payload: %+v", assignPayload)
 	}
 
-	dispatchWorker := runtimeeffects.NewWorker(
-		runtimerepo.NewOutboxRepo(pool),
-		runtimeeffects.NewDispatchEffect(connectDispatchClient{
-			client: runtimev1connect.NewAgentControlClient(http.DefaultClient, controlHTTPServer.URL),
-		}),
-	)
+	dispatchWorker := newDirectDeliveryWorkerForTest(agentRepo, commandRepo)
 	if err := dispatchWorker.RunOnce(ctx); err != nil {
 		t.Fatalf("dispatch worker run once: %v", err)
 	}
@@ -143,18 +141,21 @@ where aggregate_id = $1
 		t.Fatalf("unexpected assign control task type: %+v", controlServer.assignTask)
 	}
 
-	var publishedAssignCount int
+	var assignStatus string
+	var assignAcked bool
+	var assignFinished bool
 	if err := pool.QueryRow(ctx, `
-select count(*)
-from runtime_outbox
-where aggregate_id = $1
-  and topic = $2
-  and published_at is not null
-`, taskID.String(), commands.AssignTaskOutboxTopic).Scan(&publishedAssignCount); err != nil {
-		t.Fatalf("count published assign outbox: %v", err)
+select status, acked_at is not null, finished_at is not null
+from agent_command
+where task_id = $1
+  and command_type = 'assign'
+order by created_at desc
+limit 1
+`, taskID).Scan(&assignStatus, &assignAcked, &assignFinished); err != nil {
+		t.Fatalf("load assign command status: %v", err)
 	}
-	if publishedAssignCount != 1 {
-		t.Fatalf("expected exactly one published assign outbox, got %d", publishedAssignCount)
+	if assignStatus != "finished" || !assignAcked || !assignFinished {
+		t.Fatalf("expected assign command to be acked and finished, got status=%s acked=%t finished=%t", assignStatus, assignAcked, assignFinished)
 	}
 
 	server := internalrpc.NewRuntimeServer(
@@ -352,13 +353,51 @@ func (noopHeartbeatAgentHandler) Handle(context.Context, commands.HeartbeatAgent
 	return nil
 }
 
-type connectDispatchClient struct {
+// e2e 必须走与生产一致的 per-agent transport 装配，避免测试继续依赖旧的静态控制地址注入。
+func newDirectDeliveryWorkerForTest(agentStore runtimeeffects.AgentLookupStore, commandStore runtimeeffects.AgentCommandStore) *runtimeeffects.Worker {
+	transports := runtimeeffects.NewTransportRegistry(
+		runtimeeffects.NewDirectTransport(agentStore, connectAgentControlClientFactory{}),
+		runtimeeffects.NewPullTransport(),
+	)
+	return runtimeeffects.NewWorker(
+		commandStore,
+		runtimeeffects.NewDispatchEffect(transports),
+		runtimeeffects.NewStopEffect(transports),
+	)
+}
+
+type connectAgentControlClientFactory struct{}
+
+func (connectAgentControlClientFactory) New(baseURL string) runtimeeffects.AgentControlClient {
+	return connectAgentControlClient{
+		client: runtimev1connect.NewAgentControlClient(http.DefaultClient, baseURL),
+	}
+}
+
+type connectAgentControlClient struct {
 	client runtimev1connect.AgentControlClient
 }
 
-func (c connectDispatchClient) AssignTask(ctx context.Context, req *runtimev1.AssignTaskRequest) error {
-	_, err := c.client.AssignTask(ctx, connect.NewRequest(req))
-	return err
+func (c connectAgentControlClient) AssignTask(ctx context.Context, req *runtimev1.AssignTaskRequest) error {
+	resp, err := c.client.AssignTask(ctx, connect.NewRequest(req))
+	if err != nil {
+		return err
+	}
+	if !resp.Msg.GetAccepted() {
+		return connect.NewError(connect.CodeFailedPrecondition, nil)
+	}
+	return nil
+}
+
+func (c connectAgentControlClient) StopTask(ctx context.Context, req *runtimev1.StopTaskRequest) error {
+	resp, err := c.client.StopTask(ctx, connect.NewRequest(req))
+	if err != nil {
+		return err
+	}
+	if !resp.Msg.GetAccepted() {
+		return connect.NewError(connect.CodeFailedPrecondition, nil)
+	}
+	return nil
 }
 
 type recordingAgentControlServer struct {

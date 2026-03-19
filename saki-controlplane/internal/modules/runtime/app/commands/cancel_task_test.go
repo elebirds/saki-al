@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -92,6 +93,55 @@ func TestCancelTaskCommandRequestsCancelForAssignedTaskAndAppendsOutbox(t *testi
 	}
 }
 
+func TestCancelTaskCommandRequestsCancelForAssignedTaskAndAppendsCancelCommand(t *testing.T) {
+	taskID := uuid.New()
+	taskStore := &cancelTaskStore{
+		task: &TaskRecord{
+			ID:                 taskID,
+			Status:             string(state.TaskStatusAssigned),
+			CurrentExecutionID: "exec-assigned-1",
+			AssignedAgentID:    "agent-1",
+			LeaderEpoch:        7,
+		},
+		assignment: &TaskAssignmentRecord{
+			ID:          51,
+			TaskID:      taskID,
+			Attempt:     1,
+			AgentID:     "agent-1",
+			ExecutionID: "exec-assigned-1",
+			Status:      "assigned",
+		},
+		agent: &AgentRecord{
+			ID:            "agent-1",
+			TransportMode: "direct",
+		},
+	}
+	handler := NewCancelTaskHandler(taskStore)
+	handler.now = func() time.Time { return time.Unix(1700000000, 0).UTC() }
+
+	canceled, err := handler.Handle(context.Background(), CancelTaskCommand{TaskID: taskID})
+	if err != nil {
+		t.Fatalf("handle cancel task: %v", err)
+	}
+
+	if canceled == nil || canceled.Status != string(state.TaskStatusCancelRequested) {
+		t.Fatalf("unexpected canceled task: %+v", canceled)
+	}
+	if taskStore.cancelCommand == nil {
+		t.Fatal("expected cancel command append")
+	}
+	if taskStore.cancelCommand.AgentID != "agent-1" || taskStore.cancelCommand.AssignmentID != 51 || taskStore.cancelCommand.TransportMode != "direct" {
+		t.Fatalf("unexpected cancel command params: %+v", taskStore.cancelCommand)
+	}
+	var payload StopTaskOutboxPayload
+	if err := json.Unmarshal(taskStore.cancelCommand.Payload, &payload); err != nil {
+		t.Fatalf("unmarshal cancel command payload: %v", err)
+	}
+	if payload.TaskID != taskID || payload.ExecutionID != "exec-assigned-1" || payload.AgentID != "agent-1" || payload.Reason != "cancel_requested" || payload.LeaderEpoch != 7 {
+		t.Fatalf("unexpected cancel command payload: %+v", payload)
+	}
+}
+
 func TestCancelTaskCommandCancelsPendingTaskAndAppendsOutbox(t *testing.T) {
 	taskID := uuid.New()
 	taskStore := &cancelTaskStore{
@@ -120,9 +170,12 @@ func TestCancelTaskCommandCancelsPendingTaskAndAppendsOutbox(t *testing.T) {
 }
 
 type cancelTaskStore struct {
-	task    *TaskRecord
-	updated *TaskUpdate
-	last    *OutboxEvent
+	task          *TaskRecord
+	assignment    *TaskAssignmentRecord
+	agent         *AgentRecord
+	updated       *TaskUpdate
+	last          *OutboxEvent
+	cancelCommand *AppendCancelTaskCommandParams
 }
 
 func (f *cancelTaskStore) GetTask(_ context.Context, _ uuid.UUID) (*TaskRecord, error) {
@@ -136,5 +189,24 @@ func (f *cancelTaskStore) UpdateTask(_ context.Context, update TaskUpdate) error
 
 func (f *cancelTaskStore) Append(_ context.Context, event OutboxEvent) error {
 	f.last = &event
+	return nil
+}
+
+func (f *cancelTaskStore) GetTaskAssignmentByExecutionID(_ context.Context, executionID string) (*TaskAssignmentRecord, error) {
+	if f.assignment == nil || f.assignment.ExecutionID != executionID {
+		return nil, nil
+	}
+	return f.assignment, nil
+}
+
+func (f *cancelTaskStore) GetAgentByID(_ context.Context, agentID string) (*AgentRecord, error) {
+	if f.agent == nil || f.agent.ID != agentID {
+		return nil, nil
+	}
+	return f.agent, nil
+}
+
+func (f *cancelTaskStore) AppendCancelCommand(_ context.Context, params AppendCancelTaskCommandParams) error {
+	f.cancelCommand = &params
 	return nil
 }

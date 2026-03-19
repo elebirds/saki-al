@@ -11,6 +11,42 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const getAgentByID = `-- name: GetAgentByID :one
+select
+    id,
+    version,
+    capabilities,
+    transport_mode,
+    control_base_url,
+    max_concurrency,
+    running_task_ids,
+    status,
+    last_seen_at,
+    created_at,
+    updated_at
+from agent
+where id = $1
+`
+
+func (q *Queries) GetAgentByID(ctx context.Context, id string) (Agent, error) {
+	row := q.db.QueryRow(ctx, getAgentByID, id)
+	var i Agent
+	err := row.Scan(
+		&i.ID,
+		&i.Version,
+		&i.Capabilities,
+		&i.TransportMode,
+		&i.ControlBaseUrl,
+		&i.MaxConcurrency,
+		&i.RunningTaskIds,
+		&i.Status,
+		&i.LastSeenAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const heartbeatAgent = `-- name: HeartbeatAgent :one
 update agent
 set version = coalesce(nullif($1, ''), version),

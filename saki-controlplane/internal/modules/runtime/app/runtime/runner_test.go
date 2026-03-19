@@ -3,8 +3,6 @@ package runtime
 import (
 	"context"
 	"errors"
-	"io"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,8 +11,8 @@ import (
 
 	"github.com/elebirds/saki/saki-controlplane/internal/app/storage"
 	"github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/commands"
-	runtimeeffects "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/effects"
 	runtimerepo "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/repo"
+	"github.com/google/uuid"
 )
 
 func TestRuntimeRunnerStartsRPCHandlersSchedulerAndOutboxWorker(t *testing.T) {
@@ -106,38 +104,47 @@ func TestRunnerOnlyStartsEnabledRoles(t *testing.T) {
 	}
 }
 
-func TestPlaceholderAgentControlClientMarksAssignEffectForRetry(t *testing.T) {
-	now := time.Unix(1700000000, 0)
-	store := &fakeRuntimeOutboxStore{
-		claimed: []runtimerepo.OutboxEntry{
+func TestNewDeliveryWorkerMarksRetryWhenDirectAgentHasNoControlURL(t *testing.T) {
+	claimToken := uuid.New()
+	store := &fakeRuntimeCommandStore{
+		claimedCommands: []runtimerepo.AgentCommand{
 			{
-				ID:             1,
-				Topic:          commands.AssignTaskOutboxTopic,
-				AggregateID:    "task-1",
-				IdempotencyKey: "runtime.task.assign.v1:exec-1",
-				Payload:        []byte(`{"task_id":"550e8400-e29b-41d4-a716-446655440000","execution_id":"exec-1","agent_id":"agent-1","task_kind":"PREDICTION","task_type":"predict","attempt":1,"max_attempts":3,"resolved_params":{"prompt":"hello"},"depends_on_task_ids":[],"leader_epoch":7}`),
-				AvailableAt:    now,
+				CommandID:     uuid.New(),
+				AgentID:       "agent-1",
+				CommandType:   "assign",
+				TransportMode: "direct",
+				Payload:       []byte(`{"task_id":"550e8400-e29b-41d4-a716-446655440000","execution_id":"exec-1","agent_id":"agent-1","task_kind":"PREDICTION","task_type":"predict","attempt":1,"max_attempts":3,"resolved_params":{"prompt":"hello"},"depends_on_task_ids":[],"leader_epoch":7}`),
+				ClaimToken:    &claimToken,
 			},
 		},
 	}
-	worker := runtimeeffects.NewWorker(
+	worker := newDeliveryWorker(
 		store,
-		runtimeeffects.NewDispatchEffect(&placeholderAgentControlClient{
-			logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
-		}),
+		&fakeRuntimeAgentStore{
+			agents: map[string]*runtimerepo.Agent{
+				"agent-1": {
+					ID:            "agent-1",
+					TransportMode: "direct",
+				},
+			},
+		},
+		http.DefaultClient,
 	)
 
 	if err := worker.RunOnce(context.Background()); err != nil {
 		t.Fatalf("run worker once: %v", err)
 	}
-	if store.markPublished != nil {
-		t.Fatalf("expected placeholder transport to avoid mark published, got %+v", store.markPublished)
+	if store.finish != nil || store.ack != nil {
+		t.Fatalf("expected missing direct endpoint to avoid ack/finish, got ack=%+v finish=%+v", store.ack, store.finish)
 	}
-	if store.markRetry == nil {
+	if store.retry == nil {
 		t.Fatal("expected placeholder transport to force retry")
 	}
-	if store.markRetry.lastError != errPlaceholderAgentControlTransport.Error() {
-		t.Fatalf("unexpected retry error: %+v", store.markRetry)
+	if !strings.Contains(store.retry.lastError, "control_base_url") {
+		t.Fatalf("unexpected retry error: %+v", store.retry)
+	}
+	if store.retry.nextAvailableAt.IsZero() {
+		t.Fatalf("expected retry to schedule next attempt, got %+v", store.retry)
 	}
 }
 
@@ -145,13 +152,6 @@ func TestWithDefaultOptionsLeavesSchedulerTargetAgentUnset(t *testing.T) {
 	opts := withDefaultOptions(Options{})
 	if opts.SchedulerTargetAgent != "" {
 		t.Fatalf("expected empty scheduler target agent by default, got %q", opts.SchedulerTargetAgent)
-	}
-}
-
-func TestRuntimeRunnerUsesConfiguredAgentControlBaseURL(t *testing.T) {
-	transport := newAgentControlTransport(http.DefaultClient, "http://127.0.0.1:18081", slog.New(slog.NewTextHandler(io.Discard, nil)))
-	if _, ok := transport.(*placeholderAgentControlClient); ok {
-		t.Fatal("expected configured base url to disable placeholder transport")
 	}
 }
 
@@ -163,7 +163,7 @@ func TestNewSchedulerTickerRunsDynamicDispatchWhenTargetAgentIsUnset(t *testing.
 		withDefaultOptions(Options{}),
 		leases,
 		assigner,
-		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		nil,
 	)
 	if err := ticker.Tick(context.Background()); err != nil {
 		t.Fatalf("tick: %v", err)
@@ -225,41 +225,54 @@ func (fakeOutboxWorker) RunOnce(context.Context) error {
 	return nil
 }
 
-type fakeRuntimeOutboxStore struct {
-	claimed       []runtimerepo.OutboxEntry
-	markPublished *runtimeMarkPublishedCall
-	markRetry     *runtimeMarkRetryCall
+type fakeRuntimeCommandStore struct {
+	claimedCommands []runtimerepo.AgentCommand
+	ack             *runtimeAckCall
+	finish          *runtimeFinishCall
+	retry           *runtimeRetryCall
 }
 
-func (f *fakeRuntimeOutboxStore) ClaimDue(_ context.Context, _ int32, _ time.Time) ([]runtimerepo.OutboxEntry, error) {
-	return append([]runtimerepo.OutboxEntry(nil), f.claimed...), nil
+func (f *fakeRuntimeCommandStore) ClaimForPush(_ context.Context, _ int32, _ time.Time) ([]runtimerepo.AgentCommand, error) {
+	return append([]runtimerepo.AgentCommand(nil), f.claimedCommands...), nil
 }
 
-func (f *fakeRuntimeOutboxStore) MarkPublished(_ context.Context, id int64, claimAvailableAt time.Time) error {
-	f.markPublished = &runtimeMarkPublishedCall{id: id, claimAvailableAt: claimAvailableAt}
+func (f *fakeRuntimeCommandStore) Ack(_ context.Context, commandID, claimToken uuid.UUID, at time.Time) error {
+	f.ack = &runtimeAckCall{commandID: commandID, claimToken: claimToken, at: at}
 	return nil
 }
 
-func (f *fakeRuntimeOutboxStore) MarkRetry(_ context.Context, id int64, claimAvailableAt, nextAvailableAt time.Time, lastError string) error {
-	f.markRetry = &runtimeMarkRetryCall{
-		id:               id,
-		claimAvailableAt: claimAvailableAt,
-		nextAvailableAt:  nextAvailableAt,
-		lastError:        lastError,
+func (f *fakeRuntimeCommandStore) MarkFinished(_ context.Context, commandID, claimToken uuid.UUID, at time.Time) error {
+	f.finish = &runtimeFinishCall{commandID: commandID, claimToken: claimToken, at: at}
+	return nil
+}
+
+func (f *fakeRuntimeCommandStore) MarkRetry(_ context.Context, commandID, claimToken uuid.UUID, nextAvailableAt time.Time, lastError string) error {
+	f.retry = &runtimeRetryCall{
+		commandID:       commandID,
+		claimToken:      claimToken,
+		nextAvailableAt: nextAvailableAt,
+		lastError:       lastError,
 	}
 	return nil
 }
 
-type runtimeMarkPublishedCall struct {
-	id               int64
-	claimAvailableAt time.Time
+type runtimeAckCall struct {
+	commandID  uuid.UUID
+	claimToken uuid.UUID
+	at         time.Time
 }
 
-type runtimeMarkRetryCall struct {
-	id               int64
-	claimAvailableAt time.Time
-	nextAvailableAt  time.Time
-	lastError        string
+type runtimeFinishCall struct {
+	commandID  uuid.UUID
+	claimToken uuid.UUID
+	at         time.Time
+}
+
+type runtimeRetryCall struct {
+	commandID       uuid.UUID
+	claimToken      uuid.UUID
+	nextAvailableAt time.Time
+	lastError       string
 }
 
 type fakeRuntimeLeaseManager struct {
@@ -281,6 +294,17 @@ type fakeRuntimeDispatchTaskAssigner struct {
 func (f *fakeRuntimeDispatchTaskAssigner) Handle(context.Context, commands.AssignTaskCommand) (*commands.AssignResult, error) {
 	f.calls++
 	return nil, nil
+}
+
+type fakeRuntimeAgentStore struct {
+	agents map[string]*runtimerepo.Agent
+}
+
+func (f *fakeRuntimeAgentStore) GetByID(_ context.Context, agentID string) (*runtimerepo.Agent, error) {
+	if f.agents == nil {
+		return nil, nil
+	}
+	return f.agents[agentID], nil
 }
 
 type fakeRuntimeStorageProvider struct {

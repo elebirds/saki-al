@@ -97,6 +97,8 @@ type AppendAssignTaskCommandParams struct {
 	ExpireAt      time.Time
 }
 
+type AppendCancelTaskCommandParams = AppendAssignTaskCommandParams
+
 type ClaimedTask struct {
 	ID                 uuid.UUID
 	TaskKind           string

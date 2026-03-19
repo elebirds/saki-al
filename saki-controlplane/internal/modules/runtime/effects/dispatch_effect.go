@@ -2,49 +2,25 @@ package effects
 
 import (
 	"context"
-	"encoding/json"
 
-	runtimev1 "github.com/elebirds/saki/saki-controlplane/internal/gen/proto/runtime/v1"
-	"github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/commands"
+	runtimerepo "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/repo"
 )
 
-type DispatchClient interface {
-	AssignTask(ctx context.Context, req *runtimev1.AssignTaskRequest) error
-}
-
 type DispatchEffect struct {
-	client DispatchClient
+	transports *TransportRegistry
 }
 
-func NewDispatchEffect(client DispatchClient) *DispatchEffect {
-	return &DispatchEffect{client: client}
+func NewDispatchEffect(transports *TransportRegistry) *DispatchEffect {
+	return &DispatchEffect{transports: transports}
 }
 
-func (*DispatchEffect) Topic() string {
-	return commands.AssignTaskOutboxTopic
+func (*DispatchEffect) CommandType() string {
+	return "assign"
 }
 
-func (e *DispatchEffect) Apply(ctx context.Context, event commands.OutboxEvent) error {
-	if event.Topic != commands.AssignTaskOutboxTopic {
+func (e *DispatchEffect) Apply(ctx context.Context, cmd runtimerepo.AgentCommand) error {
+	if cmd.CommandType != "assign" {
 		return nil
 	}
-
-	var payload commands.AssignTaskOutboxPayload
-	if err := json.Unmarshal(event.Payload, &payload); err != nil {
-		return err
-	}
-
-	return e.client.AssignTask(ctx, &runtimev1.AssignTaskRequest{
-		TaskId:      payload.TaskID.String(),
-		ExecutionId: payload.ExecutionID,
-		TaskType:    payload.TaskType,
-		Payload:     resolvedParamsPayload(payload.ResolvedParams),
-	})
-}
-
-func resolvedParamsPayload(raw json.RawMessage) []byte {
-	if len(raw) == 0 {
-		return []byte(`{}`)
-	}
-	return append([]byte(nil), raw...)
+	return e.transports.DispatchAssign(ctx, cmd)
 }

@@ -16,12 +16,9 @@ import (
 	"testing"
 	"time"
 
-	"connectrpc.com/connect"
-	runtimev1 "github.com/elebirds/saki/saki-controlplane/internal/gen/proto/runtime/v1"
 	"github.com/elebirds/saki/saki-controlplane/internal/gen/proto/runtime/v1/runtimev1connect"
 	"github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/commands"
 	runtimescheduler "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/scheduler"
-	runtimeeffects "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/effects"
 	"github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/internalrpc"
 	runtimerepo "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/repo"
 	"github.com/google/uuid"
@@ -42,7 +39,7 @@ func TestRuntimeAgentClosure_AssignRunSucceed(t *testing.T) {
 
 	taskRepo := runtimerepo.NewTaskRepo(pool)
 	agentRepo := runtimerepo.NewAgentRepo(pool)
-	outboxRepo := runtimerepo.NewOutboxRepo(pool)
+	commandRepo := runtimerepo.NewAgentCommandRepo(pool)
 	outboxWriter := runtimerepo.NewCommandOutboxWriter(pool)
 
 	ingressServer := internalrpc.NewRuntimeServer(
@@ -104,12 +101,7 @@ func TestRuntimeAgentClosure_AssignRunSucceed(t *testing.T) {
 		t.Fatalf("leader tick: %v", err)
 	}
 
-	dispatchWorker := runtimeeffects.NewWorker(
-		outboxRepo,
-		runtimeeffects.NewDispatchEffect(connectDispatchClient{
-			client: runtimev1connect.NewAgentControlClient(http.DefaultClient, agent.controlBaseURL),
-		}),
-	)
+	dispatchWorker := newDirectDeliveryWorkerForTest(agentRepo, commandRepo)
 	if err := dispatchWorker.RunOnce(ctx); err != nil {
 		t.Fatalf("dispatch worker run once: %v\nagent stderr:\n%s", err, agent.stderr.String())
 	}
@@ -134,7 +126,7 @@ func TestRuntimeAgentClosure_CancelRequestsReachAgentAndTaskBecomesCanceled(t *t
 
 	taskRepo := runtimerepo.NewTaskRepo(pool)
 	agentRepo := runtimerepo.NewAgentRepo(pool)
-	outboxRepo := runtimerepo.NewOutboxRepo(pool)
+	commandRepo := runtimerepo.NewAgentCommandRepo(pool)
 	outboxWriter := runtimerepo.NewCommandOutboxWriter(pool)
 
 	ingressServer := internalrpc.NewRuntimeServer(
@@ -197,14 +189,7 @@ func TestRuntimeAgentClosure_CancelRequestsReachAgentAndTaskBecomesCanceled(t *t
 		t.Fatalf("leader tick: %v", err)
 	}
 
-	controlClient := connectAgentControlEffectClient{
-		client: runtimev1connect.NewAgentControlClient(http.DefaultClient, agent.controlBaseURL),
-	}
-	outboxWorker := runtimeeffects.NewWorker(
-		outboxRepo,
-		runtimeeffects.NewDispatchEffect(controlClient),
-		runtimeeffects.NewStopEffect(controlClient),
-	)
+	outboxWorker := newDirectDeliveryWorkerForTest(agentRepo, commandRepo)
 	if err := outboxWorker.RunOnce(ctx); err != nil {
 		t.Fatalf("dispatch worker run once: %v\nagent stderr:\n%s", err, agent.stderr.String())
 	}
@@ -223,9 +208,40 @@ func TestRuntimeAgentClosure_CancelRequestsReachAgentAndTaskBecomesCanceled(t *t
 	if cancelled == nil || cancelled.Status != "cancel_requested" {
 		t.Fatalf("expected cancel_requested task after cancel command, got %+v", cancelled)
 	}
+	// cancel 的新主路径必须先把命令落进 agent_command；否则 delivery worker 不会有东西可投递。
+	var cancelCommandStatus string
+	if err := pool.QueryRow(ctx, `
+select status
+from agent_command
+where task_id = $1
+  and command_type = 'cancel'
+order by created_at desc
+limit 1
+`, taskID).Scan(&cancelCommandStatus); err != nil {
+		t.Fatalf("load cancel command before delivery: %v", err)
+	}
+	if cancelCommandStatus != "pending" {
+		t.Fatalf("expected pending cancel command before delivery, got %s", cancelCommandStatus)
+	}
 
 	if err := outboxWorker.RunOnce(ctx); err != nil {
 		t.Fatalf("stop worker run once: %v\nagent stdout:\n%s\nagent stderr:\n%s", err, agent.stdout.String(), agent.stderr.String())
+	}
+	// worker 成功返回后，说明 direct transport 已经完成本次投递并推进命令生命周期。
+	var cancelAcked bool
+	var cancelFinished bool
+	if err := pool.QueryRow(ctx, `
+select acked_at is not null, finished_at is not null
+from agent_command
+where task_id = $1
+  and command_type = 'cancel'
+order by created_at desc
+limit 1
+`, taskID).Scan(&cancelAcked, &cancelFinished); err != nil {
+		t.Fatalf("load cancel command after delivery: %v", err)
+	}
+	if !cancelAcked || !cancelFinished {
+		t.Fatalf("expected cancel command to be acked and finished, got acked=%t finished=%t", cancelAcked, cancelFinished)
 	}
 
 	waitForPoll(t, 20*time.Second, func() bool {
@@ -449,18 +465,4 @@ func repoRootDir(t *testing.T) string {
 		t.Fatal("resolve caller")
 	}
 	return filepath.Join(filepath.Dir(file), "..", "..", "..", "..", "..")
-}
-
-type connectAgentControlEffectClient struct {
-	client runtimev1connect.AgentControlClient
-}
-
-func (c connectAgentControlEffectClient) AssignTask(ctx context.Context, req *runtimev1.AssignTaskRequest) error {
-	_, err := c.client.AssignTask(ctx, connect.NewRequest(req))
-	return err
-}
-
-func (c connectAgentControlEffectClient) StopTask(ctx context.Context, req *runtimev1.StopTaskRequest) error {
-	_, err := c.client.StopTask(ctx, connect.NewRequest(req))
-	return err
 }

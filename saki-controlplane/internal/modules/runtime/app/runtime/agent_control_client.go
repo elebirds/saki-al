@@ -3,36 +3,35 @@ package runtime
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"net/http"
-	"strings"
 
 	"connectrpc.com/connect"
 	runtimev1 "github.com/elebirds/saki/saki-controlplane/internal/gen/proto/runtime/v1"
 	"github.com/elebirds/saki/saki-controlplane/internal/gen/proto/runtime/v1/runtimev1connect"
+	runtimeeffects "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/effects"
 )
 
 var errAgentControlRejected = errors.New("agent control request was not accepted")
 
-type agentControlTransport interface {
-	AssignTask(ctx context.Context, req *runtimev1.AssignTaskRequest) error
-	StopTask(ctx context.Context, req *runtimev1.StopTaskRequest) error
+type connectAgentControlClientFactory struct {
+	httpClient *http.Client
+}
+
+func newAgentControlClientFactory(httpClient *http.Client) runtimeeffects.AgentControlClientFactory {
+	if httpClient == nil {
+		httpClient = http.DefaultClient
+	}
+	return connectAgentControlClientFactory{httpClient: httpClient}
+}
+
+func (f connectAgentControlClientFactory) New(baseURL string) runtimeeffects.AgentControlClient {
+	return &connectAgentControlClient{
+		client: runtimev1connect.NewAgentControlClient(f.httpClient, baseURL),
+	}
 }
 
 type connectAgentControlClient struct {
 	client runtimev1connect.AgentControlClient
-}
-
-func newAgentControlTransport(httpClient *http.Client, baseURL string, logger *slog.Logger) agentControlTransport {
-	if strings.TrimSpace(baseURL) == "" {
-		return &placeholderAgentControlClient{logger: loggerOrDefault(logger)}
-	}
-	if httpClient == nil {
-		httpClient = http.DefaultClient
-	}
-	return &connectAgentControlClient{
-		client: runtimev1connect.NewAgentControlClient(httpClient, baseURL),
-	}
 }
 
 func (c *connectAgentControlClient) AssignTask(ctx context.Context, req *runtimev1.AssignTaskRequest) error {

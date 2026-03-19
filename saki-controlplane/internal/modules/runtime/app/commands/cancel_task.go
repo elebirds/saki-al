@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -26,6 +27,9 @@ type CancelTaskCommand struct {
 type CancelTaskStore interface {
 	TaskLoader
 	UpdateTask(ctx context.Context, update TaskUpdate) error
+	GetTaskAssignmentByExecutionID(ctx context.Context, executionID string) (*TaskAssignmentRecord, error)
+	GetAgentByID(ctx context.Context, agentID string) (*AgentRecord, error)
+	AppendCancelCommand(ctx context.Context, params AppendCancelTaskCommandParams) error
 	OutboxWriter
 }
 
@@ -34,18 +38,21 @@ type CancelTaskTxRunner interface {
 }
 
 type CancelTaskHandler struct {
-	tx CancelTaskTxRunner
+	tx  CancelTaskTxRunner
+	now func() time.Time
 }
 
 func NewCancelTaskHandler(store CancelTaskStore) *CancelTaskHandler {
 	return &CancelTaskHandler{
-		tx: inlineCancelTaskTxRunner{store: store},
+		tx:  inlineCancelTaskTxRunner{store: store},
+		now: time.Now,
 	}
 }
 
 func NewCancelTaskHandlerWithTx(tx CancelTaskTxRunner) *CancelTaskHandler {
 	return &CancelTaskHandler{
-		tx: tx,
+		tx:  tx,
+		now: time.Now,
 	}
 }
 
@@ -89,6 +96,33 @@ func (h *CancelTaskHandler) Handle(ctx context.Context, cmd CancelTaskCommand) (
 			})
 			if err != nil {
 				return err
+			}
+			// 迁移窗口里 cancel 也要双写到 agent_command；
+			// 但老任务可能还没有 assignment 真相，因此查不到 assignment 时只保留旧 outbox 兼容路径。
+			if task.CurrentExecutionID != "" && task.AssignedAgentID != "" {
+				assignment, err := store.GetTaskAssignmentByExecutionID(ctx, task.CurrentExecutionID)
+				if err != nil {
+					return err
+				}
+				agent, err := store.GetAgentByID(ctx, task.AssignedAgentID)
+				if err != nil {
+					return err
+				}
+				if assignment != nil && agent != nil {
+					now := h.now().UTC()
+					if err := store.AppendCancelCommand(ctx, AppendCancelTaskCommandParams{
+						CommandID:     uuid.New(),
+						AgentID:       task.AssignedAgentID,
+						TaskID:        task.ID,
+						AssignmentID:  assignment.ID,
+						TransportMode: agent.TransportMode,
+						Payload:       payload,
+						AvailableAt:   now,
+						ExpireAt:      now.Add(defaultAssignCommandTTL),
+					}); err != nil {
+						return err
+					}
+				}
 			}
 			if err := store.Append(ctx, OutboxEvent{
 				Topic:       StopTaskOutboxTopic,

@@ -2,41 +2,25 @@ package effects
 
 import (
 	"context"
-	"encoding/json"
 
-	runtimev1 "github.com/elebirds/saki/saki-controlplane/internal/gen/proto/runtime/v1"
-	"github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/commands"
+	runtimerepo "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/repo"
 )
 
-type StopClient interface {
-	StopTask(ctx context.Context, req *runtimev1.StopTaskRequest) error
-}
-
 type StopEffect struct {
-	client StopClient
+	transports *TransportRegistry
 }
 
-func NewStopEffect(client StopClient) *StopEffect {
-	return &StopEffect{client: client}
+func NewStopEffect(transports *TransportRegistry) *StopEffect {
+	return &StopEffect{transports: transports}
 }
 
-func (*StopEffect) Topic() string {
-	return commands.StopTaskOutboxTopic
+func (*StopEffect) CommandType() string {
+	return "cancel"
 }
 
-func (e *StopEffect) Apply(ctx context.Context, event commands.OutboxEvent) error {
-	if event.Topic != commands.StopTaskOutboxTopic {
+func (e *StopEffect) Apply(ctx context.Context, cmd runtimerepo.AgentCommand) error {
+	if cmd.CommandType != "cancel" {
 		return nil
 	}
-
-	var payload commands.StopTaskOutboxPayload
-	if err := json.Unmarshal(event.Payload, &payload); err != nil {
-		return err
-	}
-
-	return e.client.StopTask(ctx, &runtimev1.StopTaskRequest{
-		TaskId:      payload.TaskID.String(),
-		ExecutionId: payload.ExecutionID,
-		Reason:      payload.Reason,
-	})
+	return e.transports.DispatchCancel(ctx, cmd)
 }

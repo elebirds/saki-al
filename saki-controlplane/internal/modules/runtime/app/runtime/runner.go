@@ -11,7 +11,6 @@ import (
 
 	appdb "github.com/elebirds/saki/saki-controlplane/internal/app/db"
 	"github.com/elebirds/saki/saki-controlplane/internal/app/storage"
-	runtimev1 "github.com/elebirds/saki/saki-controlplane/internal/gen/proto/runtime/v1"
 	"github.com/elebirds/saki/saki-controlplane/internal/gen/proto/runtime/v1/runtimev1connect"
 	assetapp "github.com/elebirds/saki/saki-controlplane/internal/modules/asset/app"
 	assetrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/asset/repo"
@@ -20,6 +19,7 @@ import (
 	runtimeeffects "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/effects"
 	"github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/internalrpc"
 	runtimerepo "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/repo"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -33,10 +33,8 @@ const (
 	defaultArtifactTicketExpiry  = 15 * time.Minute
 	healthzPath                  = "/healthz"
 	healthzResponse              = "ok"
-	placeholderTransportLogLabel = "runtime agent control placeholder is active"
 )
 
-var errPlaceholderAgentControlTransport = errors.New("runtime agent control transport is not configured")
 var errRuntimeArtifactProviderRequired = errors.New("runtime artifact provider is required")
 
 type Options struct {
@@ -73,6 +71,17 @@ type outboxWorker interface {
 	RunOnce(ctx context.Context) error
 }
 
+type deliveryCommandStore interface {
+	ClaimForPush(ctx context.Context, limit int32, claimUntil time.Time) ([]runtimerepo.AgentCommand, error)
+	Ack(ctx context.Context, commandID, claimToken uuid.UUID, ackAt time.Time) error
+	MarkFinished(ctx context.Context, commandID, claimToken uuid.UUID, finishedAt time.Time) error
+	MarkRetry(ctx context.Context, commandID, claimToken uuid.UUID, nextAvailableAt time.Time, lastError string) error
+}
+
+type deliveryAgentStore interface {
+	GetByID(ctx context.Context, agentID string) (*runtimerepo.Agent, error)
+}
+
 type rpcHandlerMount struct {
 	path    string
 	handler http.Handler
@@ -107,7 +116,7 @@ func New(ctx context.Context, opts Options, logger *slog.Logger) (*Runner, error
 
 	leaseRepo := runtimerepo.NewLeaseRepo(pool)
 	taskRepo := runtimerepo.NewTaskRepo(pool)
-	outboxRepo := runtimerepo.NewOutboxRepo(pool)
+	commandRepo := runtimerepo.NewAgentCommandRepo(pool)
 	agentRepo := runtimerepo.NewAgentRepo(pool)
 	outboxWriter := runtimerepo.NewCommandOutboxWriter(pool)
 	assetStore := cfg.assetStoreFactory()(pool)
@@ -137,12 +146,7 @@ func New(ctx context.Context, opts Options, logger *slog.Logger) (*Runner, error
 	)
 	ticker := newSchedulerTicker(cfg, leaseRepo, assigner, log)
 
-	controlClient := newAgentControlTransport(http.DefaultClient, cfg.AgentControlBaseURL, log)
-	worker := runtimeeffects.NewWorker(
-		outboxRepo,
-		runtimeeffects.NewDispatchEffect(controlClient),
-		runtimeeffects.NewStopEffect(controlClient),
-	)
+	worker := newDeliveryWorker(commandRepo, agentRepo, http.DefaultClient)
 
 	runner := newRunnerFromAssembly(assembly{
 		bind:              cfg.Bind,
@@ -312,28 +316,6 @@ func outboxRunOnceFunc(worker outboxWorker) func(context.Context) error {
 	return worker.RunOnce
 }
 
-type placeholderAgentControlClient struct {
-	logger *slog.Logger
-}
-
-func (c *placeholderAgentControlClient) AssignTask(_ context.Context, req *runtimev1.AssignTaskRequest) error {
-	c.logger.Warn(placeholderTransportLogLabel,
-		"method", "AssignTask",
-		"task_id", req.GetTaskId(),
-		"execution_id", req.GetExecutionId(),
-	)
-	return errPlaceholderAgentControlTransport
-}
-
-func (c *placeholderAgentControlClient) StopTask(_ context.Context, req *runtimev1.StopTaskRequest) error {
-	c.logger.Warn(placeholderTransportLogLabel,
-		"method", "StopTask",
-		"task_id", req.GetTaskId(),
-		"execution_id", req.GetExecutionId(),
-	)
-	return errPlaceholderAgentControlTransport
-}
-
 func withDefaultOptions(opts Options) Options {
 	if opts.ReadHeaderTimeout <= 0 {
 		opts.ReadHeaderTimeout = defaultReadHeaderTimeout
@@ -394,4 +376,18 @@ func durationOrDefault(value, fallback time.Duration) time.Duration {
 		return fallback
 	}
 	return value
+}
+
+func newDeliveryWorker(commandStore deliveryCommandStore, agentStore deliveryAgentStore, httpClient *http.Client) *runtimeeffects.Worker {
+	// delivery 只消费 agent_command 真相；全局 AgentControlBaseURL 已退出主路径。
+	// direct 按 agent.control_base_url 推送，pull 保持 pending 由 agent 自己领取。
+	transports := runtimeeffects.NewTransportRegistry(
+		runtimeeffects.NewDirectTransport(agentStore, newAgentControlClientFactory(httpClient)),
+		runtimeeffects.NewPullTransport(),
+	)
+	return runtimeeffects.NewWorker(
+		commandStore,
+		runtimeeffects.NewDispatchEffect(transports),
+		runtimeeffects.NewStopEffect(transports),
+	)
 }

@@ -23,6 +23,11 @@ func TestRuntimeRunnerStartsRPCHandlersSchedulerAndOutboxWorker(t *testing.T) {
 
 	runner := newRunnerFromAssembly(assembly{
 		bind: ":8081",
+		roles: NewRoleSet(
+			string(RuntimeRoleIngress),
+			string(RuntimeRoleScheduler),
+			string(RuntimeRoleDelivery),
+		),
 		rpcHandlers: []rpcHandlerMount{
 			{
 				path: "/saki.runtime.v1.AgentIngress/",
@@ -42,19 +47,16 @@ func TestRuntimeRunnerStartsRPCHandlersSchedulerAndOutboxWorker(t *testing.T) {
 		schedulerTicker: fakeSchedulerTicker{},
 		outboxWorker:    fakeOutboxWorker{},
 	})
-	if runner.server == nil {
+	if runner.Server() == nil {
 		t.Fatal("expected runtime runner to build http server")
 	}
-	if runner.schedulerLoop == nil {
-		t.Fatal("expected scheduler loop to be wired")
-	}
-	if runner.outboxLoop == nil {
-		t.Fatal("expected outbox worker loop to be wired")
+	if len(runner.process.background) != 2 {
+		t.Fatalf("expected scheduler and delivery loops to be wired, got %d loops", len(runner.process.background))
 	}
 
 	ingressReq := httptest.NewRequest(http.MethodPost, "/saki.runtime.v1.AgentIngress/Register", nil)
 	ingressResp := httptest.NewRecorder()
-	runner.server.Handler.ServeHTTP(ingressResp, ingressReq)
+	runner.Server().Handler.ServeHTTP(ingressResp, ingressReq)
 	if !ingressCalled {
 		t.Fatal("expected ingress handler to be mounted")
 	}
@@ -64,12 +66,43 @@ func TestRuntimeRunnerStartsRPCHandlersSchedulerAndOutboxWorker(t *testing.T) {
 
 	artifactReq := httptest.NewRequest(http.MethodPost, "/saki.runtime.v1.ArtifactService/CreateUploadTicket", nil)
 	artifactResp := httptest.NewRecorder()
-	runner.server.Handler.ServeHTTP(artifactResp, artifactReq)
+	runner.Server().Handler.ServeHTTP(artifactResp, artifactReq)
 	if !artifactCalled {
 		t.Fatal("expected artifact handler to be mounted")
 	}
 	if artifactResp.Code != http.StatusCreated {
 		t.Fatalf("unexpected artifact status: %d", artifactResp.Code)
+	}
+}
+
+func TestRunnerOnlyStartsEnabledRoles(t *testing.T) {
+	runner := newRunnerFromAssembly(assembly{
+		bind:  ":8081",
+		roles: NewRoleSet(string(RuntimeRoleScheduler)),
+		rpcHandlers: []rpcHandlerMount{
+			{
+				path: "/saki.runtime.v1.AgentIngress/",
+				handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+					w.WriteHeader(http.StatusAccepted)
+				}),
+			},
+		},
+		schedulerTicker: fakeSchedulerTicker{},
+		outboxWorker:    fakeOutboxWorker{},
+	})
+
+	if runner.Server() == nil {
+		t.Fatal("expected runtime runner to build http server")
+	}
+	if len(runner.process.background) != 1 {
+		t.Fatalf("expected only scheduler loop to be wired, got %d loops", len(runner.process.background))
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/saki.runtime.v1.AgentIngress/Register", nil)
+	resp := httptest.NewRecorder()
+	runner.Server().Handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusNotFound {
+		t.Fatalf("expected ingress handler to be disabled, got %d", resp.Code)
 	}
 }
 

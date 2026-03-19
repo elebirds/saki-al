@@ -272,6 +272,7 @@ func NewRuntime(ctx context.Context) (*runtimeapp.Runner, *slog.Logger, error) {
 
 	runner, err := runtimeapp.New(ctx, runtimeapp.Options{
 		Bind:                 cfg.RuntimeBind,
+		Roles:                runtimeapp.NewRoleSet(cfg.RuntimeRoles...),
 		DatabaseDSN:          cfg.DatabaseDSN,
 		SchedulerTargetAgent: cfg.RuntimeSchedulerTargetAgent,
 		AgentControlBaseURL:  cfg.RuntimeAgentControlBaseURL,

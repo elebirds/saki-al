@@ -33,6 +33,7 @@ func (p *BootstrapPrincipals) UnmarshalText(text []byte) error {
 type Config struct {
 	PublicAPIBind               string              `env:"PUBLIC_API_BIND" envDefault:":8080"`
 	RuntimeBind                 string              `env:"RUNTIME_BIND" envDefault:":8081"`
+	RuntimeRoles                []string            `env:"RUNTIME_ROLES" envDefault:"ingress,scheduler,delivery,recovery" envSeparator:","`
 	RuntimeSchedulerTargetAgent string              `env:"RUNTIME_SCHEDULER_TARGET_AGENT"`
 	RuntimeAgentControlBaseURL  string              `env:"RUNTIME_AGENT_CONTROL_BASE_URL"`
 	LogLevel                    string              `env:"LOG_LEVEL" envDefault:"INFO"`

@@ -21,14 +21,13 @@ import (
 	"github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/internalrpc"
 	runtimerepo "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/repo"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"golang.org/x/sync/errgroup"
 )
 
 const (
 	defaultReadHeaderTimeout     = 5 * time.Second
 	defaultSchedulerInterval     = 2 * time.Second
 	defaultOutboxInterval        = 1 * time.Second
-	defaultShutdownTimeout       = 5 * time.Second
+	defaultRecoveryInterval      = 5 * time.Second
 	defaultSchedulerLeaseName    = "runtime-scheduler"
 	defaultSchedulerLeaseTTL     = 30 * time.Second
 	defaultArtifactTicketExpiry  = 15 * time.Minute
@@ -42,6 +41,7 @@ var errRuntimeArtifactProviderRequired = errors.New("runtime artifact provider i
 
 type Options struct {
 	Bind                 string
+	Roles                RoleSet
 	DatabaseDSN          string
 	ReadHeaderTimeout    time.Duration
 	SchedulerInterval    time.Duration
@@ -58,9 +58,7 @@ type Options struct {
 }
 
 type Runner struct {
-	server        *http.Server
-	schedulerLoop loopRunner
-	outboxLoop    loopRunner
+	process *Process
 }
 
 type loopRunner interface {
@@ -82,6 +80,7 @@ type rpcHandlerMount struct {
 
 type assembly struct {
 	bind              string
+	roles             RoleSet
 	readHeaderTimeout time.Duration
 	rpcHandlers       []rpcHandlerMount
 	schedulerTicker   schedulerTicker
@@ -144,6 +143,7 @@ func New(ctx context.Context, opts Options, logger *slog.Logger) (*Runner, error
 
 	runner := newRunnerFromAssembly(assembly{
 		bind:              cfg.Bind,
+		roles:             cfg.Roles,
 		readHeaderTimeout: cfg.ReadHeaderTimeout,
 		rpcHandlers: []rpcHandlerMount{
 			{
@@ -161,7 +161,7 @@ func New(ctx context.Context, opts Options, logger *slog.Logger) (*Runner, error
 		outboxInterval:    cfg.OutboxInterval,
 		logger:            log,
 	})
-	runner.server.RegisterOnShutdown(func() {
+	runner.Server().RegisterOnShutdown(func() {
 		pool.Close()
 	})
 
@@ -169,36 +169,17 @@ func New(ctx context.Context, opts Options, logger *slog.Logger) (*Runner, error
 }
 
 func (r *Runner) Server() *http.Server {
-	return r.server
+	if r == nil || r.process == nil {
+		return nil
+	}
+	return r.process.Server()
 }
 
 func (r *Runner) Run(ctx context.Context) error {
-	group, runCtx := errgroup.WithContext(ctx)
-	group.Go(func() error {
-		return r.schedulerLoop.Run(runCtx)
-	})
-	group.Go(func() error {
-		return r.outboxLoop.Run(runCtx)
-	})
-	group.Go(func() error {
-		err := r.server.ListenAndServe()
-		if errors.Is(err, http.ErrServerClosed) {
-			return nil
-		}
-		return err
-	})
-	group.Go(func() error {
-		<-runCtx.Done()
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), defaultShutdownTimeout)
-		defer cancel()
-		err := r.server.Shutdown(shutdownCtx)
-		if errors.Is(err, http.ErrServerClosed) {
-			return nil
-		}
-		return err
-	})
-
-	return group.Wait()
+	if r == nil || r.process == nil {
+		return nil
+	}
+	return r.process.Run(ctx)
 }
 
 func probeArtifactProvider(ctx context.Context, provider storage.Provider) error {
@@ -221,7 +202,7 @@ func newRunnerFromAssembly(parts assembly) *Runner {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(healthzResponse))
 	})
-	for _, mount := range parts.rpcHandlers {
+	for _, mount := range ingressRoleHandlers(parts.roles, parts.rpcHandlers) {
 		if mount.path == "" || mount.handler == nil {
 			continue
 		}
@@ -229,23 +210,16 @@ func newRunnerFromAssembly(parts assembly) *Runner {
 	}
 
 	return &Runner{
-		server: &http.Server{
-			Addr:              parts.bind,
-			Handler:           mux,
-			ReadHeaderTimeout: durationOrDefault(parts.readHeaderTimeout, defaultReadHeaderTimeout),
-		},
-		schedulerLoop: newPollingLoop(pollingLoopConfig{
-			name:     "scheduler",
-			interval: durationOrDefault(parts.schedulerInterval, defaultSchedulerInterval),
-			runOnce:  schedulerTickFunc(parts.schedulerTicker),
-			logger:   log,
-		}),
-		outboxLoop: newPollingLoop(pollingLoopConfig{
-			name:     "outbox-worker",
-			interval: durationOrDefault(parts.outboxInterval, defaultOutboxInterval),
-			runOnce:  outboxRunOnceFunc(parts.outboxWorker),
-			logger:   log,
-		}),
+		process: newProcess(
+			&http.Server{
+				Addr:              parts.bind,
+				Handler:           mux,
+				ReadHeaderTimeout: durationOrDefault(parts.readHeaderTimeout, defaultReadHeaderTimeout),
+			},
+			schedulerRoleLoop(parts, log),
+			deliveryRoleLoop(parts, log),
+			recoveryRoleLoop(parts, log),
+		),
 	}
 }
 
@@ -386,6 +360,9 @@ func withDefaultOptions(opts Options) Options {
 	}
 	if opts.DownloadTicketExpiry <= 0 {
 		opts.DownloadTicketExpiry = defaultArtifactTicketExpiry
+	}
+	if len(opts.Roles) == 0 {
+		opts.Roles = DefaultRoleSet()
 	}
 	return opts
 }

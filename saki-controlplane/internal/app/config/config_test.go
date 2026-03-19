@@ -5,6 +5,17 @@ import (
 	"testing"
 )
 
+func TestLoadRuntimeConfigDefaultRoles(t *testing.T) {
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !slices.Equal(cfg.RuntimeRoles, []string{"ingress", "scheduler", "delivery", "recovery"}) {
+		t.Fatalf("unexpected runtime roles: %+v", cfg.RuntimeRoles)
+	}
+}
+
 func TestLoadConfigDefaults(t *testing.T) {
 	cfg, err := Load()
 	if err != nil {
@@ -96,5 +107,18 @@ func TestLoadIncludesRuntimeAgentControlBaseURL(t *testing.T) {
 	}
 	if cfg.RuntimeAgentControlBaseURL != "http://127.0.0.1:18081" {
 		t.Fatalf("unexpected runtime agent control base url: %q", cfg.RuntimeAgentControlBaseURL)
+	}
+}
+
+func TestLoadRuntimeConfigReadsConfiguredRoles(t *testing.T) {
+	t.Setenv("RUNTIME_ROLES", "ingress,delivery")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !slices.Equal(cfg.RuntimeRoles, []string{"ingress", "delivery"}) {
+		t.Fatalf("unexpected runtime roles: %+v", cfg.RuntimeRoles)
 	}
 }

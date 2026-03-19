@@ -963,7 +963,7 @@ select exists (
 	}
 }
 
-func TestRuntimeCoreAlignmentMigrationIsNoopAfterHistoryRewrite(t *testing.T) {
+func TestRuntimeBaseMigrationIncludesAgentClosureSchema(t *testing.T) {
 	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
 
 	ctx := context.Background()
@@ -980,48 +980,90 @@ func TestRuntimeCoreAlignmentMigrationIsNoopAfterHistoryRewrite(t *testing.T) {
 
 	goose.SetDialect("postgres")
 	migrationsDir := runtimeMigrationsDir(t)
-	if err := goose.UpTo(sqlDB, migrationsDir, 31); err != nil {
-		t.Fatalf("run migrations to 31: %v", err)
-	}
-
-	taskID := uuid.New()
-	if _, err := sqlDB.ExecContext(ctx, `
-insert into runtime_task (id, task_type, task_kind, status, assigned_agent_id, current_execution_id, leader_epoch)
-values ($1, 'predict', 'PREDICTION', 'assigned', 'agent-1', 'exec-1', 7)
-`, taskID); err != nil {
-		t.Fatalf("insert runtime task at version 31: %v", err)
-	}
-
-	if err := goose.DownTo(sqlDB, migrationsDir, 30); err != nil {
-		t.Fatalf("down to 30 after no-op 31: %v", err)
-	}
-
-	version, err := goose.GetDBVersion(sqlDB)
-	if err != nil {
-		t.Fatalf("get db version: %v", err)
-	}
-	if version != 30 {
-		t.Fatalf("expected db version 30 after down, got %d", version)
+	if err := goose.UpTo(sqlDB, migrationsDir, 30); err != nil {
+		t.Fatalf("run migrations to 30: %v", err)
 	}
 
 	var (
-		taskKind        string
-		status          string
-		assignedAgentID string
-		executionID     string
+		agentExists          bool
+		taskAssignmentExists bool
+		agentCommandExists   bool
+		agentSessionExists   bool
 	)
 	if err := sqlDB.QueryRowContext(ctx, `
-select task_kind::text, status::text, assigned_agent_id, current_execution_id
-from runtime_task
-where id = $1
-`, taskID).Scan(&taskKind, &status, &assignedAgentID, &executionID); err != nil {
-		t.Fatalf("load runtime task after down to 30: %v", err)
+select exists (
+    select 1 from information_schema.tables
+    where table_schema = 'public' and table_name = 'agent'
+)
+`).Scan(&agentExists); err != nil {
+		t.Fatalf("query agent table existence: %v", err)
 	}
-	if taskKind != "PREDICTION" || status != "assigned" {
-		t.Fatalf("expected runtime task row to survive no-op rollback, got task_kind=%q status=%q", taskKind, status)
+	if err := sqlDB.QueryRowContext(ctx, `
+select exists (
+    select 1 from information_schema.tables
+    where table_schema = 'public' and table_name = 'task_assignment'
+)
+`).Scan(&taskAssignmentExists); err != nil {
+		t.Fatalf("query task_assignment table existence: %v", err)
 	}
-	if assignedAgentID != "agent-1" || executionID != "exec-1" {
-		t.Fatalf("unexpected runtime task payload after rollback: assigned_agent_id=%q execution_id=%q", assignedAgentID, executionID)
+	if err := sqlDB.QueryRowContext(ctx, `
+select exists (
+    select 1 from information_schema.tables
+    where table_schema = 'public' and table_name = 'agent_command'
+)
+`).Scan(&agentCommandExists); err != nil {
+		t.Fatalf("query agent_command table existence: %v", err)
+	}
+	if err := sqlDB.QueryRowContext(ctx, `
+select exists (
+    select 1 from information_schema.tables
+    where table_schema = 'public' and table_name = 'agent_session'
+)
+`).Scan(&agentSessionExists); err != nil {
+		t.Fatalf("query agent_session table existence: %v", err)
+	}
+	if !agentExists || !taskAssignmentExists || !agentCommandExists || !agentSessionExists {
+		t.Fatalf("expected runtime base migration to include final agent closure tables, got agent=%t task_assignment=%t agent_command=%t agent_session=%t",
+			agentExists, taskAssignmentExists, agentCommandExists, agentSessionExists)
+	}
+
+	var (
+		runtimeExecutorExists bool
+		runtimeOutboxExists   bool
+	)
+	if err := sqlDB.QueryRowContext(ctx, `
+select exists (
+    select 1 from information_schema.tables
+    where table_schema = 'public' and table_name = 'runtime_executor'
+)
+`).Scan(&runtimeExecutorExists); err != nil {
+		t.Fatalf("query runtime_executor table existence: %v", err)
+	}
+	if err := sqlDB.QueryRowContext(ctx, `
+select exists (
+    select 1 from information_schema.tables
+    where table_schema = 'public' and table_name = 'runtime_outbox'
+)
+`).Scan(&runtimeOutboxExists); err != nil {
+		t.Fatalf("query runtime_outbox table existence: %v", err)
+	}
+	if runtimeExecutorExists || runtimeOutboxExists {
+		t.Fatalf("expected runtime base migration to drop legacy tables, got runtime_executor=%t runtime_outbox=%t",
+			runtimeExecutorExists, runtimeOutboxExists)
+	}
+
+	var runtimeExecutorStatusExists bool
+	if err := sqlDB.QueryRowContext(ctx, `
+select exists (
+    select 1 from pg_type
+    where typnamespace = 'public'::regnamespace
+      and typname = 'runtime_executor_status'
+)
+`).Scan(&runtimeExecutorStatusExists); err != nil {
+		t.Fatalf("query runtime_executor_status type existence: %v", err)
+	}
+	if runtimeExecutorStatusExists {
+		t.Fatal("expected runtime_executor_status to be absent from rewritten runtime base migration")
 	}
 }
 

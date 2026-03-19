@@ -34,6 +34,7 @@ type Config struct {
 	PublicAPIBind               string              `env:"PUBLIC_API_BIND" envDefault:":8080"`
 	RuntimeBind                 string              `env:"RUNTIME_BIND" envDefault:":8081"`
 	RuntimeSchedulerTargetAgent string              `env:"RUNTIME_SCHEDULER_TARGET_AGENT"`
+	RuntimeAgentControlBaseURL  string              `env:"RUNTIME_AGENT_CONTROL_BASE_URL"`
 	LogLevel                    string              `env:"LOG_LEVEL" envDefault:"INFO"`
 	LogFormat                   string              `env:"LOG_FORMAT" envDefault:"AUTO"`
 	DatabaseDSN                 string              `env:"DATABASE_DSN"`

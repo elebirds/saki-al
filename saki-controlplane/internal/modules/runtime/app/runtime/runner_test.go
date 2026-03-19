@@ -115,6 +115,13 @@ func TestWithDefaultOptionsLeavesSchedulerTargetAgentUnset(t *testing.T) {
 	}
 }
 
+func TestRuntimeRunnerUsesConfiguredAgentControlBaseURL(t *testing.T) {
+	transport := newAgentControlTransport(http.DefaultClient, "http://127.0.0.1:18081", slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if _, ok := transport.(*placeholderAgentControlClient); ok {
+		t.Fatal("expected configured base url to disable placeholder transport")
+	}
+}
+
 func TestNewSchedulerTickerSkipsLeaderElectionWhenTargetAgentIsUnset(t *testing.T) {
 	leases := &fakeRuntimeLeaseManager{}
 	assigner := &fakeRuntimeDispatchTaskAssigner{}

@@ -50,6 +50,7 @@ type Options struct {
 	SchedulerHolder      string
 	SchedulerLeaseTTL    time.Duration
 	SchedulerTargetAgent string
+	AgentControlBaseURL  string
 	AssetStoreFactory    func(pool *pgxpool.Pool) assetapp.Store
 	AssetProvider        storage.Provider
 	UploadTicketExpiry   time.Duration
@@ -134,7 +135,7 @@ func New(ctx context.Context, opts Options, logger *slog.Logger) (*Runner, error
 	assigner := runtimecommands.NewAssignTaskHandlerWithTx(runtimerepo.NewAssignTaskTxRunner(pool))
 	ticker := newSchedulerTicker(cfg, leaseRepo, assigner, log)
 
-	controlClient := &placeholderAgentControlClient{logger: log}
+	controlClient := newAgentControlTransport(http.DefaultClient, cfg.AgentControlBaseURL, log)
 	worker := runtimeeffects.NewWorker(
 		outboxRepo,
 		runtimeeffects.NewDispatchEffect(controlClient),

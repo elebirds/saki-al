@@ -86,3 +86,15 @@ func TestLoadIncludesObjectStorageConfig(t *testing.T) {
 		t.Fatal("expected object storage secure to be true")
 	}
 }
+
+func TestLoadIncludesRuntimeAgentControlBaseURL(t *testing.T) {
+	t.Setenv("RUNTIME_AGENT_CONTROL_BASE_URL", "http://127.0.0.1:18081")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.RuntimeAgentControlBaseURL != "http://127.0.0.1:18081" {
+		t.Fatalf("unexpected runtime agent control base url: %q", cfg.RuntimeAgentControlBaseURL)
+	}
+}

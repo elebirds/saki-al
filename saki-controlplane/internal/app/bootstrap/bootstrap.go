@@ -274,6 +274,7 @@ func NewRuntime(ctx context.Context) (*runtimeapp.Runner, *slog.Logger, error) {
 		Bind:                 cfg.RuntimeBind,
 		DatabaseDSN:          cfg.DatabaseDSN,
 		SchedulerTargetAgent: cfg.RuntimeSchedulerTargetAgent,
+		AgentControlBaseURL:  cfg.RuntimeAgentControlBaseURL,
 		AssetProvider:        objectProvider,
 		UploadTicketExpiry:   15 * time.Minute,
 		DownloadTicketExpiry: 15 * time.Minute,

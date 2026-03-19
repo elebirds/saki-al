@@ -8,9 +8,9 @@ import (
 )
 
 type Handlers struct {
-	summary   *runtimequeries.GetRuntimeSummaryQuery
-	executors *runtimequeries.ListExecutorsQuery
-	commands  *runtimequeries.IssueRuntimeCommandUseCase
+	summary  *runtimequeries.GetRuntimeSummaryQuery
+	agents   *runtimequeries.ListAgentsQuery
+	commands *runtimequeries.IssueRuntimeCommandUseCase
 }
 
 type Dependencies struct {
@@ -20,9 +20,9 @@ type Dependencies struct {
 
 func NewHandlers(deps Dependencies) *Handlers {
 	return &Handlers{
-		summary:   runtimequeries.NewGetRuntimeSummaryQuery(deps.Store),
-		executors: runtimequeries.NewListExecutorsQuery(deps.Store),
-		commands:  deps.Commands,
+		summary:  runtimequeries.NewGetRuntimeSummaryQuery(deps.Store),
+		agents:   runtimequeries.NewListAgentsQuery(deps.Store),
+		commands: deps.Commands,
 	}
 }
 
@@ -40,17 +40,17 @@ func (h *Handlers) GetRuntimeSummary(ctx context.Context) (*openapi.RuntimeSumma
 }
 
 func (h *Handlers) ListRuntimeExecutors(ctx context.Context) ([]openapi.RuntimeExecutor, error) {
-	executors, err := h.executors.Execute(ctx)
+	agents, err := h.agents.Execute(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	result := make([]openapi.RuntimeExecutor, 0, len(executors))
-	for _, executor := range executors {
+	result := make([]openapi.RuntimeExecutor, 0, len(agents))
+	for _, agent := range agents {
 		result = append(result, openapi.RuntimeExecutor{
-			ID:         executor.ID,
-			Version:    executor.Version,
-			LastSeenAt: executor.LastSeenAt,
+			ID:         agent.ID,
+			Version:    agent.Version,
+			LastSeenAt: agent.LastSeenAt,
 		})
 	}
 

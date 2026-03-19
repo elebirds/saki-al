@@ -117,8 +117,8 @@ func New(ctx context.Context, opts Options, logger *slog.Logger) (*Runner, error
 	}
 
 	ingressServer := internalrpc.NewRuntimeServer(
-		runtimecommands.NewRegisterExecutorHandler(executorRepo),
-		runtimecommands.NewHeartbeatExecutorHandler(executorRepo),
+		runtimecommands.NewRegisterAgentHandler(executorRepo),
+		runtimecommands.NewHeartbeatAgentHandler(executorRepo),
 		runtimecommands.NewStartTaskHandler(taskRepo),
 		runtimecommands.NewCompleteTaskHandler(taskRepo, outboxWriter),
 		runtimecommands.NewFailTaskHandler(taskRepo),

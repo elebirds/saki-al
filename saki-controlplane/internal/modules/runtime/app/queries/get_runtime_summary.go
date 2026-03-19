@@ -14,21 +14,23 @@ type RuntimeSummary struct {
 	LeaderEpoch  int64
 }
 
-type RuntimeExecutor struct {
+type RuntimeAgent struct {
 	ID         string
 	Version    string
 	LastSeenAt time.Time
 }
 
+type RuntimeExecutor = RuntimeAgent
+
 type AdminStore interface {
 	GetRuntimeSummary(ctx context.Context) (RuntimeSummary, error)
-	ListRuntimeExecutors(ctx context.Context) ([]RuntimeExecutor, error)
+	ListRuntimeAgents(ctx context.Context) ([]RuntimeAgent, error)
 }
 
 type MemoryAdminStore struct {
 	mu        sync.RWMutex
 	summary   RuntimeSummary
-	executors []RuntimeExecutor
+	executors []RuntimeAgent
 }
 
 func NewMemoryAdminStore() *MemoryAdminStore {
@@ -43,13 +45,13 @@ func (s *MemoryAdminStore) GetRuntimeSummary(context.Context) (RuntimeSummary, e
 	return s.summary, nil
 }
 
-func (s *MemoryAdminStore) ListRuntimeExecutors(context.Context) ([]RuntimeExecutor, error) {
+func (s *MemoryAdminStore) ListRuntimeAgents(context.Context) ([]RuntimeAgent, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	executors := make([]RuntimeExecutor, len(s.executors))
-	copy(executors, s.executors)
-	return executors, nil
+	agents := make([]RuntimeAgent, len(s.executors))
+	copy(agents, s.executors)
+	return agents, nil
 }
 
 type GetRuntimeSummaryQuery struct {
@@ -89,15 +91,15 @@ func (s *RepoAdminStore) GetRuntimeSummary(ctx context.Context) (RuntimeSummary,
 	}, nil
 }
 
-func (s *RepoAdminStore) ListRuntimeExecutors(ctx context.Context) ([]RuntimeExecutor, error) {
+func (s *RepoAdminStore) ListRuntimeAgents(ctx context.Context) ([]RuntimeAgent, error) {
 	executors, err := s.executors.List(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	result := make([]RuntimeExecutor, 0, len(executors))
+	result := make([]RuntimeAgent, 0, len(executors))
 	for _, executor := range executors {
-		result = append(result, RuntimeExecutor{
+		result = append(result, RuntimeAgent{
 			ID:         executor.ID,
 			Version:    executor.Version,
 			LastSeenAt: executor.LastSeenAt,

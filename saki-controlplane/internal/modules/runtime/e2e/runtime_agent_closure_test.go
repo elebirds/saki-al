@@ -46,8 +46,8 @@ func TestRuntimeAgentClosure_AssignRunSucceed(t *testing.T) {
 	outboxWriter := runtimerepo.NewCommandOutboxWriter(pool)
 
 	ingressServer := internalrpc.NewRuntimeServer(
-		commands.NewRegisterExecutorHandler(executorRepo),
-		commands.NewHeartbeatExecutorHandler(executorRepo),
+		commands.NewRegisterAgentHandler(executorRepo),
+		commands.NewHeartbeatAgentHandler(executorRepo),
 		commands.NewStartTaskHandler(taskRepo),
 		commands.NewCompleteTaskHandler(taskRepo, outboxWriter),
 		commands.NewFailTaskHandler(taskRepo),
@@ -136,8 +136,8 @@ func TestRuntimeAgentClosure_CancelRequestsReachAgentAndTaskBecomesCanceled(t *t
 	outboxWriter := runtimerepo.NewCommandOutboxWriter(pool)
 
 	ingressServer := internalrpc.NewRuntimeServer(
-		commands.NewRegisterExecutorHandler(executorRepo),
-		commands.NewHeartbeatExecutorHandler(executorRepo),
+		commands.NewRegisterAgentHandler(executorRepo),
+		commands.NewHeartbeatAgentHandler(executorRepo),
 		commands.NewStartTaskHandler(taskRepo),
 		commands.NewCompleteTaskHandler(taskRepo, outboxWriter),
 		commands.NewFailTaskHandler(taskRepo),

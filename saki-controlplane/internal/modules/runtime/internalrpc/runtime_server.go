@@ -14,12 +14,12 @@ import (
 
 const defaultHeartbeatInterval = 30 * time.Second
 
-type registerExecutorHandler interface {
-	Handle(ctx context.Context, cmd commands.RegisterExecutorCommand) (*commands.ExecutorRecord, error)
+type registerAgentHandler interface {
+	Handle(ctx context.Context, cmd commands.RegisterAgentCommand) (*commands.AgentRecord, error)
 }
 
-type heartbeatExecutorHandler interface {
-	Handle(ctx context.Context, cmd commands.HeartbeatExecutorCommand) error
+type heartbeatAgentHandler interface {
+	Handle(ctx context.Context, cmd commands.HeartbeatAgentCommand) error
 }
 
 type startTaskHandler interface {
@@ -41,8 +41,8 @@ type confirmCanceledTaskHandler interface {
 type RuntimeServer struct {
 	runtimev1connect.UnimplementedAgentIngressHandler
 
-	registers         registerExecutorHandler
-	heartbeats        heartbeatExecutorHandler
+	registers         registerAgentHandler
+	heartbeats        heartbeatAgentHandler
 	starts            startTaskHandler
 	completes         completeTaskHandler
 	fails             failTaskHandler
@@ -51,8 +51,8 @@ type RuntimeServer struct {
 }
 
 func NewRuntimeServer(
-	registers registerExecutorHandler,
-	heartbeats heartbeatExecutorHandler,
+	registers registerAgentHandler,
+	heartbeats heartbeatAgentHandler,
 	starts startTaskHandler,
 	completes completeTaskHandler,
 	fails failTaskHandler,
@@ -73,8 +73,8 @@ func (s *RuntimeServer) Register(
 	ctx context.Context,
 	req *connect.Request[runtimev1.RegisterRequest],
 ) (*connect.Response[runtimev1.RegisterResponse], error) {
-	if _, err := s.registers.Handle(ctx, commands.RegisterExecutorCommand{
-		ExecutorID:   req.Msg.GetAgentId(),
+	if _, err := s.registers.Handle(ctx, commands.RegisterAgentCommand{
+		AgentID:      req.Msg.GetAgentId(),
 		Version:      req.Msg.GetVersion(),
 		Capabilities: append([]string(nil), req.Msg.GetCapabilities()...),
 		SeenAt:       time.Now(),
@@ -93,9 +93,9 @@ func (s *RuntimeServer) Heartbeat(
 	req *connect.Request[runtimev1.HeartbeatRequest],
 ) (*connect.Response[runtimev1.HeartbeatResponse], error) {
 	seenAt := time.UnixMilli(req.Msg.GetSentAtUnixMs())
-	if err := s.heartbeats.Handle(ctx, commands.HeartbeatExecutorCommand{
-		ExecutorID: req.Msg.GetAgentId(),
-		SeenAt:     seenAt,
+	if err := s.heartbeats.Handle(ctx, commands.HeartbeatAgentCommand{
+		AgentID: req.Msg.GetAgentId(),
+		SeenAt:  seenAt,
 	}); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}

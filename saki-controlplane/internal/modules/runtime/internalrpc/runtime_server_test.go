@@ -32,8 +32,8 @@ import (
 )
 
 func TestRuntimeServerRegisterTranslatesToCommand(t *testing.T) {
-	registrar := &fakeRegisterExecutorHandler{
-		result: &commands.ExecutorRecord{
+	registrar := &fakeRegisterAgentHandler{
+		result: &commands.AgentRecord{
 			ID:         "executor-a",
 			Version:    "1.2.3",
 			LastSeenAt: time.UnixMilli(123456789),
@@ -41,7 +41,7 @@ func TestRuntimeServerRegisterTranslatesToCommand(t *testing.T) {
 	}
 	server := NewRuntimeServer(
 		registrar,
-		&fakeHeartbeatExecutorHandler{},
+		&fakeHeartbeatAgentHandler{},
 		&fakeStartTaskHandler{},
 		&fakeCompleteTaskHandler{},
 		&fakeFailTaskHandler{},
@@ -68,7 +68,7 @@ func TestRuntimeServerRegisterTranslatesToCommand(t *testing.T) {
 	if !resp.Msg.Accepted || resp.Msg.HeartbeatIntervalMs == 0 {
 		t.Fatalf("unexpected register response: %+v", resp.Msg)
 	}
-	if registrar.last.ExecutorID != "agent-a" || registrar.last.Version != "1.2.3" {
+	if registrar.last.AgentID != "agent-a" || registrar.last.Version != "1.2.3" {
 		t.Fatalf("unexpected register command: %+v", registrar.last)
 	}
 	if !slices.Equal(registrar.last.Capabilities, []string{"gpu"}) {
@@ -76,10 +76,51 @@ func TestRuntimeServerRegisterTranslatesToCommand(t *testing.T) {
 	}
 }
 
-func TestRuntimeServerHeartbeatTranslatesToCommand(t *testing.T) {
-	heartbeats := &fakeHeartbeatExecutorHandler{}
+func TestRegisterAgentRequestCarriesAgentIdentity(t *testing.T) {
+	registrar := &fakeRegisterAgentHandler{
+		result: &commands.AgentRecord{
+			ID:         "agent-z",
+			Version:    "9.9.9",
+			LastSeenAt: time.UnixMilli(987654321),
+		},
+	}
 	server := NewRuntimeServer(
-		&fakeRegisterExecutorHandler{},
+		registrar,
+		&fakeHeartbeatAgentHandler{},
+		&fakeStartTaskHandler{},
+		&fakeCompleteTaskHandler{},
+		&fakeFailTaskHandler{},
+		&fakeConfirmCanceledTaskHandler{},
+	)
+
+	mux := http.NewServeMux()
+	path, handler := runtimev1connect.NewAgentIngressHandler(server)
+	mux.Handle(path, handler)
+
+	httpServer := httptest.NewServer(mux)
+	defer httpServer.Close()
+
+	client := runtimev1connect.NewAgentIngressClient(http.DefaultClient, httpServer.URL)
+	if _, err := client.Register(context.Background(), connect.NewRequest(&runtimev1.RegisterRequest{
+		AgentId:      "agent-z",
+		Version:      "9.9.9",
+		Capabilities: []string{"gpu", "cuda"},
+	})); err != nil {
+		t.Fatalf("register agent: %v", err)
+	}
+
+	if registrar.last.AgentID != "agent-z" || registrar.last.Version != "9.9.9" {
+		t.Fatalf("unexpected register agent command: %+v", registrar.last)
+	}
+	if !slices.Equal(registrar.last.Capabilities, []string{"gpu", "cuda"}) {
+		t.Fatalf("unexpected register agent capabilities: %+v", registrar.last.Capabilities)
+	}
+}
+
+func TestRuntimeServerHeartbeatTranslatesToCommand(t *testing.T) {
+	heartbeats := &fakeHeartbeatAgentHandler{}
+	server := NewRuntimeServer(
+		&fakeRegisterAgentHandler{},
 		heartbeats,
 		&fakeStartTaskHandler{},
 		&fakeCompleteTaskHandler{},
@@ -107,7 +148,7 @@ func TestRuntimeServerHeartbeatTranslatesToCommand(t *testing.T) {
 	if !resp.Msg.Accepted || resp.Msg.NextHeartbeatMs == 0 {
 		t.Fatalf("unexpected heartbeat response: %+v", resp.Msg)
 	}
-	if heartbeats.last.ExecutorID != "agent-a" || heartbeats.last.SeenAt.UnixMilli() != 123456789 {
+	if heartbeats.last.AgentID != "agent-a" || heartbeats.last.SeenAt.UnixMilli() != 123456789 {
 		t.Fatalf("unexpected heartbeat command: %+v", heartbeats.last)
 	}
 }
@@ -152,7 +193,7 @@ func TestRuntimeServerPushTaskEventCompletesTask(t *testing.T) {
 
 func TestRuntimeInternalRPCMountsAgentIngressAndArtifactService(t *testing.T) {
 	assetID := uuid.New()
-	registrar := &fakeRegisterExecutorHandler{}
+	registrar := &fakeRegisterAgentHandler{}
 	uploads := &fakeIssueUploadTicketHandler{
 		result: &assetapp.Ticket{
 			AssetID: assetID,
@@ -161,7 +202,7 @@ func TestRuntimeInternalRPCMountsAgentIngressAndArtifactService(t *testing.T) {
 	}
 	runtimeServer := NewRuntimeServer(
 		registrar,
-		&fakeHeartbeatExecutorHandler{},
+		&fakeHeartbeatAgentHandler{},
 		&fakeStartTaskHandler{},
 		&fakeCompleteTaskHandler{},
 		&fakeFailTaskHandler{},
@@ -190,7 +231,7 @@ func TestRuntimeInternalRPCMountsAgentIngressAndArtifactService(t *testing.T) {
 	if !ingressResp.Msg.GetAccepted() {
 		t.Fatalf("expected register accepted, got %+v", ingressResp.Msg)
 	}
-	if registrar.last.ExecutorID != "agent-combined" {
+	if registrar.last.AgentID != "agent-combined" {
 		t.Fatalf("unexpected register command: %+v", registrar.last)
 	}
 
@@ -366,8 +407,8 @@ func TestRuntimeServerRegisterAndHeartbeatPersistExecutor(t *testing.T) {
 
 	executorRepo := runtimerepo.NewExecutorRepo(pool)
 	server := NewRuntimeServer(
-		commands.NewRegisterExecutorHandler(executorRepo),
-		commands.NewHeartbeatExecutorHandler(executorRepo),
+		commands.NewRegisterAgentHandler(executorRepo),
+		commands.NewHeartbeatAgentHandler(executorRepo),
 		&fakeStartTaskHandler{},
 		&fakeCompleteTaskHandler{},
 		&fakeFailTaskHandler{},
@@ -419,29 +460,30 @@ func TestRuntimeServerRegisterAndHeartbeatPersistExecutor(t *testing.T) {
 	}
 }
 
-type fakeRegisterExecutorHandler struct {
-	last   commands.RegisterExecutorCommand
-	result *commands.ExecutorRecord
+type fakeRegisterAgentHandler struct {
+	last   commands.RegisterAgentCommand
+	result *commands.AgentRecord
 }
 
-func (f *fakeRegisterExecutorHandler) Handle(_ context.Context, cmd commands.RegisterExecutorCommand) (*commands.ExecutorRecord, error) {
+func (f *fakeRegisterAgentHandler) Handle(_ context.Context, cmd commands.RegisterAgentCommand) (*commands.AgentRecord, error) {
 	f.last = cmd
 	if f.result != nil {
 		return f.result, nil
 	}
-	return &commands.ExecutorRecord{
-		ID:           cmd.ExecutorID,
+
+	return &commands.AgentRecord{
+		ID:           cmd.AgentID,
 		Version:      cmd.Version,
 		Capabilities: slices.Clone(cmd.Capabilities),
 		LastSeenAt:   cmd.SeenAt,
 	}, nil
 }
 
-type fakeHeartbeatExecutorHandler struct {
-	last commands.HeartbeatExecutorCommand
+type fakeHeartbeatAgentHandler struct {
+	last commands.HeartbeatAgentCommand
 }
 
-func (f *fakeHeartbeatExecutorHandler) Handle(_ context.Context, cmd commands.HeartbeatExecutorCommand) error {
+func (f *fakeHeartbeatAgentHandler) Handle(_ context.Context, cmd commands.HeartbeatAgentCommand) error {
 	f.last = cmd
 	return nil
 }
@@ -501,8 +543,8 @@ func newRuntimeTaskEventStore(tasks ...*commands.TaskRecord) *runtimeTaskEventSt
 
 func newTaskEventRuntimeServer(store *runtimeTaskEventStore) *RuntimeServer {
 	return NewRuntimeServer(
-		&fakeRegisterExecutorHandler{},
-		&fakeHeartbeatExecutorHandler{},
+		&fakeRegisterAgentHandler{},
+		&fakeHeartbeatAgentHandler{},
 		commands.NewStartTaskHandler(store),
 		commands.NewCompleteTaskHandler(store, store),
 		commands.NewFailTaskHandler(store),

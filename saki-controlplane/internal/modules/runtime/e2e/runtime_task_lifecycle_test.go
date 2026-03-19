@@ -144,8 +144,8 @@ where aggregate_id = $1
 	}
 
 	server := internalrpc.NewRuntimeServer(
-		noopRegisterExecutorHandler{},
-		noopHeartbeatExecutorHandler{},
+		noopRegisterAgentHandler{},
+		noopHeartbeatAgentHandler{},
 		commands.NewStartTaskHandler(taskRepo),
 		commands.NewCompleteTaskHandler(taskRepo, runtimerepo.NewCommandOutboxWriter(pool)),
 		commands.NewFailTaskHandler(taskRepo),
@@ -326,15 +326,15 @@ limit 1
 	}
 }
 
-type noopRegisterExecutorHandler struct{}
+type noopRegisterAgentHandler struct{}
 
-func (noopRegisterExecutorHandler) Handle(context.Context, commands.RegisterExecutorCommand) (*commands.ExecutorRecord, error) {
-	return &commands.ExecutorRecord{}, nil
+func (noopRegisterAgentHandler) Handle(context.Context, commands.RegisterAgentCommand) (*commands.AgentRecord, error) {
+	return &commands.AgentRecord{}, nil
 }
 
-type noopHeartbeatExecutorHandler struct{}
+type noopHeartbeatAgentHandler struct{}
 
-func (noopHeartbeatExecutorHandler) Handle(context.Context, commands.HeartbeatExecutorCommand) error {
+func (noopHeartbeatAgentHandler) Handle(context.Context, commands.HeartbeatAgentCommand) error {
 	return nil
 }
 

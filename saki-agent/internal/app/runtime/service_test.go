@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"errors"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -13,7 +14,7 @@ import (
 
 func TestServiceAssignTaskRunsWorkerAndPublishesRunningThenSucceeded(t *testing.T) {
 	pusher := &memoryTaskEventPusher{}
-	service := NewService("agent-a", &stubLauncher{
+	service := NewService("agent-a", 1, &stubLauncher{
 		result: &workerv1.ExecuteResult{
 			RequestId: "exec-1",
 			Ok:        true,
@@ -32,10 +33,9 @@ func TestServiceAssignTaskRunsWorkerAndPublishesRunningThenSucceeded(t *testing.
 	pusher.WaitForPhases(t, runtimev1.TaskEventPhase_TASK_EVENT_PHASE_RUNNING, runtimev1.TaskEventPhase_TASK_EVENT_PHASE_SUCCEEDED)
 }
 
-func TestServiceAssignTaskRejectsConcurrentAssignment(t *testing.T) {
+func TestServiceAssignTaskUsesNextFreeSlot(t *testing.T) {
 	pusher := &memoryTaskEventPusher{}
-	launcher := &blockingLauncher{}
-	service := NewService("agent-a", launcher, pusher)
+	service := NewService("agent-a", 2, &blockingLauncher{}, pusher)
 
 	if err := service.AssignTask(context.Background(), &runtimev1.AssignTaskRequest{
 		TaskId:      "task-1",
@@ -44,37 +44,60 @@ func TestServiceAssignTaskRejectsConcurrentAssignment(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("assign first task: %v", err)
 	}
-
-	err := service.AssignTask(context.Background(), &runtimev1.AssignTaskRequest{
+	if err := service.AssignTask(context.Background(), &runtimev1.AssignTaskRequest{
 		TaskId:      "task-2",
 		ExecutionId: "exec-2",
 		TaskType:    "predict",
-	})
-	if !errors.Is(err, errAgentBusy) {
-		t.Fatalf("expected busy error, got %v", err)
+	}); err != nil {
+		t.Fatalf("assign second task: %v", err)
 	}
 
-	if stopErr := service.StopTask(context.Background(), &runtimev1.StopTaskRequest{
+	waitForRunningTasks(t, service, "task-1", "task-2")
+
+	if err := service.StopTask(context.Background(), &runtimev1.StopTaskRequest{
 		TaskId:      "task-1",
 		ExecutionId: "exec-1",
 		Reason:      "cancel_requested",
-	}); stopErr != nil {
-		t.Fatalf("stop task: %v", stopErr)
+	}); err != nil {
+		t.Fatalf("stop first task: %v", err)
 	}
-	pusher.WaitForPhases(t, runtimev1.TaskEventPhase_TASK_EVENT_PHASE_RUNNING, runtimev1.TaskEventPhase_TASK_EVENT_PHASE_CANCELED)
+	if err := service.StopTask(context.Background(), &runtimev1.StopTaskRequest{
+		TaskId:      "task-2",
+		ExecutionId: "exec-2",
+		Reason:      "cancel_requested",
+	}); err != nil {
+		t.Fatalf("stop second task: %v", err)
+	}
+
+	waitForRunningTasks(t, service)
 }
 
-func TestServiceStopTaskCancelsMatchingExecutionAndPublishesCanceled(t *testing.T) {
+func TestServiceAssignTaskRejectsWhenAllSlotsBusy(t *testing.T) {
 	pusher := &memoryTaskEventPusher{}
-	launcher := &blockingLauncher{}
-	service := NewService("agent-a", launcher, pusher)
+	service := NewService("agent-a", 2, &blockingLauncher{}, pusher)
 
 	if err := service.AssignTask(context.Background(), &runtimev1.AssignTaskRequest{
 		TaskId:      "task-1",
 		ExecutionId: "exec-1",
 		TaskType:    "predict",
 	}); err != nil {
-		t.Fatalf("assign task: %v", err)
+		t.Fatalf("assign first task: %v", err)
+	}
+	if err := service.AssignTask(context.Background(), &runtimev1.AssignTaskRequest{
+		TaskId:      "task-2",
+		ExecutionId: "exec-2",
+		TaskType:    "predict",
+	}); err != nil {
+		t.Fatalf("assign second task: %v", err)
+	}
+
+	err := service.AssignTask(context.Background(), &runtimev1.AssignTaskRequest{
+		TaskId:      "task-3",
+		ExecutionId: "exec-3",
+		TaskType:    "predict",
+	})
+	if !errors.Is(err, errAgentBusy) {
+		t.Fatalf("expected busy error, got %v", err)
 	}
 
 	if err := service.StopTask(context.Background(), &runtimev1.StopTaskRequest{
@@ -82,10 +105,67 @@ func TestServiceStopTaskCancelsMatchingExecutionAndPublishesCanceled(t *testing.
 		ExecutionId: "exec-1",
 		Reason:      "cancel_requested",
 	}); err != nil {
-		t.Fatalf("stop task: %v", err)
+		t.Fatalf("stop first task: %v", err)
+	}
+	if err := service.StopTask(context.Background(), &runtimev1.StopTaskRequest{
+		TaskId:      "task-2",
+		ExecutionId: "exec-2",
+		Reason:      "cancel_requested",
+	}); err != nil {
+		t.Fatalf("stop second task: %v", err)
 	}
 
-	pusher.WaitForPhases(t, runtimev1.TaskEventPhase_TASK_EVENT_PHASE_RUNNING, runtimev1.TaskEventPhase_TASK_EVENT_PHASE_CANCELED)
+	waitForRunningTasks(t, service)
+}
+
+func TestServiceStopTaskCancelsMatchingExecutionOnly(t *testing.T) {
+	pusher := &memoryTaskEventPusher{}
+	service := NewService("agent-a", 2, &blockingLauncher{}, pusher)
+
+	if err := service.AssignTask(context.Background(), &runtimev1.AssignTaskRequest{
+		TaskId:      "task-1",
+		ExecutionId: "exec-1",
+		TaskType:    "predict",
+	}); err != nil {
+		t.Fatalf("assign first task: %v", err)
+	}
+	if err := service.AssignTask(context.Background(), &runtimev1.AssignTaskRequest{
+		TaskId:      "task-2",
+		ExecutionId: "exec-2",
+		TaskType:    "predict",
+	}); err != nil {
+		t.Fatalf("assign second task: %v", err)
+	}
+
+	waitForRunningTasks(t, service, "task-1", "task-2")
+
+	if err := service.StopTask(context.Background(), &runtimev1.StopTaskRequest{
+		TaskId:      "task-1",
+		ExecutionId: "exec-2",
+		Reason:      "cancel_requested",
+	}); err != nil {
+		t.Fatalf("stop mismatched execution: %v", err)
+	}
+	waitForRunningTasks(t, service, "task-1", "task-2")
+
+	if err := service.StopTask(context.Background(), &runtimev1.StopTaskRequest{
+		TaskId:      "task-1",
+		ExecutionId: "exec-1",
+		Reason:      "cancel_requested",
+	}); err != nil {
+		t.Fatalf("stop first task: %v", err)
+	}
+	waitForTaskPhase(t, pusher, "task-1", runtimev1.TaskEventPhase_TASK_EVENT_PHASE_CANCELED)
+	waitForRunningTasks(t, service, "task-2")
+
+	if err := service.StopTask(context.Background(), &runtimev1.StopTaskRequest{
+		TaskId:      "task-2",
+		ExecutionId: "exec-2",
+		Reason:      "cancel_requested",
+	}); err != nil {
+		t.Fatalf("stop second task: %v", err)
+	}
+	waitForRunningTasks(t, service)
 }
 
 type stubLauncher struct {
@@ -167,4 +247,51 @@ func (m *memoryTaskEventPusher) snapshotPhases() []runtimev1.TaskEventPhase {
 		phases = append(phases, event.GetPhase())
 	}
 	return phases
+}
+
+func (m *memoryTaskEventPusher) hasTaskPhase(taskID string, phase runtimev1.TaskEventPhase) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for _, event := range m.events {
+		if event.GetTaskId() == taskID && event.GetPhase() == phase {
+			return true
+		}
+	}
+	return false
+}
+
+func waitForTaskPhase(t *testing.T, pusher *memoryTaskEventPusher, taskID string, phase runtimev1.TaskEventPhase) {
+	t.Helper()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if pusher.hasTaskPhase(taskID, phase) {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	t.Fatalf("timed out waiting for task %s phase %s", taskID, phase.String())
+}
+
+func waitForRunningTasks(t *testing.T, service *Service, taskIDs ...string) {
+	t.Helper()
+
+	want := append([]string(nil), taskIDs...)
+	slices.Sort(want)
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		got := service.RunningTaskIDs()
+		slices.Sort(got)
+		if slices.Equal(got, want) {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	got := service.RunningTaskIDs()
+	slices.Sort(got)
+	t.Fatalf("timed out waiting for running tasks %v, got %v", want, got)
 }

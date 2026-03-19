@@ -46,13 +46,13 @@ func newRunner(cfg config.Config, logger *slog.Logger) *bootstrap.Runner {
 		cfg.AgentVersion,
 		cfg.AgentTransportMode,
 		cfg.AgentControlBaseURL,
-		cfg.AgentMaxConcurrency,
+		int32(cfg.AgentMaxConcurrency),
 		logger,
 	)
 	workerLauncher := launcher.NewLauncher(launcher.LauncherConfig{
 		Command: append([]string(nil), cfg.AgentWorkerCommand...),
 	})
-	service := appruntime.NewService(cfg.AgentID, workerLauncher, runtimeClient)
+	service := appruntime.NewService(cfg.AgentID, cfg.AgentMaxConcurrency, workerLauncher, runtimeClient)
 	controlServer := appruntime.NewControlServer(service)
 	controlPath, controlHandler := runtimev1connect.NewAgentControlHandler(controlServer)
 

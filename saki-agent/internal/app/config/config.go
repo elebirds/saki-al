@@ -12,7 +12,7 @@ const (
 	defaultAgentTransportMode     = "pull"
 	defaultAgentID                = "agent-local"
 	defaultAgentVersion           = "dev"
-	defaultAgentMaxConcurrency    = int32(1)
+	defaultAgentMaxConcurrency    = 1
 	defaultAgentHeartbeatInterval = 30 * time.Second
 )
 
@@ -23,7 +23,7 @@ type Config struct {
 	AgentTransportMode     string
 	AgentID                string
 	AgentVersion           string
-	AgentMaxConcurrency    int32
+	AgentMaxConcurrency    int
 	AgentHeartbeatInterval time.Duration
 	AgentWorkerCommand     []string
 }
@@ -50,11 +50,11 @@ func Load() (Config, error) {
 	}
 
 	if raw := os.Getenv("AGENT_MAX_CONCURRENCY"); raw != "" {
-		value, err := strconv.ParseInt(raw, 10, 32)
+		value, err := strconv.Atoi(raw)
 		if err != nil {
 			return Config{}, err
 		}
-		cfg.AgentMaxConcurrency = int32(value)
+		cfg.AgentMaxConcurrency = normalizeMaxConcurrency(value)
 	}
 
 	if raw := os.Getenv("AGENT_WORKER_COMMAND_JSON"); raw != "" {
@@ -66,6 +66,13 @@ func Load() (Config, error) {
 	}
 
 	return cfg, nil
+}
+
+func normalizeMaxConcurrency(value int) int {
+	if value <= 0 {
+		return 1
+	}
+	return value
 }
 
 func envOrDefault(name, fallback string) string {

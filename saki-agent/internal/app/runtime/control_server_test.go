@@ -10,8 +10,8 @@ import (
 	workerv1 "github.com/elebirds/saki/saki-agent/internal/gen/worker/v1"
 )
 
-func TestControlServerReturnsFailedPreconditionWhenAgentBusy(t *testing.T) {
-	service := NewService("agent-a", &blockingLauncher{}, &memoryTaskEventPusher{})
+func TestControlServerReturnsFailedPreconditionWhenAllSlotsBusy(t *testing.T) {
+	service := NewService("agent-a", 2, &blockingLauncher{}, &memoryTaskEventPusher{})
 	server := NewControlServer(service)
 
 	first, err := server.AssignTask(context.Background(), connect.NewRequest(&runtimev1.AssignTaskRequest{
@@ -26,9 +26,21 @@ func TestControlServerReturnsFailedPreconditionWhenAgentBusy(t *testing.T) {
 		t.Fatalf("expected first assignment accepted, got %+v", first.Msg)
 	}
 
-	_, err = server.AssignTask(context.Background(), connect.NewRequest(&runtimev1.AssignTaskRequest{
+	second, err := server.AssignTask(context.Background(), connect.NewRequest(&runtimev1.AssignTaskRequest{
 		TaskId:      "task-2",
 		ExecutionId: "exec-2",
+		TaskType:    "predict",
+	}))
+	if err != nil {
+		t.Fatalf("assign second task: %v", err)
+	}
+	if !second.Msg.GetAccepted() {
+		t.Fatalf("expected second assignment accepted, got %+v", second.Msg)
+	}
+
+	_, err = server.AssignTask(context.Background(), connect.NewRequest(&runtimev1.AssignTaskRequest{
+		TaskId:      "task-3",
+		ExecutionId: "exec-3",
 		TaskType:    "predict",
 	}))
 	if err == nil {
@@ -47,7 +59,14 @@ func TestControlServerReturnsFailedPreconditionWhenAgentBusy(t *testing.T) {
 		ExecutionId: "exec-1",
 		Reason:      "cancel_requested",
 	})); stopErr != nil {
-		t.Fatalf("stop task: %v", stopErr)
+		t.Fatalf("stop first task: %v", stopErr)
+	}
+	if _, stopErr := server.StopTask(context.Background(), connect.NewRequest(&runtimev1.StopTaskRequest{
+		TaskId:      "task-2",
+		ExecutionId: "exec-2",
+		Reason:      "cancel_requested",
+	})); stopErr != nil {
+		t.Fatalf("stop second task: %v", stopErr)
 	}
 }
 

@@ -3,7 +3,6 @@ package runtime
 import (
 	"context"
 	"errors"
-	"sync"
 
 	runtimev1 "github.com/elebirds/saki/saki-agent/internal/gen/runtime/v1"
 	workerv1 "github.com/elebirds/saki/saki-agent/internal/gen/worker/v1"
@@ -20,9 +19,7 @@ type Service struct {
 	agentID  string
 	launcher taskrunner.WorkerLauncher
 	pusher   TaskEventPusher
-
-	mu      sync.Mutex
-	current *activeExecution
+	slots    *SlotManager
 }
 
 type activeExecution struct {
@@ -31,11 +28,12 @@ type activeExecution struct {
 	cancel      context.CancelFunc
 }
 
-func NewService(agentID string, launcher taskrunner.WorkerLauncher, pusher TaskEventPusher) *Service {
+func NewService(agentID string, maxConcurrency int, launcher taskrunner.WorkerLauncher, pusher TaskEventPusher) *Service {
 	return &Service{
 		agentID:  agentID,
 		launcher: launcher,
 		pusher:   pusher,
+		slots:    NewSlotManager(maxConcurrency),
 	}
 }
 
@@ -44,19 +42,16 @@ func (s *Service) AssignTask(_ context.Context, req *runtimev1.AssignTaskRequest
 		return nil
 	}
 
-	s.mu.Lock()
-	if s.current != nil {
-		s.mu.Unlock()
-		return errAgentBusy
-	}
 	execCtx, cancel := context.WithCancel(context.Background())
 	current := &activeExecution{
 		taskID:      req.GetTaskId(),
 		executionID: req.GetExecutionId(),
 		cancel:      cancel,
 	}
-	s.current = current
-	s.mu.Unlock()
+	if err := s.slotManager().Admit(current); err != nil {
+		cancel()
+		return err
+	}
 
 	go s.runExecution(execCtx, current, req)
 	return nil
@@ -67,33 +62,16 @@ func (s *Service) StopTask(_ context.Context, req *runtimev1.StopTaskRequest) er
 		return nil
 	}
 
-	s.mu.Lock()
-	current := s.current
-	s.mu.Unlock()
-
-	if current == nil {
-		return nil
-	}
-	if current.taskID != req.GetTaskId() || current.executionID != req.GetExecutionId() {
-		return nil
-	}
-
-	current.cancel()
+	s.slotManager().Cancel(req.GetTaskId(), req.GetExecutionId())
 	return nil
 }
 
 func (s *Service) RunningTaskIDs() []string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.current == nil {
-		return nil
-	}
-	return []string{s.current.taskID}
+	return s.slotManager().RunningTaskIDs()
 }
 
 func (s *Service) runExecution(ctx context.Context, current *activeExecution, req *runtimev1.AssignTaskRequest) {
-	defer s.clearCurrent(current)
+	defer s.slotManager().Release(current.executionID)
 
 	s.pushPhase(context.Background(), req.GetTaskId(), req.GetExecutionId(), runtimev1.TaskEventPhase_TASK_EVENT_PHASE_RUNNING)
 
@@ -123,15 +101,6 @@ func (s *Service) runExecution(ctx context.Context, current *activeExecution, re
 	s.pushPhase(context.Background(), req.GetTaskId(), req.GetExecutionId(), phase)
 }
 
-func (s *Service) clearCurrent(current *activeExecution) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.current == current {
-		s.current = nil
-	}
-}
-
 func (s *Service) pushPhase(ctx context.Context, taskID, executionID string, phase runtimev1.TaskEventPhase) {
 	if s.pusher == nil {
 		return
@@ -142,4 +111,18 @@ func (s *Service) pushPhase(ctx context.Context, taskID, executionID string, pha
 		ExecutionId: executionID,
 		Phase:       phase,
 	})
+}
+
+func (s *Service) slotManager() *SlotManager {
+	if s == nil || s.slots == nil {
+		return NewSlotManager(1)
+	}
+	return s.slots
+}
+
+func normalizeServiceMaxConcurrency(limit int) int {
+	if limit <= 0 {
+		return 1
+	}
+	return limit
 }

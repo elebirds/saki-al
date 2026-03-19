@@ -152,6 +152,23 @@ func (q *Queries) ListAgents(ctx context.Context) ([]Agent, error) {
 	return items, nil
 }
 
+const markOfflineAgentsBefore = `-- name: MarkOfflineAgentsBefore :execrows
+update agent
+set status = 'offline',
+    updated_at = now()
+where last_seen_at <= $1
+  and status <> 'offline'
+`
+
+// recovery 先固化离线事实，再由后续 SQL 基于 offline 状态收 task / assignment / command。
+func (q *Queries) MarkOfflineAgentsBefore(ctx context.Context, offlineBefore pgtype.Timestamptz) (int64, error) {
+	result, err := q.db.Exec(ctx, markOfflineAgentsBefore, offlineBefore)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const upsertAgent = `-- name: UpsertAgent :one
 insert into agent (
     id,

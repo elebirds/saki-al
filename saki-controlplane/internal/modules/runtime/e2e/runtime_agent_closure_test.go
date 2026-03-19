@@ -106,11 +106,9 @@ func TestRuntimeAgentClosure_AssignRunSucceed(t *testing.T) {
 	}
 
 	dispatchWorker := newDirectDeliveryWorkerForTest(agentRepo, commandRepo)
-	if err := dispatchWorker.RunOnce(ctx); err != nil {
-		t.Fatalf("dispatch worker run once: %v\nagent stderr:\n%s", err, agent.stderr.String())
-	}
-
-	waitForPoll(t, 20*time.Second, func() bool {
+	waitForPollWithStep(t, 20*time.Second, func() error {
+		return dispatchWorker.RunOnce(ctx)
+	}, func() bool {
 		task, err := taskRepo.GetTask(ctx, taskID)
 		return err == nil && task != nil && task.Status == "succeeded"
 	}, fmt.Sprintf("expected task %s to become succeeded\nagent stdout:\n%s\nagent stderr:\n%s", taskID, agent.stdout.String(), agent.stderr.String()))
@@ -198,11 +196,9 @@ func TestRuntimeAgentClosure_CancelRequestsReachAgentAndTaskBecomesCanceled(t *t
 	}
 
 	outboxWorker := newDirectDeliveryWorkerForTest(agentRepo, commandRepo)
-	if err := outboxWorker.RunOnce(ctx); err != nil {
-		t.Fatalf("dispatch worker run once: %v\nagent stderr:\n%s", err, agent.stderr.String())
-	}
-
-	waitForPoll(t, 20*time.Second, func() bool {
+	waitForPollWithStep(t, 20*time.Second, func() error {
+		return outboxWorker.RunOnce(ctx)
+	}, func() bool {
 		task, err := taskRepo.GetTask(ctx, taskID)
 		return err == nil && task != nil && task.Status == "running"
 	}, fmt.Sprintf("expected task %s to become running\nagent stdout:\n%s\nagent stderr:\n%s", taskID, agent.stdout.String(), agent.stderr.String()))
@@ -232,13 +228,14 @@ limit 1
 		t.Fatalf("expected pending cancel command before delivery, got %s", cancelCommandStatus)
 	}
 
-	if err := outboxWorker.RunOnce(ctx); err != nil {
-		t.Fatalf("stop worker run once: %v\nagent stdout:\n%s\nagent stderr:\n%s", err, agent.stdout.String(), agent.stderr.String())
-	}
-	// worker 成功返回后，说明 direct transport 已经完成本次投递并推进命令生命周期。
-	var cancelAcked bool
-	var cancelFinished bool
-	if err := pool.QueryRow(ctx, `
+	// direct delivery 是轮询模型：单次 tick 可能因为 DB/app 时钟微小偏差暂时拿不到刚写入的命令，
+	// e2e 要按真实 loop 反复驱动 worker，直到命令生命周期被推进到 acked/finished。
+	waitForPollWithStep(t, 20*time.Second, func() error {
+		return outboxWorker.RunOnce(ctx)
+	}, func() bool {
+		var cancelAcked bool
+		var cancelFinished bool
+		if err := pool.QueryRow(ctx, `
 select acked_at is not null, finished_at is not null
 from agent_command
 where task_id = $1
@@ -246,11 +243,10 @@ where task_id = $1
 order by created_at desc
 limit 1
 `, taskID).Scan(&cancelAcked, &cancelFinished); err != nil {
-		t.Fatalf("load cancel command after delivery: %v", err)
-	}
-	if !cancelAcked || !cancelFinished {
-		t.Fatalf("expected cancel command to be acked and finished, got acked=%t finished=%t", cancelAcked, cancelFinished)
-	}
+			return false
+		}
+		return cancelAcked && cancelFinished
+	}, fmt.Sprintf("expected cancel command to be acked and finished\ntask=%s\nagent stdout:\n%s\nagent stderr:\n%s", taskID, agent.stdout.String(), agent.stderr.String()))
 
 	waitForPoll(t, 20*time.Second, func() bool {
 		task, err := taskRepo.GetTask(ctx, taskID)
@@ -431,10 +427,10 @@ func TestRuntimeAgentClosure_PullCancelRequestsReachAgentAndTaskBecomesCanceled(
 }
 
 type runtimeAgentProcessConfig struct {
-	agentID    string
-	version    string
+	agentID       string
+	version       string
 	transportMode string
-	workerMode string
+	workerMode    string
 }
 
 type runtimeAgentProcess struct {
@@ -635,6 +631,27 @@ func waitForPoll(t *testing.T, timeout time.Duration, predicate func() bool, mes
 			return
 		}
 		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatal(message)
+}
+
+func waitForPollWithStep(t *testing.T, timeout time.Duration, step func() error, predicate func() bool, message string) {
+	t.Helper()
+
+	deadline := time.Now().Add(timeout)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		lastErr = nil
+		if step != nil {
+			lastErr = step()
+		}
+		if lastErr == nil && predicate() {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if lastErr != nil {
+		t.Fatalf("%s\nlast step error: %v", message, lastErr)
 	}
 	t.Fatal(message)
 }

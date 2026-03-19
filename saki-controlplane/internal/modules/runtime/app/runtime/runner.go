@@ -15,6 +15,7 @@ import (
 	assetapp "github.com/elebirds/saki/saki-controlplane/internal/modules/asset/app"
 	assetrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/asset/repo"
 	runtimecommands "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/commands"
+	runtimerecovery "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/recovery"
 	runtimescheduler "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/scheduler"
 	runtimeeffects "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/effects"
 	"github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/internalrpc"
@@ -24,15 +25,15 @@ import (
 )
 
 const (
-	defaultReadHeaderTimeout     = 5 * time.Second
-	defaultSchedulerInterval     = 2 * time.Second
-	defaultOutboxInterval        = 1 * time.Second
-	defaultRecoveryInterval      = 5 * time.Second
-	defaultSchedulerLeaseName    = "runtime-scheduler"
-	defaultSchedulerLeaseTTL     = 30 * time.Second
-	defaultArtifactTicketExpiry  = 15 * time.Minute
-	healthzPath                  = "/healthz"
-	healthzResponse              = "ok"
+	defaultReadHeaderTimeout    = 5 * time.Second
+	defaultSchedulerInterval    = 2 * time.Second
+	defaultOutboxInterval       = 1 * time.Second
+	defaultRecoveryInterval     = 5 * time.Second
+	defaultSchedulerLeaseName   = "runtime-scheduler"
+	defaultSchedulerLeaseTTL    = 30 * time.Second
+	defaultArtifactTicketExpiry = 15 * time.Minute
+	healthzPath                 = "/healthz"
+	healthzResponse             = "ok"
 )
 
 var errRuntimeArtifactProviderRequired = errors.New("runtime artifact provider is required")
@@ -71,6 +72,10 @@ type outboxWorker interface {
 	RunOnce(ctx context.Context) error
 }
 
+type recoveryLoopWorker interface {
+	RunOnce(ctx context.Context) error
+}
+
 type deliveryCommandStore interface {
 	ClaimForPush(ctx context.Context, limit int32, claimUntil time.Time) ([]runtimerepo.AgentCommand, error)
 	Ack(ctx context.Context, commandID, claimToken uuid.UUID, ackAt time.Time) error
@@ -94,6 +99,7 @@ type assembly struct {
 	rpcHandlers       []rpcHandlerMount
 	schedulerTicker   schedulerTicker
 	outboxWorker      outboxWorker
+	recoveryWorker    recoveryLoopWorker
 	schedulerInterval time.Duration
 	outboxInterval    time.Duration
 	logger            *slog.Logger
@@ -149,6 +155,10 @@ func New(ctx context.Context, opts Options, logger *slog.Logger) (*Runner, error
 	ticker := newSchedulerTicker(cfg, leaseRepo, assigner, log)
 
 	worker := newDeliveryWorker(commandRepo, agentRepo, http.DefaultClient)
+	recoveryWorker := runtimerecovery.NewWorker(
+		newRuntimeRecoveryStore(taskRepo, agentRepo),
+		runtimerecovery.Policy{},
+	)
 
 	runner := newRunnerFromAssembly(assembly{
 		bind:              cfg.Bind,
@@ -170,6 +180,7 @@ func New(ctx context.Context, opts Options, logger *slog.Logger) (*Runner, error
 		},
 		schedulerTicker:   ticker,
 		outboxWorker:      worker,
+		recoveryWorker:    recoveryWorker,
 		schedulerInterval: cfg.SchedulerInterval,
 		outboxInterval:    cfg.OutboxInterval,
 		logger:            log,

@@ -97,3 +97,11 @@ select
     updated_at
 from agent
 where id = sqlc.arg(id);
+
+-- name: MarkOfflineAgentsBefore :execrows
+-- recovery 先固化离线事实，再由后续 SQL 基于 offline 状态收 task / assignment / command。
+update agent
+set status = 'offline',
+    updated_at = now()
+where last_seen_at <= sqlc.arg(offline_before)
+  and status <> 'offline';

@@ -3,6 +3,7 @@ package repo
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -171,6 +172,26 @@ func (r *TaskRepo) GetSummary(ctx context.Context) (RuntimeSummary, error) {
 		RunningTasks: row.RunningTasks,
 		LeaderEpoch:  row.LeaderEpoch,
 	}, nil
+}
+
+// RequeueAssignedTasksWithoutAck 在一个 SQL 边界里同时回收 task / assignment / command，
+// 避免 recovery 把任务改回 pending 后，旧 assign 命令还继续被投递。
+func (r *TaskRepo) RequeueAssignedTasksWithoutAck(ctx context.Context, ackBefore time.Time) (int64, error) {
+	return r.q.RequeueAssignedTasksWithoutAck(ctx, pgtype.Timestamptz{Time: ackBefore, Valid: true})
+}
+
+// FailRunningTasksForOfflineAgents 把失联 agent 上的运行中任务一次性推进到 failed，
+// 同时收口同 assignment 上尚未结束的 command，避免 controlplane 继续等待不会到来的 agent 事件。
+func (r *TaskRepo) FailRunningTasksForOfflineAgents(ctx context.Context, offlineBefore time.Time) (int64, error) {
+	_ = offlineBefore
+	return r.q.FailRunningTasksForOfflineAgents(ctx)
+}
+
+// CancelRequestedTasksForOfflineAgents 在 agent 已失联时直接结束 cancel，
+// 防止 task 永远卡在 cancel_requested，而 cancel command 还残留在可投递状态。
+func (r *TaskRepo) CancelRequestedTasksForOfflineAgents(ctx context.Context, offlineBefore time.Time) (int64, error) {
+	_ = offlineBefore
+	return r.q.CancelRequestedTasksForOfflineAgents(ctx)
 }
 
 func textValue(value pgtype.Text) string {

@@ -22,6 +22,7 @@ import (
 	runtimev1 "github.com/elebirds/saki/saki-controlplane/internal/gen/proto/runtime/v1"
 	"github.com/elebirds/saki/saki-controlplane/internal/gen/proto/runtime/v1/runtimev1connect"
 	"github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/commands"
+	runtimerecovery "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/recovery"
 	runtimescheduler "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/scheduler"
 	runtimeeffects "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/effects"
 	"github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/internalrpc"
@@ -341,6 +342,232 @@ limit 1
 	}
 }
 
+func TestRuntimeTaskLifecycle_RecoveryRequeuesAssignedTaskWhenAssignNotAcked(t *testing.T) {
+	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+
+	ctx := context.Background()
+	container, dsn := startRuntimePostgres(t, ctx)
+	defer func() {
+		_ = testcontainers.TerminateContainer(container)
+	}()
+
+	pool := openRuntimePool(t, ctx, dsn)
+	defer pool.Close()
+
+	taskRepo := runtimerepo.NewTaskRepo(pool)
+	agentRepo := runtimerepo.NewAgentRepo(pool)
+	taskID := uuid.New()
+	if err := taskRepo.CreateTask(ctx, runtimerepo.CreateTaskParams{
+		ID:       taskID,
+		TaskType: "predict",
+	}); err != nil {
+		t.Fatalf("create pending task: %v", err)
+	}
+	if _, err := agentRepo.Upsert(ctx, runtimerepo.UpsertAgentParams{
+		ID:             "agent-recovery-1",
+		Version:        "test",
+		TransportMode:  "direct",
+		ControlBaseURL: "http://127.0.0.1:18081",
+		MaxConcurrency: 1,
+		LastSeenAt:     time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("upsert agent: %v", err)
+	}
+
+	leader := runtimescheduler.NewLeaderTicker(
+		runtimerepo.NewLeaseRepo(pool),
+		runtimescheduler.NewDispatchScan(
+			commands.NewAssignTaskHandlerWithTx(
+				runtimerepo.NewAssignTaskTxRunner(pool),
+				runtimescheduler.NewAgentSelector(),
+			),
+		),
+		"runtime-scheduler",
+		"runtime-recovery-1",
+		time.Minute,
+	)
+	if err := leader.Tick(ctx); err != nil {
+		t.Fatalf("leader tick: %v", err)
+	}
+
+	worker := runtimerecovery.NewWorker(newRecoveryStoreForTest(pool), runtimerecovery.Policy{
+		AssignAckTimeout:      30 * time.Second,
+		AgentHeartbeatTimeout: time.Minute,
+	})
+	worker.SetNow(func() time.Time { return time.Now().Add(time.Minute) })
+	if err := worker.RunOnce(ctx); err != nil {
+		t.Fatalf("recovery run once: %v", err)
+	}
+
+	task, err := taskRepo.GetTask(ctx, taskID)
+	if err != nil {
+		t.Fatalf("load task after recovery: %v", err)
+	}
+	if task == nil || task.Status != "pending" || task.CurrentExecutionID != "" || task.AssignedAgentID != "" {
+		t.Fatalf("expected task to be requeued to pending, got %+v", task)
+	}
+}
+
+func TestRuntimeTaskLifecycle_RecoveryFailsRunningTaskWhenAgentLost(t *testing.T) {
+	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+
+	ctx := context.Background()
+	container, dsn := startRuntimePostgres(t, ctx)
+	defer func() {
+		_ = testcontainers.TerminateContainer(container)
+	}()
+
+	pool := openRuntimePool(t, ctx, dsn)
+	defer pool.Close()
+
+	taskRepo := runtimerepo.NewTaskRepo(pool)
+	agentRepo := runtimerepo.NewAgentRepo(pool)
+	taskID := uuid.New()
+	if err := taskRepo.CreateTask(ctx, runtimerepo.CreateTaskParams{
+		ID:       taskID,
+		TaskType: "predict",
+	}); err != nil {
+		t.Fatalf("create pending task: %v", err)
+	}
+	if _, err := agentRepo.Upsert(ctx, runtimerepo.UpsertAgentParams{
+		ID:             "agent-recovery-2",
+		Version:        "test",
+		TransportMode:  "direct",
+		ControlBaseURL: "http://127.0.0.1:18081",
+		MaxConcurrency: 1,
+		LastSeenAt:     time.Now().Add(-time.Hour).UTC(),
+	}); err != nil {
+		t.Fatalf("upsert agent: %v", err)
+	}
+
+	assigned, err := taskRepo.AssignPendingTask(ctx, runtimerepo.AssignTaskParams{
+		AssignedAgentID: "agent-recovery-2",
+		LeaderEpoch:     7,
+	})
+	if err != nil {
+		t.Fatalf("assign task: %v", err)
+	}
+	if _, err := commands.NewStartTaskHandler(taskRepo).Handle(ctx, commands.StartTaskCommand{
+		TaskID:      taskID,
+		ExecutionID: assigned.CurrentExecutionID,
+	}); err != nil {
+		t.Fatalf("start task: %v", err)
+	}
+
+	worker := runtimerecovery.NewWorker(newRecoveryStoreForTest(pool), runtimerecovery.Policy{
+		AssignAckTimeout:      30 * time.Second,
+		AgentHeartbeatTimeout: 30 * time.Second,
+	})
+	worker.SetNow(func() time.Time { return time.Now() })
+	if err := worker.RunOnce(ctx); err != nil {
+		t.Fatalf("recovery run once: %v", err)
+	}
+
+	task, err := taskRepo.GetTask(ctx, taskID)
+	if err != nil {
+		t.Fatalf("load failed task: %v", err)
+	}
+	if task == nil || task.Status != "failed" {
+		t.Fatalf("expected task to be failed after agent lost, got %+v", task)
+	}
+}
+
+func TestRuntimeTaskLifecycle_RecoveryCancelsCancelRequestedTaskWhenAgentOffline(t *testing.T) {
+	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+
+	ctx := context.Background()
+	container, dsn := startRuntimePostgres(t, ctx)
+	defer func() {
+		_ = testcontainers.TerminateContainer(container)
+	}()
+
+	pool := openRuntimePool(t, ctx, dsn)
+	defer pool.Close()
+
+	taskRepo := runtimerepo.NewTaskRepo(pool)
+	agentRepo := runtimerepo.NewAgentRepo(pool)
+	taskID := uuid.New()
+	if err := taskRepo.CreateTask(ctx, runtimerepo.CreateTaskParams{
+		ID:       taskID,
+		TaskType: "predict",
+	}); err != nil {
+		t.Fatalf("create pending task: %v", err)
+	}
+	if _, err := agentRepo.Upsert(ctx, runtimerepo.UpsertAgentParams{
+		ID:             "agent-recovery-3",
+		Version:        "test",
+		TransportMode:  "direct",
+		ControlBaseURL: "http://127.0.0.1:18081",
+		MaxConcurrency: 1,
+		LastSeenAt:     time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("upsert agent: %v", err)
+	}
+
+	leader := runtimescheduler.NewLeaderTicker(
+		runtimerepo.NewLeaseRepo(pool),
+		runtimescheduler.NewDispatchScan(
+			commands.NewAssignTaskHandlerWithTx(
+				runtimerepo.NewAssignTaskTxRunner(pool),
+				runtimescheduler.NewAgentSelector(),
+			),
+		),
+		"runtime-scheduler",
+		"runtime-recovery-3",
+		time.Minute,
+	)
+	if err := leader.Tick(ctx); err != nil {
+		t.Fatalf("leader tick: %v", err)
+	}
+
+	assigned, err := taskRepo.GetTask(ctx, taskID)
+	if err != nil {
+		t.Fatalf("load assigned task: %v", err)
+	}
+	if assigned == nil || assigned.Status != "assigned" || assigned.CurrentExecutionID == "" {
+		t.Fatalf("expected assigned task before cancel, got %+v", assigned)
+	}
+	cancelled, err := commands.NewCancelTaskHandlerWithTx(runtimerepo.NewCancelTaskTxRunner(pool)).Handle(ctx, commands.CancelTaskCommand{
+		TaskID: taskID,
+	})
+	if err != nil {
+		t.Fatalf("cancel task: %v", err)
+	}
+	if cancelled == nil || cancelled.Status != "cancel_requested" || cancelled.CurrentExecutionID != assigned.CurrentExecutionID {
+		t.Fatalf("expected cancel_requested task, got %+v", cancelled)
+	}
+
+	worker := runtimerecovery.NewWorker(newRecoveryStoreForTest(pool), runtimerecovery.Policy{
+		AssignAckTimeout:      30 * time.Second,
+		AgentHeartbeatTimeout: 30 * time.Second,
+	})
+	worker.SetNow(func() time.Time { return time.Now().Add(time.Hour) })
+	if err := worker.RunOnce(ctx); err != nil {
+		t.Fatalf("recovery run once: %v", err)
+	}
+
+	task, err := taskRepo.GetTask(ctx, taskID)
+	if err != nil {
+		t.Fatalf("load canceled task: %v", err)
+	}
+	if task == nil || task.Status != "canceled" {
+		t.Fatalf("expected task to be canceled after offline recovery, got %+v", task)
+	}
+
+	var openCommandCount int
+	if err := pool.QueryRow(ctx, `
+select count(*)
+from agent_command
+where task_id = $1
+  and status in ('pending', 'claimed', 'acked')
+`, taskID).Scan(&openCommandCount); err != nil {
+		t.Fatalf("count open commands after recovery: %v", err)
+	}
+	if openCommandCount != 0 {
+		t.Fatalf("expected recovery to close all open commands, got %d", openCommandCount)
+	}
+}
+
 type noopRegisterAgentHandler struct{}
 
 func (noopRegisterAgentHandler) Handle(context.Context, commands.RegisterAgentCommand) (*commands.AgentRecord, error) {
@@ -364,6 +591,34 @@ func newDirectDeliveryWorkerForTest(agentStore runtimeeffects.AgentLookupStore, 
 		runtimeeffects.NewDispatchEffect(transports),
 		runtimeeffects.NewStopEffect(transports),
 	)
+}
+
+type recoveryStoreForTest struct {
+	tasks  *runtimerepo.TaskRepo
+	agents *runtimerepo.AgentRepo
+}
+
+func newRecoveryStoreForTest(pool *pgxpool.Pool) *recoveryStoreForTest {
+	return &recoveryStoreForTest{
+		tasks:  runtimerepo.NewTaskRepo(pool),
+		agents: runtimerepo.NewAgentRepo(pool),
+	}
+}
+
+func (s *recoveryStoreForTest) MarkOfflineAgents(ctx context.Context, offlineBefore time.Time) (int64, error) {
+	return s.agents.MarkOfflineAgentsBefore(ctx, offlineBefore)
+}
+
+func (s *recoveryStoreForTest) RequeueAssignedTasksWithoutAck(ctx context.Context, ackBefore time.Time) (int64, error) {
+	return s.tasks.RequeueAssignedTasksWithoutAck(ctx, ackBefore)
+}
+
+func (s *recoveryStoreForTest) FailRunningTasksForOfflineAgents(ctx context.Context, offlineBefore time.Time) (int64, error) {
+	return s.tasks.FailRunningTasksForOfflineAgents(ctx, offlineBefore)
+}
+
+func (s *recoveryStoreForTest) CancelRequestedTasksForOfflineAgents(ctx context.Context, offlineBefore time.Time) (int64, error) {
+	return s.tasks.CancelRequestedTasksForOfflineAgents(ctx, offlineBefore)
 }
 
 type connectAgentControlClientFactory struct{}

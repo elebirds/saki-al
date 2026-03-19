@@ -138,6 +138,12 @@ func (r *AgentRepo) GetByID(ctx context.Context, agentID string) (*Agent, error)
 	return agentFromModel(row), nil
 }
 
+// MarkOfflineAgentsBefore 只把 controlplane 观察到超时未心跳的 agent 标成 offline；
+// 真正的任务回收仍由 recovery worker 基于离线事实继续推进。
+func (r *AgentRepo) MarkOfflineAgentsBefore(ctx context.Context, offlineBefore time.Time) (int64, error) {
+	return r.q.MarkOfflineAgentsBefore(ctx, pgtype.Timestamptz{Time: offlineBefore, Valid: true})
+}
+
 func normalizeTextArray(items []string) []string {
 	if items == nil {
 		return []string{}

@@ -56,6 +56,8 @@ func newRunner(cfg config.Config, logger *slog.Logger) *bootstrap.Runner {
 	var deliveryClient bootstrap.DeliveryClient
 	if cfg.AgentTransportMode == "pull" {
 		deliveryClient = appconnect.NewDeliveryClient(http.DefaultClient, cfg.RuntimeBaseURL, cfg.AgentID)
+	} else if cfg.AgentTransportMode == "relay" {
+		deliveryClient = appconnect.NewRelayDeliveryClient(nil, cfg.RuntimeBaseURL, cfg.AgentID)
 	}
 	controlServer := appruntime.NewControlServer(service)
 	controlPath, controlHandler := runtimev1connect.NewAgentControlHandler(controlServer)

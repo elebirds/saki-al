@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"time"
@@ -22,6 +23,8 @@ import (
 	runtimerepo "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/repo"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 )
 
 const (
@@ -89,6 +92,10 @@ type deliveryAgentStore interface {
 	GetByID(ctx context.Context, agentID string) (*runtimerepo.Agent, error)
 }
 
+type deliverySessionStore interface {
+	GetByAgentID(ctx context.Context, agentID string) (*runtimerepo.AgentSession, error)
+}
+
 type rpcHandlerMount struct {
 	path    string
 	handler http.Handler
@@ -126,6 +133,7 @@ func New(ctx context.Context, opts Options, logger *slog.Logger) (*Runner, error
 	taskRepo := runtimerepo.NewTaskRepo(pool)
 	commandRepo := runtimerepo.NewAgentCommandRepo(pool)
 	agentRepo := runtimerepo.NewAgentRepo(pool)
+	sessionRepo := runtimerepo.NewAgentSessionRepo(pool)
 	outboxWriter := runtimerepo.NewCommandOutboxWriter(pool)
 	assetStore := cfg.assetStoreFactory()(pool)
 	if assetStore == nil {
@@ -144,6 +152,9 @@ func New(ctx context.Context, opts Options, logger *slog.Logger) (*Runner, error
 	ingressPath, ingressHandler := runtimev1connect.NewAgentIngressHandler(ingressServer)
 	deliveryServer := internalrpc.NewDeliveryServer(commandRepo)
 	deliveryPath, deliveryHandler := runtimev1connect.NewAgentDeliveryHandler(deliveryServer)
+	relayBaseURL := relayBaseURLFromBind(cfg.Bind)
+	relayServer := internalrpc.NewRelayServer(relayBaseURL, sessionRepo)
+	relayPath, relayHandler := runtimev1connect.NewAgentRelayHandler(relayServer)
 	artifactServer := internalrpc.NewArtifactServer(
 		assetapp.NewIssueUploadTicketUseCase(assetStore, cfg.AssetProvider, cfg.UploadTicketExpiry),
 		assetapp.NewIssueDownloadTicketUseCase(assetStore, cfg.AssetProvider, cfg.DownloadTicketExpiry),
@@ -156,7 +167,7 @@ func New(ctx context.Context, opts Options, logger *slog.Logger) (*Runner, error
 	)
 	ticker := newSchedulerTicker(cfg, leaseRepo, assigner, log)
 
-	worker := newDeliveryWorker(commandRepo, agentRepo, http.DefaultClient)
+	worker := newDeliveryWorker(relayBaseURL, commandRepo, agentRepo, sessionRepo, nil)
 	recoveryWorker := runtimerecovery.NewWorker(
 		newRuntimeRecoveryStore(taskRepo, agentRepo),
 		runtimerecovery.Policy{
@@ -177,6 +188,10 @@ func New(ctx context.Context, opts Options, logger *slog.Logger) (*Runner, error
 			{
 				path:    deliveryPath,
 				handler: deliveryHandler,
+			},
+			{
+				path:    relayPath,
+				handler: relayHandler,
 			},
 			{
 				path:    artifactPath,
@@ -242,7 +257,7 @@ func newRunnerFromAssembly(parts assembly) *Runner {
 		process: newProcess(
 			&http.Server{
 				Addr:              parts.bind,
-				Handler:           mux,
+				Handler:           h2c.NewHandler(mux, &http2.Server{}),
 				ReadHeaderTimeout: durationOrDefault(parts.readHeaderTimeout, defaultReadHeaderTimeout),
 			},
 			schedulerRoleLoop(parts, log),
@@ -406,16 +421,29 @@ func durationOrDefault(value, fallback time.Duration) time.Duration {
 	return value
 }
 
-func newDeliveryWorker(commandStore deliveryCommandStore, agentStore deliveryAgentStore, httpClient *http.Client) *runtimeeffects.Worker {
+func newDeliveryWorker(relayBaseURL string, commandStore deliveryCommandStore, agentStore deliveryAgentStore, sessionStore deliverySessionStore, httpClient *http.Client) *runtimeeffects.Worker {
 	// delivery 只消费 agent_command 真相；全局 AgentControlBaseURL 已退出主路径。
-	// direct 按 agent.control_base_url 推送，pull 保持 pending 由 agent 自己领取。
+	// direct 按 agent.control_base_url 推送，pull 保持 pending 由 agent 自己领取，relay 只把命令交给在线 session。
 	transports := runtimeeffects.NewTransportRegistry(
 		runtimeeffects.NewDirectTransport(agentStore, newAgentControlClientFactory(httpClient)),
 		runtimeeffects.NewPullTransport(),
+		runtimeeffects.NewRelayTransport(sessionStore, runtimeeffects.NewConnectRelayDispatchClientFactory(httpClient), relayBaseURL),
 	)
 	return runtimeeffects.NewWorker(
 		commandStore,
 		runtimeeffects.NewDispatchEffect(transports),
 		runtimeeffects.NewStopEffect(transports),
 	)
+}
+
+func relayBaseURLFromBind(bind string) string {
+	host, port, err := net.SplitHostPort(bind)
+	if err != nil {
+		return ""
+	}
+	switch host {
+	case "", "0.0.0.0", "::":
+		host = "127.0.0.1"
+	}
+	return "http://" + net.JoinHostPort(host, port)
 }

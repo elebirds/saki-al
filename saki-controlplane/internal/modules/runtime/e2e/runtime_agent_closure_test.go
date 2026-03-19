@@ -23,6 +23,8 @@ import (
 	runtimerepo "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/repo"
 	"github.com/google/uuid"
 	"github.com/testcontainers/testcontainers-go"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 )
 
 func TestRuntimeAgentClosure_AssignRunSucceed(t *testing.T) {
@@ -424,6 +426,97 @@ func TestRuntimeAgentClosure_PullCancelRequestsReachAgentAndTaskBecomesCanceled(
 		task, err := taskRepo.GetTask(ctx, taskID)
 		return err == nil && task != nil && task.Status == "canceled"
 	}, fmt.Sprintf("expected pull task %s to become canceled\nagent stdout:\n%s\nagent stderr:\n%s", taskID, agent.stdout.String(), agent.stderr.String()))
+}
+
+func TestRuntimeAgentClosure_RelayAssignRunSucceed(t *testing.T) {
+	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+
+	ctx := context.Background()
+	container, dsn := startRuntimePostgres(t, ctx)
+	defer func() {
+		_ = testcontainers.TerminateContainer(container)
+	}()
+
+	pool := openRuntimePool(t, ctx, dsn)
+	defer pool.Close()
+
+	taskRepo := runtimerepo.NewTaskRepo(pool)
+	agentRepo := runtimerepo.NewAgentRepo(pool)
+	commandRepo := runtimerepo.NewAgentCommandRepo(pool)
+	sessionRepo := runtimerepo.NewAgentSessionRepo(pool)
+	outboxWriter := runtimerepo.NewCommandOutboxWriter(pool)
+
+	ingressServer := internalrpc.NewRuntimeServer(
+		commands.NewRegisterAgentHandler(agentRepo),
+		commands.NewHeartbeatAgentHandler(agentRepo),
+		commands.NewStartTaskHandler(taskRepo),
+		commands.NewCompleteTaskHandler(taskRepo, outboxWriter),
+		commands.NewFailTaskHandler(taskRepo),
+		commands.NewConfirmTaskCanceledHandler(taskRepo),
+	)
+
+	mux := http.NewServeMux()
+	ingressPath, ingressHandler := runtimev1connect.NewAgentIngressHandler(ingressServer)
+	mux.Handle(ingressPath, ingressHandler)
+	deliveryServer := internalrpc.NewDeliveryServer(commandRepo)
+	deliveryPath, deliveryHandler := runtimev1connect.NewAgentDeliveryHandler(deliveryServer)
+	mux.Handle(deliveryPath, deliveryHandler)
+	relayServer := internalrpc.NewRelayServer("", sessionRepo)
+	relayPath, relayHandler := runtimev1connect.NewAgentRelayHandler(relayServer)
+	mux.Handle(relayPath, relayHandler)
+	httpServer := httptest.NewServer(h2c.NewHandler(mux, &http2.Server{}))
+	defer httpServer.Close()
+
+	agentBinary := buildAgentBinary(t)
+	workerBinary := buildLauncherHelperBinary(t)
+	agent := startRuntimeAgent(t, httpServer.URL, agentBinary, workerBinary, runtimeAgentProcessConfig{
+		agentID:       "agent-relay-e2e-1",
+		version:       "test-relay-success",
+		transportMode: "relay",
+	})
+	defer agent.stop(t)
+
+	waitForPoll(t, 20*time.Second, func() bool {
+		agent, err := agentRepo.GetByID(ctx, "agent-relay-e2e-1")
+		return err == nil && agent != nil && agent.TransportMode == "relay"
+	}, "expected relay agent register to reach runtime")
+
+	waitForPoll(t, 20*time.Second, func() bool {
+		session, err := sessionRepo.GetByAgentID(ctx, "agent-relay-e2e-1")
+		return err == nil && session != nil && session.SessionID != ""
+	}, "expected relay session to be registered")
+
+	taskID := uuid.New()
+	if err := taskRepo.CreateTask(ctx, runtimerepo.CreateTaskParams{
+		ID:       taskID,
+		TaskType: "predict",
+	}); err != nil {
+		t.Fatalf("create pending relay task: %v", err)
+	}
+
+	leader := runtimescheduler.NewLeaderTicker(
+		runtimerepo.NewLeaseRepo(pool),
+		runtimescheduler.NewDispatchScan(
+			commands.NewAssignTaskHandlerWithTx(
+				runtimerepo.NewAssignTaskTxRunner(pool),
+				runtimescheduler.NewAgentSelector(),
+			),
+		),
+		"runtime-scheduler",
+		"runtime-agent-relay-1",
+		time.Minute,
+	)
+	if err := leader.Tick(ctx); err != nil {
+		t.Fatalf("leader tick relay: %v", err)
+	}
+
+	relayWorker := newRelayDeliveryWorkerForTest(httpServer.URL, sessionRepo, commandRepo)
+	waitForPollWithStep(t, 20*time.Second, func() error {
+		return relayWorker.RunOnce(ctx)
+	}, func() bool {
+		task, err := taskRepo.GetTask(ctx, taskID)
+		return err == nil && task != nil && task.Status == "succeeded"
+	}, fmt.Sprintf("expected relay task %s to become succeeded\nagent stdout:\n%s\nagent stderr:\n%s", taskID, agent.stdout.String(), agent.stderr.String()))
 }
 
 type runtimeAgentProcessConfig struct {

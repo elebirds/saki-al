@@ -133,6 +133,66 @@ func TestBootstrapPullLoopConsumesCommandsAndAcksReceived(t *testing.T) {
 	}
 }
 
+func TestBootstrapRelayLoopConsumesCommandsWithoutPulling(t *testing.T) {
+	client := &fakeRuntimeClient{}
+	delivery := &fakeDeliveryClient{
+		relayCommands: []*runtimev1.PulledCommand{
+			{
+				CommandId:   "cmd-relay-1",
+				CommandType: "assign",
+				TaskId:      "task-relay-1",
+				ExecutionId: "exec-relay-1",
+				Payload:     []byte(`{"task_type":"predict"}`),
+			},
+		},
+	}
+	handler := &fakePulledCommandHandler{}
+
+	runner := New(Dependencies{
+		Bind:              "127.0.0.1:0",
+		RuntimeClient:     client,
+		DeliveryClient:    delivery,
+		CommandHandler:    handler,
+		HeartbeatInterval: 10 * time.Millisecond,
+		Logger:            slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- runner.StartBackground(ctx)
+	}()
+
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if delivery.openRelayCalls > 0 && handler.calls > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if delivery.openRelayCalls == 0 {
+		t.Fatal("expected bootstrap to open relay session")
+	}
+	if handler.calls == 0 {
+		t.Fatal("expected relay loop to hand command to local handler")
+	}
+	if delivery.pullCalls != 0 {
+		t.Fatalf("expected relay mode to avoid pull API, got %d pull calls", delivery.pullCalls)
+	}
+
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("background loops exited with error: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("background loops did not stop after cancel")
+	}
+}
+
 type fakeRuntimeClient struct {
 	mu             sync.Mutex
 	registerCalls  int
@@ -162,13 +222,17 @@ func (f *fakeRunningTaskSource) RunningTaskIDs() []string {
 }
 
 type fakeDeliveryClient struct {
-	commands  []*runtimev1.PulledCommand
-	ackCalls  int
-	commandID string
-	token     string
+	commands        []*runtimev1.PulledCommand
+	relayCommands   []*runtimev1.PulledCommand
+	pullCalls       int
+	openRelayCalls  int
+	ackCalls        int
+	commandID       string
+	token           string
 }
 
 func (f *fakeDeliveryClient) PullCommands(context.Context, int32, time.Duration) ([]*runtimev1.PulledCommand, error) {
+	f.pullCalls++
 	return append([]*runtimev1.PulledCommand(nil), f.commands...), nil
 }
 
@@ -177,6 +241,27 @@ func (f *fakeDeliveryClient) AckReceived(_ context.Context, commandID, deliveryT
 	f.commandID = commandID
 	f.token = deliveryToken
 	return nil
+}
+
+func (f *fakeDeliveryClient) OpenRelaySession(ctx context.Context, handler func(context.Context, *runtimev1.PulledCommand) error) error {
+	f.openRelayCalls++
+	for _, cmd := range f.relayCommands {
+		if cmd == nil {
+			continue
+		}
+		if err := handler(ctx, cmd); err != nil {
+			return err
+		}
+	}
+	<-ctx.Done()
+	return nil
+}
+
+func (f *fakeDeliveryClient) DeliveryMode() string {
+	if len(f.relayCommands) > 0 {
+		return "relay"
+	}
+	return "pull"
 }
 
 type fakePulledCommandHandler struct {

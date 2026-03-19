@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package saki.runtime.v1;
+
+option go_package = "github.com/elebirds/saki/saki-agent/internal/gen/runtime/v1;runtimev1";
+
+service AgentRelay {
+  rpc Open(stream RelayFrame) returns (stream RelayFrame);
+}
+
+message RelayFrame {
+  string frame_kind = 1;
+  string agent_id = 2;
+  string relay_id = 3;
+  string session_id = 4;
+  string command_id = 5;
+  string command_type = 6;
+  string task_id = 7;
+  string execution_id = 8;
+  bytes payload = 9;
+  bool accepted = 10;
+  string error_message = 11;
+  int64 sent_at_unix_ms = 12;
+}

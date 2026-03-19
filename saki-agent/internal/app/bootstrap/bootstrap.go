@@ -31,6 +31,11 @@ type DeliveryClient interface {
 	AckReceived(ctx context.Context, commandID string, deliveryToken string) error
 }
 
+type relaySessionDeliveryClient interface {
+	DeliveryMode() string
+	OpenRelaySession(ctx context.Context, handler func(context.Context, *runtimev1.PulledCommand) error) error
+}
+
 type PulledCommandHandler interface {
 	HandlePulledCommand(ctx context.Context, cmd *runtimev1.PulledCommand) error
 }
@@ -121,9 +126,15 @@ func (r *Runner) StartBackground(ctx context.Context) error {
 		errCh <- r.runHeartbeatLoop(ctx)
 	}()
 	if r.deliveryClient != nil && r.commandHandler != nil {
-		go func() {
-			errCh <- r.runPullLoop(ctx)
-		}()
+		if relayClient, ok := r.deliveryClient.(relaySessionDeliveryClient); ok && relayClient.DeliveryMode() == "relay" {
+			go func() {
+				errCh <- r.runRelayLoop(ctx, relayClient)
+			}()
+		} else {
+			go func() {
+				errCh <- r.runPullLoop(ctx)
+			}()
+		}
 	}
 
 	for {
@@ -198,6 +209,25 @@ func (r *Runner) runPullLoop(ctx context.Context) error {
 				}
 				r.logger.Error("agent ack pulled command failed", "command_id", command.GetCommandId(), "err", err)
 			}
+		}
+	}
+}
+
+func (r *Runner) runRelayLoop(ctx context.Context, delivery relaySessionDeliveryClient) error {
+	for {
+		if ctx.Err() != nil {
+			return nil
+		}
+
+		if err := delivery.OpenRelaySession(ctx, r.commandHandler.HandlePulledCommand); err != nil {
+			if errors.Is(ctx.Err(), context.Canceled) {
+				return nil
+			}
+			r.logger.Error("agent relay session failed", "err", err)
+			if err := waitForBackoff(ctx, defaultPullRetryBackoff); err != nil {
+				return nil
+			}
+			continue
 		}
 	}
 }

@@ -593,6 +593,23 @@ func newDirectDeliveryWorkerForTest(agentStore runtimeeffects.AgentLookupStore, 
 	)
 }
 
+// relay e2e 仍然只让 delivery worker 消费 agent_command 真相；
+// agent_session 只提供“当前有没有在线流、应该把命令送到哪条 relay 服务”的路由提示。
+func newRelayDeliveryWorkerForTest(relayBaseURL string, sessionStore runtimeeffects.AgentSessionLookupStore, commandStore runtimeeffects.AgentCommandStore) *runtimeeffects.Worker {
+	transports := runtimeeffects.NewTransportRegistry(
+		runtimeeffects.NewRelayTransport(
+			sessionStore,
+			runtimeeffects.NewConnectRelayDispatchClientFactory(nil),
+			relayBaseURL,
+		),
+	)
+	return runtimeeffects.NewWorker(
+		commandStore,
+		runtimeeffects.NewDispatchEffect(transports),
+		runtimeeffects.NewStopEffect(transports),
+	)
+}
+
 type recoveryStoreForTest struct {
 	tasks  *runtimerepo.TaskRepo
 	agents *runtimerepo.AgentRepo

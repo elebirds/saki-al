@@ -119,6 +119,7 @@ func TestNewDeliveryWorkerMarksRetryWhenDirectAgentHasNoControlURL(t *testing.T)
 		},
 	}
 	worker := newDeliveryWorker(
+		"",
 		store,
 		&fakeRuntimeAgentStore{
 			agents: map[string]*runtimerepo.Agent{
@@ -128,6 +129,7 @@ func TestNewDeliveryWorkerMarksRetryWhenDirectAgentHasNoControlURL(t *testing.T)
 				},
 			},
 		},
+		nil,
 		http.DefaultClient,
 	)
 

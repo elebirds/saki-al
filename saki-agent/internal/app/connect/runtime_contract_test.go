@@ -115,6 +115,31 @@ func TestAgentDeliveryContract(t *testing.T) {
 	}
 }
 
+func TestAgentRelayContract(t *testing.T) {
+	service := requireServiceDescriptor(t, "saki.runtime.v1.AgentRelay")
+	openMethod := requireMethodDescriptor(t, service, "Open")
+	if !openMethod.IsStreamingClient() || !openMethod.IsStreamingServer() {
+		t.Fatalf("expected AgentRelay/Open to be bidi stream, got client_stream=%v server_stream=%v", openMethod.IsStreamingClient(), openMethod.IsStreamingServer())
+	}
+
+	openRequest := dynamicpb.NewMessage(openMethod.Input())
+	frameKindField := requireFieldDescriptor(t, openMethod.Input(), "frame_kind")
+	openRequest.Set(frameKindField, protoreflect.ValueOfString("agent_hello"))
+
+	wire, err := proto.Marshal(openRequest)
+	if err != nil {
+		t.Fatalf("marshal relay open request: %v", err)
+	}
+
+	decoded := dynamicpb.NewMessage(openMethod.Input())
+	if err := proto.Unmarshal(wire, decoded); err != nil {
+		t.Fatalf("unmarshal relay open request: %v", err)
+	}
+	if got := decoded.Get(frameKindField).String(); got != "agent_hello" {
+		t.Fatalf("unexpected decoded relay frame kind=%q", got)
+	}
+}
+
 func requireServiceDescriptor(t *testing.T, fullName protoreflect.FullName) protoreflect.ServiceDescriptor {
 	t.Helper()
 

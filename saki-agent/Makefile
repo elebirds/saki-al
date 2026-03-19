@@ -23,7 +23,7 @@ else
 endif
 
 check-runtime-proto:
-	@for rel in runtime/v1/agent_control.proto runtime/v1/agent_ingress.proto runtime/v1/agent_events.proto worker/v1/worker.proto; do \
+	@for rel in runtime/v1/agent_control.proto runtime/v1/agent_ingress.proto runtime/v1/agent_events.proto runtime/v1/agent_delivery.proto worker/v1/worker.proto; do \
 		left=$$(mktemp); \
 		right=$$(mktemp); \
 		sed '/^option go_package = /d' api/proto/$$rel > $$left; \

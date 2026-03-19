@@ -222,6 +222,60 @@ func TestAgentControlAssignTaskCodec(t *testing.T) {
 	}
 }
 
+func TestAgentDeliveryCodec(t *testing.T) {
+	service := requireServiceDescriptor(t, "saki.runtime.v1.AgentDelivery")
+	assertMethodNames(t, service, "PullCommands", "AckCommand")
+
+	pullMethod := requireMethodDescriptor(t, service, "PullCommands")
+	agentIDField := requireFieldDescriptor(t, pullMethod.Input(), "agent_id")
+	maxItemsField := requireFieldDescriptor(t, pullMethod.Input(), "max_items")
+	waitTimeoutField := requireFieldDescriptor(t, pullMethod.Input(), "wait_timeout_ms")
+
+	original := dynamicpb.NewMessage(pullMethod.Input())
+	original.Set(agentIDField, protoreflect.ValueOfString("agent-pull-1"))
+	original.Set(maxItemsField, protoreflect.ValueOfInt32(8))
+	original.Set(waitTimeoutField, protoreflect.ValueOfInt64(25000))
+
+	wire, err := proto.Marshal(original)
+	if err != nil {
+		t.Fatalf("marshal pull commands request: %v", err)
+	}
+
+	decoded := dynamicpb.NewMessage(pullMethod.Input())
+	if err := proto.Unmarshal(wire, decoded); err != nil {
+		t.Fatalf("unmarshal pull commands request: %v", err)
+	}
+	if got := decoded.Get(agentIDField).String(); got != "agent-pull-1" {
+		t.Fatalf("unexpected decoded pull request agent_id=%q", got)
+	}
+	if got := decoded.Get(maxItemsField).Int(); got != 8 {
+		t.Fatalf("unexpected decoded pull request max_items=%d", got)
+	}
+
+	ackMethod := requireMethodDescriptor(t, service, "AckCommand")
+	commandIDField := requireFieldDescriptor(t, ackMethod.Input(), "command_id")
+	deliveryTokenField := requireFieldDescriptor(t, ackMethod.Input(), "delivery_token")
+	stateField := requireFieldDescriptor(t, ackMethod.Input(), "state")
+
+	ackOriginal := dynamicpb.NewMessage(ackMethod.Input())
+	ackOriginal.Set(commandIDField, protoreflect.ValueOfString("cmd-1"))
+	ackOriginal.Set(deliveryTokenField, protoreflect.ValueOfString("token-1"))
+	ackOriginal.Set(stateField, protoreflect.ValueOfString("received"))
+
+	ackWire, err := proto.Marshal(ackOriginal)
+	if err != nil {
+		t.Fatalf("marshal ack command request: %v", err)
+	}
+
+	ackDecoded := dynamicpb.NewMessage(ackMethod.Input())
+	if err := proto.Unmarshal(ackWire, ackDecoded); err != nil {
+		t.Fatalf("unmarshal ack command request: %v", err)
+	}
+	if got := ackDecoded.Get(stateField).String(); got != "received" {
+		t.Fatalf("unexpected decoded ack command state=%q", got)
+	}
+}
+
 func requireServiceDescriptor(t *testing.T, fullName protoreflect.FullName) protoreflect.ServiceDescriptor {
 	t.Helper()
 

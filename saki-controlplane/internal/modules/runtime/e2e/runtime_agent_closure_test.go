@@ -50,17 +50,21 @@ func TestRuntimeAgentClosure_AssignRunSucceed(t *testing.T) {
 		commands.NewFailTaskHandler(taskRepo),
 		commands.NewConfirmTaskCanceledHandler(taskRepo),
 	)
+	deliveryServer := internalrpc.NewDeliveryServer(commandRepo)
 	ingressMux := http.NewServeMux()
 	ingressPath, ingressHandler := runtimev1connect.NewAgentIngressHandler(ingressServer)
 	ingressMux.Handle(ingressPath, ingressHandler)
+	deliveryPath, deliveryHandler := runtimev1connect.NewAgentDeliveryHandler(deliveryServer)
+	ingressMux.Handle(deliveryPath, deliveryHandler)
 	ingressHTTPServer := httptest.NewServer(ingressMux)
 	defer ingressHTTPServer.Close()
 
 	agentBinary := buildAgentBinary(t)
 	workerBinary := buildLauncherHelperBinary(t)
 	agent := startRuntimeAgent(t, ingressHTTPServer.URL, agentBinary, workerBinary, runtimeAgentProcessConfig{
-		agentID: "agent-real-e2e-1",
-		version: "test-success",
+		agentID:       "agent-real-e2e-1",
+		version:       "test-success",
+		transportMode: "direct",
 	})
 	defer agent.stop(t)
 
@@ -137,18 +141,22 @@ func TestRuntimeAgentClosure_CancelRequestsReachAgentAndTaskBecomesCanceled(t *t
 		commands.NewFailTaskHandler(taskRepo),
 		commands.NewConfirmTaskCanceledHandler(taskRepo),
 	)
+	deliveryServer := internalrpc.NewDeliveryServer(commandRepo)
 	ingressMux := http.NewServeMux()
 	ingressPath, ingressHandler := runtimev1connect.NewAgentIngressHandler(ingressServer)
 	ingressMux.Handle(ingressPath, ingressHandler)
+	deliveryPath, deliveryHandler := runtimev1connect.NewAgentDeliveryHandler(deliveryServer)
+	ingressMux.Handle(deliveryPath, deliveryHandler)
 	ingressHTTPServer := httptest.NewServer(ingressMux)
 	defer ingressHTTPServer.Close()
 
 	agentBinary := buildAgentBinary(t)
 	workerBinary := buildLauncherHelperBinary(t)
 	agent := startRuntimeAgent(t, ingressHTTPServer.URL, agentBinary, workerBinary, runtimeAgentProcessConfig{
-		agentID:    "agent-real-e2e-2",
-		version:    "test-cancel",
-		workerMode: "block",
+		agentID:       "agent-real-e2e-2",
+		version:       "test-cancel",
+		transportMode: "direct",
+		workerMode:    "block",
 	})
 	defer agent.stop(t)
 
@@ -250,9 +258,182 @@ limit 1
 	}, fmt.Sprintf("expected task %s to become canceled\nagent stdout:\n%s\nagent stderr:\n%s", taskID, agent.stdout.String(), agent.stderr.String()))
 }
 
+func TestRuntimeAgentClosure_PullAssignRunSucceed(t *testing.T) {
+	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+
+	ctx := context.Background()
+	container, dsn := startRuntimePostgres(t, ctx)
+	defer func() {
+		_ = testcontainers.TerminateContainer(container)
+	}()
+
+	pool := openRuntimePool(t, ctx, dsn)
+	defer pool.Close()
+
+	taskRepo := runtimerepo.NewTaskRepo(pool)
+	agentRepo := runtimerepo.NewAgentRepo(pool)
+	commandRepo := runtimerepo.NewAgentCommandRepo(pool)
+	outboxWriter := runtimerepo.NewCommandOutboxWriter(pool)
+
+	ingressServer := internalrpc.NewRuntimeServer(
+		commands.NewRegisterAgentHandler(agentRepo),
+		commands.NewHeartbeatAgentHandler(agentRepo),
+		commands.NewStartTaskHandler(taskRepo),
+		commands.NewCompleteTaskHandler(taskRepo, outboxWriter),
+		commands.NewFailTaskHandler(taskRepo),
+		commands.NewConfirmTaskCanceledHandler(taskRepo),
+	)
+	deliveryServer := internalrpc.NewDeliveryServer(commandRepo)
+	mux := http.NewServeMux()
+	ingressPath, ingressHandler := runtimev1connect.NewAgentIngressHandler(ingressServer)
+	mux.Handle(ingressPath, ingressHandler)
+	deliveryPath, deliveryHandler := runtimev1connect.NewAgentDeliveryHandler(deliveryServer)
+	mux.Handle(deliveryPath, deliveryHandler)
+	httpServer := httptest.NewServer(mux)
+	defer httpServer.Close()
+
+	agentBinary := buildAgentBinary(t)
+	workerBinary := buildLauncherHelperBinary(t)
+	agent := startRuntimeAgent(t, httpServer.URL, agentBinary, workerBinary, runtimeAgentProcessConfig{
+		agentID:       "agent-pull-e2e-1",
+		version:       "test-pull-success",
+		transportMode: "pull",
+	})
+	defer agent.stop(t)
+
+	waitForPoll(t, 20*time.Second, func() bool {
+		agent, err := agentRepo.GetByID(ctx, "agent-pull-e2e-1")
+		return err == nil && agent != nil && agent.TransportMode == "pull"
+	}, "expected pull agent register to reach runtime")
+
+	taskID := uuid.New()
+	if err := taskRepo.CreateTask(ctx, runtimerepo.CreateTaskParams{
+		ID:       taskID,
+		TaskType: "predict",
+	}); err != nil {
+		t.Fatalf("create pending task: %v", err)
+	}
+
+	leader := runtimescheduler.NewLeaderTicker(
+		runtimerepo.NewLeaseRepo(pool),
+		runtimescheduler.NewDispatchScan(
+			commands.NewAssignTaskHandlerWithTx(
+				runtimerepo.NewAssignTaskTxRunner(pool),
+				runtimescheduler.NewAgentSelector(),
+			),
+		),
+		"runtime-scheduler",
+		"runtime-agent-pull-1",
+		time.Minute,
+	)
+	if err := leader.Tick(ctx); err != nil {
+		t.Fatalf("leader tick: %v", err)
+	}
+
+	waitForPoll(t, 20*time.Second, func() bool {
+		task, err := taskRepo.GetTask(ctx, taskID)
+		return err == nil && task != nil && task.Status == "succeeded"
+	}, fmt.Sprintf("expected pull task %s to become succeeded\nagent stdout:\n%s\nagent stderr:\n%s", taskID, agent.stdout.String(), agent.stderr.String()))
+}
+
+func TestRuntimeAgentClosure_PullCancelRequestsReachAgentAndTaskBecomesCanceled(t *testing.T) {
+	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+
+	ctx := context.Background()
+	container, dsn := startRuntimePostgres(t, ctx)
+	defer func() {
+		_ = testcontainers.TerminateContainer(container)
+	}()
+
+	pool := openRuntimePool(t, ctx, dsn)
+	defer pool.Close()
+
+	taskRepo := runtimerepo.NewTaskRepo(pool)
+	agentRepo := runtimerepo.NewAgentRepo(pool)
+	commandRepo := runtimerepo.NewAgentCommandRepo(pool)
+	outboxWriter := runtimerepo.NewCommandOutboxWriter(pool)
+
+	ingressServer := internalrpc.NewRuntimeServer(
+		commands.NewRegisterAgentHandler(agentRepo),
+		commands.NewHeartbeatAgentHandler(agentRepo),
+		commands.NewStartTaskHandler(taskRepo),
+		commands.NewCompleteTaskHandler(taskRepo, outboxWriter),
+		commands.NewFailTaskHandler(taskRepo),
+		commands.NewConfirmTaskCanceledHandler(taskRepo),
+	)
+	deliveryServer := internalrpc.NewDeliveryServer(commandRepo)
+	mux := http.NewServeMux()
+	ingressPath, ingressHandler := runtimev1connect.NewAgentIngressHandler(ingressServer)
+	mux.Handle(ingressPath, ingressHandler)
+	deliveryPath, deliveryHandler := runtimev1connect.NewAgentDeliveryHandler(deliveryServer)
+	mux.Handle(deliveryPath, deliveryHandler)
+	httpServer := httptest.NewServer(mux)
+	defer httpServer.Close()
+
+	agentBinary := buildAgentBinary(t)
+	workerBinary := buildLauncherHelperBinary(t)
+	agent := startRuntimeAgent(t, httpServer.URL, agentBinary, workerBinary, runtimeAgentProcessConfig{
+		agentID:       "agent-pull-e2e-2",
+		version:       "test-pull-cancel",
+		transportMode: "pull",
+		workerMode:    "block",
+	})
+	defer agent.stop(t)
+
+	waitForPoll(t, 20*time.Second, func() bool {
+		agent, err := agentRepo.GetByID(ctx, "agent-pull-e2e-2")
+		return err == nil && agent != nil && agent.TransportMode == "pull"
+	}, "expected blocking pull agent register to reach runtime")
+
+	taskID := uuid.New()
+	if err := taskRepo.CreateTask(ctx, runtimerepo.CreateTaskParams{
+		ID:       taskID,
+		TaskType: "predict",
+	}); err != nil {
+		t.Fatalf("create pending task: %v", err)
+	}
+
+	leader := runtimescheduler.NewLeaderTicker(
+		runtimerepo.NewLeaseRepo(pool),
+		runtimescheduler.NewDispatchScan(
+			commands.NewAssignTaskHandlerWithTx(
+				runtimerepo.NewAssignTaskTxRunner(pool),
+				runtimescheduler.NewAgentSelector(),
+			),
+		),
+		"runtime-scheduler",
+		"runtime-agent-pull-2",
+		time.Minute,
+	)
+	if err := leader.Tick(ctx); err != nil {
+		t.Fatalf("leader tick: %v", err)
+	}
+
+	waitForPoll(t, 20*time.Second, func() bool {
+		task, err := taskRepo.GetTask(ctx, taskID)
+		return err == nil && task != nil && task.Status == "running"
+	}, fmt.Sprintf("expected pull task %s to become running\nagent stdout:\n%s\nagent stderr:\n%s", taskID, agent.stdout.String(), agent.stderr.String()))
+
+	cancelled, err := commands.NewCancelTaskHandlerWithTx(runtimerepo.NewCancelTaskTxRunner(pool)).Handle(ctx, commands.CancelTaskCommand{
+		TaskID: taskID,
+	})
+	if err != nil {
+		t.Fatalf("cancel task: %v", err)
+	}
+	if cancelled == nil || cancelled.Status != "cancel_requested" {
+		t.Fatalf("expected cancel_requested task after cancel command, got %+v", cancelled)
+	}
+
+	waitForPoll(t, 20*time.Second, func() bool {
+		task, err := taskRepo.GetTask(ctx, taskID)
+		return err == nil && task != nil && task.Status == "canceled"
+	}, fmt.Sprintf("expected pull task %s to become canceled\nagent stdout:\n%s\nagent stderr:\n%s", taskID, agent.stdout.String(), agent.stderr.String()))
+}
+
 type runtimeAgentProcessConfig struct {
 	agentID    string
 	version    string
+	transportMode string
 	workerMode string
 }
 
@@ -282,17 +463,24 @@ func startRuntimeAgent(
 	ctx, cancel := context.WithCancel(context.Background())
 	cmd := exec.CommandContext(ctx, agentBinary)
 	cmd.Dir = agentModuleDir(t)
+	transportMode := cfg.transportMode
+	if transportMode == "" {
+		transportMode = "direct"
+	}
 	cmd.Env = append(os.Environ(),
 		"RUNTIME_BASE_URL="+runtimeBaseURL,
 		"AGENT_CONTROL_BIND="+controlBind,
-		"AGENT_CONTROL_BASE_URL="+controlBaseURL,
+		"AGENT_CONTROL_BASE_URL=",
 		"AGENT_ID="+cfg.agentID,
 		"AGENT_VERSION="+cfg.version,
-		"AGENT_TRANSPORT_MODE=direct",
+		"AGENT_TRANSPORT_MODE="+transportMode,
 		"AGENT_MAX_CONCURRENCY=1",
 		"AGENT_HEARTBEAT_INTERVAL=50ms",
 		"AGENT_WORKER_COMMAND_JSON="+workerCommandJSON,
 	)
+	if transportMode == "direct" {
+		cmd.Env = append(cmd.Env, "AGENT_CONTROL_BASE_URL="+controlBaseURL)
+	}
 
 	agent := &runtimeAgentProcess{
 		cancel:         cancel,

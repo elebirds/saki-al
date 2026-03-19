@@ -6,9 +6,16 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
+
+	runtimev1 "github.com/elebirds/saki/saki-agent/internal/gen/runtime/v1"
 )
 
-const defaultReadHeaderTimeout = 5 * time.Second
+const (
+	defaultReadHeaderTimeout = 5 * time.Second
+	defaultPullBatchSize     = int32(8)
+	defaultPullWaitTimeout   = 25 * time.Second
+	defaultPullRetryBackoff  = time.Second
+)
 
 type RuntimeClient interface {
 	Register(ctx context.Context, capabilities []string) error
@@ -19,9 +26,20 @@ type RunningTaskSource interface {
 	RunningTaskIDs() []string
 }
 
+type DeliveryClient interface {
+	PullCommands(ctx context.Context, maxItems int32, waitTimeout time.Duration) ([]*runtimev1.PulledCommand, error)
+	AckReceived(ctx context.Context, commandID string, deliveryToken string) error
+}
+
+type PulledCommandHandler interface {
+	HandlePulledCommand(ctx context.Context, cmd *runtimev1.PulledCommand) error
+}
+
 type Dependencies struct {
 	Bind              string
 	RuntimeClient     RuntimeClient
+	DeliveryClient    DeliveryClient
+	CommandHandler    PulledCommandHandler
 	TaskSource        RunningTaskSource
 	Capabilities      []string
 	HeartbeatInterval time.Duration
@@ -33,6 +51,8 @@ type Dependencies struct {
 type Runner struct {
 	server            *http.Server
 	runtimeClient     RuntimeClient
+	deliveryClient    DeliveryClient
+	commandHandler    PulledCommandHandler
 	taskSource        RunningTaskSource
 	capabilities      []string
 	heartbeatInterval time.Duration
@@ -70,6 +90,8 @@ func New(deps Dependencies) *Runner {
 			ReadHeaderTimeout: defaultReadHeaderTimeout,
 		},
 		runtimeClient:     deps.RuntimeClient,
+		deliveryClient:    deps.DeliveryClient,
+		commandHandler:    deps.CommandHandler,
 		taskSource:        deps.TaskSource,
 		capabilities:      append([]string(nil), deps.Capabilities...),
 		heartbeatInterval: heartbeatInterval,
@@ -94,6 +116,36 @@ func (r *Runner) StartBackground(ctx context.Context) error {
 		return err
 	}
 
+	errCh := make(chan error, 2)
+	go func() {
+		errCh <- r.runHeartbeatLoop(ctx)
+	}()
+	if r.deliveryClient != nil && r.commandHandler != nil {
+		go func() {
+			errCh <- r.runPullLoop(ctx)
+		}()
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case err := <-errCh:
+			if err == nil {
+				if ctx.Err() != nil {
+					return nil
+				}
+				continue
+			}
+			if errors.Is(ctx.Err(), context.Canceled) {
+				return nil
+			}
+			return err
+		}
+	}
+}
+
+func (r *Runner) runHeartbeatLoop(ctx context.Context) error {
 	ticker := time.NewTicker(r.heartbeatInterval)
 	defer ticker.Stop()
 
@@ -107,6 +159,44 @@ func (r *Runner) StartBackground(ctx context.Context) error {
 					return nil
 				}
 				return err
+			}
+		}
+	}
+}
+
+func (r *Runner) runPullLoop(ctx context.Context) error {
+	for {
+		if ctx.Err() != nil {
+			return nil
+		}
+
+		commands, err := r.deliveryClient.PullCommands(ctx, defaultPullBatchSize, defaultPullWaitTimeout)
+		if err != nil {
+			if errors.Is(ctx.Err(), context.Canceled) {
+				return nil
+			}
+			r.logger.Error("agent pull commands failed", "err", err)
+			if err := waitForBackoff(ctx, defaultPullRetryBackoff); err != nil {
+				return nil
+			}
+			continue
+		}
+
+		for _, command := range commands {
+			if command == nil {
+				continue
+			}
+			// pull 命令先交给本地 runtime 完成 admission/stop handoff；
+			// handoff 成功后再 ack(received)，这样失败命令会在 claim 过期后重试，而不会被误确认。
+			if err := r.commandHandler.HandlePulledCommand(ctx, command); err != nil {
+				r.logger.Error("agent handle pulled command failed", "command_id", command.GetCommandId(), "command_type", command.GetCommandType(), "err", err)
+				continue
+			}
+			if err := r.deliveryClient.AckReceived(ctx, command.GetCommandId(), command.GetDeliveryToken()); err != nil {
+				if errors.Is(ctx.Err(), context.Canceled) {
+					return nil
+				}
+				r.logger.Error("agent ack pulled command failed", "command_id", command.GetCommandId(), "err", err)
 			}
 		}
 	}
@@ -154,4 +244,16 @@ func (r *Runner) runningTaskIDs() []string {
 		return nil
 	}
 	return r.taskSource.RunningTaskIDs()
+}
+
+func waitForBackoff(ctx context.Context, backoff time.Duration) error {
+	timer := time.NewTimer(backoff)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }

@@ -53,12 +53,18 @@ func newRunner(cfg config.Config, logger *slog.Logger) *bootstrap.Runner {
 		Command: append([]string(nil), cfg.AgentWorkerCommand...),
 	})
 	service := appruntime.NewService(cfg.AgentID, cfg.AgentMaxConcurrency, workerLauncher, runtimeClient)
+	var deliveryClient bootstrap.DeliveryClient
+	if cfg.AgentTransportMode == "pull" {
+		deliveryClient = appconnect.NewDeliveryClient(http.DefaultClient, cfg.RuntimeBaseURL, cfg.AgentID)
+	}
 	controlServer := appruntime.NewControlServer(service)
 	controlPath, controlHandler := runtimev1connect.NewAgentControlHandler(controlServer)
 
 	return bootstrap.New(bootstrap.Dependencies{
 		Bind:              cfg.AgentControlBind,
 		RuntimeClient:     runtimeClient,
+		DeliveryClient:    deliveryClient,
+		CommandHandler:    service,
 		TaskSource:        service,
 		HeartbeatInterval: cfg.AgentHeartbeatInterval,
 		ControlPath:       controlPath,

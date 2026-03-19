@@ -134,6 +134,8 @@ func New(ctx context.Context, opts Options, logger *slog.Logger) (*Runner, error
 		runtimecommands.NewConfirmTaskCanceledHandler(taskRepo),
 	)
 	ingressPath, ingressHandler := runtimev1connect.NewAgentIngressHandler(ingressServer)
+	deliveryServer := internalrpc.NewDeliveryServer(commandRepo)
+	deliveryPath, deliveryHandler := runtimev1connect.NewAgentDeliveryHandler(deliveryServer)
 	artifactServer := internalrpc.NewArtifactServer(
 		assetapp.NewIssueUploadTicketUseCase(assetStore, cfg.AssetProvider, cfg.UploadTicketExpiry),
 		assetapp.NewIssueDownloadTicketUseCase(assetStore, cfg.AssetProvider, cfg.DownloadTicketExpiry),
@@ -156,6 +158,10 @@ func New(ctx context.Context, opts Options, logger *slog.Logger) (*Runner, error
 			{
 				path:    ingressPath,
 				handler: ingressHandler,
+			},
+			{
+				path:    deliveryPath,
+				handler: deliveryHandler,
 			},
 			{
 				path:    artifactPath,

@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package saki.runtime.v1;
+
+option go_package = "github.com/elebirds/saki/saki-agent/internal/gen/runtime/v1;runtimev1";
+
+service AgentDelivery {
+  rpc PullCommands(PullCommandsRequest) returns (PullCommandsResponse);
+  rpc AckCommand(AckCommandRequest) returns (AckCommandResponse);
+}
+
+message PullCommandsRequest {
+  string agent_id = 1;
+  int32 max_items = 2;
+  int64 wait_timeout_ms = 3;
+}
+
+message PulledCommand {
+  string command_id = 1;
+  string command_type = 2;
+  string task_id = 3;
+  string execution_id = 4;
+  bytes payload = 5;
+  string delivery_token = 6;
+}
+
+message PullCommandsResponse {
+  repeated PulledCommand commands = 1;
+}
+
+message AckCommandRequest {
+  string command_id = 1;
+  string delivery_token = 2;
+  string state = 3;
+}
+
+message AckCommandResponse {
+  bool accepted = 1;
+}

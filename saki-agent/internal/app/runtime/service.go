@@ -2,7 +2,9 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 
 	runtimev1 "github.com/elebirds/saki/saki-agent/internal/gen/runtime/v1"
 	workerv1 "github.com/elebirds/saki/saki-agent/internal/gen/worker/v1"
@@ -70,6 +72,38 @@ func (s *Service) RunningTaskIDs() []string {
 	return s.slotManager().RunningTaskIDs()
 }
 
+func (s *Service) HandlePulledCommand(ctx context.Context, cmd *runtimev1.PulledCommand) error {
+	if cmd == nil {
+		return nil
+	}
+
+	switch cmd.GetCommandType() {
+	case "assign":
+		assign, err := decodePulledAssignCommand(cmd.GetPayload())
+		if err != nil {
+			return err
+		}
+		return s.AssignTask(ctx, &runtimev1.AssignTaskRequest{
+			TaskId:      firstNonEmpty(cmd.GetTaskId(), assign.TaskID),
+			ExecutionId: firstNonEmpty(cmd.GetExecutionId(), assign.ExecutionID),
+			TaskType:    assign.TaskType,
+			Payload:     resolvedParamsPayload(assign.ResolvedParams),
+		})
+	case "cancel":
+		cancel, err := decodePulledCancelCommand(cmd.GetPayload())
+		if err != nil {
+			return err
+		}
+		return s.StopTask(ctx, &runtimev1.StopTaskRequest{
+			TaskId:      firstNonEmpty(cmd.GetTaskId(), cancel.TaskID),
+			ExecutionId: firstNonEmpty(cmd.GetExecutionId(), cancel.ExecutionID),
+			Reason:      cancel.Reason,
+		})
+	default:
+		return fmt.Errorf("unsupported pulled command type %s", cmd.GetCommandType())
+	}
+}
+
 func (s *Service) runExecution(ctx context.Context, current *activeExecution, req *runtimev1.AssignTaskRequest) {
 	defer s.slotManager().Release(current.executionID)
 
@@ -125,4 +159,49 @@ func normalizeServiceMaxConcurrency(limit int) int {
 		return 1
 	}
 	return limit
+}
+
+type pulledAssignCommand struct {
+	TaskID         string          `json:"task_id"`
+	ExecutionID    string          `json:"execution_id"`
+	TaskType       string          `json:"task_type"`
+	ResolvedParams json.RawMessage `json:"resolved_params"`
+}
+
+type pulledCancelCommand struct {
+	TaskID      string `json:"task_id"`
+	ExecutionID string `json:"execution_id"`
+	Reason      string `json:"reason"`
+}
+
+func decodePulledAssignCommand(raw []byte) (*pulledAssignCommand, error) {
+	var payload pulledAssignCommand
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return nil, err
+	}
+	return &payload, nil
+}
+
+func decodePulledCancelCommand(raw []byte) (*pulledCancelCommand, error) {
+	var payload pulledCancelCommand
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return nil, err
+	}
+	return &payload, nil
+}
+
+func resolvedParamsPayload(raw []byte) []byte {
+	if len(raw) == 0 {
+		return []byte(`{}`)
+	}
+	return append([]byte(nil), raw...)
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }

@@ -37,8 +37,10 @@ func TestNewRunnerWiresControlServerToWorkerAndRuntimeIngress(t *testing.T) {
 	runner := newRunner(config.Config{
 		RuntimeBaseURL:         runtimeHTTPServer.URL,
 		AgentControlBind:       "127.0.0.1:0",
+		AgentTransportMode:     "pull",
 		AgentID:                "agent-main-test",
 		AgentVersion:           "test-version",
+		AgentMaxConcurrency:    2,
 		AgentHeartbeatInterval: 10 * time.Millisecond,
 		AgentWorkerCommand:     mainHelperCommand(t),
 	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
@@ -54,6 +56,12 @@ func TestNewRunnerWiresControlServerToWorkerAndRuntimeIngress(t *testing.T) {
 	waitForCondition(t, time.Second, func() bool {
 		return runtimeServer.registerCallCount() > 0 && runtimeServer.heartbeatCallCount() > 0
 	}, "expected bootstrap register and heartbeat")
+	if got := runtimeServer.firstRegister(); got == nil || got.GetTransportMode() != "pull" || got.GetMaxConcurrency() != 2 {
+		t.Fatalf("unexpected register payload: %+v", got)
+	}
+	if got := runtimeServer.firstHeartbeat(); got == nil || got.GetMaxConcurrency() != 2 {
+		t.Fatalf("unexpected heartbeat payload: %+v", got)
+	}
 
 	controlHTTPServer := httptest.NewServer(runner.Server().Handler)
 	defer controlHTTPServer.Close()
@@ -189,6 +197,24 @@ func (s *recordingRuntimeIngressServer) heartbeatCallCount() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return len(s.heartbeats)
+}
+
+func (s *recordingRuntimeIngressServer) firstRegister() *runtimev1.RegisterRequest {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.registers) == 0 {
+		return nil
+	}
+	return s.registers[0]
+}
+
+func (s *recordingRuntimeIngressServer) firstHeartbeat() *runtimev1.HeartbeatRequest {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.heartbeats) == 0 {
+		return nil
+	}
+	return s.heartbeats[0]
 }
 
 func (s *recordingRuntimeIngressServer) hasRunningHeartbeat(taskID string) bool {

@@ -67,14 +67,14 @@ func (q *GetRuntimeSummaryQuery) Execute(ctx context.Context) (RuntimeSummary, e
 }
 
 type RepoAdminStore struct {
-	tasks     *runtimerepo.TaskRepo
-	executors *runtimerepo.ExecutorRepo
+	tasks  *runtimerepo.TaskRepo
+	agents *runtimerepo.AgentRepo
 }
 
-func NewRepoAdminStore(tasks *runtimerepo.TaskRepo, executors *runtimerepo.ExecutorRepo) *RepoAdminStore {
+func NewRepoAdminStore(tasks *runtimerepo.TaskRepo, agents *runtimerepo.AgentRepo) *RepoAdminStore {
 	return &RepoAdminStore{
-		tasks:     tasks,
-		executors: executors,
+		tasks:  tasks,
+		agents: agents,
 	}
 }
 
@@ -92,17 +92,17 @@ func (s *RepoAdminStore) GetRuntimeSummary(ctx context.Context) (RuntimeSummary,
 }
 
 func (s *RepoAdminStore) ListRuntimeAgents(ctx context.Context) ([]RuntimeAgent, error) {
-	executors, err := s.executors.List(ctx)
+	agents, err := s.agents.List(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	result := make([]RuntimeAgent, 0, len(executors))
-	for _, executor := range executors {
+	result := make([]RuntimeAgent, 0, len(agents))
+	for _, agent := range agents {
 		result = append(result, RuntimeAgent{
-			ID:         executor.ID,
-			Version:    executor.Version,
-			LastSeenAt: executor.LastSeenAt,
+			ID:         agent.ID,
+			Version:    agent.Version,
+			LastSeenAt: agent.LastSeenAt,
 		})
 	}
 

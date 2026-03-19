@@ -23,7 +23,7 @@ func TestRuntimeClientRegisterSendsAgentMetadata(t *testing.T) {
 	httpServer := httptest.NewServer(mux)
 	defer httpServer.Close()
 
-	client := NewRuntimeClient(http.DefaultClient, httpServer.URL, "agent-a", "1.2.3", slog.New(slog.NewTextHandler(io.Discard, nil)))
+	client := NewRuntimeClient(http.DefaultClient, httpServer.URL, "agent-a", "1.2.3", "direct", "http://127.0.0.1:18081", 3, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err := client.Register(context.Background(), []string{"gpu", "cuda"}); err != nil {
 		t.Fatalf("register: %v", err)
 	}
@@ -37,6 +37,12 @@ func TestRuntimeClientRegisterSendsAgentMetadata(t *testing.T) {
 	if !slices.Equal(server.register.GetCapabilities(), []string{"gpu", "cuda"}) {
 		t.Fatalf("unexpected capabilities: %+v", server.register.GetCapabilities())
 	}
+	if server.register.GetTransportMode() != "direct" || server.register.GetControlBaseUrl() != "http://127.0.0.1:18081" {
+		t.Fatalf("unexpected transport payload: %+v", server.register)
+	}
+	if server.register.GetMaxConcurrency() != 3 {
+		t.Fatalf("unexpected max concurrency: %d", server.register.GetMaxConcurrency())
+	}
 }
 
 func TestRuntimeClientHeartbeatIncludesRunningTaskIDs(t *testing.T) {
@@ -47,7 +53,7 @@ func TestRuntimeClientHeartbeatIncludesRunningTaskIDs(t *testing.T) {
 	httpServer := httptest.NewServer(mux)
 	defer httpServer.Close()
 
-	client := NewRuntimeClient(http.DefaultClient, httpServer.URL, "agent-a", "1.2.4", slog.New(slog.NewTextHandler(io.Discard, nil)))
+	client := NewRuntimeClient(http.DefaultClient, httpServer.URL, "agent-a", "1.2.4", "pull", "", 4, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	client.now = func() time.Time { return time.UnixMilli(123456789) }
 
 	if err := client.Heartbeat(context.Background(), []string{"task-1", "task-2"}); err != nil {
@@ -65,6 +71,9 @@ func TestRuntimeClientHeartbeatIncludesRunningTaskIDs(t *testing.T) {
 	}
 	if server.heartbeat.GetSentAtUnixMs() != 123456789 {
 		t.Fatalf("unexpected heartbeat timestamp: %d", server.heartbeat.GetSentAtUnixMs())
+	}
+	if server.heartbeat.GetMaxConcurrency() != 4 {
+		t.Fatalf("unexpected heartbeat max concurrency: %d", server.heartbeat.GetMaxConcurrency())
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	sqlcdb "github.com/elebirds/saki/saki-controlplane/internal/gen/sqlc"
+	"github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/commands"
 )
 
 type Agent struct {
@@ -36,6 +37,7 @@ type UpsertAgentParams struct {
 
 type HeartbeatAgentParams struct {
 	ID             string
+	Version        string
 	MaxConcurrency int32
 	RunningTaskIDs []string
 	LastSeenAt     time.Time
@@ -74,12 +76,40 @@ func (r *AgentRepo) Upsert(ctx context.Context, params UpsertAgentParams) (*Agen
 
 func (r *AgentRepo) Heartbeat(ctx context.Context, params HeartbeatAgentParams) error {
 	_, err := r.q.HeartbeatAgent(ctx, sqlcdb.HeartbeatAgentParams{
+		Version:        params.Version,
 		ID:             params.ID,
 		MaxConcurrency: params.MaxConcurrency,
 		RunningTaskIds: normalizeTextArray(params.RunningTaskIDs),
 		LastSeenAt:     pgtype.Timestamptz{Time: params.LastSeenAt, Valid: true},
 	})
 	return err
+}
+
+func (r *AgentRepo) RegisterAgent(ctx context.Context, agent commands.AgentRecord) (*commands.AgentRecord, error) {
+	registered, err := r.Upsert(ctx, UpsertAgentParams{
+		ID:             agent.ID,
+		Version:        agent.Version,
+		Capabilities:   agent.Capabilities,
+		TransportMode:  agent.TransportMode,
+		ControlBaseURL: agent.ControlBaseURL,
+		MaxConcurrency: agent.MaxConcurrency,
+		RunningTaskIDs: agent.RunningTaskIDs,
+		LastSeenAt:     agent.LastSeenAt,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return commandsAgentFromRepo(registered), nil
+}
+
+func (r *AgentRepo) HeartbeatAgent(ctx context.Context, heartbeat commands.AgentHeartbeat) error {
+	return r.Heartbeat(ctx, HeartbeatAgentParams{
+		ID:             heartbeat.ID,
+		Version:        heartbeat.Version,
+		MaxConcurrency: heartbeat.MaxConcurrency,
+		RunningTaskIDs: heartbeat.RunningTaskIDs,
+		LastSeenAt:     heartbeat.LastSeenAt,
+	})
 }
 
 func (r *AgentRepo) List(ctx context.Context) ([]Agent, error) {
@@ -113,5 +143,21 @@ func agentFromModel(row sqlcdb.Agent) *Agent {
 		RunningTaskIDs: normalizeTextArray(row.RunningTaskIds),
 		Status:         row.Status,
 		LastSeenAt:     row.LastSeenAt.Time,
+	}
+}
+
+func commandsAgentFromRepo(agent *Agent) *commands.AgentRecord {
+	if agent == nil {
+		return nil
+	}
+	return &commands.AgentRecord{
+		ID:             agent.ID,
+		Version:        agent.Version,
+		Capabilities:   normalizeTextArray(agent.Capabilities),
+		TransportMode:  agent.TransportMode,
+		ControlBaseURL: agent.ControlBaseURL,
+		MaxConcurrency: agent.MaxConcurrency,
+		RunningTaskIDs: normalizeTextArray(agent.RunningTaskIDs),
+		LastSeenAt:     agent.LastSeenAt,
 	}
 }

@@ -22,12 +22,15 @@ const (
 )
 
 type RegisterRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	AgentId       string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
-	Version       string                 `protobuf:"bytes,2,opt,name=version,proto3" json:"version,omitempty"`
-	Capabilities  []string               `protobuf:"bytes,3,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	AgentId        string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	Version        string                 `protobuf:"bytes,2,opt,name=version,proto3" json:"version,omitempty"`
+	Capabilities   []string               `protobuf:"bytes,3,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
+	TransportMode  string                 `protobuf:"bytes,4,opt,name=transport_mode,json=transportMode,proto3" json:"transport_mode,omitempty"`
+	ControlBaseUrl string                 `protobuf:"bytes,5,opt,name=control_base_url,json=controlBaseUrl,proto3" json:"control_base_url,omitempty"`
+	MaxConcurrency int32                  `protobuf:"varint,6,opt,name=max_concurrency,json=maxConcurrency,proto3" json:"max_concurrency,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *RegisterRequest) Reset() {
@@ -79,6 +82,27 @@ func (x *RegisterRequest) GetCapabilities() []string {
 		return x.Capabilities
 	}
 	return nil
+}
+
+func (x *RegisterRequest) GetTransportMode() string {
+	if x != nil {
+		return x.TransportMode
+	}
+	return ""
+}
+
+func (x *RegisterRequest) GetControlBaseUrl() string {
+	if x != nil {
+		return x.ControlBaseUrl
+	}
+	return ""
+}
+
+func (x *RegisterRequest) GetMaxConcurrency() int32 {
+	if x != nil {
+		return x.MaxConcurrency
+	}
+	return 0
 }
 
 type RegisterResponse struct {
@@ -138,7 +162,8 @@ type HeartbeatRequest struct {
 	AgentId        string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
 	AgentVersion   string                 `protobuf:"bytes,2,opt,name=agent_version,json=agentVersion,proto3" json:"agent_version,omitempty"`
 	RunningTaskIds []string               `protobuf:"bytes,3,rep,name=running_task_ids,json=runningTaskIds,proto3" json:"running_task_ids,omitempty"`
-	SentAtUnixMs   int64                  `protobuf:"varint,4,opt,name=sent_at_unix_ms,json=sentAtUnixMs,proto3" json:"sent_at_unix_ms,omitempty"`
+	MaxConcurrency int32                  `protobuf:"varint,4,opt,name=max_concurrency,json=maxConcurrency,proto3" json:"max_concurrency,omitempty"`
+	SentAtUnixMs   int64                  `protobuf:"varint,5,opt,name=sent_at_unix_ms,json=sentAtUnixMs,proto3" json:"sent_at_unix_ms,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -192,6 +217,13 @@ func (x *HeartbeatRequest) GetRunningTaskIds() []string {
 		return x.RunningTaskIds
 	}
 	return nil
+}
+
+func (x *HeartbeatRequest) GetMaxConcurrency() int32 {
+	if x != nil {
+		return x.MaxConcurrency
+	}
+	return 0
 }
 
 func (x *HeartbeatRequest) GetSentAtUnixMs() int64 {
@@ -345,19 +377,23 @@ var File_runtime_v1_agent_ingress_proto protoreflect.FileDescriptor
 
 const file_runtime_v1_agent_ingress_proto_rawDesc = "" +
 	"\n" +
-	"\x1eruntime/v1/agent_ingress.proto\x12\x0fsaki.runtime.v1\x1a\x1druntime/v1/agent_events.proto\"j\n" +
+	"\x1eruntime/v1/agent_ingress.proto\x12\x0fsaki.runtime.v1\x1a\x1druntime/v1/agent_events.proto\"\xe4\x01\n" +
 	"\x0fRegisterRequest\x12\x19\n" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x12\"\n" +
-	"\fcapabilities\x18\x03 \x03(\tR\fcapabilities\"b\n" +
+	"\fcapabilities\x18\x03 \x03(\tR\fcapabilities\x12%\n" +
+	"\x0etransport_mode\x18\x04 \x01(\tR\rtransportMode\x12(\n" +
+	"\x10control_base_url\x18\x05 \x01(\tR\x0econtrolBaseUrl\x12'\n" +
+	"\x0fmax_concurrency\x18\x06 \x01(\x05R\x0emaxConcurrency\"b\n" +
 	"\x10RegisterResponse\x12\x1a\n" +
 	"\baccepted\x18\x01 \x01(\bR\baccepted\x122\n" +
-	"\x15heartbeat_interval_ms\x18\x02 \x01(\x03R\x13heartbeatIntervalMs\"\xa3\x01\n" +
+	"\x15heartbeat_interval_ms\x18\x02 \x01(\x03R\x13heartbeatIntervalMs\"\xcc\x01\n" +
 	"\x10HeartbeatRequest\x12\x19\n" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12#\n" +
 	"\ragent_version\x18\x02 \x01(\tR\fagentVersion\x12(\n" +
-	"\x10running_task_ids\x18\x03 \x03(\tR\x0erunningTaskIds\x12%\n" +
-	"\x0fsent_at_unix_ms\x18\x04 \x01(\x03R\fsentAtUnixMs\"[\n" +
+	"\x10running_task_ids\x18\x03 \x03(\tR\x0erunningTaskIds\x12'\n" +
+	"\x0fmax_concurrency\x18\x04 \x01(\x05R\x0emaxConcurrency\x12%\n" +
+	"\x0fsent_at_unix_ms\x18\x05 \x01(\x03R\fsentAtUnixMs\"[\n" +
 	"\x11HeartbeatResponse\x12\x1a\n" +
 	"\baccepted\x18\x01 \x01(\bR\baccepted\x12*\n" +
 	"\x11next_heartbeat_ms\x18\x02 \x01(\x03R\x0fnextHeartbeatMs\"P\n" +

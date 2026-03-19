@@ -57,9 +57,11 @@ func TestRuntimeServerRegisterTranslatesToCommand(t *testing.T) {
 
 	client := runtimev1connect.NewAgentIngressClient(http.DefaultClient, httpServer.URL)
 	resp, err := client.Register(context.Background(), connect.NewRequest(&runtimev1.RegisterRequest{
-		AgentId:      "agent-a",
-		Version:      "1.2.3",
-		Capabilities: []string{"gpu"},
+		AgentId:        "agent-a",
+		Version:        "1.2.3",
+		Capabilities:   []string{"gpu"},
+		TransportMode:  "pull",
+		MaxConcurrency: 2,
 	}))
 	if err != nil {
 		t.Fatalf("register executor: %v", err)
@@ -73,6 +75,9 @@ func TestRuntimeServerRegisterTranslatesToCommand(t *testing.T) {
 	}
 	if !slices.Equal(registrar.last.Capabilities, []string{"gpu"}) {
 		t.Fatalf("unexpected register capabilities: %+v", registrar.last.Capabilities)
+	}
+	if registrar.last.TransportMode != "pull" || registrar.last.MaxConcurrency != 2 {
+		t.Fatalf("unexpected register scheduling facts: %+v", registrar.last)
 	}
 }
 
@@ -102,9 +107,12 @@ func TestRegisterAgentRequestCarriesAgentIdentity(t *testing.T) {
 
 	client := runtimev1connect.NewAgentIngressClient(http.DefaultClient, httpServer.URL)
 	if _, err := client.Register(context.Background(), connect.NewRequest(&runtimev1.RegisterRequest{
-		AgentId:      "agent-z",
-		Version:      "9.9.9",
-		Capabilities: []string{"gpu", "cuda"},
+		AgentId:        "agent-z",
+		Version:        "9.9.9",
+		Capabilities:   []string{"gpu", "cuda"},
+		TransportMode:  "direct",
+		ControlBaseUrl: "http://127.0.0.1:18081",
+		MaxConcurrency: 4,
 	})); err != nil {
 		t.Fatalf("register agent: %v", err)
 	}
@@ -114,6 +122,9 @@ func TestRegisterAgentRequestCarriesAgentIdentity(t *testing.T) {
 	}
 	if !slices.Equal(registrar.last.Capabilities, []string{"gpu", "cuda"}) {
 		t.Fatalf("unexpected register agent capabilities: %+v", registrar.last.Capabilities)
+	}
+	if registrar.last.TransportMode != "direct" || registrar.last.ControlBaseURL != "http://127.0.0.1:18081" || registrar.last.MaxConcurrency != 4 {
+		t.Fatalf("unexpected register agent scheduling facts: %+v", registrar.last)
 	}
 }
 
@@ -137,9 +148,11 @@ func TestRuntimeServerHeartbeatTranslatesToCommand(t *testing.T) {
 
 	client := runtimev1connect.NewAgentIngressClient(http.DefaultClient, httpServer.URL)
 	resp, err := client.Heartbeat(context.Background(), connect.NewRequest(&runtimev1.HeartbeatRequest{
-		AgentId:      "agent-a",
-		AgentVersion: "1.2.4",
-		SentAtUnixMs: 123456789,
+		AgentId:        "agent-a",
+		AgentVersion:   "1.2.4",
+		RunningTaskIds: []string{"task-1", "task-2"},
+		MaxConcurrency: 3,
+		SentAtUnixMs:   123456789,
 	}))
 	if err != nil {
 		t.Fatalf("heartbeat executor: %v", err)
@@ -148,8 +161,11 @@ func TestRuntimeServerHeartbeatTranslatesToCommand(t *testing.T) {
 	if !resp.Msg.Accepted || resp.Msg.NextHeartbeatMs == 0 {
 		t.Fatalf("unexpected heartbeat response: %+v", resp.Msg)
 	}
-	if heartbeats.last.AgentID != "agent-a" || heartbeats.last.SeenAt.UnixMilli() != 123456789 {
+	if heartbeats.last.AgentID != "agent-a" || heartbeats.last.Version != "1.2.4" || heartbeats.last.SeenAt.UnixMilli() != 123456789 {
 		t.Fatalf("unexpected heartbeat command: %+v", heartbeats.last)
+	}
+	if !slices.Equal(heartbeats.last.RunningTaskIDs, []string{"task-1", "task-2"}) || heartbeats.last.MaxConcurrency != 3 {
+		t.Fatalf("unexpected heartbeat scheduling facts: %+v", heartbeats.last)
 	}
 }
 
@@ -405,10 +421,10 @@ func TestRuntimeServerRegisterAndHeartbeatPersistExecutor(t *testing.T) {
 	}
 	defer pool.Close()
 
-	executorRepo := runtimerepo.NewExecutorRepo(pool)
+	agentRepo := runtimerepo.NewAgentRepo(pool)
 	server := NewRuntimeServer(
-		commands.NewRegisterAgentHandler(executorRepo),
-		commands.NewHeartbeatAgentHandler(executorRepo),
+		commands.NewRegisterAgentHandler(agentRepo),
+		commands.NewHeartbeatAgentHandler(agentRepo),
 		&fakeStartTaskHandler{},
 		&fakeCompleteTaskHandler{},
 		&fakeFailTaskHandler{},
@@ -426,37 +442,47 @@ func TestRuntimeServerRegisterAndHeartbeatPersistExecutor(t *testing.T) {
 	registerAt := time.UnixMilli(123456789)
 	server.heartbeatInterval = time.Second
 	if _, err := client.Register(context.Background(), connect.NewRequest(&runtimev1.RegisterRequest{
-		AgentId:      "agent-a",
-		Version:      "1.2.3",
-		Capabilities: []string{"gpu", "cuda"},
+		AgentId:        "agent-a",
+		Version:        "1.2.3",
+		Capabilities:   []string{"gpu", "cuda"},
+		TransportMode:  "pull",
+		MaxConcurrency: 2,
 	})); err != nil {
 		t.Fatalf("register executor: %v", err)
 	}
 
 	heartbeatAt := registerAt.Add(2 * time.Minute)
 	if _, err := client.Heartbeat(context.Background(), connect.NewRequest(&runtimev1.HeartbeatRequest{
-		AgentId:      "agent-a",
-		AgentVersion: "1.2.4",
-		SentAtUnixMs: heartbeatAt.UnixMilli(),
+		AgentId:        "agent-a",
+		AgentVersion:   "1.2.4",
+		RunningTaskIds: []string{"task-1", "task-2"},
+		MaxConcurrency: 3,
+		SentAtUnixMs:   heartbeatAt.UnixMilli(),
 	})); err != nil {
 		t.Fatalf("heartbeat executor: %v", err)
 	}
 
-	executors, err := executorRepo.List(ctx)
+	agents, err := agentRepo.List(ctx)
 	if err != nil {
-		t.Fatalf("list executors: %v", err)
+		t.Fatalf("list agents: %v", err)
 	}
-	if len(executors) != 1 {
-		t.Fatalf("unexpected executor count: %d", len(executors))
+	if len(agents) != 1 {
+		t.Fatalf("unexpected agent count: %d", len(agents))
 	}
-	if executors[0].ID != "agent-a" || executors[0].Version != "1.2.3" {
-		t.Fatalf("unexpected executor: %+v", executors[0])
+	if agents[0].ID != "agent-a" || agents[0].Version != "1.2.4" {
+		t.Fatalf("unexpected agent: %+v", agents[0])
 	}
-	if !slices.Equal(executors[0].Capabilities, []string{"gpu", "cuda"}) {
-		t.Fatalf("unexpected executor capabilities: %+v", executors[0].Capabilities)
+	if !slices.Equal(agents[0].Capabilities, []string{"gpu", "cuda"}) {
+		t.Fatalf("unexpected agent capabilities: %+v", agents[0].Capabilities)
 	}
-	if !executors[0].LastSeenAt.Equal(heartbeatAt) {
-		t.Fatalf("unexpected last seen: %s", executors[0].LastSeenAt)
+	if agents[0].TransportMode != "pull" || agents[0].MaxConcurrency != 3 {
+		t.Fatalf("unexpected agent scheduling facts: %+v", agents[0])
+	}
+	if !slices.Equal(agents[0].RunningTaskIDs, []string{"task-1", "task-2"}) {
+		t.Fatalf("unexpected agent running task ids: %+v", agents[0].RunningTaskIDs)
+	}
+	if !agents[0].LastSeenAt.Equal(heartbeatAt) {
+		t.Fatalf("unexpected last seen: %s", agents[0].LastSeenAt)
 	}
 }
 
@@ -472,10 +498,13 @@ func (f *fakeRegisterAgentHandler) Handle(_ context.Context, cmd commands.Regist
 	}
 
 	return &commands.AgentRecord{
-		ID:           cmd.AgentID,
-		Version:      cmd.Version,
-		Capabilities: slices.Clone(cmd.Capabilities),
-		LastSeenAt:   cmd.SeenAt,
+		ID:             cmd.AgentID,
+		Version:        cmd.Version,
+		Capabilities:   slices.Clone(cmd.Capabilities),
+		TransportMode:  cmd.TransportMode,
+		ControlBaseURL: cmd.ControlBaseURL,
+		MaxConcurrency: cmd.MaxConcurrency,
+		LastSeenAt:     cmd.SeenAt,
 	}, nil
 }
 

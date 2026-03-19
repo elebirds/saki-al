@@ -68,19 +68,21 @@ func TestRuntimeAdminQueriesReadPersistedState(t *testing.T) {
 		t.Fatalf("assign task: %v", err)
 	}
 
-	executorRepo := runtimerepo.NewExecutorRepo(pool)
-	if _, err := executorRepo.Register(ctx, commands.ExecutorRecord{
-		ID:           "executor-a",
-		Version:      "1.2.3",
-		Capabilities: []string{"gpu"},
-		LastSeenAt:   time.UnixMilli(123456789),
+	agentRepo := runtimerepo.NewAgentRepo(pool)
+	if _, err := agentRepo.Upsert(ctx, runtimerepo.UpsertAgentParams{
+		ID:             "executor-a",
+		Version:        "1.2.3",
+		Capabilities:   []string{"gpu"},
+		TransportMode:  "pull",
+		MaxConcurrency: 1,
+		LastSeenAt:     time.UnixMilli(123456789),
 	}); err != nil {
-		t.Fatalf("register executor: %v", err)
+		t.Fatalf("register agent: %v", err)
 	}
 
 	handlers := apihttp.NewHandlers(
 		apihttp.Dependencies{
-			Store:    runtimequeries.NewRepoAdminStore(taskRepo, executorRepo),
+			Store:    runtimequeries.NewRepoAdminStore(taskRepo, agentRepo),
 			Commands: runtimequeries.NewIssueRuntimeCommandUseCase(&fakeRuntimeCanceler{}),
 		},
 	)
@@ -125,7 +127,7 @@ func TestRuntimeAdminCancelTaskTransitionsTask(t *testing.T) {
 
 	handlers := apihttp.NewHandlers(
 		apihttp.Dependencies{
-			Store: runtimequeries.NewRepoAdminStore(taskRepo, runtimerepo.NewExecutorRepo(pool)),
+			Store: runtimequeries.NewRepoAdminStore(taskRepo, runtimerepo.NewAgentRepo(pool)),
 			Commands: runtimequeries.NewIssueRuntimeCommandUseCase(
 				commands.NewCancelTaskHandlerWithTx(runtimerepo.NewCancelTaskTxRunner(pool)),
 			),
@@ -206,7 +208,7 @@ func TestCancelRuntimeTaskUsesCommandPathAndWritesStopOutbox(t *testing.T) {
 
 	handlers := apihttp.NewHandlers(
 		apihttp.Dependencies{
-			Store: runtimequeries.NewRepoAdminStore(taskRepo, runtimerepo.NewExecutorRepo(pool)),
+			Store: runtimequeries.NewRepoAdminStore(taskRepo, runtimerepo.NewAgentRepo(pool)),
 			Commands: runtimequeries.NewIssueRuntimeCommandUseCase(
 				commands.NewCancelTaskHandlerWithTx(runtimerepo.NewCancelTaskTxRunner(pool)),
 			),

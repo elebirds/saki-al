@@ -108,7 +108,7 @@ func New(ctx context.Context, opts Options, logger *slog.Logger) (*Runner, error
 	leaseRepo := runtimerepo.NewLeaseRepo(pool)
 	taskRepo := runtimerepo.NewTaskRepo(pool)
 	outboxRepo := runtimerepo.NewOutboxRepo(pool)
-	executorRepo := runtimerepo.NewExecutorRepo(pool)
+	agentRepo := runtimerepo.NewAgentRepo(pool)
 	outboxWriter := runtimerepo.NewCommandOutboxWriter(pool)
 	assetStore := cfg.assetStoreFactory()(pool)
 	if assetStore == nil {
@@ -117,8 +117,8 @@ func New(ctx context.Context, opts Options, logger *slog.Logger) (*Runner, error
 	}
 
 	ingressServer := internalrpc.NewRuntimeServer(
-		runtimecommands.NewRegisterAgentHandler(executorRepo),
-		runtimecommands.NewHeartbeatAgentHandler(executorRepo),
+		runtimecommands.NewRegisterAgentHandler(agentRepo),
+		runtimecommands.NewHeartbeatAgentHandler(agentRepo),
 		runtimecommands.NewStartTaskHandler(taskRepo),
 		runtimecommands.NewCompleteTaskHandler(taskRepo, outboxWriter),
 		runtimecommands.NewFailTaskHandler(taskRepo),

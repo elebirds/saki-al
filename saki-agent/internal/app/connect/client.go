@@ -21,14 +21,26 @@ type ingressClient interface {
 }
 
 type RuntimeClient struct {
-	agentID      string
-	agentVersion string
-	client       ingressClient
-	logger       *slog.Logger
-	now          func() time.Time
+	agentID        string
+	agentVersion   string
+	transportMode  string
+	controlBaseURL string
+	maxConcurrency int32
+	client         ingressClient
+	logger         *slog.Logger
+	now            func() time.Time
 }
 
-func NewRuntimeClient(httpClient *http.Client, baseURL, agentID, agentVersion string, logger *slog.Logger) *RuntimeClient {
+func NewRuntimeClient(
+	httpClient *http.Client,
+	baseURL string,
+	agentID string,
+	agentVersion string,
+	transportMode string,
+	controlBaseURL string,
+	maxConcurrency int32,
+	logger *slog.Logger,
+) *RuntimeClient {
 	if httpClient == nil {
 		httpClient = http.DefaultClient
 	}
@@ -37,19 +49,25 @@ func NewRuntimeClient(httpClient *http.Client, baseURL, agentID, agentVersion st
 	}
 
 	return &RuntimeClient{
-		agentID:      agentID,
-		agentVersion: agentVersion,
-		client:       runtimev1connect.NewAgentIngressClient(httpClient, baseURL),
-		logger:       logger,
-		now:          time.Now,
+		agentID:        agentID,
+		agentVersion:   agentVersion,
+		transportMode:  normalizeTransportMode(transportMode),
+		controlBaseURL: controlBaseURL,
+		maxConcurrency: normalizeMaxConcurrency(maxConcurrency),
+		client:         runtimev1connect.NewAgentIngressClient(httpClient, baseURL),
+		logger:         logger,
+		now:            time.Now,
 	}
 }
 
 func (c *RuntimeClient) Register(ctx context.Context, capabilities []string) error {
 	resp, err := c.client.Register(ctx, connectrpc.NewRequest(&runtimev1.RegisterRequest{
-		AgentId:      c.agentID,
-		Version:      c.agentVersion,
-		Capabilities: append([]string(nil), capabilities...),
+		AgentId:        c.agentID,
+		Version:        c.agentVersion,
+		Capabilities:   append([]string(nil), capabilities...),
+		TransportMode:  c.transportMode,
+		ControlBaseUrl: c.controlBaseURL,
+		MaxConcurrency: c.maxConcurrency,
 	}))
 	if err != nil {
 		return err
@@ -65,6 +83,7 @@ func (c *RuntimeClient) Heartbeat(ctx context.Context, runningTaskIDs []string) 
 		AgentId:        c.agentID,
 		AgentVersion:   c.agentVersion,
 		RunningTaskIds: append([]string(nil), runningTaskIDs...),
+		MaxConcurrency: c.maxConcurrency,
 		SentAtUnixMs:   c.now().UnixMilli(),
 	}))
 	if err != nil {
@@ -74,6 +93,20 @@ func (c *RuntimeClient) Heartbeat(ctx context.Context, runningTaskIDs []string) 
 		return errRuntimeRequestRejected
 	}
 	return nil
+}
+
+func normalizeTransportMode(mode string) string {
+	if mode == "" {
+		return "pull"
+	}
+	return mode
+}
+
+func normalizeMaxConcurrency(maxConcurrency int32) int32 {
+	if maxConcurrency <= 0 {
+		return 1
+	}
+	return maxConcurrency
 }
 
 func (c *RuntimeClient) PushTaskEvent(ctx context.Context, envelope *runtimev1.TaskEventEnvelope) error {

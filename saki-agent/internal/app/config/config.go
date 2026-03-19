@@ -3,21 +3,27 @@ package config
 import (
 	"encoding/json"
 	"os"
+	"strconv"
 	"time"
 )
 
 const (
 	defaultAgentControlBind       = ":18081"
+	defaultAgentTransportMode     = "pull"
 	defaultAgentID                = "agent-local"
 	defaultAgentVersion           = "dev"
+	defaultAgentMaxConcurrency    = int32(1)
 	defaultAgentHeartbeatInterval = 30 * time.Second
 )
 
 type Config struct {
 	RuntimeBaseURL         string
 	AgentControlBind       string
+	AgentControlBaseURL    string
+	AgentTransportMode     string
 	AgentID                string
 	AgentVersion           string
+	AgentMaxConcurrency    int32
 	AgentHeartbeatInterval time.Duration
 	AgentWorkerCommand     []string
 }
@@ -26,8 +32,11 @@ func Load() (Config, error) {
 	cfg := Config{
 		RuntimeBaseURL:         os.Getenv("RUNTIME_BASE_URL"),
 		AgentControlBind:       envOrDefault("AGENT_CONTROL_BIND", defaultAgentControlBind),
+		AgentControlBaseURL:    os.Getenv("AGENT_CONTROL_BASE_URL"),
+		AgentTransportMode:     envOrDefault("AGENT_TRANSPORT_MODE", defaultAgentTransportMode),
 		AgentID:                envOrDefault("AGENT_ID", defaultAgentID),
 		AgentVersion:           envOrDefault("AGENT_VERSION", defaultAgentVersion),
+		AgentMaxConcurrency:    defaultAgentMaxConcurrency,
 		AgentHeartbeatInterval: defaultAgentHeartbeatInterval,
 		AgentWorkerCommand:     []string{},
 	}
@@ -38,6 +47,14 @@ func Load() (Config, error) {
 			return Config{}, err
 		}
 		cfg.AgentHeartbeatInterval = value
+	}
+
+	if raw := os.Getenv("AGENT_MAX_CONCURRENCY"); raw != "" {
+		value, err := strconv.ParseInt(raw, 10, 32)
+		if err != nil {
+			return Config{}, err
+		}
+		cfg.AgentMaxConcurrency = int32(value)
 	}
 
 	if raw := os.Getenv("AGENT_WORKER_COMMAND_JSON"); raw != "" {

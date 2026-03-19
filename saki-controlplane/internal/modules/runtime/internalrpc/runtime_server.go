@@ -74,10 +74,13 @@ func (s *RuntimeServer) Register(
 	req *connect.Request[runtimev1.RegisterRequest],
 ) (*connect.Response[runtimev1.RegisterResponse], error) {
 	if _, err := s.registers.Handle(ctx, commands.RegisterAgentCommand{
-		AgentID:      req.Msg.GetAgentId(),
-		Version:      req.Msg.GetVersion(),
-		Capabilities: append([]string(nil), req.Msg.GetCapabilities()...),
-		SeenAt:       time.Now(),
+		AgentID:        req.Msg.GetAgentId(),
+		Version:        req.Msg.GetVersion(),
+		Capabilities:   append([]string(nil), req.Msg.GetCapabilities()...),
+		TransportMode:  req.Msg.GetTransportMode(),
+		ControlBaseURL: req.Msg.GetControlBaseUrl(),
+		MaxConcurrency: req.Msg.GetMaxConcurrency(),
+		SeenAt:         time.Now(),
 	}); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
@@ -94,8 +97,11 @@ func (s *RuntimeServer) Heartbeat(
 ) (*connect.Response[runtimev1.HeartbeatResponse], error) {
 	seenAt := time.UnixMilli(req.Msg.GetSentAtUnixMs())
 	if err := s.heartbeats.Handle(ctx, commands.HeartbeatAgentCommand{
-		AgentID: req.Msg.GetAgentId(),
-		SeenAt:  seenAt,
+		AgentID:        req.Msg.GetAgentId(),
+		Version:        req.Msg.GetAgentVersion(),
+		RunningTaskIDs: append([]string(nil), req.Msg.GetRunningTaskIds()...),
+		MaxConcurrency: req.Msg.GetMaxConcurrency(),
+		SeenAt:         seenAt,
 	}); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}

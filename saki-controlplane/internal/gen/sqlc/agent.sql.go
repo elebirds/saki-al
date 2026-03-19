@@ -13,12 +13,13 @@ import (
 
 const heartbeatAgent = `-- name: HeartbeatAgent :one
 update agent
-set max_concurrency = $1,
-    running_task_ids = $2::text[],
+set version = coalesce(nullif($1, ''), version),
+    max_concurrency = $2,
+    running_task_ids = $3::text[],
     status = 'online',
-    last_seen_at = $3,
+    last_seen_at = $4,
     updated_at = now()
-where id = $4
+where id = $5
 returning
     id,
     version,
@@ -34,6 +35,7 @@ returning
 `
 
 type HeartbeatAgentParams struct {
+	Version        interface{}        `json:"version"`
 	MaxConcurrency int32              `json:"max_concurrency"`
 	RunningTaskIds []string           `json:"running_task_ids"`
 	LastSeenAt     pgtype.Timestamptz `json:"last_seen_at"`
@@ -42,6 +44,7 @@ type HeartbeatAgentParams struct {
 
 func (q *Queries) HeartbeatAgent(ctx context.Context, arg HeartbeatAgentParams) (Agent, error) {
 	row := q.db.QueryRow(ctx, heartbeatAgent,
+		arg.Version,
 		arg.MaxConcurrency,
 		arg.RunningTaskIds,
 		arg.LastSeenAt,

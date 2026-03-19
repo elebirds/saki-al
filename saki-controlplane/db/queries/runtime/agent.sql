@@ -46,7 +46,8 @@ returning
 
 -- name: HeartbeatAgent :one
 update agent
-set max_concurrency = sqlc.arg(max_concurrency),
+set version = coalesce(nullif(sqlc.arg(version), ''), version),
+    max_concurrency = sqlc.arg(max_concurrency),
     running_task_ids = sqlc.arg(running_task_ids)::text[],
     status = 'online',
     last_seen_at = sqlc.arg(last_seen_at),

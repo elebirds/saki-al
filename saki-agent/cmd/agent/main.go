@@ -39,7 +39,16 @@ func newRunner(cfg config.Config, logger *slog.Logger) *bootstrap.Runner {
 		logger = slog.Default()
 	}
 
-	runtimeClient := appconnect.NewRuntimeClient(http.DefaultClient, cfg.RuntimeBaseURL, cfg.AgentID, cfg.AgentVersion, logger)
+	runtimeClient := appconnect.NewRuntimeClient(
+		http.DefaultClient,
+		cfg.RuntimeBaseURL,
+		cfg.AgentID,
+		cfg.AgentVersion,
+		cfg.AgentTransportMode,
+		cfg.AgentControlBaseURL,
+		cfg.AgentMaxConcurrency,
+		logger,
+	)
 	workerLauncher := launcher.NewLauncher(launcher.LauncherConfig{
 		Command: append([]string(nil), cfg.AgentWorkerCommand...),
 	})

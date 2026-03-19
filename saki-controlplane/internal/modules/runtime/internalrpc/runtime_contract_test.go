@@ -19,10 +19,16 @@ func TestAgentIngressRegisterCodec(t *testing.T) {
 	agentIDField := requireFieldDescriptor(t, method.Input(), "agent_id")
 	versionField := requireFieldDescriptor(t, method.Input(), "version")
 	capabilitiesField := requireFieldDescriptor(t, method.Input(), "capabilities")
+	transportModeField := requireFieldDescriptor(t, method.Input(), "transport_mode")
+	controlBaseURLField := requireFieldDescriptor(t, method.Input(), "control_base_url")
+	maxConcurrencyField := requireFieldDescriptor(t, method.Input(), "max_concurrency")
 
 	original := dynamicpb.NewMessage(method.Input())
 	original.Set(agentIDField, protoreflect.ValueOfString("agent-a"))
 	original.Set(versionField, protoreflect.ValueOfString("1.0.0"))
+	original.Set(transportModeField, protoreflect.ValueOfString("pull"))
+	original.Set(controlBaseURLField, protoreflect.ValueOfString("http://127.0.0.1:18081"))
+	original.Set(maxConcurrencyField, protoreflect.ValueOfInt32(3))
 
 	capabilities := original.Mutable(capabilitiesField).List()
 	capabilities.Append(protoreflect.ValueOfString("gpu"))
@@ -44,11 +50,67 @@ func TestAgentIngressRegisterCodec(t *testing.T) {
 	if got := decoded.Get(versionField).String(); got != "1.0.0" {
 		t.Fatalf("unexpected decoded register request version=%q", got)
 	}
+	if got := decoded.Get(transportModeField).String(); got != "pull" {
+		t.Fatalf("unexpected decoded register request transport_mode=%q", got)
+	}
+	if got := decoded.Get(controlBaseURLField).String(); got != "http://127.0.0.1:18081" {
+		t.Fatalf("unexpected decoded register request control_base_url=%q", got)
+	}
+	if got := decoded.Get(maxConcurrencyField).Int(); got != 3 {
+		t.Fatalf("unexpected decoded register request max_concurrency=%d", got)
+	}
 	if got := decoded.Get(capabilitiesField).List().Len(); got != 2 {
 		t.Fatalf(
 			"unexpected decoded register request capabilities=%d",
 			got,
 		)
+	}
+}
+
+func TestAgentIngressHeartbeatCodec(t *testing.T) {
+	service := requireServiceDescriptor(t, "saki.runtime.v1.AgentIngress")
+	method := requireMethodDescriptor(t, service, "Heartbeat")
+
+	agentIDField := requireFieldDescriptor(t, method.Input(), "agent_id")
+	agentVersionField := requireFieldDescriptor(t, method.Input(), "agent_version")
+	runningTaskIDsField := requireFieldDescriptor(t, method.Input(), "running_task_ids")
+	maxConcurrencyField := requireFieldDescriptor(t, method.Input(), "max_concurrency")
+	sentAtField := requireFieldDescriptor(t, method.Input(), "sent_at_unix_ms")
+
+	original := dynamicpb.NewMessage(method.Input())
+	original.Set(agentIDField, protoreflect.ValueOfString("agent-a"))
+	original.Set(agentVersionField, protoreflect.ValueOfString("1.0.1"))
+	original.Set(maxConcurrencyField, protoreflect.ValueOfInt32(2))
+	original.Set(sentAtField, protoreflect.ValueOfInt64(123456789))
+
+	runningTasks := original.Mutable(runningTaskIDsField).List()
+	runningTasks.Append(protoreflect.ValueOfString("task-1"))
+	runningTasks.Append(protoreflect.ValueOfString("task-2"))
+
+	wire, err := proto.Marshal(original)
+	if err != nil {
+		t.Fatalf("marshal heartbeat request: %v", err)
+	}
+
+	decoded := dynamicpb.NewMessage(method.Input())
+	if err := proto.Unmarshal(wire, decoded); err != nil {
+		t.Fatalf("unmarshal heartbeat request: %v", err)
+	}
+
+	if got := decoded.Get(agentIDField).String(); got != "agent-a" {
+		t.Fatalf("unexpected decoded heartbeat request agent_id=%q", got)
+	}
+	if got := decoded.Get(agentVersionField).String(); got != "1.0.1" {
+		t.Fatalf("unexpected decoded heartbeat request agent_version=%q", got)
+	}
+	if got := decoded.Get(maxConcurrencyField).Int(); got != 2 {
+		t.Fatalf("unexpected decoded heartbeat request max_concurrency=%d", got)
+	}
+	if got := decoded.Get(sentAtField).Int(); got != 123456789 {
+		t.Fatalf("unexpected decoded heartbeat request sent_at_unix_ms=%d", got)
+	}
+	if got := decoded.Get(runningTaskIDsField).List().Len(); got != 2 {
+		t.Fatalf("unexpected decoded heartbeat running_task_ids=%d", got)
 	}
 }
 

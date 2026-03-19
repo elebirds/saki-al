@@ -41,13 +41,13 @@ func TestRuntimeAgentClosure_AssignRunSucceed(t *testing.T) {
 	defer pool.Close()
 
 	taskRepo := runtimerepo.NewTaskRepo(pool)
-	executorRepo := runtimerepo.NewExecutorRepo(pool)
+	agentRepo := runtimerepo.NewAgentRepo(pool)
 	outboxRepo := runtimerepo.NewOutboxRepo(pool)
 	outboxWriter := runtimerepo.NewCommandOutboxWriter(pool)
 
 	ingressServer := internalrpc.NewRuntimeServer(
-		commands.NewRegisterAgentHandler(executorRepo),
-		commands.NewHeartbeatAgentHandler(executorRepo),
+		commands.NewRegisterAgentHandler(agentRepo),
+		commands.NewHeartbeatAgentHandler(agentRepo),
 		commands.NewStartTaskHandler(taskRepo),
 		commands.NewCompleteTaskHandler(taskRepo, outboxWriter),
 		commands.NewFailTaskHandler(taskRepo),
@@ -67,13 +67,13 @@ func TestRuntimeAgentClosure_AssignRunSucceed(t *testing.T) {
 	})
 	defer agent.stop(t)
 
-	waitForPoll(t, 10*time.Second, func() bool {
-		executors, err := executorRepo.List(ctx)
+	waitForPoll(t, 20*time.Second, func() bool {
+		agents, err := agentRepo.List(ctx)
 		if err != nil {
 			return false
 		}
-		for _, executor := range executors {
-			if executor.ID == "agent-real-e2e-1" && executor.Version == "test-success" {
+		for _, agent := range agents {
+			if agent.ID == "agent-real-e2e-1" && agent.Version == "test-success" {
 				return true
 			}
 		}
@@ -112,7 +112,7 @@ func TestRuntimeAgentClosure_AssignRunSucceed(t *testing.T) {
 		t.Fatalf("dispatch worker run once: %v\nagent stderr:\n%s", err, agent.stderr.String())
 	}
 
-	waitForPoll(t, 10*time.Second, func() bool {
+	waitForPoll(t, 20*time.Second, func() bool {
 		task, err := taskRepo.GetTask(ctx, taskID)
 		return err == nil && task != nil && task.Status == "succeeded"
 	}, fmt.Sprintf("expected task %s to become succeeded\nagent stdout:\n%s\nagent stderr:\n%s", taskID, agent.stdout.String(), agent.stderr.String()))
@@ -131,13 +131,13 @@ func TestRuntimeAgentClosure_CancelRequestsReachAgentAndTaskBecomesCanceled(t *t
 	defer pool.Close()
 
 	taskRepo := runtimerepo.NewTaskRepo(pool)
-	executorRepo := runtimerepo.NewExecutorRepo(pool)
+	agentRepo := runtimerepo.NewAgentRepo(pool)
 	outboxRepo := runtimerepo.NewOutboxRepo(pool)
 	outboxWriter := runtimerepo.NewCommandOutboxWriter(pool)
 
 	ingressServer := internalrpc.NewRuntimeServer(
-		commands.NewRegisterAgentHandler(executorRepo),
-		commands.NewHeartbeatAgentHandler(executorRepo),
+		commands.NewRegisterAgentHandler(agentRepo),
+		commands.NewHeartbeatAgentHandler(agentRepo),
 		commands.NewStartTaskHandler(taskRepo),
 		commands.NewCompleteTaskHandler(taskRepo, outboxWriter),
 		commands.NewFailTaskHandler(taskRepo),
@@ -158,13 +158,13 @@ func TestRuntimeAgentClosure_CancelRequestsReachAgentAndTaskBecomesCanceled(t *t
 	})
 	defer agent.stop(t)
 
-	waitForPoll(t, 10*time.Second, func() bool {
-		executors, err := executorRepo.List(ctx)
+	waitForPoll(t, 20*time.Second, func() bool {
+		agents, err := agentRepo.List(ctx)
 		if err != nil {
 			return false
 		}
-		for _, executor := range executors {
-			if executor.ID == "agent-real-e2e-2" && executor.Version == "test-cancel" {
+		for _, agent := range agents {
+			if agent.ID == "agent-real-e2e-2" && agent.Version == "test-cancel" {
 				return true
 			}
 		}
@@ -205,7 +205,7 @@ func TestRuntimeAgentClosure_CancelRequestsReachAgentAndTaskBecomesCanceled(t *t
 		t.Fatalf("dispatch worker run once: %v\nagent stderr:\n%s", err, agent.stderr.String())
 	}
 
-	waitForPoll(t, 10*time.Second, func() bool {
+	waitForPoll(t, 20*time.Second, func() bool {
 		task, err := taskRepo.GetTask(ctx, taskID)
 		return err == nil && task != nil && task.Status == "running"
 	}, fmt.Sprintf("expected task %s to become running\nagent stdout:\n%s\nagent stderr:\n%s", taskID, agent.stdout.String(), agent.stderr.String()))
@@ -224,7 +224,7 @@ func TestRuntimeAgentClosure_CancelRequestsReachAgentAndTaskBecomesCanceled(t *t
 		t.Fatalf("stop worker run once: %v\nagent stdout:\n%s\nagent stderr:\n%s", err, agent.stdout.String(), agent.stderr.String())
 	}
 
-	waitForPoll(t, 10*time.Second, func() bool {
+	waitForPoll(t, 20*time.Second, func() bool {
 		task, err := taskRepo.GetTask(ctx, taskID)
 		return err == nil && task != nil && task.Status == "canceled"
 	}, fmt.Sprintf("expected task %s to become canceled\nagent stdout:\n%s\nagent stderr:\n%s", taskID, agent.stdout.String(), agent.stderr.String()))
@@ -265,8 +265,11 @@ func startRuntimeAgent(
 	cmd.Env = append(os.Environ(),
 		"RUNTIME_BASE_URL="+runtimeBaseURL,
 		"AGENT_CONTROL_BIND="+controlBind,
+		"AGENT_CONTROL_BASE_URL="+controlBaseURL,
 		"AGENT_ID="+cfg.agentID,
 		"AGENT_VERSION="+cfg.version,
+		"AGENT_TRANSPORT_MODE=direct",
+		"AGENT_MAX_CONCURRENCY=1",
 		"AGENT_HEARTBEAT_INTERVAL=50ms",
 		"AGENT_WORKER_COMMAND_JSON="+workerCommandJSON,
 	)

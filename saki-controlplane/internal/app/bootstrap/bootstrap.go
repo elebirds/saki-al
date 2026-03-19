@@ -180,7 +180,7 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 		DatasetDelete:       datasetDelete,
 		DatasetDeleteSample: sampleDelete,
 		ProjectStore:        projectStore,
-		RuntimeStore:        runtimequeries.NewRepoAdminStore(taskRepo, runtimerepo.NewExecutorRepo(pool)),
+		RuntimeStore:        runtimequeries.NewRepoAdminStore(taskRepo, runtimerepo.NewAgentRepo(pool)),
 		RuntimeTaskCanceler: runtimecommands.NewCancelTaskHandlerWithTx(runtimerepo.NewCancelTaskTxRunner(pool)),
 		AnnotationSamples:   sampleRepo,
 		AnnotationDatasets:  datasetRepo,

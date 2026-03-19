@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package saki.runtime.v1;
+
+import "runtime/v1/agent_events.proto";
+
+option go_package = "github.com/elebirds/saki/saki-agent/internal/gen/runtime/v1;runtimev1";
+
+service AgentIngress {
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+  rpc PushTaskEvent(PushTaskEventRequest) returns (PushTaskEventResponse);
+}
+
+message RegisterRequest {
+  string agent_id = 1;
+  string version = 2;
+  repeated string capabilities = 3;
+}
+
+message RegisterResponse {
+  bool accepted = 1;
+  int64 heartbeat_interval_ms = 2;
+}
+
+message HeartbeatRequest {
+  string agent_id = 1;
+  string agent_version = 2;
+  repeated string running_task_ids = 3;
+  int64 sent_at_unix_ms = 4;
+}
+
+message HeartbeatResponse {
+  bool accepted = 1;
+  int64 next_heartbeat_ms = 2;
+}
+
+message PushTaskEventRequest {
+  TaskEventEnvelope event = 1;
+}
+
+message PushTaskEventResponse {
+  bool accepted = 1;
+}

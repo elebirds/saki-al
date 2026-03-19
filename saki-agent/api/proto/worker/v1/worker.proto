@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package saki.worker.v1;
+
+option go_package = "github.com/elebirds/saki/saki-agent/internal/gen/worker/v1;workerv1";
+
+message ExecuteRequest {
+  string request_id = 1;
+  string task_id = 2;
+  string action = 3;
+  bytes payload = 4;
+}
+
+message WorkerEvent {
+  string request_id = 1;
+  string task_id = 2;
+  string event_type = 3;
+  bytes payload = 4;
+}
+
+message ExecuteResult {
+  string request_id = 1;
+  bool ok = 2;
+  string error_code = 3;
+  string error_message = 4;
+  bytes payload = 5;
+}

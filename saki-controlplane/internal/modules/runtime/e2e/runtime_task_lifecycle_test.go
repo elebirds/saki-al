@@ -48,6 +48,7 @@ func TestRuntimeTaskLifecycle_AssignRunSucceed(t *testing.T) {
 	defer pool.Close()
 
 	taskRepo := runtimerepo.NewTaskRepo(pool)
+	agentRepo := runtimerepo.NewAgentRepo(pool)
 	taskID := uuid.New()
 	if err := taskRepo.CreateTask(ctx, runtimerepo.CreateTaskParams{
 		ID:       taskID,
@@ -56,11 +57,31 @@ func TestRuntimeTaskLifecycle_AssignRunSucceed(t *testing.T) {
 		t.Fatalf("create pending task: %v", err)
 	}
 
+	controlServer := &recordingAgentControlServer{}
+	controlMux := http.NewServeMux()
+	controlPath, controlHandler := runtimev1connect.NewAgentControlHandler(controlServer)
+	controlMux.Handle(controlPath, controlHandler)
+	controlHTTPServer := httptest.NewServer(controlMux)
+	defer controlHTTPServer.Close()
+
+	if _, err := agentRepo.Upsert(ctx, runtimerepo.UpsertAgentParams{
+		ID:             "agent-e2e-1",
+		Version:        "test",
+		TransportMode:  "direct",
+		ControlBaseURL: controlHTTPServer.URL,
+		MaxConcurrency: 1,
+		LastSeenAt:     time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("upsert e2e agent: %v", err)
+	}
+
 	leader := runtimescheduler.NewLeaderTicker(
 		runtimerepo.NewLeaseRepo(pool),
 		runtimescheduler.NewDispatchScan(
-			commands.NewAssignTaskHandlerWithTx(runtimerepo.NewAssignTaskTxRunner(pool)),
-			"agent-e2e-1",
+			commands.NewAssignTaskHandlerWithTx(
+				runtimerepo.NewAssignTaskTxRunner(pool),
+				runtimescheduler.NewAgentSelector(),
+			),
 		),
 		"runtime-scheduler",
 		"runtime-e2e-1",
@@ -98,13 +119,6 @@ where aggregate_id = $1
 	if assignPayload.TaskID != taskID || assignPayload.ExecutionID != assigned.CurrentExecutionID {
 		t.Fatalf("unexpected assign outbox payload: %+v", assignPayload)
 	}
-
-	controlServer := &recordingAgentControlServer{}
-	controlMux := http.NewServeMux()
-	controlPath, controlHandler := runtimev1connect.NewAgentControlHandler(controlServer)
-	controlMux.Handle(controlPath, controlHandler)
-	controlHTTPServer := httptest.NewServer(controlMux)
-	defer controlHTTPServer.Close()
 
 	dispatchWorker := runtimeeffects.NewWorker(
 		runtimerepo.NewOutboxRepo(pool),

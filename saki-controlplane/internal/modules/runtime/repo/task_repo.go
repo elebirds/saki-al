@@ -32,6 +32,8 @@ type TaskRepo struct {
 }
 
 var _ commands.TaskClaimer = (*TaskRepo)(nil)
+var _ commands.PendingTaskClaimer = (*TaskRepo)(nil)
+var _ commands.ClaimedTaskAssigner = (*TaskRepo)(nil)
 var _ commands.ExecutionScopedTaskStore = (*TaskRepo)(nil)
 
 func NewTaskRepo(pool *pgxpool.Pool) *TaskRepo {
@@ -64,6 +66,36 @@ func (r *TaskRepo) AssignPendingTask(ctx context.Context, params AssignTaskParam
 	}
 
 	return claimedTaskFromAssignedRow(row), nil
+}
+
+func (r *TaskRepo) ClaimPendingTask(ctx context.Context) (*commands.PendingTask, error) {
+	row, err := r.q.ClaimPendingTaskForAssignment(ctx)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return pendingTaskFromClaimRow(row), nil
+}
+
+func (r *TaskRepo) AssignClaimedTask(ctx context.Context, params commands.AssignClaimedTaskParams) (*commands.ClaimedTask, error) {
+	row, err := r.q.AssignClaimedTask(ctx, sqlcdb.AssignClaimedTaskParams{
+		ExecutionID:     nullableText(params.ExecutionID),
+		AssignedAgentID: nullableText(params.AssignedAgentID),
+		Attempt:         params.Attempt,
+		LeaderEpoch:     nullableInt64(params.LeaderEpoch),
+		ID:              params.TaskID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return claimedTaskFromAssignClaimedRow(row), nil
 }
 
 func (r *TaskRepo) GetTask(ctx context.Context, taskID uuid.UUID) (*commands.TaskRecord, error) {
@@ -200,6 +232,37 @@ func claimedTaskFromAssignedRow(row sqlcdb.AssignPendingTaskRow) *commands.Claim
 		MaxAttempts:        row.MaxAttempts,
 		ResolvedParams:     row.ResolvedParams,
 		DependsOnTaskIDs:   row.DependsOnTaskIds,
+		LeaderEpoch:        int64Value(row.LeaderEpoch),
+	}
+}
+
+func pendingTaskFromClaimRow(row sqlcdb.ClaimPendingTaskForAssignmentRow) *commands.PendingTask {
+	return &commands.PendingTask{
+		ID:               row.ID,
+		TaskKind:         string(row.TaskKind),
+		TaskType:         row.TaskType,
+		Attempt:          row.Attempt,
+		MaxAttempts:      row.MaxAttempts,
+		ResolvedParams:   append([]byte(nil), row.ResolvedParams...),
+		DependsOnTaskIDs: append([]uuid.UUID(nil), row.DependsOnTaskIds...),
+		// 迁移阶段 runtime_task 仍没有 required_capabilities 列；
+		// 这里先返回空集合，让 selector 只根据在线/容量做决策，后续再把业务声明落到 task 真相上。
+		RequiredCapabilities: []string{},
+	}
+}
+
+func claimedTaskFromAssignClaimedRow(row sqlcdb.AssignClaimedTaskRow) *commands.ClaimedTask {
+	return &commands.ClaimedTask{
+		ID:                 row.ID,
+		TaskKind:           string(row.TaskKind),
+		TaskType:           row.TaskType,
+		Status:             string(row.Status),
+		CurrentExecutionID: textValue(row.CurrentExecutionID),
+		AssignedAgentID:    textValue(row.AssignedAgentID),
+		Attempt:            row.Attempt,
+		MaxAttempts:        row.MaxAttempts,
+		ResolvedParams:     append([]byte(nil), row.ResolvedParams...),
+		DependsOnTaskIDs:   append([]uuid.UUID(nil), row.DependsOnTaskIds...),
 		LeaderEpoch:        int64Value(row.LeaderEpoch),
 	}
 }

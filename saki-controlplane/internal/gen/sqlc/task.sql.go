@@ -126,6 +126,83 @@ func (q *Queries) AppendImportTaskEvent(ctx context.Context, arg AppendImportTas
 	return i, err
 }
 
+const assignClaimedTask = `-- name: AssignClaimedTask :one
+update runtime_task
+set status = 'assigned',
+    current_execution_id = $1,
+    assigned_agent_id = $2,
+    attempt = $3,
+    leader_epoch = $4,
+    updated_at = now()
+where id = $5
+  and status = 'pending'
+returning
+    id,
+    task_kind,
+    task_type,
+    status,
+    current_execution_id,
+    assigned_agent_id,
+    attempt,
+    max_attempts,
+    resolved_params,
+    depends_on_task_ids,
+    leader_epoch,
+    created_at,
+    updated_at
+`
+
+type AssignClaimedTaskParams struct {
+	ExecutionID     pgtype.Text `json:"execution_id"`
+	AssignedAgentID pgtype.Text `json:"assigned_agent_id"`
+	Attempt         int32       `json:"attempt"`
+	LeaderEpoch     pgtype.Int8 `json:"leader_epoch"`
+	ID              uuid.UUID   `json:"id"`
+}
+
+type AssignClaimedTaskRow struct {
+	ID                 uuid.UUID          `json:"id"`
+	TaskKind           RuntimeTaskKind    `json:"task_kind"`
+	TaskType           string             `json:"task_type"`
+	Status             RuntimeTaskStatus  `json:"status"`
+	CurrentExecutionID pgtype.Text        `json:"current_execution_id"`
+	AssignedAgentID    pgtype.Text        `json:"assigned_agent_id"`
+	Attempt            int32              `json:"attempt"`
+	MaxAttempts        int32              `json:"max_attempts"`
+	ResolvedParams     []byte             `json:"resolved_params"`
+	DependsOnTaskIds   []uuid.UUID        `json:"depends_on_task_ids"`
+	LeaderEpoch        pgtype.Int8        `json:"leader_epoch"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
+}
+
+func (q *Queries) AssignClaimedTask(ctx context.Context, arg AssignClaimedTaskParams) (AssignClaimedTaskRow, error) {
+	row := q.db.QueryRow(ctx, assignClaimedTask,
+		arg.ExecutionID,
+		arg.AssignedAgentID,
+		arg.Attempt,
+		arg.LeaderEpoch,
+		arg.ID,
+	)
+	var i AssignClaimedTaskRow
+	err := row.Scan(
+		&i.ID,
+		&i.TaskKind,
+		&i.TaskType,
+		&i.Status,
+		&i.CurrentExecutionID,
+		&i.AssignedAgentID,
+		&i.Attempt,
+		&i.MaxAttempts,
+		&i.ResolvedParams,
+		&i.DependsOnTaskIds,
+		&i.LeaderEpoch,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const assignPendingTask = `-- name: AssignPendingTask :one
 with candidate as (
     select id
@@ -183,6 +260,70 @@ type AssignPendingTaskRow struct {
 func (q *Queries) AssignPendingTask(ctx context.Context, arg AssignPendingTaskParams) (AssignPendingTaskRow, error) {
 	row := q.db.QueryRow(ctx, assignPendingTask, arg.AssignedAgentID, arg.LeaderEpoch)
 	var i AssignPendingTaskRow
+	err := row.Scan(
+		&i.ID,
+		&i.TaskKind,
+		&i.TaskType,
+		&i.Status,
+		&i.CurrentExecutionID,
+		&i.AssignedAgentID,
+		&i.Attempt,
+		&i.MaxAttempts,
+		&i.ResolvedParams,
+		&i.DependsOnTaskIds,
+		&i.LeaderEpoch,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const claimPendingTaskForAssignment = `-- name: ClaimPendingTaskForAssignment :one
+with candidate as (
+    select id
+    from runtime_task
+    where status = 'pending'
+    order by created_at
+    for update skip locked
+    limit 1
+)
+select
+    id,
+    task_kind,
+    task_type,
+    status,
+    current_execution_id,
+    assigned_agent_id,
+    attempt,
+    max_attempts,
+    resolved_params,
+    depends_on_task_ids,
+    leader_epoch,
+    created_at,
+    updated_at
+from runtime_task
+where id = (select id from candidate)
+`
+
+type ClaimPendingTaskForAssignmentRow struct {
+	ID                 uuid.UUID          `json:"id"`
+	TaskKind           RuntimeTaskKind    `json:"task_kind"`
+	TaskType           string             `json:"task_type"`
+	Status             RuntimeTaskStatus  `json:"status"`
+	CurrentExecutionID pgtype.Text        `json:"current_execution_id"`
+	AssignedAgentID    pgtype.Text        `json:"assigned_agent_id"`
+	Attempt            int32              `json:"attempt"`
+	MaxAttempts        int32              `json:"max_attempts"`
+	ResolvedParams     []byte             `json:"resolved_params"`
+	DependsOnTaskIds   []uuid.UUID        `json:"depends_on_task_ids"`
+	LeaderEpoch        pgtype.Int8        `json:"leader_epoch"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
+}
+
+func (q *Queries) ClaimPendingTaskForAssignment(ctx context.Context) (ClaimPendingTaskForAssignmentRow, error) {
+	row := q.db.QueryRow(ctx, claimPendingTaskForAssignment)
+	var i ClaimPendingTaskForAssignmentRow
 	err := row.Scan(
 		&i.ID,
 		&i.TaskKind,

@@ -158,6 +158,7 @@ func commandsAgentFromRepo(agent *Agent) *commands.AgentRecord {
 		ControlBaseURL: agent.ControlBaseURL,
 		MaxConcurrency: agent.MaxConcurrency,
 		RunningTaskIDs: normalizeTextArray(agent.RunningTaskIDs),
+		Status:         agent.Status,
 		LastSeenAt:     agent.LastSeenAt,
 	}
 }

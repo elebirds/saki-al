@@ -155,7 +155,7 @@ func TestRuntimeRunnerUsesConfiguredAgentControlBaseURL(t *testing.T) {
 	}
 }
 
-func TestNewSchedulerTickerSkipsLeaderElectionWhenTargetAgentIsUnset(t *testing.T) {
+func TestNewSchedulerTickerRunsDynamicDispatchWhenTargetAgentIsUnset(t *testing.T) {
 	leases := &fakeRuntimeLeaseManager{}
 	assigner := &fakeRuntimeDispatchTaskAssigner{}
 
@@ -168,11 +168,11 @@ func TestNewSchedulerTickerSkipsLeaderElectionWhenTargetAgentIsUnset(t *testing.
 	if err := ticker.Tick(context.Background()); err != nil {
 		t.Fatalf("tick: %v", err)
 	}
-	if leases.calls != 0 {
-		t.Fatalf("expected scheduler without target agent to skip lease acquisition, got %d calls", leases.calls)
+	if leases.calls != 1 {
+		t.Fatalf("expected scheduler to still acquire lease for dynamic dispatch, got %d calls", leases.calls)
 	}
-	if assigner.calls != 0 {
-		t.Fatalf("expected scheduler without target agent to skip dispatch, got %d calls", assigner.calls)
+	if assigner.calls != 1 {
+		t.Fatalf("expected scheduler to dispatch dynamically without target agent, got %d calls", assigner.calls)
 	}
 }
 
@@ -266,16 +266,19 @@ type fakeRuntimeLeaseManager struct {
 	calls int
 }
 
-func (f *fakeRuntimeLeaseManager) AcquireOrRenew(context.Context, runtimerepo.AcquireLeaseParams) (*runtimerepo.RuntimeLease, error) {
+func (f *fakeRuntimeLeaseManager) AcquireOrRenew(_ context.Context, params runtimerepo.AcquireLeaseParams) (*runtimerepo.RuntimeLease, error) {
 	f.calls++
-	return &runtimerepo.RuntimeLease{}, nil
+	return &runtimerepo.RuntimeLease{
+		Holder: params.Holder,
+		Epoch:  1,
+	}, nil
 }
 
 type fakeRuntimeDispatchTaskAssigner struct {
 	calls int
 }
 
-func (f *fakeRuntimeDispatchTaskAssigner) Handle(context.Context, commands.AssignTaskCommand) (*commands.TaskRecord, error) {
+func (f *fakeRuntimeDispatchTaskAssigner) Handle(context.Context, commands.AssignTaskCommand) (*commands.AssignResult, error) {
 	f.calls++
 	return nil, nil
 }

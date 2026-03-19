@@ -4,118 +4,177 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/commands"
 )
 
-func TestDispatchScanClaimsPendingTaskAndAppendsAssignOutbox(t *testing.T) {
+func TestDispatchScan_SelectsBestAgentAndCreatesAssignment(t *testing.T) {
 	taskID := uuid.New()
 	store := &fakeDispatchTaskStore{
-		assignedTask: &commands.ClaimedTask{
-			ID:                 taskID,
-			TaskKind:           "PREDICTION",
-			TaskType:           "predict",
-			CurrentExecutionID: "exec-dispatch-1",
-			AssignedAgentID:    "agent-dispatch-1",
-			Attempt:            1,
-			MaxAttempts:        1,
-			ResolvedParams:     []byte(`{}`),
-			DependsOnTaskIDs:   nil,
-			LeaderEpoch:        11,
+		pendingTask: &commands.PendingTask{
+			ID:                   taskID,
+			TaskKind:             "PREDICTION",
+			TaskType:             "predict",
+			MaxAttempts:          1,
+			ResolvedParams:       []byte(`{}`),
+			RequiredCapabilities: []string{"gpu"},
+		},
+		agents: []commands.AgentRecord{
+			{
+				ID:             "agent-offline",
+				Status:         "offline",
+				Capabilities:   []string{"gpu"},
+				TransportMode:  "direct",
+				MaxConcurrency: 8,
+				LastSeenAt:     time.Unix(300, 0),
+			},
+			{
+				ID:             "agent-fresh",
+				Status:         "online",
+				Capabilities:   []string{"gpu"},
+				TransportMode:  "pull",
+				MaxConcurrency: 3,
+				RunningTaskIDs: []string{"task-1"},
+				LastSeenAt:     time.Unix(200, 0),
+			},
+			{
+				ID:             "agent-stale",
+				Status:         "online",
+				Capabilities:   []string{"gpu"},
+				TransportMode:  "direct",
+				MaxConcurrency: 3,
+				RunningTaskIDs: []string{"task-1"},
+				LastSeenAt:     time.Unix(100, 0),
+			},
+			{
+				ID:             "agent-missing-capability",
+				Status:         "online",
+				Capabilities:   []string{"cpu"},
+				TransportMode:  "pull",
+				MaxConcurrency: 6,
+				LastSeenAt:     time.Unix(500, 0),
+			},
 		},
 	}
-	handler := commands.NewAssignTaskHandler(store)
-	scan := NewDispatchScan(handler, "agent-dispatch-1")
+	assigner := commands.NewAssignTaskHandler(store, NewAgentSelector())
+	scan := NewDispatchScan(assigner)
 
 	if err := scan.Dispatch(context.Background(), DispatchCommand{LeaderEpoch: 11}); err != nil {
 		t.Fatalf("dispatch scan: %v", err)
 	}
 
-	if store.calledWith == nil {
-		t.Fatal("expected task claim to be called")
+	if store.assignment == nil {
+		t.Fatal("expected assignment to be created")
 	}
-	if store.calledWith.AssignedAgentID != "agent-dispatch-1" {
-		t.Fatalf("unexpected assigned agent id: %+v", store.calledWith)
+	if store.assignment.AgentID != "agent-fresh" {
+		t.Fatalf("expected best agent agent-fresh, got %+v", store.assignment)
 	}
-	if store.calledWith.LeaderEpoch != 11 {
-		t.Fatalf("unexpected leader epoch: %+v", store.calledWith)
+	if store.assignedTask == nil || store.assignedTask.AssignedAgentID != "agent-fresh" {
+		t.Fatalf("expected runtime task to be assigned to agent-fresh, got %+v", store.assignedTask)
 	}
-	if store.last == nil {
-		t.Fatal("expected outbox event")
+	if store.command == nil || store.command.TransportMode != "pull" {
+		t.Fatalf("expected assign command to inherit selected transport mode, got %+v", store.command)
 	}
-	if store.last.Topic != commands.AssignTaskOutboxTopic {
-		t.Fatalf("unexpected topic: %+v", store.last)
+	if store.lastOutbox == nil || store.lastOutbox.Topic != commands.AssignTaskOutboxTopic {
+		t.Fatalf("expected legacy outbox compatibility write, got %+v", store.lastOutbox)
 	}
 
 	var payload commands.AssignTaskOutboxPayload
-	if err := json.Unmarshal(store.last.Payload, &payload); err != nil {
-		t.Fatalf("unmarshal payload: %v", err)
+	if err := json.Unmarshal(store.command.Payload, &payload); err != nil {
+		t.Fatalf("unmarshal command payload: %v", err)
 	}
-	if payload.TaskID != taskID {
-		t.Fatalf("unexpected task id: %+v", payload)
-	}
-	if payload.ExecutionID != "exec-dispatch-1" || payload.AgentID != "agent-dispatch-1" {
-		t.Fatalf("unexpected execution payload: %+v", payload)
-	}
-	if payload.TaskKind != "PREDICTION" || payload.TaskType != "predict" {
-		t.Fatalf("unexpected task metadata: %+v", payload)
-	}
-	if payload.Attempt != 1 || payload.MaxAttempts != 1 {
-		t.Fatalf("unexpected attempts payload: %+v", payload)
-	}
-	if string(payload.ResolvedParams) != "{}" {
-		t.Fatalf("unexpected resolved params: %s", string(payload.ResolvedParams))
-	}
-	if len(payload.DependsOnTaskIDs) != 0 {
-		t.Fatalf("expected empty dependencies, got %+v", payload.DependsOnTaskIDs)
+	if payload.TaskID != taskID || payload.AgentID != "agent-fresh" {
+		t.Fatalf("unexpected command payload: %+v", payload)
 	}
 	if payload.LeaderEpoch != 11 {
-		t.Fatalf("unexpected leader epoch payload: %+v", payload)
+		t.Fatalf("expected leader epoch 11, got %+v", payload)
 	}
 }
 
-func TestDispatchScanSkipsWhenTargetAgentIsNotConfigured(t *testing.T) {
+func TestDispatchScan_DoesNothingWhenNoAgentIsAvailable(t *testing.T) {
 	store := &fakeDispatchTaskStore{
-		assignedTask: &commands.ClaimedTask{
-			ID:                 uuid.New(),
-			TaskKind:           "PREDICTION",
-			TaskType:           "predict",
-			CurrentExecutionID: "exec-dispatch-2",
-			AssignedAgentID:    "agent-should-not-be-used",
-			Attempt:            1,
-			MaxAttempts:        1,
-			ResolvedParams:     []byte(`{}`),
-			LeaderEpoch:        17,
+		pendingTask: &commands.PendingTask{
+			ID:                   uuid.New(),
+			TaskKind:             "PREDICTION",
+			TaskType:             "predict",
+			RequiredCapabilities: []string{"gpu"},
+		},
+		agents: []commands.AgentRecord{
+			{
+				ID:             "agent-full",
+				Status:         "online",
+				Capabilities:   []string{"gpu"},
+				MaxConcurrency: 1,
+				RunningTaskIDs: []string{"task-1"},
+			},
 		},
 	}
-	handler := commands.NewAssignTaskHandler(store)
-	scan := NewDispatchScan(handler, "")
+	assigner := commands.NewAssignTaskHandler(store, NewAgentSelector())
+	scan := NewDispatchScan(assigner)
 
 	if err := scan.Dispatch(context.Background(), DispatchCommand{LeaderEpoch: 17}); err != nil {
 		t.Fatalf("dispatch scan: %v", err)
 	}
-	if store.calledWith != nil {
-		t.Fatalf("expected dispatch scan to skip without target agent, got %+v", store.calledWith)
-	}
-	if store.last != nil {
-		t.Fatalf("expected no outbox event when target agent is missing, got %+v", store.last)
+	if store.assignment != nil || store.command != nil || store.lastOutbox != nil || store.assignedTask != nil {
+		t.Fatalf("expected no side effects when no agent is available, got assignment=%+v command=%+v outbox=%+v assigned=%+v", store.assignment, store.command, store.lastOutbox, store.assignedTask)
 	}
 }
 
 type fakeDispatchTaskStore struct {
-	assignedTask *commands.ClaimedTask
-	calledWith   *commands.AssignClaimParams
-	last         *commands.OutboxEvent
+	pendingTask  *commands.PendingTask
+	agents       []commands.AgentRecord
+	assignment   *commands.CreateTaskAssignmentParams
+	assignedTask *commands.AssignClaimedTaskParams
+	command      *commands.AppendAssignTaskCommandParams
+	lastOutbox   *commands.OutboxEvent
 }
 
-func (f *fakeDispatchTaskStore) AssignPendingTask(_ context.Context, params commands.AssignClaimParams) (*commands.ClaimedTask, error) {
-	f.calledWith = &params
-	return f.assignedTask, nil
+func (f *fakeDispatchTaskStore) ClaimPendingTask(context.Context) (*commands.PendingTask, error) {
+	return f.pendingTask, nil
+}
+
+func (f *fakeDispatchTaskStore) ListAssignableAgents(context.Context) ([]commands.AgentRecord, error) {
+	return append([]commands.AgentRecord(nil), f.agents...), nil
+}
+
+func (f *fakeDispatchTaskStore) CreateTaskAssignment(_ context.Context, params commands.CreateTaskAssignmentParams) (*commands.TaskAssignmentRecord, error) {
+	f.assignment = &params
+	return &commands.TaskAssignmentRecord{
+		ID:          64,
+		TaskID:      params.TaskID,
+		Attempt:     params.Attempt,
+		AgentID:     params.AgentID,
+		ExecutionID: params.ExecutionID,
+		Status:      params.Status,
+	}, nil
+}
+
+func (f *fakeDispatchTaskStore) AssignClaimedTask(_ context.Context, params commands.AssignClaimedTaskParams) (*commands.ClaimedTask, error) {
+	f.assignedTask = &params
+	return &commands.ClaimedTask{
+		ID:                 params.TaskID,
+		TaskKind:           f.pendingTask.TaskKind,
+		TaskType:           f.pendingTask.TaskType,
+		Status:             "assigned",
+		CurrentExecutionID: params.ExecutionID,
+		AssignedAgentID:    params.AssignedAgentID,
+		Attempt:            params.Attempt,
+		MaxAttempts:        f.pendingTask.MaxAttempts,
+		ResolvedParams:     append([]byte(nil), f.pendingTask.ResolvedParams...),
+		DependsOnTaskIDs:   append([]uuid.UUID(nil), f.pendingTask.DependsOnTaskIDs...),
+		LeaderEpoch:        params.LeaderEpoch,
+	}, nil
+}
+
+func (f *fakeDispatchTaskStore) AppendAssignCommand(_ context.Context, params commands.AppendAssignTaskCommandParams) error {
+	f.command = &params
+	return nil
 }
 
 func (f *fakeDispatchTaskStore) Append(_ context.Context, event commands.OutboxEvent) error {
-	f.last = &event
+	f.lastOutbox = &event
 	return nil
 }

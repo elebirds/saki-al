@@ -91,8 +91,10 @@ func TestRuntimeAgentClosure_AssignRunSucceed(t *testing.T) {
 	leader := runtimescheduler.NewLeaderTicker(
 		runtimerepo.NewLeaseRepo(pool),
 		runtimescheduler.NewDispatchScan(
-			commands.NewAssignTaskHandlerWithTx(runtimerepo.NewAssignTaskTxRunner(pool)),
-			"agent-real-e2e-1",
+			commands.NewAssignTaskHandlerWithTx(
+				runtimerepo.NewAssignTaskTxRunner(pool),
+				runtimescheduler.NewAgentSelector(),
+			),
 		),
 		"runtime-scheduler",
 		"runtime-agent-closure-1",
@@ -182,8 +184,10 @@ func TestRuntimeAgentClosure_CancelRequestsReachAgentAndTaskBecomesCanceled(t *t
 	leader := runtimescheduler.NewLeaderTicker(
 		runtimerepo.NewLeaseRepo(pool),
 		runtimescheduler.NewDispatchScan(
-			commands.NewAssignTaskHandlerWithTx(runtimerepo.NewAssignTaskTxRunner(pool)),
-			"agent-real-e2e-2",
+			commands.NewAssignTaskHandlerWithTx(
+				runtimerepo.NewAssignTaskTxRunner(pool),
+				runtimescheduler.NewAgentSelector(),
+			),
 		),
 		"runtime-scheduler",
 		"runtime-agent-closure-2",

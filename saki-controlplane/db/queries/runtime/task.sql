@@ -34,6 +34,32 @@ select
 from runtime_task
 where id = sqlc.arg(id);
 
+-- name: ClaimPendingTaskForAssignment :one
+with candidate as (
+    select id
+    from runtime_task
+    where status = 'pending'
+    order by created_at
+    for update skip locked
+    limit 1
+)
+select
+    id,
+    task_kind,
+    task_type,
+    status,
+    current_execution_id,
+    assigned_agent_id,
+    attempt,
+    max_attempts,
+    resolved_params,
+    depends_on_task_ids,
+    leader_epoch,
+    created_at,
+    updated_at
+from runtime_task
+where id = (select id from candidate);
+
 -- name: AssignPendingTask :one
 with candidate as (
     select id
@@ -51,6 +77,31 @@ set status = 'assigned',
     leader_epoch = sqlc.arg(leader_epoch),
     updated_at = now()
 where id = (select id from candidate)
+returning
+    id,
+    task_kind,
+    task_type,
+    status,
+    current_execution_id,
+    assigned_agent_id,
+    attempt,
+    max_attempts,
+    resolved_params,
+    depends_on_task_ids,
+    leader_epoch,
+    created_at,
+    updated_at;
+
+-- name: AssignClaimedTask :one
+update runtime_task
+set status = 'assigned',
+    current_execution_id = sqlc.arg(execution_id),
+    assigned_agent_id = sqlc.arg(assigned_agent_id),
+    attempt = sqlc.arg(attempt),
+    leader_epoch = sqlc.arg(leader_epoch),
+    updated_at = now()
+where id = sqlc.arg(id)
+  and status = 'pending'
 returning
     id,
     task_kind,

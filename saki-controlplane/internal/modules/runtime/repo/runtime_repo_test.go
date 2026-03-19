@@ -454,10 +454,11 @@ func TestAssignTaskHandlerUsesTaskRepoClaimAndAppendsFrozenOutbox(t *testing.T) 
 		t.Fatalf("create task: %v", err)
 	}
 
-	handler := commands.NewAssignTaskHandlerWithTx(NewAssignTaskTxRunner(pool))
+	seedAssignableAgent(t, ctx, pool, "agent-handler-1", []string{})
+
+	handler := commands.NewAssignTaskHandlerWithTx(NewAssignTaskTxRunner(pool), pickFirstAgentSelector{})
 	assigned, err := handler.Handle(ctx, commands.AssignTaskCommand{
-		AssignedAgentID: "agent-handler-1",
-		LeaderEpoch:     lease.Epoch,
+		LeaderEpoch: lease.Epoch,
 	})
 	if err != nil {
 		t.Fatalf("handle assign task: %v", err)
@@ -465,17 +466,17 @@ func TestAssignTaskHandlerUsesTaskRepoClaimAndAppendsFrozenOutbox(t *testing.T) 
 	if assigned == nil {
 		t.Fatal("expected assigned task")
 	}
-	if assigned.ID != taskID {
-		t.Fatalf("expected task id %s, got %s", taskID, assigned.ID)
+	if assigned.TaskID != taskID {
+		t.Fatalf("expected task id %s, got %s", taskID, assigned.TaskID)
 	}
-	if assigned.CurrentExecutionID == "" {
+	if assigned.ExecutionID == "" {
 		t.Fatal("expected execution id to be populated")
 	}
-	if assigned.AssignedAgentID != "agent-handler-1" {
-		t.Fatalf("expected assigned agent id agent-handler-1, got %q", assigned.AssignedAgentID)
+	if assigned.AgentID != "agent-handler-1" {
+		t.Fatalf("expected assigned agent id agent-handler-1, got %q", assigned.AgentID)
 	}
-	if assigned.LeaderEpoch != lease.Epoch {
-		t.Fatalf("expected leader epoch %d, got %d", lease.Epoch, assigned.LeaderEpoch)
+	if assigned.AssignmentID == 0 {
+		t.Fatalf("expected assignment id, got %+v", assigned)
 	}
 
 	var (
@@ -493,7 +494,7 @@ where aggregate_id = $1
 	if topic != commands.AssignTaskOutboxTopic {
 		t.Fatalf("expected topic %s, got %q", commands.AssignTaskOutboxTopic, topic)
 	}
-	if idempotencyKey != commands.AssignTaskOutboxTopic+":"+assigned.CurrentExecutionID {
+	if idempotencyKey != commands.AssignTaskOutboxTopic+":"+assigned.ExecutionID {
 		t.Fatalf("expected execution-scoped idempotency key, got %q", idempotencyKey)
 	}
 
@@ -504,8 +505,8 @@ where aggregate_id = $1
 	if payload.TaskID != taskID {
 		t.Fatalf("expected payload task id %s, got %s", taskID, payload.TaskID)
 	}
-	if payload.ExecutionID != assigned.CurrentExecutionID {
-		t.Fatalf("expected payload execution id %q, got %q", assigned.CurrentExecutionID, payload.ExecutionID)
+	if payload.ExecutionID != assigned.ExecutionID {
+		t.Fatalf("expected payload execution id %q, got %q", assigned.ExecutionID, payload.ExecutionID)
 	}
 	if payload.AgentID != "agent-handler-1" {
 		t.Fatalf("expected payload agent id agent-handler-1, got %q", payload.AgentID)
@@ -524,6 +525,26 @@ where aggregate_id = $1
 	}
 	if payload.LeaderEpoch != lease.Epoch {
 		t.Fatalf("expected payload leader epoch %d, got %d", lease.Epoch, payload.LeaderEpoch)
+	}
+
+	var (
+		assignmentAgentID    string
+		assignmentExecution  string
+		commandTransportMode string
+	)
+	if err := pool.QueryRow(ctx, `
+select a.agent_id, a.execution_id, c.transport_mode
+from task_assignment a
+join agent_command c on c.assignment_id = a.id
+where a.task_id = $1
+`, taskID).Scan(&assignmentAgentID, &assignmentExecution, &commandTransportMode); err != nil {
+		t.Fatalf("load assignment/command state: %v", err)
+	}
+	if assignmentAgentID != "agent-handler-1" || assignmentExecution != assigned.ExecutionID {
+		t.Fatalf("unexpected assignment state agent=%q execution=%q", assignmentAgentID, assignmentExecution)
+	}
+	if commandTransportMode != "pull" {
+		t.Fatalf("expected assign command transport pull, got %q", commandTransportMode)
 	}
 }
 
@@ -553,10 +574,9 @@ func TestAssignTaskHandlerWithTxReturnsNilWhenTaskRepoHasNoPendingTask(t *testin
 	}
 	defer pool.Close()
 
-	handler := commands.NewAssignTaskHandlerWithTx(NewAssignTaskTxRunner(pool))
+	handler := commands.NewAssignTaskHandlerWithTx(NewAssignTaskTxRunner(pool), pickFirstAgentSelector{})
 	assigned, err := handler.Handle(ctx, commands.AssignTaskCommand{
-		AssignedAgentID: "agent-empty-queue",
-		LeaderEpoch:     1,
+		LeaderEpoch: 1,
 	})
 	if err != nil {
 		t.Fatalf("expected empty queue to be non-error, got %v", err)
@@ -610,10 +630,11 @@ func TestAssignTaskHandlerWithTxRollsBackClaimWhenOutboxAppendFails(t *testing.T
 		t.Fatalf("create task: %v", err)
 	}
 
-	handler := commands.NewAssignTaskHandlerWithTx(newFailingAssignTaskTxRunner(pool))
+	seedAssignableAgent(t, ctx, pool, "agent-rollback-1", []string{})
+
+	handler := commands.NewAssignTaskHandlerWithTx(newFailingAssignTaskTxRunner(pool), pickFirstAgentSelector{})
 	assigned, err := handler.Handle(ctx, commands.AssignTaskCommand{
-		AssignedAgentID: "agent-rollback-1",
-		LeaderEpoch:     9,
+		LeaderEpoch: 9,
 	})
 	if err == nil {
 		t.Fatal("expected append failure")
@@ -1593,18 +1614,66 @@ func newFailingAssignTaskTxRunner(pool *pgxpool.Pool) *failingAssignTaskTxRunner
 
 func (r *failingAssignTaskTxRunner) InTx(ctx context.Context, fn func(store commands.AssignTaskTx) error) error {
 	return r.tx.InTx(ctx, func(tx pgx.Tx) error {
+		q := sqlcdb.New(tx)
 		return fn(failingAssignTaskTxStore{
-			tasks: newTaskRepo(sqlcdb.New(tx)),
+			tasks:       newTaskRepo(q),
+			agents:      newAgentRepo(q),
+			assignments: newTaskAssignmentRepo(q),
 		})
 	})
 }
 
 type failingAssignTaskTxStore struct {
-	tasks *TaskRepo
+	tasks       *TaskRepo
+	agents      *AgentRepo
+	assignments *TaskAssignmentRepo
 }
 
-func (s failingAssignTaskTxStore) AssignPendingTask(ctx context.Context, params commands.AssignClaimParams) (*commands.ClaimedTask, error) {
-	return s.tasks.AssignPendingTask(ctx, params)
+func (s failingAssignTaskTxStore) ClaimPendingTask(ctx context.Context) (*commands.PendingTask, error) {
+	return s.tasks.ClaimPendingTask(ctx)
+}
+
+func (s failingAssignTaskTxStore) ListAssignableAgents(ctx context.Context) ([]commands.AgentRecord, error) {
+	agents, err := s.agents.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]commands.AgentRecord, 0, len(agents))
+	for _, agent := range agents {
+		items = append(items, *commandsAgentFromRepo(&agent))
+	}
+	return items, nil
+}
+
+func (s failingAssignTaskTxStore) CreateTaskAssignment(ctx context.Context, params commands.CreateTaskAssignmentParams) (*commands.TaskAssignmentRecord, error) {
+	assignment, err := s.assignments.Create(ctx, CreateTaskAssignmentParams{
+		TaskID:      params.TaskID,
+		Attempt:     params.Attempt,
+		AgentID:     params.AgentID,
+		ExecutionID: params.ExecutionID,
+		Status:      params.Status,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &commands.TaskAssignmentRecord{
+		ID:          assignment.ID,
+		TaskID:      assignment.TaskID,
+		Attempt:     assignment.Attempt,
+		AgentID:     assignment.AgentID,
+		ExecutionID: assignment.ExecutionID,
+		Status:      assignment.Status,
+	}, nil
+}
+
+func (s failingAssignTaskTxStore) AssignClaimedTask(ctx context.Context, params commands.AssignClaimedTaskParams) (*commands.ClaimedTask, error) {
+	return s.tasks.AssignClaimedTask(ctx, params)
+}
+
+func (failingAssignTaskTxStore) AppendAssignCommand(context.Context, commands.AppendAssignTaskCommandParams) error {
+	return nil
 }
 
 func (failingAssignTaskTxStore) Append(context.Context, commands.OutboxEvent) error {
@@ -1739,6 +1808,33 @@ func seedTaskAssignment(
 		taskID:       taskID,
 		assignmentID: assignment.ID,
 	}
+}
+
+func seedAssignableAgent(t *testing.T, ctx context.Context, pool *pgxpool.Pool, agentID string, capabilities []string) {
+	t.Helper()
+
+	if _, err := NewAgentRepo(pool).Upsert(ctx, UpsertAgentParams{
+		ID:             agentID,
+		Version:        "test",
+		Capabilities:   append([]string(nil), capabilities...),
+		TransportMode:  "pull",
+		MaxConcurrency: 1,
+		LastSeenAt:     time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("upsert agent %s: %v", agentID, err)
+	}
+}
+
+type pickFirstAgentSelector struct{}
+
+func (pickFirstAgentSelector) SelectAgent(_ commands.PendingTask, agents []commands.AgentRecord) *commands.AgentRecord {
+	for i := range agents {
+		if agents[i].Status == "online" {
+			agent := agents[i]
+			return &agent
+		}
+	}
+	return nil
 }
 
 func runtimeMigrationsDir(t *testing.T) string {

@@ -22,6 +22,7 @@ type AgentRecord struct {
 	ControlBaseURL string
 	MaxConcurrency int32
 	RunningTaskIDs []string
+	Status         string
 	LastSeenAt     time.Time
 }
 

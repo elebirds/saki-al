@@ -11,7 +11,7 @@ type DispatchCommand struct {
 }
 
 type DispatchTaskAssigner interface {
-	Handle(ctx context.Context, cmd commands.AssignTaskCommand) (*commands.TaskRecord, error)
+	Handle(ctx context.Context, cmd commands.AssignTaskCommand) (*commands.AssignResult, error)
 }
 
 type Assigner interface {
@@ -19,25 +19,22 @@ type Assigner interface {
 }
 
 type DispatchScan struct {
-	assigner      DispatchTaskAssigner
-	targetAgentID string
+	assigner DispatchTaskAssigner
 }
 
-func NewDispatchScan(assigner DispatchTaskAssigner, targetAgentID string) *DispatchScan {
+func NewDispatchScan(assigner DispatchTaskAssigner) *DispatchScan {
 	return &DispatchScan{
-		assigner:      assigner,
-		targetAgentID: targetAgentID,
+		assigner: assigner,
 	}
 }
 
 func (s *DispatchScan) Dispatch(ctx context.Context, command DispatchCommand) error {
-	if s.targetAgentID == "" {
+	if s == nil || s.assigner == nil {
 		return nil
 	}
 
 	_, err := s.assigner.Handle(ctx, commands.AssignTaskCommand{
-		AssignedAgentID: s.targetAgentID,
-		LeaderEpoch:     command.LeaderEpoch,
+		LeaderEpoch: command.LeaderEpoch,
 	})
 	return err
 }

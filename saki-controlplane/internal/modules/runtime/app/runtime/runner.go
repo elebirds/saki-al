@@ -131,7 +131,10 @@ func New(ctx context.Context, opts Options, logger *slog.Logger) (*Runner, error
 	)
 	artifactPath, artifactHandler := runtimev1connect.NewArtifactServiceHandler(artifactServer)
 
-	assigner := runtimecommands.NewAssignTaskHandlerWithTx(runtimerepo.NewAssignTaskTxRunner(pool))
+	assigner := runtimecommands.NewAssignTaskHandlerWithTx(
+		runtimerepo.NewAssignTaskTxRunner(pool),
+		runtimescheduler.NewAgentSelector(),
+	)
 	ticker := newSchedulerTicker(cfg, leaseRepo, assigner, log)
 
 	controlClient := newAgentControlTransport(http.DefaultClient, cfg.AgentControlBaseURL, log)
@@ -229,13 +232,8 @@ func newSchedulerTicker(
 	assigner runtimescheduler.DispatchTaskAssigner,
 	logger *slog.Logger,
 ) schedulerTicker {
-	log := loggerOrDefault(logger)
-	if cfg.SchedulerTargetAgent == "" {
-		log.Warn("runtime scheduler is disabled until a target agent is configured")
-		return noopSchedulerTickerImpl{}
-	}
-
-	dispatch := runtimescheduler.NewDispatchScan(assigner, cfg.SchedulerTargetAgent)
+	_ = loggerOrDefault(logger)
+	dispatch := runtimescheduler.NewDispatchScan(assigner)
 	return runtimescheduler.NewLeaderTicker(
 		leases,
 		dispatch,

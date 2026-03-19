@@ -259,6 +259,14 @@ func NewRuntime(ctx context.Context) (*runtimeapp.Runner, *slog.Logger, error) {
 	}
 
 	logger := observe.NewLogger("runtime", observe.ParseLevel(cfg.LogLevel), cfg.LogFormat)
+	assignAckTimeout, err := time.ParseDuration(cfg.RuntimeAssignAckTimeout)
+	if err != nil {
+		return nil, nil, err
+	}
+	agentHeartbeatTimeout, err := time.ParseDuration(cfg.RuntimeAgentHeartbeatTimeout)
+	if err != nil {
+		return nil, nil, err
+	}
 	objectProvider, err := objectProviderFactory(storage.Config{
 		Endpoint:  cfg.MinIOEndpoint,
 		AccessKey: cfg.MinIOAccessKey,
@@ -271,14 +279,14 @@ func NewRuntime(ctx context.Context) (*runtimeapp.Runner, *slog.Logger, error) {
 	}
 
 	runner, err := runtimeapp.New(ctx, runtimeapp.Options{
-		Bind:                 cfg.RuntimeBind,
-		Roles:                runtimeapp.NewRoleSet(cfg.RuntimeRoles...),
-		DatabaseDSN:          cfg.DatabaseDSN,
-		SchedulerTargetAgent: cfg.RuntimeSchedulerTargetAgent,
-		AgentControlBaseURL:  cfg.RuntimeAgentControlBaseURL,
-		AssetProvider:        objectProvider,
-		UploadTicketExpiry:   15 * time.Minute,
-		DownloadTicketExpiry: 15 * time.Minute,
+		Bind:                          cfg.RuntimeBind,
+		Roles:                         runtimeapp.NewRoleSet(cfg.RuntimeRoles...),
+		DatabaseDSN:                   cfg.DatabaseDSN,
+		RecoveryAssignAckTimeout:      assignAckTimeout,
+		RecoveryAgentHeartbeatTimeout: agentHeartbeatTimeout,
+		AssetProvider:                 objectProvider,
+		UploadTicketExpiry:            15 * time.Minute,
+		DownloadTicketExpiry:          15 * time.Minute,
 	}, logger)
 	if err != nil {
 		return nil, nil, err

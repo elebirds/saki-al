@@ -148,10 +148,13 @@ func TestNewDeliveryWorkerMarksRetryWhenDirectAgentHasNoControlURL(t *testing.T)
 	}
 }
 
-func TestWithDefaultOptionsLeavesSchedulerTargetAgentUnset(t *testing.T) {
+func TestWithDefaultOptionsSetsRecoveryTimeouts(t *testing.T) {
 	opts := withDefaultOptions(Options{})
-	if opts.SchedulerTargetAgent != "" {
-		t.Fatalf("expected empty scheduler target agent by default, got %q", opts.SchedulerTargetAgent)
+	if opts.RecoveryAssignAckTimeout != 30*time.Second {
+		t.Fatalf("unexpected recovery assign ack timeout: %s", opts.RecoveryAssignAckTimeout)
+	}
+	if opts.RecoveryAgentHeartbeatTimeout != 30*time.Second {
+		t.Fatalf("unexpected recovery heartbeat timeout: %s", opts.RecoveryAgentHeartbeatTimeout)
 	}
 }
 

@@ -39,15 +39,15 @@ func (h *Handlers) GetRuntimeSummary(ctx context.Context) (*openapi.RuntimeSumma
 	}, nil
 }
 
-func (h *Handlers) ListRuntimeExecutors(ctx context.Context) ([]openapi.RuntimeExecutor, error) {
+func (h *Handlers) ListRuntimeAgents(ctx context.Context) ([]openapi.RuntimeAgent, error) {
 	agents, err := h.agents.Execute(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	result := make([]openapi.RuntimeExecutor, 0, len(agents))
+	result := make([]openapi.RuntimeAgent, 0, len(agents))
 	for _, agent := range agents {
-		result = append(result, openapi.RuntimeExecutor{
+		result = append(result, openapi.RuntimeAgent{
 			ID:         agent.ID,
 			Version:    agent.Version,
 			LastSeenAt: agent.LastSeenAt,
@@ -55,6 +55,11 @@ func (h *Handlers) ListRuntimeExecutors(ctx context.Context) ([]openapi.RuntimeE
 	}
 
 	return result, nil
+}
+
+// ListRuntimeExecutors 只保留一个兼容发布窗口，真实语义已经切到 runtime agents。
+func (h *Handlers) ListRuntimeExecutors(ctx context.Context) ([]openapi.RuntimeAgent, error) {
+	return h.ListRuntimeAgents(ctx)
 }
 
 func (h *Handlers) CancelRuntimeTask(ctx context.Context, params openapi.CancelRuntimeTaskParams) (*openapi.RuntimeCommandResponse, error) {

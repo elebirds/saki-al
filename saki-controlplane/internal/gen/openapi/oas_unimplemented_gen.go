@@ -202,10 +202,17 @@ func (UnimplementedHandler) ListProjects(ctx context.Context) (r []Project, _ er
 	return r, ht.ErrNotImplemented
 }
 
+// ListRuntimeAgents implements listRuntimeAgents operation.
+//
+// GET /runtime/agents
+func (UnimplementedHandler) ListRuntimeAgents(ctx context.Context) (r []RuntimeAgent, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // ListRuntimeExecutors implements listRuntimeExecutors operation.
 //
 // GET /runtime/executors
-func (UnimplementedHandler) ListRuntimeExecutors(ctx context.Context) (r []RuntimeExecutor, _ error) {
+func (UnimplementedHandler) ListRuntimeExecutors(ctx context.Context) (r []RuntimeAgent, _ error) {
 	return r, ht.ErrNotImplemented
 }
 

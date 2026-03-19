@@ -116,10 +116,14 @@ type Handler interface {
 	//
 	// GET /projects
 	ListProjects(ctx context.Context) ([]Project, error)
+	// ListRuntimeAgents implements listRuntimeAgents operation.
+	//
+	// GET /runtime/agents
+	ListRuntimeAgents(ctx context.Context) ([]RuntimeAgent, error)
 	// ListRuntimeExecutors implements listRuntimeExecutors operation.
 	//
 	// GET /runtime/executors
-	ListRuntimeExecutors(ctx context.Context) ([]RuntimeExecutor, error)
+	ListRuntimeExecutors(ctx context.Context) ([]RuntimeAgent, error)
 	// ListSampleAnnotations implements listSampleAnnotations operation.
 	//
 	// GET /projects/{project_id}/samples/{sample_id}/annotations

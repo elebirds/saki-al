@@ -285,7 +285,11 @@ func (s *Server) ListProjectDatasets(ctx context.Context, params openapi.ListPro
 	return s.project.ListProjectDatasets(ctx, params)
 }
 
-func (s *Server) ListRuntimeExecutors(ctx context.Context) ([]openapi.RuntimeExecutor, error) {
+func (s *Server) ListRuntimeAgents(ctx context.Context) ([]openapi.RuntimeAgent, error) {
+	return s.runtime.ListRuntimeAgents(ctx)
+}
+
+func (s *Server) ListRuntimeExecutors(ctx context.Context) ([]openapi.RuntimeAgent, error) {
 	return s.runtime.ListRuntimeExecutors(ctx)
 }
 

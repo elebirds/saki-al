@@ -20,17 +20,15 @@ type RuntimeAgent struct {
 	LastSeenAt time.Time
 }
 
-type RuntimeExecutor = RuntimeAgent
-
 type AdminStore interface {
 	GetRuntimeSummary(ctx context.Context) (RuntimeSummary, error)
 	ListRuntimeAgents(ctx context.Context) ([]RuntimeAgent, error)
 }
 
 type MemoryAdminStore struct {
-	mu        sync.RWMutex
-	summary   RuntimeSummary
-	executors []RuntimeAgent
+	mu      sync.RWMutex
+	summary RuntimeSummary
+	agents  []RuntimeAgent
 }
 
 func NewMemoryAdminStore() *MemoryAdminStore {
@@ -49,8 +47,8 @@ func (s *MemoryAdminStore) ListRuntimeAgents(context.Context) ([]RuntimeAgent, e
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	agents := make([]RuntimeAgent, len(s.executors))
-	copy(agents, s.executors)
+	agents := make([]RuntimeAgent, len(s.agents))
+	copy(agents, s.agents)
 	return agents, nil
 }
 

@@ -624,18 +624,36 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-  /runtime/executors:
+  /runtime/agents:
     get:
-      operationId: listRuntimeExecutors
+      operationId: listRuntimeAgents
       responses:
         "200":
-          description: runtime executors
+          description: runtime agents
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/RuntimeExecutor"
+                  $ref: "#/components/schemas/RuntimeAgent"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /runtime/executors:
+    get:
+      operationId: listRuntimeExecutors
+      responses:
+        "200":
+          description: runtime executors compatibility alias
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RuntimeAgent"
         default:
           description: unexpected error
           content:
@@ -1243,7 +1261,7 @@ components:
         leader_epoch:
           type: integer
           format: int64
-    RuntimeExecutor:
+    RuntimeAgent:
       type: object
       required:
         - id

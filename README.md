@@ -1,140 +1,101 @@
 # Saki
 
-Saki 是一个面向视觉主动学习（Active Learning）闭环的多服务仓库，覆盖数据导入、标注、版本管理、训练、预测、选样与迭代全流程。
+Saki 是一个面向视觉主动学习闭环的多模块仓库，覆盖数据导入、标注、制品管理、执行调度与前端工作台。
 
-当前 Runtime 语义基线：
+当前默认运行面已经切到 Go 版 `controlplane + agent`：
 
-- 执行真相源：`task`
-- 编排视图：`loop / round / step`
-- 预测资源：`prediction`（循环外独立资源，绑定 `task_id`）
-
-## 1. 项目目标
-
-Saki 解决的是“标注成本高、迭代慢、实验难复现”问题，核心目标：
-
-1. 在统一平台内完成数据与模型迭代闭环。
-2. 将执行链路（训练/预测/选样）与业务链路（项目/标注/版本）解耦。
-3. 用结构化事件与制品管理提高可观测性与可追溯性。
-
-## 2. 仓库架构总览
-
-### 2.1 运行时角色
-
-- `saki-api`
-  - 业务真相源（项目、分支、提交、标注、权限、导入导出）
-  - Runtime 领域 API
-  - Runtime Domain gRPC 服务
-- `saki-dispatcher`
-  - 调度与编排推进
-  - executor 注册、心跳、派发、回收
-  - runtime/admin gRPC 控制入口
-- `saki-executor`
-  - 主动连接 dispatcher
-  - 执行训练/评分/预测/评估 task
-  - 上报事件、指标、候选、制品
+- `saki-controlplane`
+  - `cmd/public-api`：对外 HTTP API
+  - `cmd/runtime`：runtime roles（`ingress / scheduler / delivery / recovery`）
+- `saki-agent`
+  - agent 注册、心跳、命令领取、任务执行与事件回推
 - `saki-web`
-  - React 前端工作台
-  - 面向数据、标注、项目、Runtime、系统管理
+  - React 工作台
 
-### 2.2 插件与协议
+## 1. 当前架构
 
-- `saki-plugin-sdk`：插件公共契约（当前主版本 `4.x`）
-- `saki-plugins/*`：插件实现（demo/yolo/oriented-rcnn）
-- `proto/`：跨服务 gRPC 协议定义
-- `scripts/gen_grpc.sh`：统一代码生成脚本
+### 1.1 Runtime 基线
 
-## 3. 仓库结构
+- 任务真相：`runtime_task`
+- 派发真相：`task_assignment`
+- 命令真相：`agent_command`
+- delivery 模式：`direct / pull`，默认推荐 `pull`
+- 恢复职责：由 `runtime recovery` role 独立处理 assign 未确认、agent 失联、cancel 收敛
+
+### 1.2 仓库结构
 
 ```text
 saki/
-├── saki-api/
-├── saki-dispatcher/
-├── saki-executor/
+├── saki-controlplane/
+├── saki-agent/
 ├── saki-web/
 ├── saki-plugin-sdk/
 ├── saki-plugins/
 ├── proto/
-├── scripts/
 ├── docs/
 ├── docker-compose.yml
-├── env.example
-└── deploy.sh
+└── env.example
 ```
 
-## 4. 文档入口
+### 1.3 迁移说明
 
-- 总索引：`docs/README.md`
-- Runtime 生效语义：`docs/runtime-task-主干最终语义-v4.md`
-- Runtime 维护 SQL：`docs/runtime-result-materialization-maintenance.sql`
-- 部署指南：`DEPLOYMENT.md`
-- 各子模块：子目录 `README.md`
+- `saki-api`、`saki-dispatcher`、`saki-executor` 目录目前仍保留在仓库中，用于迁移参考和历史 Dockerfile。
+- 默认开发入口、默认 `docker-compose.yml`、默认文档说明都已经切到 `saki-controlplane` 和 `saki-agent`。
+- 若你仍在使用旧三段式进程模型，不要再把它当作当前主路径。
 
-## 5. 快速开始
+## 2. 快速开始
 
-## 5.1 Docker Compose（推荐）
+### 2.1 Docker Compose
 
-1. 准备环境变量
+当前 compose 面向本地开发，`saki-controlplane-public-api`、`saki-controlplane-runtime`、`saki-agent` 通过官方 Go 镜像直接 `go run` 启动；这是在专用 Dockerfile 落地前的过渡方案。
 
 ```bash
 cp env.example .env
-```
-
-2. 启动核心服务（API + Dispatcher + Web + Postgres + Redis + MinIO）
-
-```bash
-docker compose --profile minio up -d --build
-```
-
-3. 需要执行器时，增加 profile
-
-```bash
-docker compose --profile minio --profile saki-executor up -d --build
-```
-
-4. 查看状态与日志
-
-```bash
+docker compose up -d --build
 docker compose ps
-docker compose logs -f saki-api saki-dispatcher saki-web
+docker compose logs -f saki-controlplane-public-api saki-controlplane-runtime saki-agent
 ```
 
-## 5.2 本地开发
+默认端口：
+
+- public API: `http://localhost:8000`
+- runtime healthz: `http://localhost:8081/healthz`
+- web: `http://localhost`
+- minio: `http://localhost:9001`
+
+### 2.2 本地开发
 
 建议环境：
 
-- Python `3.11+`
-- `uv`
+- Go `1.25+`
 - Node.js `18+`
-- Go `1.24+`
 - PostgreSQL
-- Redis
+- MinIO 或兼容 S3 存储
 
 启动顺序建议：
 
-1. API
+1. public API
 
 ```bash
-cd saki-api
-uv sync
-make run
+cd saki-controlplane
+go run ./cmd/public-api
 ```
 
-2. Dispatcher
+2. runtime
 
 ```bash
-cd saki-dispatcher
-make run
+cd saki-controlplane
+go run ./cmd/runtime
 ```
 
-3. Executor
+3. agent
 
 ```bash
-cd saki-executor
-make sync
-make run
+cd saki-agent
+go run ./cmd/agent
 ```
 
-4. Web
+4. web
 
 ```bash
 cd saki-web
@@ -142,62 +103,66 @@ npm install
 npm run dev
 ```
 
-## 6. 常用开发命令
+## 3. 常用命令
 
-- 生成 gRPC stub：`bash scripts/gen_grpc.sh`
-- 同步 schema + sqlc：`bash scripts/sync_schema.sh`
-- Dispatcher 测试：`cd saki-dispatcher && make test`
-- Web 构建：`cd saki-web && npm run build`
+- controlplane OpenAPI / proto / sqlc 生成：`cd saki-controlplane && make gen`
+- controlplane 测试：`cd saki-controlplane && go test ./...`
+- runtime 相关测试：`cd saki-controlplane && go test ./internal/modules/runtime/... -count=1`
+- agent 测试：`cd saki-agent && go test ./...`
+- web 构建：`cd saki-web && npm run build`
 
-## 7. 关键环境变量（跨服务）
+## 4. 关键环境变量
 
-- API
-  - `DATABASE_URL`
-  - `MINIO_*`
-  - `REDIS_URL`
-  - `INTERNAL_TOKEN`
-  - `RUNTIME_DOMAIN_GRPC_BIND`
-- Dispatcher
-  - `DATABASE_URL`
-  - `RUNTIME_GRPC_BIND`
-  - `ADMIN_GRPC_BIND`
-  - `RUNTIME_DOMAIN_TARGET`
-  - `INTERNAL_TOKEN`
-- Executor
-  - `API_GRPC_TARGET`
-  - `EXECUTOR_ID`
-  - `PLUGINS_DIR`
-  - `RUNS_DIR`
-  - `CACHE_DIR`
-- Web
-  - `VITE_API_BASE_URL`
-  - 默认回退：`http://localhost:8000/api/v1`
+### 4.1 controlplane public-api
 
-## 8. Runtime 契约（必须对齐）
+- `DATABASE_DSN`
+- `PUBLIC_API_BIND`
+- `AUTH_TOKEN_SECRET`
+- `AUTH_TOKEN_TTL`
+- `MINIO_*`
 
-1. 业务真相源是 `saki-api`，执行器不直接写业务库。
-2. 派发主键是 `task_id`，而非旧 `step_id` 语义。
-3. `prediction` 是独立资源，不再沿用历史 `PredictionSet` 名称。
-4. 文档、接口、日志字段必须与当前 task 主干语义一致。
+### 4.2 controlplane runtime
 
-## 9. 常见问题
+- `DATABASE_DSN`
+- `RUNTIME_BIND`
+- `RUNTIME_ROLES`
+- `RUNTIME_ASSIGN_ACK_TIMEOUT`
+- `RUNTIME_AGENT_HEARTBEAT_TIMEOUT`
+- `MINIO_*`
 
-1. Web 登录后 401
-- 检查 Token 是否失效，系统时间是否漂移。
+### 4.3 agent
 
-2. Executor 无法连接 dispatcher
-- 检查 `API_GRPC_TARGET` 与 dispatcher `RUNTIME_GRPC_BIND`。
-- 检查 `INTERNAL_TOKEN` 是否一致。
+- `RUNTIME_BASE_URL`
+- `AGENT_TRANSPORT_MODE`
+- `AGENT_ID`
+- `AGENT_VERSION`
+- `AGENT_MAX_CONCURRENCY`
+- `AGENT_HEARTBEAT_INTERVAL`
+- `AGENT_WORKER_COMMAND_JSON`
 
-3. Dispatcher 不推进任务
-- 检查 `DATABASE_URL`。
-- 检查 `RUNTIME_DOMAIN_TARGET` 到 API runtime-domain 端口可达。
+## 5. Runtime 约束
 
-4. 构建和运行命令对不上
-- 以各模块 `Makefile` / `package.json` / `pyproject.toml` 为准，不要使用历史文档命令。
+1. 业务与任务真相由 controlplane 持有，agent 不直接改业务库。
+2. `agent_command` 是命令真相，transport 只是投递方式，不得反向成为状态真相。
+3. `runtime recovery` 必须独立于 scheduler，不能把超时收敛混入正常派发。
+4. 对外 HTTP API 的 canonical 路径是 `/runtime/agents`，`/runtime/executors` 仅保留一个兼容窗口。
 
-## 10. 贡献与文档维护
+## 6. 常见问题
 
-1. 修改 Runtime 语义前，先更新主干语义文档再改代码。
-2. 新增运行时文档需同步登记到 `docs/README.md`。
-3. 不允许重新引入已移除的历史方案文档引用。
+1. `runtime` 启动即退出
+
+- 先检查 `DATABASE_DSN`。
+- 再检查 `MINIO_*` 是否完整；runtime 会在启动时探测对象存储。
+
+2. agent 注册不上
+
+- 检查 `RUNTIME_BASE_URL` 是否指向 `saki-controlplane-runtime`。
+- 检查 `AGENT_TRANSPORT_MODE` 是否与部署预期一致。
+
+3. agent 接到任务后立刻失败
+
+- 通常是 `AGENT_WORKER_COMMAND_JSON` 没配置，或配置的 worker 不符合协议。
+
+4. `/runtime/executors` 和文档不一致
+
+- 以 `/runtime/agents` 为主；`/runtime/executors` 是兼容 alias，会被移除。

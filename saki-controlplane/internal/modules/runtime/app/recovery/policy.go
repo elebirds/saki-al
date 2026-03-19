@@ -14,6 +14,10 @@ type Policy struct {
 	AgentHeartbeatTimeout time.Duration
 }
 
+func DefaultPolicy() Policy {
+	return Policy{}.withDefaults()
+}
+
 func (p Policy) withDefaults() Policy {
 	if p.AssignAckTimeout <= 0 {
 		p.AssignAckTimeout = defaultAssignAckTimeout

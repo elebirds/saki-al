@@ -33,6 +33,7 @@ const (
 	ListProjectDatasetDetailsOperation      OperationName = "ListProjectDatasetDetails"
 	ListProjectDatasetsOperation            OperationName = "ListProjectDatasets"
 	ListProjectsOperation                   OperationName = "ListProjects"
+	ListRuntimeAgentsOperation              OperationName = "ListRuntimeAgents"
 	ListRuntimeExecutorsOperation           OperationName = "ListRuntimeExecutors"
 	ListSampleAnnotationsOperation          OperationName = "ListSampleAnnotations"
 	LoginOperation                          OperationName = "Login"

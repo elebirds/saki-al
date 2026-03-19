@@ -163,6 +163,40 @@ func TestPublicAPISmoke(t *testing.T) {
 		t.Fatalf("unexpected runtime summary body: %+v", summary)
 	}
 
+	runtimeAgentsResp, err := http.Get(httpServer.URL + "/runtime/agents")
+	if err != nil {
+		t.Fatalf("get runtime agents: %v", err)
+	}
+	defer runtimeAgentsResp.Body.Close()
+	if runtimeAgentsResp.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected runtime agents status: %d", runtimeAgentsResp.StatusCode)
+	}
+
+	var runtimeAgents []map[string]any
+	if err := json.NewDecoder(runtimeAgentsResp.Body).Decode(&runtimeAgents); err != nil {
+		t.Fatalf("decode runtime agents: %v", err)
+	}
+	if len(runtimeAgents) != 0 {
+		t.Fatalf("unexpected runtime agents body: %+v", runtimeAgents)
+	}
+
+	runtimeExecutorsResp, err := http.Get(httpServer.URL + "/runtime/executors")
+	if err != nil {
+		t.Fatalf("get runtime executors alias: %v", err)
+	}
+	defer runtimeExecutorsResp.Body.Close()
+	if runtimeExecutorsResp.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected runtime executors alias status: %d", runtimeExecutorsResp.StatusCode)
+	}
+
+	var runtimeExecutors []map[string]any
+	if err := json.NewDecoder(runtimeExecutorsResp.Body).Decode(&runtimeExecutors); err != nil {
+		t.Fatalf("decode runtime executors alias: %v", err)
+	}
+	if len(runtimeExecutors) != 0 {
+		t.Fatalf("unexpected runtime executors alias body: %+v", runtimeExecutors)
+	}
+
 	createAnnotationResp, err := http.Post(
 		httpServer.URL+"/projects/"+project.ID.String()+"/samples/"+sample.ID.String()+"/annotations",
 		"application/json",

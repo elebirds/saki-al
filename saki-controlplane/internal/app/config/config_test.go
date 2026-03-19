@@ -98,15 +98,19 @@ func TestLoadIncludesObjectStorageConfig(t *testing.T) {
 	}
 }
 
-func TestLoadIncludesRuntimeAgentControlBaseURL(t *testing.T) {
-	t.Setenv("RUNTIME_AGENT_CONTROL_BASE_URL", "http://127.0.0.1:18081")
+func TestLoadIncludesRuntimeRecoveryTimeouts(t *testing.T) {
+	t.Setenv("RUNTIME_ASSIGN_ACK_TIMEOUT", "45s")
+	t.Setenv("RUNTIME_AGENT_HEARTBEAT_TIMEOUT", "2m")
 
 	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.RuntimeAgentControlBaseURL != "http://127.0.0.1:18081" {
-		t.Fatalf("unexpected runtime agent control base url: %q", cfg.RuntimeAgentControlBaseURL)
+	if cfg.RuntimeAssignAckTimeout != "45s" {
+		t.Fatalf("unexpected runtime assign ack timeout: %q", cfg.RuntimeAssignAckTimeout)
+	}
+	if cfg.RuntimeAgentHeartbeatTimeout != "2m" {
+		t.Fatalf("unexpected runtime agent heartbeat timeout: %q", cfg.RuntimeAgentHeartbeatTimeout)
 	}
 }
 

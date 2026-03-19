@@ -70,7 +70,7 @@ func TestRuntimeAdminQueriesReadPersistedState(t *testing.T) {
 
 	agentRepo := runtimerepo.NewAgentRepo(pool)
 	if _, err := agentRepo.Upsert(ctx, runtimerepo.UpsertAgentParams{
-		ID:             "executor-a",
+		ID:             "agent-a",
 		Version:        "1.2.3",
 		Capabilities:   []string{"gpu"},
 		TransportMode:  "pull",
@@ -94,12 +94,86 @@ func TestRuntimeAdminQueriesReadPersistedState(t *testing.T) {
 	if summary.PendingTasks != 1 || summary.RunningTasks != 1 || summary.LeaderEpoch != lease.Epoch {
 		t.Fatalf("unexpected runtime summary: %+v", summary)
 	}
+}
+
+func TestListRuntimeAgents(t *testing.T) {
+	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+
+	ctx := context.Background()
+	container, dsn := startRuntimePostgres(t, ctx)
+	defer func() {
+		_ = testcontainers.TerminateContainer(container)
+	}()
+
+	pool := openRuntimePool(t, ctx, dsn)
+	defer pool.Close()
+
+	taskRepo := runtimerepo.NewTaskRepo(pool)
+	agentRepo := runtimerepo.NewAgentRepo(pool)
+	if _, err := agentRepo.Upsert(ctx, runtimerepo.UpsertAgentParams{
+		ID:             "agent-a",
+		Version:        "1.2.3",
+		Capabilities:   []string{"gpu"},
+		TransportMode:  "pull",
+		MaxConcurrency: 1,
+		LastSeenAt:     time.UnixMilli(123456789),
+	}); err != nil {
+		t.Fatalf("register agent: %v", err)
+	}
+
+	handlers := apihttp.NewHandlers(
+		apihttp.Dependencies{
+			Store:    runtimequeries.NewRepoAdminStore(taskRepo, agentRepo),
+			Commands: runtimequeries.NewIssueRuntimeCommandUseCase(&fakeRuntimeCanceler{}),
+		},
+	)
+
+	agents, err := handlers.ListRuntimeAgents(ctx)
+	if err != nil {
+		t.Fatalf("list runtime agents: %v", err)
+	}
+	if len(agents) != 1 || agents[0].ID != "agent-a" || agents[0].Version != "1.2.3" {
+		t.Fatalf("unexpected agents: %+v", agents)
+	}
+}
+
+func TestListRuntimeExecutorsAliasStillWorks(t *testing.T) {
+	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+
+	ctx := context.Background()
+	container, dsn := startRuntimePostgres(t, ctx)
+	defer func() {
+		_ = testcontainers.TerminateContainer(container)
+	}()
+
+	pool := openRuntimePool(t, ctx, dsn)
+	defer pool.Close()
+
+	taskRepo := runtimerepo.NewTaskRepo(pool)
+	agentRepo := runtimerepo.NewAgentRepo(pool)
+	if _, err := agentRepo.Upsert(ctx, runtimerepo.UpsertAgentParams{
+		ID:             "agent-a",
+		Version:        "1.2.3",
+		Capabilities:   []string{"gpu"},
+		TransportMode:  "pull",
+		MaxConcurrency: 1,
+		LastSeenAt:     time.UnixMilli(123456789),
+	}); err != nil {
+		t.Fatalf("register agent: %v", err)
+	}
+
+	handlers := apihttp.NewHandlers(
+		apihttp.Dependencies{
+			Store:    runtimequeries.NewRepoAdminStore(taskRepo, agentRepo),
+			Commands: runtimequeries.NewIssueRuntimeCommandUseCase(&fakeRuntimeCanceler{}),
+		},
+	)
 
 	executors, err := handlers.ListRuntimeExecutors(ctx)
 	if err != nil {
 		t.Fatalf("list executors: %v", err)
 	}
-	if len(executors) != 1 || executors[0].ID != "executor-a" || executors[0].Version != "1.2.3" {
+	if len(executors) != 1 || executors[0].ID != "agent-a" || executors[0].Version != "1.2.3" {
 		t.Fatalf("unexpected executors: %+v", executors)
 	}
 }

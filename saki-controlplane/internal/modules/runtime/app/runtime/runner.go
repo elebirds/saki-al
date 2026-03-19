@@ -29,6 +29,8 @@ const (
 	defaultSchedulerInterval    = 2 * time.Second
 	defaultOutboxInterval       = 1 * time.Second
 	defaultRecoveryInterval     = 5 * time.Second
+	defaultAssignAckTimeout     = 30 * time.Second
+	defaultHeartbeatTimeout     = 30 * time.Second
 	defaultSchedulerLeaseName   = "runtime-scheduler"
 	defaultSchedulerLeaseTTL    = 30 * time.Second
 	defaultArtifactTicketExpiry = 15 * time.Minute
@@ -39,21 +41,21 @@ const (
 var errRuntimeArtifactProviderRequired = errors.New("runtime artifact provider is required")
 
 type Options struct {
-	Bind                 string
-	Roles                RoleSet
-	DatabaseDSN          string
-	ReadHeaderTimeout    time.Duration
-	SchedulerInterval    time.Duration
-	OutboxInterval       time.Duration
-	SchedulerLeaseName   string
-	SchedulerHolder      string
-	SchedulerLeaseTTL    time.Duration
-	SchedulerTargetAgent string
-	AgentControlBaseURL  string
-	AssetStoreFactory    func(pool *pgxpool.Pool) assetapp.Store
-	AssetProvider        storage.Provider
-	UploadTicketExpiry   time.Duration
-	DownloadTicketExpiry time.Duration
+	Bind                          string
+	Roles                         RoleSet
+	DatabaseDSN                   string
+	ReadHeaderTimeout             time.Duration
+	SchedulerInterval             time.Duration
+	OutboxInterval                time.Duration
+	SchedulerLeaseName            string
+	SchedulerHolder               string
+	SchedulerLeaseTTL             time.Duration
+	RecoveryAssignAckTimeout      time.Duration
+	RecoveryAgentHeartbeatTimeout time.Duration
+	AssetStoreFactory             func(pool *pgxpool.Pool) assetapp.Store
+	AssetProvider                 storage.Provider
+	UploadTicketExpiry            time.Duration
+	DownloadTicketExpiry          time.Duration
 }
 
 type Runner struct {
@@ -157,7 +159,10 @@ func New(ctx context.Context, opts Options, logger *slog.Logger) (*Runner, error
 	worker := newDeliveryWorker(commandRepo, agentRepo, http.DefaultClient)
 	recoveryWorker := runtimerecovery.NewWorker(
 		newRuntimeRecoveryStore(taskRepo, agentRepo),
-		runtimerecovery.Policy{},
+		runtimerecovery.Policy{
+			AssignAckTimeout:      cfg.RecoveryAssignAckTimeout,
+			AgentHeartbeatTimeout: cfg.RecoveryAgentHeartbeatTimeout,
+		},
 	)
 
 	runner := newRunnerFromAssembly(assembly{
@@ -342,6 +347,12 @@ func withDefaultOptions(opts Options) Options {
 	}
 	if opts.OutboxInterval <= 0 {
 		opts.OutboxInterval = defaultOutboxInterval
+	}
+	if opts.RecoveryAssignAckTimeout <= 0 {
+		opts.RecoveryAssignAckTimeout = defaultAssignAckTimeout
+	}
+	if opts.RecoveryAgentHeartbeatTimeout <= 0 {
+		opts.RecoveryAgentHeartbeatTimeout = defaultHeartbeatTimeout
 	}
 	if opts.SchedulerLeaseName == "" {
 		opts.SchedulerLeaseName = defaultSchedulerLeaseName

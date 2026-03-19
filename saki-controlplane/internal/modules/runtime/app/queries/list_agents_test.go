@@ -8,7 +8,7 @@ import (
 
 func TestListRuntimeAgentsQueryReturnsAgentVocabulary(t *testing.T) {
 	store := NewMemoryAdminStore()
-	store.executors = []RuntimeAgent{
+	store.agents = []RuntimeAgent{
 		{
 			ID:         "agent-a",
 			Version:    "1.2.3",

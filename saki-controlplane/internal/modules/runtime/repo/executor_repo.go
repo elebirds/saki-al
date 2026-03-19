@@ -29,10 +29,12 @@ func NewExecutorRepo(pool *pgxpool.Pool) *ExecutorRepo {
 }
 
 func (r *ExecutorRepo) Register(ctx context.Context, executor commands.ExecutorRecord) (*commands.ExecutorRecord, error) {
+	capabilities := normalizeExecutorCapabilities(executor.Capabilities)
+
 	row, err := r.q.RegisterRuntimeExecutor(ctx, sqlcdb.RegisterRuntimeExecutorParams{
 		ID:           executor.ID,
 		Version:      executor.Version,
-		Capabilities: executor.Capabilities,
+		Capabilities: capabilities,
 		LastSeenAt:   pgtype.Timestamptz{Time: executor.LastSeenAt, Valid: true},
 	})
 	if err != nil {
@@ -42,7 +44,7 @@ func (r *ExecutorRepo) Register(ctx context.Context, executor commands.ExecutorR
 	return &commands.ExecutorRecord{
 		ID:           row.ID,
 		Version:      row.Version,
-		Capabilities: slices.Clone(row.Capabilities),
+		Capabilities: normalizeExecutorCapabilities(row.Capabilities),
 		LastSeenAt:   row.LastSeenAt.Time,
 	}, nil
 }
@@ -66,11 +68,18 @@ func (r *ExecutorRepo) List(ctx context.Context) ([]RuntimeExecutor, error) {
 		executors = append(executors, RuntimeExecutor{
 			ID:           row.ID,
 			Version:      row.Version,
-			Capabilities: slices.Clone(row.Capabilities),
+			Capabilities: normalizeExecutorCapabilities(row.Capabilities),
 			Status:       string(row.Status),
 			LastSeenAt:   row.LastSeenAt.Time,
 		})
 	}
 
 	return executors, nil
+}
+
+func normalizeExecutorCapabilities(capabilities []string) []string {
+	if capabilities == nil {
+		return []string{}
+	}
+	return slices.Clone(capabilities)
 }

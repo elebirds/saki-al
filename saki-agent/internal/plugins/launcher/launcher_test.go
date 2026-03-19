@@ -12,6 +12,10 @@ import (
 
 func TestLauncherExecutesEphemeralWorkerAndForwardsEvents(t *testing.T) {
 	if os.Getenv("SAKI_AGENT_HELPER_PROCESS") == "1" {
+		if os.Getenv("SAKI_AGENT_HELPER_MODE") == "block" {
+			runBlockingWorkerHelperProcess()
+			return
+		}
 		runWorkerHelperProcess()
 		return
 	}
@@ -76,6 +80,24 @@ func runWorkerHelperProcess() {
 	}); err != nil {
 		panic(err)
 	}
+}
+
+func runBlockingWorkerHelperProcess() {
+	req, err := ReadExecuteRequest(os.Stdin)
+	if err != nil {
+		panic(err)
+	}
+
+	if err := WriteWorkerEvent(os.Stdout, &workerv1.WorkerEvent{
+		RequestId: req.GetRequestId(),
+		TaskId:    req.GetTaskId(),
+		EventType: "progress",
+		Payload:   []byte(`{"percent":1,"message":"started"}`),
+	}); err != nil {
+		panic(err)
+	}
+
+	select {}
 }
 
 func TestHelperProcess(_ *testing.T) {}

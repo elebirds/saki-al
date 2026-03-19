@@ -1231,6 +1231,60 @@ func TestExecutorRepoRegisterAndHeartbeat(t *testing.T) {
 	}
 }
 
+func TestExecutorRepoRegisterNormalizesNilCapabilitiesToEmptyList(t *testing.T) {
+	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+
+	ctx := context.Background()
+	container, dsn := startRuntimePostgres(t, ctx)
+	defer func() {
+		_ = testcontainers.TerminateContainer(container)
+	}()
+
+	sqlDB, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("open sql db: %v", err)
+	}
+	defer sqlDB.Close()
+
+	goose.SetDialect("postgres")
+	if err := goose.Up(sqlDB, runtimeMigrationsDir(t)); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+
+	pool, err := appdb.NewPool(ctx, dsn)
+	if err != nil {
+		t.Fatalf("create pool: %v", err)
+	}
+	defer pool.Close()
+
+	executorRepo := NewExecutorRepo(pool)
+	record, err := executorRepo.Register(ctx, commands.ExecutorRecord{
+		ID:         "executor-nil-capabilities",
+		Version:    "1.0.0",
+		LastSeenAt: time.UnixMilli(123),
+	})
+	if err != nil {
+		t.Fatalf("register executor with nil capabilities: %v", err)
+	}
+	if record == nil {
+		t.Fatal("expected executor record")
+	}
+	if len(record.Capabilities) != 0 {
+		t.Fatalf("expected empty capabilities, got %+v", record.Capabilities)
+	}
+
+	executors, err := executorRepo.List(ctx)
+	if err != nil {
+		t.Fatalf("list executors: %v", err)
+	}
+	if len(executors) != 1 {
+		t.Fatalf("unexpected executor count: %d", len(executors))
+	}
+	if len(executors[0].Capabilities) != 0 {
+		t.Fatalf("expected persisted empty capabilities, got %+v", executors[0].Capabilities)
+	}
+}
+
 type failingAssignTaskTxRunner struct {
 	tx *appdb.TxRunner
 }

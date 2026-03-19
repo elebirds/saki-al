@@ -11,6 +11,9 @@ import (
 	"github.com/elebirds/saki/saki-agent/internal/app/bootstrap"
 	"github.com/elebirds/saki/saki-agent/internal/app/config"
 	appconnect "github.com/elebirds/saki/saki-agent/internal/app/connect"
+	appruntime "github.com/elebirds/saki/saki-agent/internal/app/runtime"
+	"github.com/elebirds/saki/saki-agent/internal/gen/runtime/v1/runtimev1connect"
+	"github.com/elebirds/saki/saki-agent/internal/plugins/launcher"
 )
 
 func main() {
@@ -23,15 +26,34 @@ func main() {
 		os.Exit(1)
 	}
 
-	runtimeClient := appconnect.NewRuntimeClient(http.DefaultClient, cfg.RuntimeBaseURL, cfg.AgentID, cfg.AgentVersion, slog.Default())
-	runner := bootstrap.New(bootstrap.Dependencies{
-		Bind:              cfg.AgentControlBind,
-		RuntimeClient:     runtimeClient,
-		HeartbeatInterval: cfg.AgentHeartbeatInterval,
-	})
+	runner := newRunner(cfg, slog.Default())
 
 	if err := runner.Run(ctx); err != nil {
 		slog.Error("agent exited", "err", err)
 		os.Exit(1)
 	}
+}
+
+func newRunner(cfg config.Config, logger *slog.Logger) *bootstrap.Runner {
+	if logger == nil {
+		logger = slog.Default()
+	}
+
+	runtimeClient := appconnect.NewRuntimeClient(http.DefaultClient, cfg.RuntimeBaseURL, cfg.AgentID, cfg.AgentVersion, logger)
+	workerLauncher := launcher.NewLauncher(launcher.LauncherConfig{
+		Command: append([]string(nil), cfg.AgentWorkerCommand...),
+	})
+	service := appruntime.NewService(cfg.AgentID, workerLauncher, runtimeClient)
+	controlServer := appruntime.NewControlServer(service)
+	controlPath, controlHandler := runtimev1connect.NewAgentControlHandler(controlServer)
+
+	return bootstrap.New(bootstrap.Dependencies{
+		Bind:              cfg.AgentControlBind,
+		RuntimeClient:     runtimeClient,
+		TaskSource:        service,
+		HeartbeatInterval: cfg.AgentHeartbeatInterval,
+		ControlPath:       controlPath,
+		ControlHandler:    controlHandler,
+		Logger:            logger,
+	})
 }

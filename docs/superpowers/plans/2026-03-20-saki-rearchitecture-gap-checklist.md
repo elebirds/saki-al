@@ -186,8 +186,9 @@
 
 ## 七、建议的后续执行顺序
 
-- [ ] **先做 public API 业务缺口盘点收敛**
-  - 优先判断 `branch / commit / label / export / draft / sync / model / runtime release` 哪些必须迁、哪些可以正式废弃。
+- [x] **先做 public API 业务缺口盘点收敛**
+  - 已新增 `docs/superpowers/plans/2026-03-20-saki-public-api-gap-disposition.md`。
+  - 已把 `branch / commit / label / export / draft / sync / model / runtime release` 以及 `auth/system`、`RBAC/member`、`sample read`、`loop/prediction/plugin`、`import` 收口成 `必须迁移 / 可废弃 / 待确认` 三类。
 - [ ] **再做 runtime admin 面决策**
   - 决定 loop/round/task/admin 控制面是否继续保留。
 - [ ] **然后冻结 agent 宿主方向**

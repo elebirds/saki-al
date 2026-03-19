@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 API_DIR="$ROOT_DIR/saki-api"
-GO_DIR="$ROOT_DIR/saki-dispatcher"
+GO_DIR="$ROOT_DIR/saki-controlplane"
 SCHEMA_PATH="$ROOT_DIR/shared/db/schema.sql"
 
 MODE_RESET=false

@@ -1285,6 +1285,304 @@ func TestExecutorRepoRegisterNormalizesNilCapabilitiesToEmptyList(t *testing.T) 
 	}
 }
 
+func TestAgentRepoRegisterHeartbeatAndList(t *testing.T) {
+	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+
+	ctx := context.Background()
+	pool, cleanup := openRuntimeTestPool(t, ctx)
+	defer cleanup()
+
+	agentRepo := NewAgentRepo(pool)
+	registerAt := time.UnixMilli(111)
+	agent, err := agentRepo.Upsert(ctx, UpsertAgentParams{
+		ID:             "agent-a",
+		Version:        "1.2.3",
+		Capabilities:   []string{"gpu", "cuda"},
+		TransportMode:  "pull",
+		MaxConcurrency: 2,
+		RunningTaskIDs: []string{"task-1"},
+		LastSeenAt:     registerAt,
+	})
+	if err != nil {
+		t.Fatalf("upsert agent: %v", err)
+	}
+	if agent.ID != "agent-a" || agent.Version != "1.2.3" {
+		t.Fatalf("unexpected registered agent: %+v", agent)
+	}
+	if agent.TransportMode != "pull" {
+		t.Fatalf("unexpected transport mode: %+v", agent)
+	}
+	if agent.MaxConcurrency != 2 {
+		t.Fatalf("unexpected max concurrency: %+v", agent)
+	}
+	if !slices.Equal(agent.RunningTaskIDs, []string{"task-1"}) {
+		t.Fatalf("unexpected running task ids: %+v", agent.RunningTaskIDs)
+	}
+
+	heartbeatAt := registerAt.Add(time.Minute)
+	if err := agentRepo.Heartbeat(ctx, HeartbeatAgentParams{
+		ID:             "agent-a",
+		MaxConcurrency: 3,
+		RunningTaskIDs: []string{"task-1", "task-2"},
+		LastSeenAt:     heartbeatAt,
+	}); err != nil {
+		t.Fatalf("heartbeat agent: %v", err)
+	}
+
+	agents, err := agentRepo.List(ctx)
+	if err != nil {
+		t.Fatalf("list agents: %v", err)
+	}
+	if len(agents) != 1 {
+		t.Fatalf("unexpected agent count: %d", len(agents))
+	}
+	if !agents[0].LastSeenAt.Equal(heartbeatAt) {
+		t.Fatalf("unexpected heartbeat timestamp: %s", agents[0].LastSeenAt)
+	}
+	if agents[0].MaxConcurrency != 3 {
+		t.Fatalf("unexpected persisted max concurrency: %+v", agents[0])
+	}
+	if !slices.Equal(agents[0].Capabilities, []string{"gpu", "cuda"}) {
+		t.Fatalf("unexpected persisted capabilities: %+v", agents[0].Capabilities)
+	}
+	if !slices.Equal(agents[0].RunningTaskIDs, []string{"task-1", "task-2"}) {
+		t.Fatalf("unexpected persisted running task ids: %+v", agents[0].RunningTaskIDs)
+	}
+}
+
+func TestTaskAssignmentRepoCreateAssignment(t *testing.T) {
+	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+
+	ctx := context.Background()
+	pool, cleanup := openRuntimeTestPool(t, ctx)
+	defer cleanup()
+
+	taskRepo := NewTaskRepo(pool)
+	taskID := uuid.New()
+	if err := taskRepo.CreateTask(ctx, CreateTaskParams{
+		ID:       taskID,
+		TaskType: "predict",
+	}); err != nil {
+		t.Fatalf("create runtime task: %v", err)
+	}
+
+	agentRepo := NewAgentRepo(pool)
+	if _, err := agentRepo.Upsert(ctx, UpsertAgentParams{
+		ID:             "agent-a",
+		Version:        "1.2.3",
+		TransportMode:  "pull",
+		MaxConcurrency: 1,
+		LastSeenAt:     time.UnixMilli(123),
+	}); err != nil {
+		t.Fatalf("upsert agent: %v", err)
+	}
+
+	assignmentRepo := NewTaskAssignmentRepo(pool)
+	assignment, err := assignmentRepo.Create(ctx, CreateTaskAssignmentParams{
+		TaskID:      taskID,
+		Attempt:     1,
+		AgentID:     "agent-a",
+		ExecutionID: "exec-1",
+		Status:      "assigned",
+	})
+	if err != nil {
+		t.Fatalf("create assignment: %v", err)
+	}
+	if assignment.ID == 0 {
+		t.Fatalf("expected assignment id, got %+v", assignment)
+	}
+	if assignment.ExecutionID != "exec-1" || assignment.Status != "assigned" {
+		t.Fatalf("unexpected assignment payload: %+v", assignment)
+	}
+
+	loaded, err := assignmentRepo.GetByExecutionID(ctx, "exec-1")
+	if err != nil {
+		t.Fatalf("load assignment by execution id: %v", err)
+	}
+	if loaded == nil || loaded.TaskID != taskID || loaded.AgentID != "agent-a" {
+		t.Fatalf("unexpected loaded assignment: %+v", loaded)
+	}
+
+	otherTaskID := uuid.New()
+	if err := taskRepo.CreateTask(ctx, CreateTaskParams{
+		ID:       otherTaskID,
+		TaskType: "predict",
+	}); err != nil {
+		t.Fatalf("create second runtime task: %v", err)
+	}
+	if _, err := assignmentRepo.Create(ctx, CreateTaskAssignmentParams{
+		TaskID:      otherTaskID,
+		Attempt:     1,
+		AgentID:     "agent-a",
+		ExecutionID: "exec-1",
+		Status:      "assigned",
+	}); err == nil {
+		t.Fatal("expected duplicate execution_id to fail")
+	}
+}
+
+func TestAgentCommandRepoAppendClaimAckAndRetry(t *testing.T) {
+	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+
+	ctx := context.Background()
+	pool, cleanup := openRuntimeTestPool(t, ctx)
+	defer cleanup()
+
+	taskRepo := NewTaskRepo(pool)
+	assignmentRepo := NewTaskAssignmentRepo(pool)
+	agentRepo := NewAgentRepo(pool)
+	commandRepo := NewAgentCommandRepo(pool)
+
+	now := time.Now().UTC()
+	if _, err := agentRepo.Upsert(ctx, UpsertAgentParams{
+		ID:             "agent-direct",
+		Version:        "1.0.0",
+		TransportMode:  "direct",
+		ControlBaseURL: "http://127.0.0.1:18081",
+		MaxConcurrency: 1,
+		LastSeenAt:     now,
+	}); err != nil {
+		t.Fatalf("upsert direct agent: %v", err)
+	}
+	if _, err := agentRepo.Upsert(ctx, UpsertAgentParams{
+		ID:             "agent-pull",
+		Version:        "1.0.0",
+		TransportMode:  "pull",
+		MaxConcurrency: 1,
+		LastSeenAt:     now,
+	}); err != nil {
+		t.Fatalf("upsert pull agent: %v", err)
+	}
+
+	taskAssignID := seedTaskAssignment(t, ctx, taskRepo, assignmentRepo, "agent-direct", "exec-direct-1")
+	taskPullID := seedTaskAssignment(t, ctx, taskRepo, assignmentRepo, "agent-pull", "exec-pull-1")
+	taskExpiredID := seedTaskAssignment(t, ctx, taskRepo, assignmentRepo, "agent-direct", "exec-expired-1")
+
+	assignCommandID := uuid.New()
+	assignCommand, err := commandRepo.AppendAssign(ctx, AppendAssignCommandParams{
+		CommandID:     assignCommandID,
+		AgentID:       "agent-direct",
+		TaskID:        taskAssignID.taskID,
+		AssignmentID:  taskAssignID.assignmentID,
+		TransportMode: "direct",
+		Payload:       []byte(`{"type":"assign"}`),
+		AvailableAt:   now,
+		ExpireAt:      now.Add(time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("append assign command: %v", err)
+	}
+
+	cancelCommandID := uuid.New()
+	cancelCommand, err := commandRepo.AppendCancel(ctx, AppendCancelCommandParams{
+		CommandID:     cancelCommandID,
+		AgentID:       "agent-pull",
+		TaskID:        taskPullID.taskID,
+		AssignmentID:  taskPullID.assignmentID,
+		TransportMode: "pull",
+		Payload:       []byte(`{"type":"cancel"}`),
+		AvailableAt:   now,
+		ExpireAt:      now.Add(time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("append cancel command: %v", err)
+	}
+
+	expiredCommandID := uuid.New()
+	if _, err := commandRepo.AppendAssign(ctx, AppendAssignCommandParams{
+		CommandID:     expiredCommandID,
+		AgentID:       "agent-direct",
+		TaskID:        taskExpiredID.taskID,
+		AssignmentID:  taskExpiredID.assignmentID,
+		TransportMode: "direct",
+		Payload:       []byte(`{"type":"assign-expired"}`),
+		AvailableAt:   now,
+		ExpireAt:      now.Add(-time.Second),
+	}); err != nil {
+		t.Fatalf("append expired command: %v", err)
+	}
+
+	pushClaims, err := commandRepo.ClaimForPush(ctx, 10, now.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("claim push commands: %v", err)
+	}
+	if len(pushClaims) != 1 {
+		t.Fatalf("expected one push command, got %d", len(pushClaims))
+	}
+	if pushClaims[0].CommandID != assignCommandID {
+		t.Fatalf("unexpected push command: %+v", pushClaims[0])
+	}
+	if pushClaims[0].ClaimToken == nil {
+		t.Fatalf("expected push command claim token, got %+v", pushClaims[0])
+	}
+
+	if err := commandRepo.Ack(ctx, pushClaims[0].CommandID, *pushClaims[0].ClaimToken, now.Add(5*time.Second)); err != nil {
+		t.Fatalf("ack push command: %v", err)
+	}
+	if err := commandRepo.MarkFinished(ctx, pushClaims[0].CommandID, *pushClaims[0].ClaimToken, now.Add(10*time.Second)); err != nil {
+		t.Fatalf("finish push command: %v", err)
+	}
+
+	finished, err := commandRepo.GetByCommandID(ctx, assignCommandID)
+	if err != nil {
+		t.Fatalf("load finished command: %v", err)
+	}
+	if finished == nil || finished.Status != "finished" || finished.AckedAt == nil || finished.FinishedAt == nil {
+		t.Fatalf("unexpected finished command: %+v", finished)
+	}
+
+	pullClaims, err := commandRepo.ClaimForPull(ctx, "agent-pull", 10, now.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("claim pull commands: %v", err)
+	}
+	if len(pullClaims) != 1 {
+		t.Fatalf("expected one pull command, got %d", len(pullClaims))
+	}
+	if pullClaims[0].CommandID != cancelCommandID {
+		t.Fatalf("unexpected pull command: %+v", pullClaims[0])
+	}
+	if pullClaims[0].ClaimToken == nil {
+		t.Fatalf("expected pull command claim token, got %+v", pullClaims[0])
+	}
+
+	if err := commandRepo.MarkRetry(ctx, pullClaims[0].CommandID, *pullClaims[0].ClaimToken, now.Add(time.Hour), "temporary pull failure"); err != nil {
+		t.Fatalf("retry pull command: %v", err)
+	}
+	retried, err := commandRepo.GetByCommandID(ctx, cancelCommandID)
+	if err != nil {
+		t.Fatalf("load retried command: %v", err)
+	}
+	if retried == nil || retried.Status != "pending" {
+		t.Fatalf("unexpected retried command: %+v", retried)
+	}
+	if retried.LastError == nil || *retried.LastError != "temporary pull failure" {
+		t.Fatalf("unexpected retried last error: %+v", retried)
+	}
+	if retried.AttemptCount != 1 {
+		t.Fatalf("expected attempt_count to remain 1 after retry, got %+v", retried)
+	}
+
+	expiredCount, err := commandRepo.ExpireDue(ctx, now)
+	if err != nil {
+		t.Fatalf("expire commands: %v", err)
+	}
+	if expiredCount != 1 {
+		t.Fatalf("expected one expired command, got %d", expiredCount)
+	}
+
+	expired, err := commandRepo.GetByCommandID(ctx, expiredCommandID)
+	if err != nil {
+		t.Fatalf("load expired command: %v", err)
+	}
+	if expired == nil || expired.Status != "expired" {
+		t.Fatalf("unexpected expired command: %+v", expired)
+	}
+
+	if assignCommand == nil || cancelCommand == nil {
+		t.Fatal("expected appended commands")
+	}
+}
+
 type failingAssignTaskTxRunner struct {
 	tx *appdb.TxRunner
 }
@@ -1368,6 +1666,79 @@ func startRuntimePostgres(t *testing.T, ctx context.Context) (*postgres.Postgres
 	}
 
 	return container, dsn
+}
+
+func openRuntimeTestPool(t *testing.T, ctx context.Context) (*pgxpool.Pool, func()) {
+	t.Helper()
+
+	container, dsn := startRuntimePostgres(t, ctx)
+
+	sqlDB, err := sql.Open("pgx", dsn)
+	if err != nil {
+		_ = testcontainers.TerminateContainer(container)
+		t.Fatalf("open sql db: %v", err)
+	}
+
+	goose.SetDialect("postgres")
+	if err := goose.Up(sqlDB, runtimeMigrationsDir(t)); err != nil {
+		_ = sqlDB.Close()
+		_ = testcontainers.TerminateContainer(container)
+		t.Fatalf("run migrations: %v", err)
+	}
+
+	pool, err := appdb.NewPool(ctx, dsn)
+	if err != nil {
+		_ = sqlDB.Close()
+		_ = testcontainers.TerminateContainer(container)
+		t.Fatalf("create pool: %v", err)
+	}
+
+	cleanup := func() {
+		pool.Close()
+		_ = sqlDB.Close()
+		_ = testcontainers.TerminateContainer(container)
+	}
+	return pool, cleanup
+}
+
+type seededTaskAssignment struct {
+	taskID       uuid.UUID
+	assignmentID int64
+}
+
+func seedTaskAssignment(
+	t *testing.T,
+	ctx context.Context,
+	taskRepo *TaskRepo,
+	assignmentRepo *TaskAssignmentRepo,
+	agentID string,
+	executionID string,
+) seededTaskAssignment {
+	t.Helper()
+
+	taskID := uuid.New()
+	if err := taskRepo.CreateTask(ctx, CreateTaskParams{
+		ID:       taskID,
+		TaskType: "predict",
+	}); err != nil {
+		t.Fatalf("create runtime task: %v", err)
+	}
+
+	assignment, err := assignmentRepo.Create(ctx, CreateTaskAssignmentParams{
+		TaskID:      taskID,
+		Attempt:     1,
+		AgentID:     agentID,
+		ExecutionID: executionID,
+		Status:      "assigned",
+	})
+	if err != nil {
+		t.Fatalf("create task assignment: %v", err)
+	}
+
+	return seededTaskAssignment{
+		taskID:       taskID,
+		assignmentID: assignment.ID,
+	}
 }
 
 func runtimeMigrationsDir(t *testing.T) string {

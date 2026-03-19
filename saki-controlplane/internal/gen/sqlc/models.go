@@ -54,6 +54,137 @@ func (ns NullAccessPrincipalStatus) Value() (driver.Value, error) {
 	return string(ns.AccessPrincipalStatus), nil
 }
 
+type AgentCommandStatus string
+
+const (
+	AgentCommandStatusPending  AgentCommandStatus = "pending"
+	AgentCommandStatusClaimed  AgentCommandStatus = "claimed"
+	AgentCommandStatusAcked    AgentCommandStatus = "acked"
+	AgentCommandStatusFinished AgentCommandStatus = "finished"
+	AgentCommandStatusFailed   AgentCommandStatus = "failed"
+	AgentCommandStatusExpired  AgentCommandStatus = "expired"
+)
+
+func (e *AgentCommandStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = AgentCommandStatus(s)
+	case string:
+		*e = AgentCommandStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for AgentCommandStatus: %T", src)
+	}
+	return nil
+}
+
+type NullAgentCommandStatus struct {
+	AgentCommandStatus AgentCommandStatus `json:"agent_command_status"`
+	Valid              bool               `json:"valid"` // Valid is true if AgentCommandStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullAgentCommandStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.AgentCommandStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.AgentCommandStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullAgentCommandStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.AgentCommandStatus), nil
+}
+
+type AgentCommandType string
+
+const (
+	AgentCommandTypeAssign AgentCommandType = "assign"
+	AgentCommandTypeCancel AgentCommandType = "cancel"
+)
+
+func (e *AgentCommandType) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = AgentCommandType(s)
+	case string:
+		*e = AgentCommandType(s)
+	default:
+		return fmt.Errorf("unsupported scan type for AgentCommandType: %T", src)
+	}
+	return nil
+}
+
+type NullAgentCommandType struct {
+	AgentCommandType AgentCommandType `json:"agent_command_type"`
+	Valid            bool             `json:"valid"` // Valid is true if AgentCommandType is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullAgentCommandType) Scan(value interface{}) error {
+	if value == nil {
+		ns.AgentCommandType, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.AgentCommandType.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullAgentCommandType) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.AgentCommandType), nil
+}
+
+type AgentTransportMode string
+
+const (
+	AgentTransportModeDirect AgentTransportMode = "direct"
+	AgentTransportModePull   AgentTransportMode = "pull"
+	AgentTransportModeRelay  AgentTransportMode = "relay"
+)
+
+func (e *AgentTransportMode) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = AgentTransportMode(s)
+	case string:
+		*e = AgentTransportMode(s)
+	default:
+		return fmt.Errorf("unsupported scan type for AgentTransportMode: %T", src)
+	}
+	return nil
+}
+
+type NullAgentTransportMode struct {
+	AgentTransportMode AgentTransportMode `json:"agent_transport_mode"`
+	Valid              bool               `json:"valid"` // Valid is true if AgentTransportMode is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullAgentTransportMode) Scan(value interface{}) error {
+	if value == nil {
+		ns.AgentTransportMode, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.AgentTransportMode.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullAgentTransportMode) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.AgentTransportMode), nil
+}
+
 type AssetKind string
 
 const (
@@ -627,6 +758,41 @@ type AccessPrincipal struct {
 	UpdatedAt   pgtype.Timestamptz    `json:"updated_at"`
 }
 
+type Agent struct {
+	ID             string             `json:"id"`
+	Version        string             `json:"version"`
+	Capabilities   []string           `json:"capabilities"`
+	TransportMode  AgentTransportMode `json:"transport_mode"`
+	ControlBaseUrl pgtype.Text        `json:"control_base_url"`
+	MaxConcurrency int32              `json:"max_concurrency"`
+	RunningTaskIds []string           `json:"running_task_ids"`
+	Status         string             `json:"status"`
+	LastSeenAt     pgtype.Timestamptz `json:"last_seen_at"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+}
+
+type AgentCommand struct {
+	CommandID     uuid.UUID          `json:"command_id"`
+	AgentID       string             `json:"agent_id"`
+	TaskID        uuid.UUID          `json:"task_id"`
+	AssignmentID  int64              `json:"assignment_id"`
+	CommandType   AgentCommandType   `json:"command_type"`
+	TransportMode AgentTransportMode `json:"transport_mode"`
+	Status        AgentCommandStatus `json:"status"`
+	Payload       []byte             `json:"payload"`
+	AvailableAt   pgtype.Timestamptz `json:"available_at"`
+	ExpireAt      pgtype.Timestamptz `json:"expire_at"`
+	AttemptCount  int32              `json:"attempt_count"`
+	ClaimToken    pgtype.UUID        `json:"claim_token"`
+	ClaimUntil    pgtype.Timestamptz `json:"claim_until"`
+	AckedAt       pgtype.Timestamptz `json:"acked_at"`
+	FinishedAt    pgtype.Timestamptz `json:"finished_at"`
+	LastError     pgtype.Text        `json:"last_error"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+}
+
 type Annotation struct {
 	ID             uuid.UUID          `json:"id"`
 	ProjectID      uuid.UUID          `json:"project_id"`
@@ -826,4 +992,15 @@ type SampleMatchRef struct {
 	RefValue  string             `json:"ref_value"`
 	IsPrimary bool               `json:"is_primary"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type TaskAssignment struct {
+	ID          int64              `json:"id"`
+	TaskID      uuid.UUID          `json:"task_id"`
+	Attempt     int32              `json:"attempt"`
+	AgentID     string             `json:"agent_id"`
+	ExecutionID string             `json:"execution_id"`
+	Status      RuntimeTaskStatus  `json:"status"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }

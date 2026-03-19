@@ -2,7 +2,6 @@ package commands
 
 import (
 	"context"
-	"encoding/json"
 
 	"github.com/google/uuid"
 )
@@ -17,14 +16,12 @@ type CompleteTaskCommand struct {
 }
 
 type CompleteTaskHandler struct {
-	tasks  ExecutionScopedTaskStore
-	outbox OutboxWriter
+	tasks ExecutionScopedTaskStore
 }
 
-func NewCompleteTaskHandler(tasks ExecutionScopedTaskStore, outbox OutboxWriter) *CompleteTaskHandler {
+func NewCompleteTaskHandler(tasks ExecutionScopedTaskStore) *CompleteTaskHandler {
 	return &CompleteTaskHandler{
-		tasks:  tasks,
-		outbox: outbox,
+		tasks: tasks,
 	}
 }
 
@@ -41,27 +38,5 @@ func (h *CompleteTaskHandler) Handle(ctx context.Context, cmd CompleteTaskComman
 	if !applied {
 		return task, nil
 	}
-
-	payload, err := json.Marshal(struct {
-		TaskID      uuid.UUID `json:"task_id"`
-		ExecutionID string    `json:"execution_id"`
-		Status      string    `json:"status"`
-	}{
-		TaskID:      task.ID,
-		ExecutionID: task.CurrentExecutionID,
-		Status:      task.Status,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	if err := h.outbox.Append(ctx, OutboxEvent{
-		Topic:       "runtime.task.completed",
-		AggregateID: task.ID.String(),
-		Payload:     payload,
-	}); err != nil {
-		return nil, err
-	}
-
 	return task, nil
 }

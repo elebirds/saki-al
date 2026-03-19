@@ -51,7 +51,7 @@ func (t *DirectTransport) DispatchAssign(ctx context.Context, cmd runtimerepo.Ag
 		return err
 	}
 
-	var payload commands.AssignTaskOutboxPayload
+	var payload commands.AssignTaskCommandPayload
 	if err := json.Unmarshal(cmd.Payload, &payload); err != nil {
 		return err
 	}
@@ -70,7 +70,7 @@ func (t *DirectTransport) DispatchCancel(ctx context.Context, cmd runtimerepo.Ag
 		return err
 	}
 
-	var payload commands.StopTaskOutboxPayload
+	var payload commands.StopTaskCommandPayload
 	if err := json.Unmarshal(cmd.Payload, &payload); err != nil {
 		return err
 	}

@@ -17,10 +17,10 @@ var (
 	rn12AllowedHeaders = map[string]string{
 		"POST": "Content-Type",
 	}
-	rn53AllowedHeaders = map[string]string{
+	rn52AllowedHeaders = map[string]string{
 		"POST": "Content-Type",
 	}
-	rn47AllowedHeaders = map[string]string{
+	rn46AllowedHeaders = map[string]string{
 		"POST": "Content-Type",
 	}
 	rn15AllowedHeaders = map[string]string{
@@ -29,7 +29,7 @@ var (
 	rn23AllowedHeaders = map[string]string{
 		"PUT": "Content-Type",
 	}
-	rn54AllowedHeaders = map[string]string{
+	rn53AllowedHeaders = map[string]string{
 		"POST": "Content-Type",
 	}
 	rn14AllowedHeaders = map[string]string{
@@ -48,7 +48,7 @@ var (
 	rn29AllowedHeaders = map[string]string{
 		"POST": "Content-Type",
 	}
-	rn49AllowedHeaders = map[string]string{
+	rn48AllowedHeaders = map[string]string{
 		"POST": "Content-Type",
 	}
 	rn21AllowedHeaders = map[string]string{
@@ -283,7 +283,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 								default:
 									s.notAllowed(w, r, notAllowedParams{
 										allowedMethods: "POST",
-										allowedHeaders: rn53AllowedHeaders,
+										allowedHeaders: rn52AllowedHeaders,
 										acceptPost:     "application/json",
 										acceptPatch:    "",
 									})
@@ -324,7 +324,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 							default:
 								s.notAllowed(w, r, notAllowedParams{
 									allowedMethods: "POST",
-									allowedHeaders: rn47AllowedHeaders,
+									allowedHeaders: rn46AllowedHeaders,
 									acceptPost:     "application/json",
 									acceptPatch:    "",
 								})
@@ -674,7 +674,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 								default:
 									s.notAllowed(w, r, notAllowedParams{
 										allowedMethods: "POST",
-										allowedHeaders: rn54AllowedHeaders,
+										allowedHeaders: rn53AllowedHeaders,
 										acceptPost:     "application/json",
 										acceptPatch:    "",
 									})
@@ -1002,7 +1002,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 											default:
 												s.notAllowed(w, r, notAllowedParams{
 													allowedMethods: "POST",
-													allowedHeaders: rn49AllowedHeaders,
+													allowedHeaders: rn48AllowedHeaders,
 													acceptPost:     "application/json",
 													acceptPatch:    "",
 												})
@@ -1104,31 +1104,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 						switch r.Method {
 						case "GET":
 							s.handleListRuntimeAgentsRequest([0]string{}, elemIsEscaped, w, r)
-						default:
-							s.notAllowed(w, r, notAllowedParams{
-								allowedMethods: "GET",
-								allowedHeaders: nil,
-								acceptPost:     "",
-								acceptPatch:    "",
-							})
-						}
-
-						return
-					}
-
-				case 'e': // Prefix: "executors"
-
-					if l := len("executors"); len(elem) >= l && elem[0:l] == "executors" {
-						elem = elem[l:]
-					} else {
-						break
-					}
-
-					if len(elem) == 0 {
-						// Leaf node.
-						switch r.Method {
-						case "GET":
-							s.handleListRuntimeExecutorsRequest([0]string{}, elemIsEscaped, w, r)
 						default:
 							s.notAllowed(w, r, notAllowedParams{
 								allowedMethods: "GET",
@@ -2315,31 +2290,6 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 							r.operationID = "listRuntimeAgents"
 							r.operationGroup = ""
 							r.pathPattern = "/runtime/agents"
-							r.args = args
-							r.count = 0
-							return r, true
-						default:
-							return
-						}
-					}
-
-				case 'e': // Prefix: "executors"
-
-					if l := len("executors"); len(elem) >= l && elem[0:l] == "executors" {
-						elem = elem[l:]
-					} else {
-						break
-					}
-
-					if len(elem) == 0 {
-						// Leaf node.
-						switch method {
-						case "GET":
-							r.name = ListRuntimeExecutorsOperation
-							r.summary = ""
-							r.operationID = "listRuntimeExecutors"
-							r.operationGroup = ""
-							r.pathPattern = "/runtime/executors"
 							r.args = args
 							r.count = 0
 							return r, true

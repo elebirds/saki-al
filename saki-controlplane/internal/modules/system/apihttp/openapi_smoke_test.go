@@ -182,19 +182,11 @@ func TestPublicAPISmoke(t *testing.T) {
 
 	runtimeExecutorsResp, err := http.Get(httpServer.URL + "/runtime/executors")
 	if err != nil {
-		t.Fatalf("get runtime executors alias: %v", err)
+		t.Fatalf("get removed runtime executors alias: %v", err)
 	}
 	defer runtimeExecutorsResp.Body.Close()
-	if runtimeExecutorsResp.StatusCode != http.StatusOK {
-		t.Fatalf("unexpected runtime executors alias status: %d", runtimeExecutorsResp.StatusCode)
-	}
-
-	var runtimeExecutors []map[string]any
-	if err := json.NewDecoder(runtimeExecutorsResp.Body).Decode(&runtimeExecutors); err != nil {
-		t.Fatalf("decode runtime executors alias: %v", err)
-	}
-	if len(runtimeExecutors) != 0 {
-		t.Fatalf("unexpected runtime executors alias body: %+v", runtimeExecutors)
+	if runtimeExecutorsResp.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected removed runtime executors alias to return 404, got %d", runtimeExecutorsResp.StatusCode)
 	}
 
 	createAnnotationResp, err := http.Post(
@@ -782,7 +774,7 @@ func TestPublicAPISmoke_AccessPermissionDenied(t *testing.T) {
 	}
 }
 
-func TestPublicAPICancelTaskWritesStopOutbox(t *testing.T) {
+func TestPublicAPICancelTaskPersistsStopCommand(t *testing.T) {
 	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
 
 	ctx := context.Background()
@@ -819,12 +811,24 @@ func TestPublicAPICancelTaskWritesStopOutbox(t *testing.T) {
 	}
 
 	taskRepo := runtimerepo.NewTaskRepo(pool)
+	agentRepo := runtimerepo.NewAgentRepo(pool)
+	assignmentRepo := runtimerepo.NewTaskAssignmentRepo(pool)
 	taskID := uuid.New()
 	if err := taskRepo.CreateTask(ctx, runtimerepo.CreateTaskParams{
 		ID:       taskID,
 		TaskType: "predict",
 	}); err != nil {
 		t.Fatalf("create runtime task: %v", err)
+	}
+
+	if _, err := agentRepo.Upsert(ctx, runtimerepo.UpsertAgentParams{
+		ID:             "agent-public-api-1",
+		Version:        "test",
+		TransportMode:  "pull",
+		MaxConcurrency: 1,
+		LastSeenAt:     time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("register agent: %v", err)
 	}
 
 	assigned, err := taskRepo.AssignPendingTask(ctx, runtimerepo.AssignTaskParams{
@@ -836,6 +840,15 @@ func TestPublicAPICancelTaskWritesStopOutbox(t *testing.T) {
 	}
 	if assigned == nil {
 		t.Fatal("expected assigned runtime task")
+	}
+	if _, err := assignmentRepo.Create(ctx, runtimerepo.CreateTaskAssignmentParams{
+		TaskID:      taskID,
+		Attempt:     1,
+		AgentID:     "agent-public-api-1",
+		ExecutionID: assigned.CurrentExecutionID,
+		Status:      "assigned",
+	}); err != nil {
+		t.Fatalf("create assignment: %v", err)
 	}
 
 	t.Setenv("DATABASE_DSN", dsn)
@@ -885,30 +898,32 @@ func TestPublicAPICancelTaskWritesStopOutbox(t *testing.T) {
 		t.Fatalf("unexpected runtime task after cancel: %+v", task)
 	}
 
-	var stopOutboxCount int
+	var stopCommandCount int
 	if err := pool.QueryRow(ctx, `
 select count(*)
-from runtime_outbox
-where aggregate_id = $1
-  and topic = $2
-`, taskID.String(), runtimecommands.StopTaskOutboxTopic).Scan(&stopOutboxCount); err != nil {
-		t.Fatalf("count stop outbox: %v", err)
+from agent_command
+where task_id = $1
+  and command_type = 'cancel'
+`, taskID).Scan(&stopCommandCount); err != nil {
+		t.Fatalf("count cancel commands: %v", err)
 	}
-	if stopOutboxCount != 1 {
-		t.Fatalf("expected exactly one stop outbox, got %d", stopOutboxCount)
+	if stopCommandCount != 1 {
+		t.Fatalf("expected exactly one cancel command, got %d", stopCommandCount)
 	}
 
 	var payloadBytes []byte
 	if err := pool.QueryRow(ctx, `
 select payload
-from runtime_outbox
-where aggregate_id = $1
-  and topic = $2
-`, taskID.String(), runtimecommands.StopTaskOutboxTopic).Scan(&payloadBytes); err != nil {
-		t.Fatalf("load stop outbox payload: %v", err)
+from agent_command
+where task_id = $1
+  and command_type = 'cancel'
+order by created_at desc
+limit 1
+`, taskID).Scan(&payloadBytes); err != nil {
+		t.Fatalf("load cancel command payload: %v", err)
 	}
 
-	var payload runtimecommands.StopTaskOutboxPayload
+	var payload runtimecommands.StopTaskCommandPayload
 	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
 		t.Fatalf("unmarshal stop payload: %v", err)
 	}

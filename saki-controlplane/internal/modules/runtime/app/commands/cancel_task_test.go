@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -11,7 +12,7 @@ import (
 	"github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/state"
 )
 
-func TestCancelTaskCommandRequestsCancelForRunningTaskAndAppendsOutbox(t *testing.T) {
+func TestCancelTaskCommandRequestsCancelForRunningTaskAndAppendsCancelCommand(t *testing.T) {
 	taskID := uuid.New()
 	taskStore := &cancelTaskStore{
 		task: &TaskRecord{
@@ -21,49 +22,21 @@ func TestCancelTaskCommandRequestsCancelForRunningTaskAndAppendsOutbox(t *testin
 			AssignedAgentID:    "agent-1",
 			LeaderEpoch:        7,
 		},
-	}
-	handler := NewCancelTaskHandler(taskStore)
-	canceled, err := handler.Handle(context.Background(), CancelTaskCommand{TaskID: taskID})
-	if err != nil {
-		t.Fatalf("handle cancel task: %v", err)
-	}
-
-	if canceled == nil || canceled.ID != taskID || canceled.Status != string(state.TaskStatusCancelRequested) {
-		t.Fatalf("unexpected canceled task: %+v", canceled)
-	}
-	if taskStore.updated == nil || taskStore.updated.Status != string(state.TaskStatusCancelRequested) {
-		t.Fatalf("expected cancel_requested status update, got %+v", taskStore.updated)
-	}
-	if taskStore.last == nil || taskStore.last.Topic != "runtime.task.stop.v1" {
-		t.Fatalf("expected runtime.task.stop.v1 outbox event, got %+v", taskStore.last)
-	}
-	var payload struct {
-		TaskID      uuid.UUID `json:"task_id"`
-		ExecutionID string    `json:"execution_id"`
-		AgentID     string    `json:"agent_id"`
-		Reason      string    `json:"reason"`
-		LeaderEpoch int64     `json:"leader_epoch"`
-	}
-	if err := json.Unmarshal(taskStore.last.Payload, &payload); err != nil {
-		t.Fatalf("unmarshal stop payload: %v", err)
-	}
-	if payload.TaskID != taskID || payload.ExecutionID != "exec-running-1" || payload.AgentID != "agent-1" || payload.Reason != "cancel_requested" || payload.LeaderEpoch != 7 {
-		t.Fatalf("unexpected stop payload: %+v", payload)
-	}
-}
-
-func TestCancelTaskCommandRequestsCancelForAssignedTaskAndAppendsOutbox(t *testing.T) {
-	taskID := uuid.New()
-	taskStore := &cancelTaskStore{
-		task: &TaskRecord{
-			ID:                 taskID,
-			Status:             string(state.TaskStatusAssigned),
-			CurrentExecutionID: "exec-assigned-1",
-			AssignedAgentID:    "agent-1",
-			LeaderEpoch:        7,
+		assignment: &TaskAssignmentRecord{
+			ID:          41,
+			TaskID:      taskID,
+			Attempt:     1,
+			AgentID:     "agent-1",
+			ExecutionID: "exec-running-1",
+			Status:      "running",
+		},
+		agent: &AgentRecord{
+			ID:            "agent-1",
+			TransportMode: "pull",
 		},
 	}
 	handler := NewCancelTaskHandler(taskStore)
+	handler.now = func() time.Time { return time.Unix(1700000100, 0).UTC() }
 	canceled, err := handler.Handle(context.Background(), CancelTaskCommand{TaskID: taskID})
 	if err != nil {
 		t.Fatalf("handle cancel task: %v", err)
@@ -75,20 +48,17 @@ func TestCancelTaskCommandRequestsCancelForAssignedTaskAndAppendsOutbox(t *testi
 	if taskStore.updated == nil || taskStore.updated.Status != string(state.TaskStatusCancelRequested) {
 		t.Fatalf("expected cancel_requested status update, got %+v", taskStore.updated)
 	}
-	if taskStore.last == nil || taskStore.last.Topic != "runtime.task.stop.v1" {
-		t.Fatalf("expected runtime.task.stop.v1 outbox event, got %+v", taskStore.last)
+	if taskStore.cancelCommand == nil {
+		t.Fatal("expected cancel command append")
 	}
-	var payload struct {
-		TaskID      uuid.UUID `json:"task_id"`
-		ExecutionID string    `json:"execution_id"`
-		AgentID     string    `json:"agent_id"`
-		Reason      string    `json:"reason"`
-		LeaderEpoch int64     `json:"leader_epoch"`
+	if taskStore.cancelCommand.AssignmentID != 41 || taskStore.cancelCommand.TransportMode != "pull" {
+		t.Fatalf("unexpected cancel command params: %+v", taskStore.cancelCommand)
 	}
-	if err := json.Unmarshal(taskStore.last.Payload, &payload); err != nil {
+	var payload StopTaskCommandPayload
+	if err := json.Unmarshal(taskStore.cancelCommand.Payload, &payload); err != nil {
 		t.Fatalf("unmarshal stop payload: %v", err)
 	}
-	if payload.TaskID != taskID || payload.ExecutionID != "exec-assigned-1" || payload.AgentID != "agent-1" || payload.Reason != "cancel_requested" || payload.LeaderEpoch != 7 {
+	if payload.TaskID != taskID || payload.ExecutionID != "exec-running-1" || payload.AgentID != "agent-1" || payload.Reason != "cancel_requested" || payload.LeaderEpoch != 7 {
 		t.Fatalf("unexpected stop payload: %+v", payload)
 	}
 }
@@ -118,14 +88,16 @@ func TestCancelTaskCommandRequestsCancelForAssignedTaskAndAppendsCancelCommand(t
 	}
 	handler := NewCancelTaskHandler(taskStore)
 	handler.now = func() time.Time { return time.Unix(1700000000, 0).UTC() }
-
 	canceled, err := handler.Handle(context.Background(), CancelTaskCommand{TaskID: taskID})
 	if err != nil {
 		t.Fatalf("handle cancel task: %v", err)
 	}
 
-	if canceled == nil || canceled.Status != string(state.TaskStatusCancelRequested) {
+	if canceled == nil || canceled.ID != taskID || canceled.Status != string(state.TaskStatusCancelRequested) {
 		t.Fatalf("unexpected canceled task: %+v", canceled)
+	}
+	if taskStore.updated == nil || taskStore.updated.Status != string(state.TaskStatusCancelRequested) {
+		t.Fatalf("expected cancel_requested status update, got %+v", taskStore.updated)
 	}
 	if taskStore.cancelCommand == nil {
 		t.Fatal("expected cancel command append")
@@ -133,12 +105,34 @@ func TestCancelTaskCommandRequestsCancelForAssignedTaskAndAppendsCancelCommand(t
 	if taskStore.cancelCommand.AgentID != "agent-1" || taskStore.cancelCommand.AssignmentID != 51 || taskStore.cancelCommand.TransportMode != "direct" {
 		t.Fatalf("unexpected cancel command params: %+v", taskStore.cancelCommand)
 	}
-	var payload StopTaskOutboxPayload
+	var payload StopTaskCommandPayload
 	if err := json.Unmarshal(taskStore.cancelCommand.Payload, &payload); err != nil {
-		t.Fatalf("unmarshal cancel command payload: %v", err)
+		t.Fatalf("unmarshal stop payload: %v", err)
 	}
 	if payload.TaskID != taskID || payload.ExecutionID != "exec-assigned-1" || payload.AgentID != "agent-1" || payload.Reason != "cancel_requested" || payload.LeaderEpoch != 7 {
-		t.Fatalf("unexpected cancel command payload: %+v", payload)
+		t.Fatalf("unexpected stop payload: %+v", payload)
+	}
+}
+
+func TestCancelTaskCommandRejectsAssignedTaskWithoutAssignmentTarget(t *testing.T) {
+	taskID := uuid.New()
+	taskStore := &cancelTaskStore{
+		task: &TaskRecord{
+			ID:                 taskID,
+			Status:             string(state.TaskStatusAssigned),
+			CurrentExecutionID: "exec-assigned-1",
+			AssignedAgentID:    "agent-1",
+			LeaderEpoch:        7,
+		},
+	}
+	handler := NewCancelTaskHandler(taskStore)
+
+	canceled, err := handler.Handle(context.Background(), CancelTaskCommand{TaskID: taskID})
+	if !errors.Is(err, errCancelTaskCommandTargetMissing) {
+		t.Fatalf("expected missing target error, got %v", err)
+	}
+	if canceled != nil {
+		t.Fatalf("expected nil canceled task on error, got %+v", canceled)
 	}
 }
 
@@ -164,8 +158,8 @@ func TestCancelTaskCommandCancelsPendingTaskAndAppendsOutbox(t *testing.T) {
 	if taskStore.updated == nil || taskStore.updated.Status != string(state.TaskStatusCanceled) {
 		t.Fatalf("expected canceled status update, got %+v", taskStore.updated)
 	}
-	if taskStore.last != nil {
-		t.Fatalf("expected no outbox event for direct pending cancel, got %+v", taskStore.last)
+	if taskStore.cancelCommand != nil {
+		t.Fatalf("expected no cancel command for direct pending cancel, got %+v", taskStore.cancelCommand)
 	}
 }
 
@@ -174,7 +168,6 @@ type cancelTaskStore struct {
 	assignment    *TaskAssignmentRecord
 	agent         *AgentRecord
 	updated       *TaskUpdate
-	last          *OutboxEvent
 	cancelCommand *AppendCancelTaskCommandParams
 }
 
@@ -184,11 +177,6 @@ func (f *cancelTaskStore) GetTask(_ context.Context, _ uuid.UUID) (*TaskRecord, 
 
 func (f *cancelTaskStore) UpdateTask(_ context.Context, update TaskUpdate) error {
 	f.updated = &update
-	return nil
-}
-
-func (f *cancelTaskStore) Append(_ context.Context, event OutboxEvent) error {
-	f.last = &event
 	return nil
 }
 

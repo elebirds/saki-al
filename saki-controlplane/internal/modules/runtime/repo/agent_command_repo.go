@@ -227,3 +227,11 @@ func optionalTime(value pgtype.Timestamptz) *time.Time {
 	ts := value.Time
 	return &ts
 }
+
+func optionalLastError(value pgtype.Text) *string {
+	if !value.Valid {
+		return nil
+	}
+	text := value.String
+	return &text
+}

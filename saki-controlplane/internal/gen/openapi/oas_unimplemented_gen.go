@@ -209,13 +209,6 @@ func (UnimplementedHandler) ListRuntimeAgents(ctx context.Context) (r []RuntimeA
 	return r, ht.ErrNotImplemented
 }
 
-// ListRuntimeExecutors implements listRuntimeExecutors operation.
-//
-// GET /runtime/executors
-func (UnimplementedHandler) ListRuntimeExecutors(ctx context.Context) (r []RuntimeAgent, _ error) {
-	return r, ht.ErrNotImplemented
-}
-
 // ListSampleAnnotations implements listSampleAnnotations operation.
 //
 // GET /projects/{project_id}/samples/{sample_id}/annotations

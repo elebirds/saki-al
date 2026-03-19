@@ -101,7 +101,7 @@ func TestAssignTaskHandler_AppendsAssignCommandInSameTx(t *testing.T) {
 		t.Fatalf("expected command assignment id %d, got %+v", assigned.AssignmentID, store.command)
 	}
 
-	var payload AssignTaskOutboxPayload
+	var payload AssignTaskCommandPayload
 	if err := json.Unmarshal(store.command.Payload, &payload); err != nil {
 		t.Fatalf("unmarshal command payload: %v", err)
 	}
@@ -130,12 +130,6 @@ func TestAssignTaskHandler_AppendsAssignCommandInSameTx(t *testing.T) {
 		t.Fatalf("expected leader epoch 7, got %d", payload.LeaderEpoch)
 	}
 
-	if store.lastOutbox == nil || store.lastOutbox.Topic != AssignTaskOutboxTopic {
-		t.Fatalf("expected legacy outbox event, got %+v", store.lastOutbox)
-	}
-	if store.lastOutbox.IdempotencyKey != AssignTaskOutboxTopic+":"+assigned.ExecutionID {
-		t.Fatalf("expected execution-scoped idempotency key, got %+v", store.lastOutbox)
-	}
 }
 
 func TestAssignTaskHandler_ReturnsNilWhenNoPendingTaskClaimed(t *testing.T) {
@@ -181,8 +175,8 @@ func TestAssignTaskHandler_ReturnsNilWhenNoAgentSelected(t *testing.T) {
 	if assigned != nil {
 		t.Fatalf("expected nil assigned task, got %+v", assigned)
 	}
-	if store.assignment != nil || store.command != nil || store.lastOutbox != nil || store.assignedTask != nil {
-		t.Fatalf("expected no side effects when selector returns nil, got assignment=%+v command=%+v outbox=%+v assign=%+v", store.assignment, store.command, store.lastOutbox, store.assignedTask)
+	if store.assignment != nil || store.command != nil || store.assignedTask != nil {
+		t.Fatalf("expected no side effects when selector returns nil, got assignment=%+v command=%+v assign=%+v", store.assignment, store.command, store.assignedTask)
 	}
 }
 
@@ -206,7 +200,6 @@ type fakeAssignTaskStore struct {
 	assignment   *CreateTaskAssignmentParams
 	assignedTask *AssignClaimedTaskParams
 	command      *AppendAssignTaskCommandParams
-	lastOutbox   *OutboxEvent
 	assignmentID int64
 	commandID    uuid.UUID
 }
@@ -255,11 +248,6 @@ func (f *fakeAssignTaskStore) AppendAssignCommand(_ context.Context, params Appe
 	return nil
 }
 
-func (f *fakeAssignTaskStore) Append(_ context.Context, event OutboxEvent) error {
-	f.lastOutbox = &event
-	return nil
-}
-
 type fakeAssignTaskAgentSelector struct {
 	selectedAgentID string
 	task            *PendingTask
@@ -301,18 +289,5 @@ func (errAssignTaskStore) AssignClaimedTask(context.Context, AssignClaimedTaskPa
 }
 
 func (errAssignTaskStore) AppendAssignCommand(context.Context, AppendAssignTaskCommandParams) error {
-	return nil
-}
-
-func (errAssignTaskStore) Append(context.Context, OutboxEvent) error {
-	return nil
-}
-
-type fakeOutboxWriter struct {
-	last *OutboxEvent
-}
-
-func (f *fakeOutboxWriter) Append(_ context.Context, event OutboxEvent) error {
-	f.last = &event
 	return nil
 }

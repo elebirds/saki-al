@@ -26,7 +26,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-func TestRuntimeReposClaimLeaseAndAppendOutbox(t *testing.T) {
+func TestRuntimeReposClaimLeaseAndAppendAgentCommand(t *testing.T) {
 	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
 
 	ctx := context.Background()
@@ -88,17 +88,45 @@ func TestRuntimeReposClaimLeaseAndAppendOutbox(t *testing.T) {
 		t.Fatalf("expected assigned agent id agent-runtime-1, got %+v", assigned.AssignedAgentID)
 	}
 
-	outboxRepo := NewOutboxRepo(pool)
-	entry, err := outboxRepo.Append(ctx, AppendOutboxParams{
-		Topic:       "runtime.task.assign.v1",
-		AggregateID: taskID.String(),
-		Payload:     []byte(`{"task_id":"` + taskID.String() + `"}`),
+	agentRepo := NewAgentRepo(pool)
+	if _, err := agentRepo.Upsert(ctx, UpsertAgentParams{
+		ID:             "agent-runtime-1",
+		Version:        "test",
+		TransportMode:  "pull",
+		MaxConcurrency: 1,
+		LastSeenAt:     time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("upsert agent: %v", err)
+	}
+
+	assignmentRepo := NewTaskAssignmentRepo(pool)
+	assignment, err := assignmentRepo.Create(ctx, CreateTaskAssignmentParams{
+		TaskID:      taskID,
+		Attempt:     1,
+		AgentID:     "agent-runtime-1",
+		ExecutionID: assigned.CurrentExecutionID,
+		Status:      "assigned",
 	})
 	if err != nil {
-		t.Fatalf("append outbox: %v", err)
+		t.Fatalf("create assignment: %v", err)
 	}
-	if entry.ID == 0 {
-		t.Fatal("expected outbox id")
+
+	commandRepo := NewAgentCommandRepo(pool)
+	entry, err := commandRepo.AppendAssign(ctx, AppendAssignCommandParams{
+		CommandID:     uuid.New(),
+		AgentID:       "agent-runtime-1",
+		TaskID:        taskID,
+		AssignmentID:  assignment.ID,
+		TransportMode: "pull",
+		Payload:       []byte(`{"task_id":"` + taskID.String() + `"}`),
+		AvailableAt:   time.Now().UTC(),
+		ExpireAt:      time.Now().Add(time.Minute).UTC(),
+	})
+	if err != nil {
+		t.Fatalf("append agent command: %v", err)
+	}
+	if entry.CommandID == uuid.Nil || entry.Status != "pending" {
+		t.Fatalf("expected pending command append, got %+v", entry)
 	}
 }
 
@@ -409,7 +437,7 @@ func TestTaskRepoAdvanceTaskByExecutionLeavesTaskUnchangedWhenStatusDrifts(t *te
 	}
 }
 
-func TestAssignTaskHandlerUsesTaskRepoClaimAndAppendsFrozenOutbox(t *testing.T) {
+func TestAssignTaskHandlerUsesTaskRepoClaimAndPersistsAgentCommand(t *testing.T) {
 	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
 
 	ctx := context.Background()
@@ -479,26 +507,19 @@ func TestAssignTaskHandlerUsesTaskRepoClaimAndAppendsFrozenOutbox(t *testing.T) 
 		t.Fatalf("expected assignment id, got %+v", assigned)
 	}
 
-	var (
-		topic          string
-		idempotencyKey string
-		payloadBytes   []byte
-	)
+	var payloadBytes []byte
 	if err := pool.QueryRow(ctx, `
-select topic, idempotency_key, payload
-from runtime_outbox
-where aggregate_id = $1
-`, taskID.String()).Scan(&topic, &idempotencyKey, &payloadBytes); err != nil {
-		t.Fatalf("load runtime outbox: %v", err)
-	}
-	if topic != commands.AssignTaskOutboxTopic {
-		t.Fatalf("expected topic %s, got %q", commands.AssignTaskOutboxTopic, topic)
-	}
-	if idempotencyKey != commands.AssignTaskOutboxTopic+":"+assigned.ExecutionID {
-		t.Fatalf("expected execution-scoped idempotency key, got %q", idempotencyKey)
+select payload
+from agent_command
+where task_id = $1
+  and command_type = 'assign'
+order by created_at desc
+limit 1
+`, taskID).Scan(&payloadBytes); err != nil {
+		t.Fatalf("load agent command payload: %v", err)
 	}
 
-	var payload commands.AssignTaskOutboxPayload
+	var payload commands.AssignTaskCommandPayload
 	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
 		t.Fatalf("unmarshal payload: %v", err)
 	}
@@ -585,17 +606,19 @@ func TestAssignTaskHandlerWithTxReturnsNilWhenTaskRepoHasNoPendingTask(t *testin
 		t.Fatalf("expected nil assigned task on empty queue, got %+v", assigned)
 	}
 
-	outboxRepo := NewOutboxRepo(pool)
-	entries, err := outboxRepo.ClaimDue(ctx, 1, time.Now().Add(time.Minute))
-	if err != nil {
-		t.Fatalf("claim due outbox: %v", err)
+	var commandCount int
+	if err := pool.QueryRow(ctx, `
+select count(*)
+from agent_command
+`).Scan(&commandCount); err != nil {
+		t.Fatalf("count agent commands: %v", err)
 	}
-	if len(entries) != 0 {
-		t.Fatalf("expected no outbox entries on empty queue, got %+v", entries)
+	if commandCount != 0 {
+		t.Fatalf("expected no commands on empty queue, got %d", commandCount)
 	}
 }
 
-func TestAssignTaskHandlerWithTxRollsBackClaimWhenOutboxAppendFails(t *testing.T) {
+func TestAssignTaskHandlerWithTxRollsBackClaimWhenCommandAppendFails(t *testing.T) {
 	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
 
 	ctx := context.Background()
@@ -637,7 +660,7 @@ func TestAssignTaskHandlerWithTxRollsBackClaimWhenOutboxAppendFails(t *testing.T
 		LeaderEpoch: 9,
 	})
 	if err == nil {
-		t.Fatal("expected append failure")
+		t.Fatal("expected command append failure")
 	}
 	if assigned != nil {
 		t.Fatalf("expected nil task when append fails, got %+v", assigned)
@@ -666,7 +689,7 @@ where id = $1
 	}
 }
 
-func TestCancelTaskHandlerWritesFrozenStopOutboxForAssignedTask(t *testing.T) {
+func TestCancelTaskHandlerAppendsCancelCommandForAssignedTask(t *testing.T) {
 	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
 
 	ctx := context.Background()
@@ -711,12 +734,16 @@ func TestCancelTaskHandlerWritesFrozenStopOutboxForAssignedTask(t *testing.T) {
 		t.Fatalf("create task: %v", err)
 	}
 
-	assigned, err := taskRepo.AssignPendingTask(ctx, AssignTaskParams{
-		AssignedAgentID: "agent-cancel-1",
-		LeaderEpoch:     lease.Epoch,
+	seedAssignableAgent(t, ctx, pool, "agent-cancel-1", []string{})
+	assignHandler := commands.NewAssignTaskHandlerWithTx(NewAssignTaskTxRunner(pool), pickFirstAgentSelector{})
+	assigned, err := assignHandler.Handle(ctx, commands.AssignTaskCommand{
+		LeaderEpoch: lease.Epoch,
 	})
 	if err != nil {
-		t.Fatalf("assign task: %v", err)
+		t.Fatalf("assign task through handler: %v", err)
+	}
+	if assigned == nil {
+		t.Fatal("expected assigned task")
 	}
 
 	handler := commands.NewCancelTaskHandlerWithTx(NewCancelTaskTxRunner(pool))
@@ -731,22 +758,24 @@ func TestCancelTaskHandlerWritesFrozenStopOutboxForAssignedTask(t *testing.T) {
 	var payloadBytes []byte
 	if err := pool.QueryRow(ctx, `
 select payload
-from runtime_outbox
-where aggregate_id = $1
-  and topic = $2
-`, taskID.String(), commands.StopTaskOutboxTopic).Scan(&payloadBytes); err != nil {
-		t.Fatalf("load stop outbox: %v", err)
+from agent_command
+where task_id = $1
+  and command_type = 'cancel'
+order by created_at desc
+limit 1
+`, taskID).Scan(&payloadBytes); err != nil {
+		t.Fatalf("load cancel command: %v", err)
 	}
 
-	var payload commands.StopTaskOutboxPayload
+	var payload commands.StopTaskCommandPayload
 	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
 		t.Fatalf("unmarshal stop payload: %v", err)
 	}
 	if payload.TaskID != taskID {
 		t.Fatalf("expected task id %s, got %s", taskID, payload.TaskID)
 	}
-	if payload.ExecutionID != assigned.CurrentExecutionID {
-		t.Fatalf("expected execution id %q, got %q", assigned.CurrentExecutionID, payload.ExecutionID)
+	if payload.ExecutionID != assigned.ExecutionID {
+		t.Fatalf("expected execution id %q, got %q", assigned.ExecutionID, payload.ExecutionID)
 	}
 	if payload.AgentID != "agent-cancel-1" {
 		t.Fatalf("expected agent id agent-cancel-1, got %q", payload.AgentID)
@@ -759,7 +788,7 @@ where aggregate_id = $1
 	}
 }
 
-func TestCancelTaskHandlerLeavesAssignedTaskUnchangedWhenStopOutboxAppendFails(t *testing.T) {
+func TestCancelTaskHandlerLeavesAssignedTaskUnchangedWhenCancelCommandAppendFails(t *testing.T) {
 	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
 
 	ctx := context.Background()
@@ -804,18 +833,22 @@ func TestCancelTaskHandlerLeavesAssignedTaskUnchangedWhenStopOutboxAppendFails(t
 		t.Fatalf("create task: %v", err)
 	}
 
-	assigned, err := taskRepo.AssignPendingTask(ctx, AssignTaskParams{
-		AssignedAgentID: "agent-cancel-rollback-1",
-		LeaderEpoch:     lease.Epoch,
+	seedAssignableAgent(t, ctx, pool, "agent-cancel-rollback-1", []string{})
+	assignHandler := commands.NewAssignTaskHandlerWithTx(NewAssignTaskTxRunner(pool), pickFirstAgentSelector{})
+	assigned, err := assignHandler.Handle(ctx, commands.AssignTaskCommand{
+		LeaderEpoch: lease.Epoch,
 	})
 	if err != nil {
-		t.Fatalf("assign task: %v", err)
+		t.Fatalf("assign task through handler: %v", err)
+	}
+	if assigned == nil {
+		t.Fatal("expected assigned task")
 	}
 
 	handler := commands.NewCancelTaskHandlerWithTx(newFailingCancelTaskTxRunner(pool))
 	canceled, err := handler.Handle(ctx, commands.CancelTaskCommand{TaskID: taskID})
 	if err == nil {
-		t.Fatal("expected stop outbox append failure")
+		t.Fatal("expected cancel command append failure")
 	}
 	if canceled != nil {
 		t.Fatalf("expected nil task when append fails, got %+v", canceled)
@@ -836,8 +869,8 @@ where id = $1
 	if status != "assigned" {
 		t.Fatalf("expected assigned status after rollback, got %q", status)
 	}
-	if currentExecutionID != assigned.CurrentExecutionID {
-		t.Fatalf("expected execution id %q to be preserved, got %q", assigned.CurrentExecutionID, currentExecutionID)
+	if currentExecutionID != assigned.ExecutionID {
+		t.Fatalf("expected execution id %q to be preserved, got %q", assigned.ExecutionID, currentExecutionID)
 	}
 	if assignedAgentID != "agent-cancel-rollback-1" {
 		t.Fatalf("expected assigned agent id agent-cancel-rollback-1, got %q", assignedAgentID)
@@ -989,199 +1022,6 @@ where id = $1
 	}
 	if assignedAgentID != "agent-1" || executionID != "exec-1" {
 		t.Fatalf("unexpected runtime task payload after rollback: assigned_agent_id=%q execution_id=%q", assignedAgentID, executionID)
-	}
-}
-
-func TestOutboxRepoDefaultsIdempotencyKeyWithPayloadSpecificity(t *testing.T) {
-	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
-
-	ctx := context.Background()
-	container, dsn := startRuntimePostgres(t, ctx)
-	defer func() {
-		_ = testcontainers.TerminateContainer(container)
-	}()
-
-	sqlDB, err := sql.Open("pgx", dsn)
-	if err != nil {
-		t.Fatalf("open sql db: %v", err)
-	}
-	defer sqlDB.Close()
-
-	goose.SetDialect("postgres")
-	if err := goose.Up(sqlDB, runtimeMigrationsDir(t)); err != nil {
-		t.Fatalf("run migrations: %v", err)
-	}
-
-	pool, err := appdb.NewPool(ctx, dsn)
-	if err != nil {
-		t.Fatalf("create pool: %v", err)
-	}
-	defer pool.Close()
-
-	outboxRepo := NewOutboxRepo(pool)
-	aggregateID := uuid.NewString()
-	entryA, err := outboxRepo.Append(ctx, AppendOutboxParams{
-		Topic:       "runtime.task.assign.v1",
-		AggregateID: aggregateID,
-		Payload:     []byte(`{"task_id":"` + aggregateID + `","execution_id":"exec-a"}`),
-	})
-	if err != nil {
-		t.Fatalf("append outbox a: %v", err)
-	}
-	entryB, err := outboxRepo.Append(ctx, AppendOutboxParams{
-		Topic:       "runtime.task.assign.v1",
-		AggregateID: aggregateID,
-		Payload:     []byte(`{"task_id":"` + aggregateID + `","execution_id":"exec-b"}`),
-	})
-	if err != nil {
-		t.Fatalf("append outbox b: %v", err)
-	}
-
-	if entryA.IdempotencyKey == "" || entryB.IdempotencyKey == "" {
-		t.Fatalf("expected idempotency keys, got a=%q b=%q", entryA.IdempotencyKey, entryB.IdempotencyKey)
-	}
-	if entryA.IdempotencyKey == entryB.IdempotencyKey {
-		t.Fatalf("expected payload-specific idempotency keys, got identical %q", entryA.IdempotencyKey)
-	}
-
-	explicit, err := outboxRepo.Append(ctx, AppendOutboxParams{
-		Topic:          "runtime.task.assign.v1",
-		AggregateID:    aggregateID,
-		IdempotencyKey: "runtime.task.assign.v1:logical-effect:1",
-		Payload:        []byte(`{"task_id":"` + aggregateID + `","execution_id":"exec-explicit"}`),
-	})
-	if err != nil {
-		t.Fatalf("append outbox explicit: %v", err)
-	}
-	if explicit.IdempotencyKey != "runtime.task.assign.v1:logical-effect:1" {
-		t.Fatalf("expected explicit idempotency key to be preserved, got %q", explicit.IdempotencyKey)
-	}
-}
-
-func TestOutboxRepoRejectsStaleClaimMarks(t *testing.T) {
-	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
-
-	ctx := context.Background()
-	container, dsn := startRuntimePostgres(t, ctx)
-	defer func() {
-		_ = testcontainers.TerminateContainer(container)
-	}()
-
-	sqlDB, err := sql.Open("pgx", dsn)
-	if err != nil {
-		t.Fatalf("open sql db: %v", err)
-	}
-	defer sqlDB.Close()
-
-	goose.SetDialect("postgres")
-	if err := goose.Up(sqlDB, runtimeMigrationsDir(t)); err != nil {
-		t.Fatalf("run migrations: %v", err)
-	}
-
-	pool, err := appdb.NewPool(ctx, dsn)
-	if err != nil {
-		t.Fatalf("create pool: %v", err)
-	}
-	defer pool.Close()
-
-	outboxRepo := NewOutboxRepo(pool)
-	entry, err := outboxRepo.Append(ctx, AppendOutboxParams{
-		Topic:       "runtime.task.assign.v1",
-		AggregateID: uuid.NewString(),
-		Payload:     []byte(`{"task_id":"` + uuid.NewString() + `"}`),
-	})
-	if err != nil {
-		t.Fatalf("append outbox: %v", err)
-	}
-
-	worker1ClaimUntil := time.Now().Add(40 * time.Millisecond)
-	worker1Claim, err := outboxRepo.ClaimDue(ctx, 1, worker1ClaimUntil)
-	if err != nil {
-		t.Fatalf("worker1 claim due: %v", err)
-	}
-	if len(worker1Claim) != 1 || worker1Claim[0].ID != entry.ID {
-		t.Fatalf("unexpected worker1 claim: %+v", worker1Claim)
-	}
-
-	time.Sleep(80 * time.Millisecond)
-
-	worker2ClaimUntil := time.Now().Add(2 * time.Minute)
-	worker2Claim, err := outboxRepo.ClaimDue(ctx, 1, worker2ClaimUntil)
-	if err != nil {
-		t.Fatalf("worker2 claim due: %v", err)
-	}
-	if len(worker2Claim) != 1 || worker2Claim[0].ID != entry.ID {
-		t.Fatalf("unexpected worker2 claim: %+v", worker2Claim)
-	}
-
-	staleRetryAt := time.Now().Add(time.Minute)
-	err = outboxRepo.MarkRetry(ctx, entry.ID, worker1Claim[0].AvailableAt, staleRetryAt, "temporary failure")
-	if !errors.Is(err, ErrOutboxClaimExpired) {
-		t.Fatalf("expected stale retry to fail with ErrOutboxClaimExpired, got %v", err)
-	}
-
-	err = outboxRepo.MarkPublished(ctx, entry.ID, worker1Claim[0].AvailableAt)
-	if !errors.Is(err, ErrOutboxClaimExpired) {
-		t.Fatalf("expected stale publish to fail with ErrOutboxClaimExpired, got %v", err)
-	}
-
-	retryAt := time.Now().Add(-time.Second)
-	if err := outboxRepo.MarkRetry(ctx, entry.ID, worker2Claim[0].AvailableAt, retryAt, "temporary failure"); err != nil {
-		t.Fatalf("mark current claim retry: %v", err)
-	}
-
-	var (
-		availableAt  time.Time
-		attemptCount int32
-		lastError    sql.NullString
-	)
-	err = pool.QueryRow(ctx, `
-select available_at, attempt_count, last_error
-from runtime_outbox
-where id = $1
-`, entry.ID).Scan(&availableAt, &attemptCount, &lastError)
-	if err != nil {
-		t.Fatalf("load retried outbox: %v", err)
-	}
-	if availableAt.After(time.Now()) {
-		t.Fatalf("expected retry entry to be immediately available, got %s", availableAt)
-	}
-	if attemptCount != 2 {
-		t.Fatalf("expected attempt count to remain 2 after retry mark, got %d", attemptCount)
-	}
-	if !lastError.Valid || lastError.String != "temporary failure" {
-		t.Fatalf("expected retry error to be stored, got %+v", lastError)
-	}
-
-	reclaimed, err := outboxRepo.ClaimDue(ctx, 1, time.Now().Add(4*time.Minute))
-	if err != nil {
-		t.Fatalf("reclaim due outbox: %v", err)
-	}
-	if len(reclaimed) != 1 || reclaimed[0].ID != entry.ID {
-		t.Fatalf("unexpected reclaimed entries: %+v", reclaimed)
-	}
-
-	if err := outboxRepo.MarkPublished(ctx, entry.ID, reclaimed[0].AvailableAt); err != nil {
-		t.Fatalf("mark outbox published: %v", err)
-	}
-
-	var publishedAt sql.NullTime
-	err = pool.QueryRow(ctx, `
-select published_at, last_error, attempt_count
-from runtime_outbox
-where id = $1
-`, entry.ID).Scan(&publishedAt, &lastError, &attemptCount)
-	if err != nil {
-		t.Fatalf("load published outbox: %v", err)
-	}
-	if !publishedAt.Valid {
-		t.Fatal("expected published_at to be set")
-	}
-	if lastError.Valid {
-		t.Fatalf("expected last_error to be cleared, got %q", lastError.String)
-	}
-	if attemptCount != 3 {
-		t.Fatalf("expected third claim to increment attempt count to 3, got %d", attemptCount)
 	}
 }
 
@@ -1552,11 +1392,7 @@ func (s failingAssignTaskTxStore) AssignClaimedTask(ctx context.Context, params 
 }
 
 func (failingAssignTaskTxStore) AppendAssignCommand(context.Context, commands.AppendAssignTaskCommandParams) error {
-	return nil
-}
-
-func (failingAssignTaskTxStore) Append(context.Context, commands.OutboxEvent) error {
-	return errors.New("append failed")
+	return errors.New("append command failed")
 }
 
 type failingCancelTaskTxRunner struct {
@@ -1570,13 +1406,17 @@ func newFailingCancelTaskTxRunner(pool *pgxpool.Pool) *failingCancelTaskTxRunner
 func (r *failingCancelTaskTxRunner) InTx(ctx context.Context, fn func(store commands.CancelTaskStore) error) error {
 	return r.tx.InTx(ctx, func(tx pgx.Tx) error {
 		return fn(failingCancelTaskTxStore{
-			tasks: newTaskRepo(sqlcdb.New(tx)),
+			tasks:       newTaskRepo(sqlcdb.New(tx)),
+			assignments: newTaskAssignmentRepo(sqlcdb.New(tx)),
+			agents:      newAgentRepo(sqlcdb.New(tx)),
 		})
 	})
 }
 
 type failingCancelTaskTxStore struct {
-	tasks *TaskRepo
+	tasks       *TaskRepo
+	assignments *TaskAssignmentRepo
+	agents      *AgentRepo
 }
 
 func (s failingCancelTaskTxStore) GetTask(ctx context.Context, taskID uuid.UUID) (*commands.TaskRecord, error) {
@@ -1587,22 +1427,31 @@ func (s failingCancelTaskTxStore) UpdateTask(ctx context.Context, update command
 	return s.tasks.UpdateTask(ctx, update)
 }
 
-// 这个回滚用例构造的是没有 assignment 真相的老 assigned 任务；
-// 因此 cancel handler 不会走 agent_command 分支，这里只需要给接口补最小桩实现。
-func (failingCancelTaskTxStore) GetTaskAssignmentByExecutionID(context.Context, string) (*commands.TaskAssignmentRecord, error) {
-	return nil, nil
+func (s failingCancelTaskTxStore) GetTaskAssignmentByExecutionID(ctx context.Context, executionID string) (*commands.TaskAssignmentRecord, error) {
+	assignment, err := s.assignments.GetByExecutionID(ctx, executionID)
+	if err != nil || assignment == nil {
+		return nil, err
+	}
+	return &commands.TaskAssignmentRecord{
+		ID:          assignment.ID,
+		TaskID:      assignment.TaskID,
+		Attempt:     assignment.Attempt,
+		AgentID:     assignment.AgentID,
+		ExecutionID: assignment.ExecutionID,
+		Status:      assignment.Status,
+	}, nil
 }
 
-func (failingCancelTaskTxStore) GetAgentByID(context.Context, string) (*commands.AgentRecord, error) {
-	return nil, nil
+func (s failingCancelTaskTxStore) GetAgentByID(ctx context.Context, agentID string) (*commands.AgentRecord, error) {
+	agent, err := s.agents.GetByID(ctx, agentID)
+	if err != nil || agent == nil {
+		return nil, err
+	}
+	return commandsAgentFromRepo(agent), nil
 }
 
 func (failingCancelTaskTxStore) AppendCancelCommand(context.Context, commands.AppendCancelTaskCommandParams) error {
-	return nil
-}
-
-func (failingCancelTaskTxStore) Append(context.Context, commands.OutboxEvent) error {
-	return errors.New("append failed")
+	return errors.New("append cancel command failed")
 }
 
 func startRuntimePostgres(t *testing.T, ctx context.Context) (*postgres.PostgresContainer, string) {

@@ -23,14 +23,13 @@ func NewAssignTaskTxRunner(pool *pgxpool.Pool) *AssignTaskTxRunner {
 func (r *AssignTaskTxRunner) InTx(ctx context.Context, fn func(store commands.AssignTaskTx) error) error {
 	return r.tx.InTx(ctx, func(tx pgx.Tx) error {
 		q := sqlcdb.New(tx)
-		// assign 主链路在一个事务里同时碰 task/agent/assignment/command/outbox，
-		// 这样迁移窗口里不会出现“任务状态、agent_command、兼容 outbox”三边不一致。
+		// 关键设计：assign 主链路必须在一个事务里同时碰 task/agent/assignment/command，
+		// 这样 task 状态与 agent_command 真相不会出现“只成功一半”的撕裂。
 		return fn(assignTaskTxStore{
 			tasks:       newTaskRepo(q),
 			agents:      newAgentRepo(q),
 			assignments: newTaskAssignmentRepo(q),
 			commands:    newAgentCommandRepo(q),
-			outbox:      newCommandOutboxWriter(newOutboxRepo(q)),
 		})
 	})
 }
@@ -40,7 +39,6 @@ type assignTaskTxStore struct {
 	agents      *AgentRepo
 	assignments *TaskAssignmentRepo
 	commands    *AgentCommandRepo
-	outbox      *CommandOutboxWriter
 }
 
 func (s assignTaskTxStore) ClaimPendingTask(ctx context.Context) (*commands.PendingTask, error) {
@@ -98,8 +96,4 @@ func (s assignTaskTxStore) AppendAssignCommand(ctx context.Context, params comma
 		ExpireAt:      params.ExpireAt,
 	})
 	return err
-}
-
-func (s assignTaskTxStore) Append(ctx context.Context, event commands.OutboxEvent) error {
-	return s.outbox.Append(ctx, event)
 }

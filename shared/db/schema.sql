@@ -3,8 +3,8 @@
 --
 
 
--- Dumped from database version 16.11
--- Dumped by pg_dump version 16.11
+-- Dumped from database version 16.13 (Debian 16.13-1.pgdg13+1)
+-- Dumped by pg_dump version 16.13 (Debian 16.13-1.pgdg13+1)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -185,15 +185,6 @@ CREATE TYPE public.import_upload_session_status AS ENUM (
 
 
 --
--- Name: runtime_executor_status; Type: TYPE; Schema: public; Owner: -
---
-
-CREATE TYPE public.runtime_executor_status AS ENUM (
-    'online'
-);
-
-
---
 -- Name: runtime_task_kind; Type: TYPE; Schema: public; Owner: -
 --
 
@@ -287,6 +278,21 @@ CREATE TABLE public.agent_command (
     acked_at timestamp with time zone,
     finished_at timestamp with time zone,
     last_error text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: agent_session; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.agent_session (
+    session_id text NOT NULL,
+    agent_id text NOT NULL,
+    relay_id text NOT NULL,
+    connected_at timestamp with time zone NOT NULL,
+    last_seen_at timestamp with time zone NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL
 );
@@ -527,21 +533,6 @@ CREATE TABLE public.project_dataset (
 
 
 --
--- Name: runtime_executor; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.runtime_executor (
-    id text NOT NULL,
-    version text NOT NULL,
-    capabilities text[] DEFAULT '{}'::text[] NOT NULL,
-    status public.runtime_executor_status DEFAULT 'online'::public.runtime_executor_status NOT NULL,
-    last_seen_at timestamp with time zone NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL
-);
-
-
---
 -- Name: runtime_lease; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -552,44 +543,6 @@ CREATE TABLE public.runtime_lease (
     lease_until timestamp with time zone NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL
 );
-
-
---
--- Name: runtime_outbox; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.runtime_outbox (
-    id bigint NOT NULL,
-    topic text NOT NULL,
-    aggregate_type text DEFAULT 'task'::text NOT NULL,
-    aggregate_id text NOT NULL,
-    idempotency_key text NOT NULL,
-    payload jsonb NOT NULL,
-    available_at timestamp with time zone DEFAULT now() NOT NULL,
-    attempt_count integer DEFAULT 0 NOT NULL,
-    last_error text,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    published_at timestamp with time zone
-);
-
-
---
--- Name: runtime_outbox_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-CREATE SEQUENCE public.runtime_outbox_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: runtime_outbox_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE public.runtime_outbox_id_seq OWNED BY public.runtime_outbox.id;
 
 
 --
@@ -704,13 +657,6 @@ ALTER TABLE ONLY public.import_task_event ALTER COLUMN seq SET DEFAULT nextval('
 
 
 --
--- Name: runtime_outbox id; Type: DEFAULT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.runtime_outbox ALTER COLUMN id SET DEFAULT nextval('public.runtime_outbox_id_seq'::regclass);
-
-
---
 -- Name: sample_match_ref id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -770,6 +716,22 @@ ALTER TABLE ONLY public.agent_command
 
 ALTER TABLE ONLY public.agent
     ADD CONSTRAINT agent_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: agent_session agent_session_agent_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.agent_session
+    ADD CONSTRAINT agent_session_agent_id_key UNIQUE (agent_id);
+
+
+--
+-- Name: agent_session agent_session_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.agent_session
+    ADD CONSTRAINT agent_session_pkey PRIMARY KEY (session_id);
 
 
 --
@@ -885,27 +847,11 @@ ALTER TABLE ONLY public.project
 
 
 --
--- Name: runtime_executor runtime_executor_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.runtime_executor
-    ADD CONSTRAINT runtime_executor_pkey PRIMARY KEY (id);
-
-
---
 -- Name: runtime_lease runtime_lease_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.runtime_lease
     ADD CONSTRAINT runtime_lease_pkey PRIMARY KEY (name);
-
-
---
--- Name: runtime_outbox runtime_outbox_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.runtime_outbox
-    ADD CONSTRAINT runtime_outbox_pkey PRIMARY KEY (id);
 
 
 --
@@ -982,6 +928,13 @@ CREATE INDEX agent_command_push_due_idx ON public.agent_command USING btree (ava
 --
 
 CREATE INDEX agent_last_seen_at_idx ON public.agent USING btree (last_seen_at DESC);
+
+
+--
+-- Name: agent_session_relay_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX agent_session_relay_id_idx ON public.agent_session USING btree (relay_id, updated_at DESC);
 
 
 --
@@ -1083,20 +1036,6 @@ CREATE INDEX idx_sample_match_ref_exact ON public.sample_match_ref USING btree (
 
 
 --
--- Name: runtime_outbox_due_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX runtime_outbox_due_idx ON public.runtime_outbox USING btree (available_at, id) WHERE (published_at IS NULL);
-
-
---
--- Name: runtime_outbox_idempotency_key_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX runtime_outbox_idempotency_key_idx ON public.runtime_outbox USING btree (idempotency_key);
-
-
---
 -- Name: task_assignment_agent_created_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1133,6 +1072,14 @@ ALTER TABLE ONLY public.agent_command
 
 ALTER TABLE ONLY public.agent_command
     ADD CONSTRAINT agent_command_task_id_fkey FOREIGN KEY (task_id) REFERENCES public.runtime_task(id) ON DELETE CASCADE;
+
+
+--
+-- Name: agent_session agent_session_agent_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.agent_session
+    ADD CONSTRAINT agent_session_agent_id_fkey FOREIGN KEY (agent_id) REFERENCES public.agent(id) ON DELETE CASCADE;
 
 
 --
@@ -1250,3 +1197,5 @@ ALTER TABLE ONLY public.task_assignment
 --
 -- PostgreSQL database dump complete
 --
+
+

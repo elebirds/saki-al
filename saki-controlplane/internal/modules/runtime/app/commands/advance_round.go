@@ -2,7 +2,6 @@ package commands
 
 import (
 	"context"
-	"encoding/json"
 )
 
 type RoundRecord struct {
@@ -26,13 +25,11 @@ type AdvanceRoundCommand struct {
 
 type AdvanceRoundHandler struct {
 	rounds RoundStore
-	outbox OutboxWriter
 }
 
-func NewAdvanceRoundHandler(rounds RoundStore, outbox OutboxWriter) *AdvanceRoundHandler {
+func NewAdvanceRoundHandler(rounds RoundStore) *AdvanceRoundHandler {
 	return &AdvanceRoundHandler{
 		rounds: rounds,
-		outbox: outbox,
 	}
 }
 
@@ -47,25 +44,6 @@ func (h *AdvanceRoundHandler) Handle(ctx context.Context, cmd AdvanceRoundComman
 		Status: "completed",
 	}
 	if err := h.rounds.UpdateRound(ctx, update); err != nil {
-		return nil, err
-	}
-
-	payload, err := json.Marshal(struct {
-		RoundID string `json:"round_id"`
-		Status  string `json:"status"`
-	}{
-		RoundID: round.ID,
-		Status:  update.Status,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	if err := h.outbox.Append(ctx, OutboxEvent{
-		Topic:       "runtime.round.advanced",
-		AggregateID: round.ID,
-		Payload:     payload,
-	}); err != nil {
 		return nil, err
 	}
 

@@ -29,7 +29,6 @@ func (r *CancelTaskTxRunner) InTx(ctx context.Context, fn func(store commands.Ca
 			assignments: newTaskAssignmentRepo(q),
 			agents:      newAgentRepo(q),
 			commands:    newAgentCommandRepo(q),
-			outbox:      newCommandOutboxWriter(newOutboxRepo(q)),
 		})
 	})
 }
@@ -39,7 +38,6 @@ type cancelTaskTxStore struct {
 	assignments *TaskAssignmentRepo
 	agents      *AgentRepo
 	commands    *AgentCommandRepo
-	outbox      *CommandOutboxWriter
 }
 
 func (s cancelTaskTxStore) GetTask(ctx context.Context, taskID uuid.UUID) (*commands.TaskRecord, error) {
@@ -88,8 +86,4 @@ func (s cancelTaskTxStore) AppendCancelCommand(ctx context.Context, params comma
 		ExpireAt:      params.ExpireAt,
 	})
 	return err
-}
-
-func (s cancelTaskTxStore) Append(ctx context.Context, event commands.OutboxEvent) error {
-	return s.outbox.Append(ctx, event)
 }

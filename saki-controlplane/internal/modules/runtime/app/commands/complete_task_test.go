@@ -11,7 +11,7 @@ import (
 	"github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/state"
 )
 
-func TestCompleteTaskCommandCompletesRunningTaskAndAppendsOutbox(t *testing.T) {
+func TestCompleteTaskCommandCompletesRunningTask(t *testing.T) {
 	taskID := uuid.New()
 	taskStore := &completeTaskStore{
 		task: &TaskRecord{
@@ -22,9 +22,7 @@ func TestCompleteTaskCommandCompletesRunningTaskAndAppendsOutbox(t *testing.T) {
 			LeaderEpoch:        7,
 		},
 	}
-	outbox := &fakeOutboxWriter{}
-
-	handler := NewCompleteTaskHandler(taskStore, outbox)
+	handler := NewCompleteTaskHandler(taskStore)
 	completed, err := handler.Handle(context.Background(), CompleteTaskCommand{
 		TaskID:      taskID,
 		ExecutionID: "exec-1",
@@ -39,9 +37,6 @@ func TestCompleteTaskCommandCompletesRunningTaskAndAppendsOutbox(t *testing.T) {
 	if taskStore.updated == nil || taskStore.updated.Status != string(state.TaskStatusSucceeded) {
 		t.Fatalf("expected succeeded status update, got %+v", taskStore.updated)
 	}
-	if outbox.last == nil || outbox.last.Topic != "runtime.task.completed" {
-		t.Fatalf("expected runtime.task.completed outbox event, got %+v", outbox.last)
-	}
 }
 
 func TestCompleteTaskCommandRejectsAssignedTask(t *testing.T) {
@@ -55,9 +50,7 @@ func TestCompleteTaskCommandRejectsAssignedTask(t *testing.T) {
 			LeaderEpoch:        7,
 		},
 	}
-	outbox := &fakeOutboxWriter{}
-
-	handler := NewCompleteTaskHandler(taskStore, outbox)
+	handler := NewCompleteTaskHandler(taskStore)
 	completed, err := handler.Handle(context.Background(), CompleteTaskCommand{
 		TaskID:      taskID,
 		ExecutionID: "exec-1",
@@ -71,12 +64,9 @@ func TestCompleteTaskCommandRejectsAssignedTask(t *testing.T) {
 	if taskStore.updated != nil {
 		t.Fatalf("did not expect task update on invalid transition, got %+v", taskStore.updated)
 	}
-	if outbox.last != nil {
-		t.Fatalf("did not expect outbox event on invalid transition, got %+v", outbox.last)
-	}
 }
 
-func TestCompleteTaskCommandCompletesCancelRequestedTaskAndAppendsOutbox(t *testing.T) {
+func TestCompleteTaskCommandCompletesCancelRequestedTask(t *testing.T) {
 	taskID := uuid.New()
 	taskStore := &completeTaskStore{
 		task: &TaskRecord{
@@ -87,9 +77,7 @@ func TestCompleteTaskCommandCompletesCancelRequestedTaskAndAppendsOutbox(t *test
 			LeaderEpoch:        7,
 		},
 	}
-	outbox := &fakeOutboxWriter{}
-
-	handler := NewCompleteTaskHandler(taskStore, outbox)
+	handler := NewCompleteTaskHandler(taskStore)
 	completed, err := handler.Handle(context.Background(), CompleteTaskCommand{
 		TaskID:      taskID,
 		ExecutionID: "exec-1",
@@ -102,9 +90,6 @@ func TestCompleteTaskCommandCompletesCancelRequestedTaskAndAppendsOutbox(t *test
 	}
 	if taskStore.updated == nil || taskStore.updated.Status != string(state.TaskStatusSucceeded) {
 		t.Fatalf("expected succeeded update, got %+v", taskStore.updated)
-	}
-	if outbox.last == nil || outbox.last.Topic != "runtime.task.completed" {
-		t.Fatalf("expected runtime.task.completed outbox event, got %+v", outbox.last)
 	}
 }
 
@@ -119,9 +104,7 @@ func TestCompleteTaskCommandIgnoresStaleExecutionID(t *testing.T) {
 			LeaderEpoch:        7,
 		},
 	}
-	outbox := &fakeOutboxWriter{}
-
-	handler := NewCompleteTaskHandler(taskStore, outbox)
+	handler := NewCompleteTaskHandler(taskStore)
 	completed, err := handler.Handle(context.Background(), CompleteTaskCommand{
 		TaskID:      taskID,
 		ExecutionID: "exec-stale",
@@ -134,9 +117,6 @@ func TestCompleteTaskCommandIgnoresStaleExecutionID(t *testing.T) {
 	}
 	if taskStore.updated != nil {
 		t.Fatalf("did not expect update for stale execution, got %+v", taskStore.updated)
-	}
-	if outbox.last != nil {
-		t.Fatalf("did not expect outbox for stale execution, got %+v", outbox.last)
 	}
 }
 

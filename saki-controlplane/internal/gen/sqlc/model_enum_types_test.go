@@ -10,7 +10,6 @@ func TestGeneratedEnumTypes(t *testing.T) {
 
 	assertFieldTypeName(t, RuntimeTask{}, "Status", "RuntimeTaskStatus")
 	assertFieldTypeName(t, RuntimeTask{}, "TaskKind", "RuntimeTaskKind")
-	assertFieldTypeName(t, RuntimeExecutor{}, "Status", "RuntimeExecutorStatus")
 	assertFieldTypeName(t, ImportTask{}, "Status", "ImportTaskStatus")
 	assertFieldTypeName(t, ImportTaskEvent{}, "Phase", "ImportTaskEventPhase")
 	assertFieldTypeName(t, ImportUploadSession{}, "Status", "ImportUploadSessionStatus")

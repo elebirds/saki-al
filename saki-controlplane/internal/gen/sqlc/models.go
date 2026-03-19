@@ -613,47 +613,6 @@ func (ns NullImportUploadSessionStatus) Value() (driver.Value, error) {
 	return string(ns.ImportUploadSessionStatus), nil
 }
 
-type RuntimeExecutorStatus string
-
-const (
-	RuntimeExecutorStatusOnline RuntimeExecutorStatus = "online"
-)
-
-func (e *RuntimeExecutorStatus) Scan(src interface{}) error {
-	switch s := src.(type) {
-	case []byte:
-		*e = RuntimeExecutorStatus(s)
-	case string:
-		*e = RuntimeExecutorStatus(s)
-	default:
-		return fmt.Errorf("unsupported scan type for RuntimeExecutorStatus: %T", src)
-	}
-	return nil
-}
-
-type NullRuntimeExecutorStatus struct {
-	RuntimeExecutorStatus RuntimeExecutorStatus `json:"runtime_executor_status"`
-	Valid                 bool                  `json:"valid"` // Valid is true if RuntimeExecutorStatus is not NULL
-}
-
-// Scan implements the Scanner interface.
-func (ns *NullRuntimeExecutorStatus) Scan(value interface{}) error {
-	if value == nil {
-		ns.RuntimeExecutorStatus, ns.Valid = "", false
-		return nil
-	}
-	ns.Valid = true
-	return ns.RuntimeExecutorStatus.Scan(value)
-}
-
-// Value implements the driver Valuer interface.
-func (ns NullRuntimeExecutorStatus) Value() (driver.Value, error) {
-	if !ns.Valid {
-		return nil, nil
-	}
-	return string(ns.RuntimeExecutorStatus), nil
-}
-
 type RuntimeTaskKind string
 
 const (
@@ -793,6 +752,16 @@ type AgentCommand struct {
 	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
 }
 
+type AgentSession struct {
+	SessionID   string             `json:"session_id"`
+	AgentID     string             `json:"agent_id"`
+	RelayID     string             `json:"relay_id"`
+	ConnectedAt pgtype.Timestamptz `json:"connected_at"`
+	LastSeenAt  pgtype.Timestamptz `json:"last_seen_at"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
 type Annotation struct {
 	ID             uuid.UUID          `json:"id"`
 	ProjectID      uuid.UUID          `json:"project_id"`
@@ -927,36 +896,12 @@ type ProjectDataset struct {
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }
 
-type RuntimeExecutor struct {
-	ID           string                `json:"id"`
-	Version      string                `json:"version"`
-	Capabilities []string              `json:"capabilities"`
-	Status       RuntimeExecutorStatus `json:"status"`
-	LastSeenAt   pgtype.Timestamptz    `json:"last_seen_at"`
-	CreatedAt    pgtype.Timestamptz    `json:"created_at"`
-	UpdatedAt    pgtype.Timestamptz    `json:"updated_at"`
-}
-
 type RuntimeLease struct {
 	Name       string             `json:"name"`
 	Holder     string             `json:"holder"`
 	Epoch      int64              `json:"epoch"`
 	LeaseUntil pgtype.Timestamptz `json:"lease_until"`
 	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
-}
-
-type RuntimeOutbox struct {
-	ID             int64              `json:"id"`
-	Topic          string             `json:"topic"`
-	AggregateType  string             `json:"aggregate_type"`
-	AggregateID    string             `json:"aggregate_id"`
-	IdempotencyKey string             `json:"idempotency_key"`
-	Payload        []byte             `json:"payload"`
-	AvailableAt    pgtype.Timestamptz `json:"available_at"`
-	AttemptCount   int32              `json:"attempt_count"`
-	LastError      pgtype.Text        `json:"last_error"`
-	CreatedAt      pgtype.Timestamptz `json:"created_at"`
-	PublishedAt    pgtype.Timestamptz `json:"published_at"`
 }
 
 type RuntimeTask struct {

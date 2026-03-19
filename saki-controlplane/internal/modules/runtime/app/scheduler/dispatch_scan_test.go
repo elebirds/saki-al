@@ -78,11 +78,7 @@ func TestDispatchScan_SelectsBestAgentAndCreatesAssignment(t *testing.T) {
 	if store.command == nil || store.command.TransportMode != "pull" {
 		t.Fatalf("expected assign command to inherit selected transport mode, got %+v", store.command)
 	}
-	if store.lastOutbox == nil || store.lastOutbox.Topic != commands.AssignTaskOutboxTopic {
-		t.Fatalf("expected legacy outbox compatibility write, got %+v", store.lastOutbox)
-	}
-
-	var payload commands.AssignTaskOutboxPayload
+	var payload commands.AssignTaskCommandPayload
 	if err := json.Unmarshal(store.command.Payload, &payload); err != nil {
 		t.Fatalf("unmarshal command payload: %v", err)
 	}
@@ -118,8 +114,8 @@ func TestDispatchScan_DoesNothingWhenNoAgentIsAvailable(t *testing.T) {
 	if err := scan.Dispatch(context.Background(), DispatchCommand{LeaderEpoch: 17}); err != nil {
 		t.Fatalf("dispatch scan: %v", err)
 	}
-	if store.assignment != nil || store.command != nil || store.lastOutbox != nil || store.assignedTask != nil {
-		t.Fatalf("expected no side effects when no agent is available, got assignment=%+v command=%+v outbox=%+v assigned=%+v", store.assignment, store.command, store.lastOutbox, store.assignedTask)
+	if store.assignment != nil || store.command != nil || store.assignedTask != nil {
+		t.Fatalf("expected no side effects when no agent is available, got assignment=%+v command=%+v assigned=%+v", store.assignment, store.command, store.assignedTask)
 	}
 }
 
@@ -129,7 +125,6 @@ type fakeDispatchTaskStore struct {
 	assignment   *commands.CreateTaskAssignmentParams
 	assignedTask *commands.AssignClaimedTaskParams
 	command      *commands.AppendAssignTaskCommandParams
-	lastOutbox   *commands.OutboxEvent
 }
 
 func (f *fakeDispatchTaskStore) ClaimPendingTask(context.Context) (*commands.PendingTask, error) {
@@ -171,10 +166,5 @@ func (f *fakeDispatchTaskStore) AssignClaimedTask(_ context.Context, params comm
 
 func (f *fakeDispatchTaskStore) AppendAssignCommand(_ context.Context, params commands.AppendAssignTaskCommandParams) error {
 	f.command = &params
-	return nil
-}
-
-func (f *fakeDispatchTaskStore) Append(_ context.Context, event commands.OutboxEvent) error {
-	f.lastOutbox = &event
 	return nil
 }

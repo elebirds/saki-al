@@ -289,10 +289,6 @@ func (s *Server) ListRuntimeAgents(ctx context.Context) ([]openapi.RuntimeAgent,
 	return s.runtime.ListRuntimeAgents(ctx)
 }
 
-func (s *Server) ListRuntimeExecutors(ctx context.Context) ([]openapi.RuntimeAgent, error) {
-	return s.runtime.ListRuntimeExecutors(ctx)
-}
-
 func (s *Server) ListSampleAnnotations(ctx context.Context, params openapi.ListSampleAnnotationsParams) ([]openapi.Annotation, error) {
 	return s.annotation.ListSampleAnnotations(ctx, params)
 }

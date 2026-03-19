@@ -116,7 +116,7 @@ limit 1
 		t.Fatalf("load assign command: %v", err)
 	}
 
-	var assignPayload commands.AssignTaskOutboxPayload
+	var assignPayload commands.AssignTaskCommandPayload
 	if err := json.Unmarshal(assignPayloadBytes, &assignPayload); err != nil {
 		t.Fatalf("unmarshal assign payload: %v", err)
 	}
@@ -163,7 +163,7 @@ limit 1
 		noopRegisterAgentHandler{},
 		noopHeartbeatAgentHandler{},
 		commands.NewStartTaskHandler(taskRepo),
-		commands.NewCompleteTaskHandler(taskRepo, runtimerepo.NewCommandOutboxWriter(pool)),
+		commands.NewCompleteTaskHandler(taskRepo),
 		commands.NewFailTaskHandler(taskRepo),
 		commands.NewConfirmTaskCanceledHandler(taskRepo),
 	)
@@ -211,7 +211,7 @@ limit 1
 	}
 }
 
-func TestRuntimeTaskLifecycle_CancelPathWritesStopOutbox(t *testing.T) {
+func TestRuntimeTaskLifecycle_CancelPathPersistsStopCommand(t *testing.T) {
 	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
 
 	ctx := context.Background()
@@ -234,6 +234,8 @@ func TestRuntimeTaskLifecycle_CancelPathWritesStopOutbox(t *testing.T) {
 	}
 
 	taskRepo := runtimerepo.NewTaskRepo(pool)
+	agentRepo := runtimerepo.NewAgentRepo(pool)
+	assignmentRepo := runtimerepo.NewTaskAssignmentRepo(pool)
 	taskID := uuid.New()
 	if err := taskRepo.CreateTask(ctx, runtimerepo.CreateTaskParams{
 		ID:       taskID,
@@ -251,6 +253,24 @@ func TestRuntimeTaskLifecycle_CancelPathWritesStopOutbox(t *testing.T) {
 	}
 	if assigned == nil {
 		t.Fatal("expected assigned task")
+	}
+	if _, err := agentRepo.Upsert(ctx, runtimerepo.UpsertAgentParams{
+		ID:             "agent-e2e-2",
+		Version:        "test",
+		TransportMode:  "pull",
+		MaxConcurrency: 1,
+		LastSeenAt:     time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("register agent: %v", err)
+	}
+	if _, err := assignmentRepo.Create(ctx, runtimerepo.CreateTaskAssignmentParams{
+		TaskID:      taskID,
+		Attempt:     1,
+		AgentID:     "agent-e2e-2",
+		ExecutionID: assigned.CurrentExecutionID,
+		Status:      "assigned",
+	}); err != nil {
+		t.Fatalf("create assignment: %v", err)
 	}
 	t.Setenv("DATABASE_DSN", dsn)
 	t.Setenv("AUTH_TOKEN_SECRET", "runtime-e2e-secret")
@@ -297,31 +317,31 @@ func TestRuntimeTaskLifecycle_CancelPathWritesStopOutbox(t *testing.T) {
 	}
 
 	var payloadBytes []byte
-	var stopOutboxCount int
+	var stopCommandCount int
 	if err := pool.QueryRow(ctx, `
 select count(*)
-from runtime_outbox
-where aggregate_id = $1
-  and topic = $2
-`, taskID.String(), commands.StopTaskOutboxTopic).Scan(&stopOutboxCount); err != nil {
-		t.Fatalf("count stop outbox: %v", err)
+from agent_command
+where task_id = $1
+  and command_type = 'cancel'
+`, taskID).Scan(&stopCommandCount); err != nil {
+		t.Fatalf("count cancel commands: %v", err)
 	}
-	if stopOutboxCount != 1 {
-		t.Fatalf("expected exactly one stop outbox, got %d", stopOutboxCount)
+	if stopCommandCount != 1 {
+		t.Fatalf("expected exactly one cancel command, got %d", stopCommandCount)
 	}
 
 	if err := pool.QueryRow(ctx, `
 select payload
-from runtime_outbox
-where aggregate_id = $1
-  and topic = $2
-order by id desc
+from agent_command
+where task_id = $1
+  and command_type = 'cancel'
+order by created_at desc
 limit 1
-`, taskID.String(), commands.StopTaskOutboxTopic).Scan(&payloadBytes); err != nil {
-		t.Fatalf("load stop outbox: %v", err)
+`, taskID).Scan(&payloadBytes); err != nil {
+		t.Fatalf("load cancel command: %v", err)
 	}
 
-	var payload commands.StopTaskOutboxPayload
+	var payload commands.StopTaskCommandPayload
 	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
 		t.Fatalf("unmarshal stop payload: %v", err)
 	}

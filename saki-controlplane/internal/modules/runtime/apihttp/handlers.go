@@ -57,11 +57,6 @@ func (h *Handlers) ListRuntimeAgents(ctx context.Context) ([]openapi.RuntimeAgen
 	return result, nil
 }
 
-// ListRuntimeExecutors 只保留一个兼容发布窗口，真实语义已经切到 runtime agents。
-func (h *Handlers) ListRuntimeExecutors(ctx context.Context) ([]openapi.RuntimeAgent, error) {
-	return h.ListRuntimeAgents(ctx)
-}
-
 func (h *Handlers) CancelRuntimeTask(ctx context.Context, params openapi.CancelRuntimeTaskParams) (*openapi.RuntimeCommandResponse, error) {
 	if err := h.commands.CancelTask(ctx, params.TaskID); err != nil {
 		return nil, err

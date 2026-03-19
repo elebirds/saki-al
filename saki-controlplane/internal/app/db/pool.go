@@ -32,7 +32,6 @@ func registerSQLCTypes(ctx context.Context, conn *pgx.Conn) error {
 		"import_task_event_phase",
 		"import_task_status",
 		"import_upload_session_status",
-		"runtime_executor_status",
 		"runtime_task_kind",
 		"runtime_task_status",
 	} {
@@ -55,7 +54,6 @@ func registerSQLCTypes(ctx context.Context, conn *pgx.Conn) error {
 		"_import_task_event_phase",
 		"_import_task_status",
 		"_import_upload_session_status",
-		"_runtime_executor_status",
 		"_runtime_task_kind",
 		"_runtime_task_status",
 	} {
@@ -89,8 +87,6 @@ func registerSQLCTypes(ctx context.Context, conn *pgx.Conn) error {
 	m.RegisterDefaultPgType([]sqlcdb.ImportTaskStatus{}, "_import_task_status")
 	m.RegisterDefaultPgType(sqlcdb.ImportUploadSessionStatus(""), "import_upload_session_status")
 	m.RegisterDefaultPgType([]sqlcdb.ImportUploadSessionStatus{}, "_import_upload_session_status")
-	m.RegisterDefaultPgType(sqlcdb.RuntimeExecutorStatus(""), "runtime_executor_status")
-	m.RegisterDefaultPgType([]sqlcdb.RuntimeExecutorStatus{}, "_runtime_executor_status")
 	m.RegisterDefaultPgType(sqlcdb.RuntimeTaskKind(""), "runtime_task_kind")
 	m.RegisterDefaultPgType([]sqlcdb.RuntimeTaskKind{}, "_runtime_task_kind")
 	m.RegisterDefaultPgType(sqlcdb.RuntimeTaskStatus(""), "runtime_task_status")

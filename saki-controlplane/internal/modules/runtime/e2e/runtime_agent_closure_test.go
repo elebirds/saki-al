@@ -42,13 +42,11 @@ func TestRuntimeAgentClosure_AssignRunSucceed(t *testing.T) {
 	taskRepo := runtimerepo.NewTaskRepo(pool)
 	agentRepo := runtimerepo.NewAgentRepo(pool)
 	commandRepo := runtimerepo.NewAgentCommandRepo(pool)
-	outboxWriter := runtimerepo.NewCommandOutboxWriter(pool)
-
 	ingressServer := internalrpc.NewRuntimeServer(
 		commands.NewRegisterAgentHandler(agentRepo),
 		commands.NewHeartbeatAgentHandler(agentRepo),
 		commands.NewStartTaskHandler(taskRepo),
-		commands.NewCompleteTaskHandler(taskRepo, outboxWriter),
+		commands.NewCompleteTaskHandler(taskRepo),
 		commands.NewFailTaskHandler(taskRepo),
 		commands.NewConfirmTaskCanceledHandler(taskRepo),
 	)
@@ -131,13 +129,11 @@ func TestRuntimeAgentClosure_CancelRequestsReachAgentAndTaskBecomesCanceled(t *t
 	taskRepo := runtimerepo.NewTaskRepo(pool)
 	agentRepo := runtimerepo.NewAgentRepo(pool)
 	commandRepo := runtimerepo.NewAgentCommandRepo(pool)
-	outboxWriter := runtimerepo.NewCommandOutboxWriter(pool)
-
 	ingressServer := internalrpc.NewRuntimeServer(
 		commands.NewRegisterAgentHandler(agentRepo),
 		commands.NewHeartbeatAgentHandler(agentRepo),
 		commands.NewStartTaskHandler(taskRepo),
-		commands.NewCompleteTaskHandler(taskRepo, outboxWriter),
+		commands.NewCompleteTaskHandler(taskRepo),
 		commands.NewFailTaskHandler(taskRepo),
 		commands.NewConfirmTaskCanceledHandler(taskRepo),
 	)
@@ -271,13 +267,11 @@ func TestRuntimeAgentClosure_PullAssignRunSucceed(t *testing.T) {
 	taskRepo := runtimerepo.NewTaskRepo(pool)
 	agentRepo := runtimerepo.NewAgentRepo(pool)
 	commandRepo := runtimerepo.NewAgentCommandRepo(pool)
-	outboxWriter := runtimerepo.NewCommandOutboxWriter(pool)
-
 	ingressServer := internalrpc.NewRuntimeServer(
 		commands.NewRegisterAgentHandler(agentRepo),
 		commands.NewHeartbeatAgentHandler(agentRepo),
 		commands.NewStartTaskHandler(taskRepo),
-		commands.NewCompleteTaskHandler(taskRepo, outboxWriter),
+		commands.NewCompleteTaskHandler(taskRepo),
 		commands.NewFailTaskHandler(taskRepo),
 		commands.NewConfirmTaskCanceledHandler(taskRepo),
 	)
@@ -349,13 +343,11 @@ func TestRuntimeAgentClosure_PullCancelRequestsReachAgentAndTaskBecomesCanceled(
 	taskRepo := runtimerepo.NewTaskRepo(pool)
 	agentRepo := runtimerepo.NewAgentRepo(pool)
 	commandRepo := runtimerepo.NewAgentCommandRepo(pool)
-	outboxWriter := runtimerepo.NewCommandOutboxWriter(pool)
-
 	ingressServer := internalrpc.NewRuntimeServer(
 		commands.NewRegisterAgentHandler(agentRepo),
 		commands.NewHeartbeatAgentHandler(agentRepo),
 		commands.NewStartTaskHandler(taskRepo),
-		commands.NewCompleteTaskHandler(taskRepo, outboxWriter),
+		commands.NewCompleteTaskHandler(taskRepo),
 		commands.NewFailTaskHandler(taskRepo),
 		commands.NewConfirmTaskCanceledHandler(taskRepo),
 	)
@@ -444,13 +436,11 @@ func TestRuntimeAgentClosure_RelayAssignRunSucceed(t *testing.T) {
 	agentRepo := runtimerepo.NewAgentRepo(pool)
 	commandRepo := runtimerepo.NewAgentCommandRepo(pool)
 	sessionRepo := runtimerepo.NewAgentSessionRepo(pool)
-	outboxWriter := runtimerepo.NewCommandOutboxWriter(pool)
-
 	ingressServer := internalrpc.NewRuntimeServer(
 		commands.NewRegisterAgentHandler(agentRepo),
 		commands.NewHeartbeatAgentHandler(agentRepo),
 		commands.NewStartTaskHandler(taskRepo),
-		commands.NewCompleteTaskHandler(taskRepo, outboxWriter),
+		commands.NewCompleteTaskHandler(taskRepo),
 		commands.NewFailTaskHandler(taskRepo),
 		commands.NewConfirmTaskCanceledHandler(taskRepo),
 	)

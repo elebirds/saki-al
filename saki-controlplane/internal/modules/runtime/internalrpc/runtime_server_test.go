@@ -34,7 +34,7 @@ import (
 func TestRuntimeServerRegisterTranslatesToCommand(t *testing.T) {
 	registrar := &fakeRegisterAgentHandler{
 		result: &commands.AgentRecord{
-			ID:         "executor-a",
+			ID:         "agent-a",
 			Version:    "1.2.3",
 			LastSeenAt: time.UnixMilli(123456789),
 		},
@@ -64,7 +64,7 @@ func TestRuntimeServerRegisterTranslatesToCommand(t *testing.T) {
 		MaxConcurrency: 2,
 	}))
 	if err != nil {
-		t.Fatalf("register executor: %v", err)
+		t.Fatalf("register agent: %v", err)
 	}
 
 	if !resp.Msg.Accepted || resp.Msg.HeartbeatIntervalMs == 0 {
@@ -155,7 +155,7 @@ func TestRuntimeServerHeartbeatTranslatesToCommand(t *testing.T) {
 		SentAtUnixMs:   123456789,
 	}))
 	if err != nil {
-		t.Fatalf("heartbeat executor: %v", err)
+		t.Fatalf("heartbeat agent: %v", err)
 	}
 
 	if !resp.Msg.Accepted || resp.Msg.NextHeartbeatMs == 0 {
@@ -315,9 +315,6 @@ func TestAgentIngressIgnoresStaleExecutionID(t *testing.T) {
 	if got.Status != string(state.TaskStatusRunning) {
 		t.Fatalf("expected stale execution to be ignored, got %+v", got)
 	}
-	if store.lastOutbox != nil {
-		t.Fatalf("expected no outbox side effect for stale execution, got %+v", store.lastOutbox)
-	}
 }
 
 func TestAgentIngressIgnoresLateRunningEventAfterSucceeded(t *testing.T) {
@@ -448,7 +445,7 @@ func TestRuntimeServerRegisterAndHeartbeatPersistExecutor(t *testing.T) {
 		TransportMode:  "pull",
 		MaxConcurrency: 2,
 	})); err != nil {
-		t.Fatalf("register executor: %v", err)
+		t.Fatalf("register agent: %v", err)
 	}
 
 	heartbeatAt := registerAt.Add(2 * time.Minute)
@@ -459,7 +456,7 @@ func TestRuntimeServerRegisterAndHeartbeatPersistExecutor(t *testing.T) {
 		MaxConcurrency: 3,
 		SentAtUnixMs:   heartbeatAt.UnixMilli(),
 	})); err != nil {
-		t.Fatalf("heartbeat executor: %v", err)
+		t.Fatalf("heartbeat agent: %v", err)
 	}
 
 	agents, err := agentRepo.List(ctx)
@@ -554,9 +551,8 @@ func (f *fakeConfirmCanceledTaskHandler) Handle(_ context.Context, cmd commands.
 }
 
 type runtimeTaskEventStore struct {
-	mu         sync.Mutex
-	tasks      map[uuid.UUID]*commands.TaskRecord
-	lastOutbox *commands.OutboxEvent
+	mu    sync.Mutex
+	tasks map[uuid.UUID]*commands.TaskRecord
 }
 
 func newRuntimeTaskEventStore(tasks ...*commands.TaskRecord) *runtimeTaskEventStore {
@@ -575,7 +571,7 @@ func newTaskEventRuntimeServer(store *runtimeTaskEventStore) *RuntimeServer {
 		&fakeRegisterAgentHandler{},
 		&fakeHeartbeatAgentHandler{},
 		commands.NewStartTaskHandler(store),
-		commands.NewCompleteTaskHandler(store, store),
+		commands.NewCompleteTaskHandler(store),
 		commands.NewFailTaskHandler(store),
 		commands.NewConfirmTaskCanceledHandler(store),
 	)
@@ -611,16 +607,6 @@ func (s *runtimeTaskEventStore) AdvanceTaskByExecution(_ context.Context, params
 	task.Status = params.ToStatus
 	copied := *task
 	return &copied, nil
-}
-
-func (s *runtimeTaskEventStore) Append(_ context.Context, event commands.OutboxEvent) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	copied := event
-	copied.Payload = append([]byte(nil), event.Payload...)
-	s.lastOutbox = &copied
-	return nil
 }
 
 func (s *runtimeTaskEventStore) mustGet(t *testing.T, taskID uuid.UUID) *commands.TaskRecord {

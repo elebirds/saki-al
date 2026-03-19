@@ -3,17 +3,13 @@ package commands
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 )
 
-const (
-	AssignTaskOutboxTopic   = "runtime.task.assign.v1"
-	defaultAssignCommandTTL = 5 * time.Minute
-)
+const defaultAssignCommandTTL = 5 * time.Minute
 
 type PendingTask struct {
 	ID               uuid.UUID
@@ -47,13 +43,6 @@ type TaskUpdate struct {
 	Status          string
 	AssignedAgentID string
 	LeaderEpoch     int64
-}
-
-type OutboxEvent struct {
-	Topic          string
-	AggregateID    string
-	IdempotencyKey string
-	Payload        []byte
 }
 
 type AssignClaimParams struct {
@@ -120,7 +109,7 @@ type AssignResult struct {
 	AgentID      string
 }
 
-type AssignTaskOutboxPayload struct {
+type AssignTaskCommandPayload struct {
 	TaskID           uuid.UUID       `json:"task_id"`
 	ExecutionID      string          `json:"execution_id"`
 	AgentID          string          `json:"agent_id"`
@@ -161,17 +150,12 @@ type TaskClaimer interface {
 	AssignPendingTask(ctx context.Context, params AssignClaimParams) (*ClaimedTask, error)
 }
 
-type OutboxWriter interface {
-	Append(ctx context.Context, event OutboxEvent) error
-}
-
 type AssignTaskTx interface {
 	PendingTaskClaimer
 	AssignableAgentLister
 	TaskAssignmentCreator
 	ClaimedTaskAssigner
 	AssignTaskCommandWriter
-	OutboxWriter
 }
 
 type AssignTaskTxRunner interface {
@@ -245,14 +229,14 @@ func (h *AssignTaskHandler) Handle(ctx context.Context, cmd AssignTaskCommand) (
 			return err
 		}
 
-		payload, err := json.Marshal(assignTaskOutboxPayloadFromClaim(runtimeTask))
+		payload, err := json.Marshal(assignTaskCommandPayloadFromClaim(runtimeTask))
 		if err != nil {
 			return err
 		}
 
 		now := h.now().UTC()
-		// 迁移窗口里同时写新 command 真相和旧 outbox。
-		// 这里必须放在同一事务里，避免出现 task 已 assigned 但新旧两条投递主线只成功一边的撕裂状态。
+		// 关键设计：最终 cleanup 后 assign 只写 agent_command。
+		// command 记录已经是 controlplane 向 agent 投递命令的唯一持久化真相，不能再继续双写旧 outbox。
 		if err := store.AppendAssignCommand(ctx, AppendAssignTaskCommandParams{
 			CommandID:     uuid.New(),
 			AgentID:       agent.ID,
@@ -262,15 +246,6 @@ func (h *AssignTaskHandler) Handle(ctx context.Context, cmd AssignTaskCommand) (
 			Payload:       payload,
 			AvailableAt:   now,
 			ExpireAt:      now.Add(defaultAssignCommandTTL),
-		}); err != nil {
-			return err
-		}
-
-		if err := store.Append(ctx, OutboxEvent{
-			Topic:          AssignTaskOutboxTopic,
-			AggregateID:    runtimeTask.ID.String(),
-			IdempotencyKey: assignTaskOutboxIdempotencyKey(runtimeTask.CurrentExecutionID),
-			Payload:        payload,
 		}); err != nil {
 			return err
 		}
@@ -289,8 +264,8 @@ func (h *AssignTaskHandler) Handle(ctx context.Context, cmd AssignTaskCommand) (
 	return assigned, nil
 }
 
-func assignTaskOutboxPayloadFromClaim(task *ClaimedTask) AssignTaskOutboxPayload {
-	return AssignTaskOutboxPayload{
+func assignTaskCommandPayloadFromClaim(task *ClaimedTask) AssignTaskCommandPayload {
+	return AssignTaskCommandPayload{
 		TaskID:           task.ID,
 		ExecutionID:      task.CurrentExecutionID,
 		AgentID:          task.AssignedAgentID,
@@ -309,10 +284,6 @@ func normalizedResolvedParams(raw []byte) json.RawMessage {
 		return json.RawMessage(`{}`)
 	}
 	return json.RawMessage(append([]byte(nil), raw...))
-}
-
-func assignTaskOutboxIdempotencyKey(executionID string) string {
-	return fmt.Sprintf("%s:%s", AssignTaskOutboxTopic, executionID)
 }
 
 func newAssignExecutionID() string {

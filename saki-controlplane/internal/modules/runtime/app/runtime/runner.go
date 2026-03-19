@@ -134,7 +134,6 @@ func New(ctx context.Context, opts Options, logger *slog.Logger) (*Runner, error
 	commandRepo := runtimerepo.NewAgentCommandRepo(pool)
 	agentRepo := runtimerepo.NewAgentRepo(pool)
 	sessionRepo := runtimerepo.NewAgentSessionRepo(pool)
-	outboxWriter := runtimerepo.NewCommandOutboxWriter(pool)
 	assetStore := cfg.assetStoreFactory()(pool)
 	if assetStore == nil {
 		pool.Close()
@@ -145,7 +144,7 @@ func New(ctx context.Context, opts Options, logger *slog.Logger) (*Runner, error
 		runtimecommands.NewRegisterAgentHandler(agentRepo),
 		runtimecommands.NewHeartbeatAgentHandler(agentRepo),
 		runtimecommands.NewStartTaskHandler(taskRepo),
-		runtimecommands.NewCompleteTaskHandler(taskRepo, outboxWriter),
+		runtimecommands.NewCompleteTaskHandler(taskRepo),
 		runtimecommands.NewFailTaskHandler(taskRepo),
 		runtimecommands.NewConfirmTaskCanceledHandler(taskRepo),
 	)

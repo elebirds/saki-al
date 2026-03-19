@@ -145,7 +145,7 @@ npm run dev
 1. 业务与任务真相由 controlplane 持有，agent 不直接改业务库。
 2. `agent_command` 是命令真相，transport 只是投递方式，不得反向成为状态真相。
 3. `runtime recovery` 必须独立于 scheduler，不能把超时收敛混入正常派发。
-4. 对外 HTTP API 的 canonical 路径是 `/runtime/agents`，`/runtime/executors` 仅保留一个兼容窗口。
+4. 对外 HTTP API 的 canonical 路径是 `/runtime/agents`；旧 `/runtime/executors` 已移除。
 
 ## 6. 常见问题
 
@@ -163,6 +163,6 @@ npm run dev
 
 - 通常是 `AGENT_WORKER_COMMAND_JSON` 没配置，或配置的 worker 不符合协议。
 
-4. `/runtime/executors` 和文档不一致
+4. 访问 `/runtime/executors` 返回 404
 
-- 以 `/runtime/agents` 为主；`/runtime/executors` 是兼容 alias，会被移除。
+- 这是预期行为；请改用 `/runtime/agents`。

@@ -1276,22 +1276,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-  /permissions/catalog:
-    get:
-      operationId: getPermissionCatalog
-      responses:
-        "200":
-          description: permission catalog
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/PermissionCatalogResponse"
-        default:
-          description: unexpected error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
   /auth/register:
     post:
       operationId: registerAuthUser
@@ -1359,7 +1343,7 @@ paths:
       operationId: getSystemPermissions
       responses:
         "200":
-          description: current user system permission snapshot
+          description: system permission catalog
           content:
             application/json:
               schema:
@@ -2082,45 +2066,15 @@ components:
             type: string
         must_change_password:
           type: boolean
-    PermissionCatalogResponse:
-      type: object
-      required:
-        - all_permissions
-        - system_permissions
-        - resource_permissions
-      properties:
-        all_permissions:
-          type: array
-          items:
-            type: string
-        system_permissions:
-          type: array
-          items:
-            type: string
-        resource_permissions:
-          type: array
-          items:
-            type: string
     SystemPermissionsResponse:
       type: object
       required:
-        - user_id
-        - system_roles
         - permissions
-        - is_super_admin
       properties:
-        user_id:
-          type: string
-        system_roles:
-          type: array
-          items:
-            $ref: "#/components/schemas/UserRoleInfo"
         permissions:
           type: array
           items:
             type: string
-        is_super_admin:
-          type: boolean
     RolePermissionEntry:
       type: object
       required:

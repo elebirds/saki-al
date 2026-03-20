@@ -476,51 +476,6 @@ func (s ListRolesType) Validate() error {
 	}
 }
 
-func (s *PermissionCatalogResponse) Validate() error {
-	if s == nil {
-		return validate.ErrNilPointer
-	}
-
-	var failures []validate.FieldError
-	if err := func() error {
-		if s.AllPermissions == nil {
-			return errors.New("nil is invalid value")
-		}
-		return nil
-	}(); err != nil {
-		failures = append(failures, validate.FieldError{
-			Name:  "all_permissions",
-			Error: err,
-		})
-	}
-	if err := func() error {
-		if s.SystemPermissions == nil {
-			return errors.New("nil is invalid value")
-		}
-		return nil
-	}(); err != nil {
-		failures = append(failures, validate.FieldError{
-			Name:  "system_permissions",
-			Error: err,
-		})
-	}
-	if err := func() error {
-		if s.ResourcePermissions == nil {
-			return errors.New("nil is invalid value")
-		}
-		return nil
-	}(); err != nil {
-		failures = append(failures, validate.FieldError{
-			Name:  "resource_permissions",
-			Error: err,
-		})
-	}
-	if len(failures) > 0 {
-		return &validate.Error{Fields: failures}
-	}
-	return nil
-}
-
 func (s *PrepareProjectAnnotationImportResponse) Validate() error {
 	if s == nil {
 		return validate.ErrNilPointer
@@ -806,17 +761,6 @@ func (s *SystemPermissionsResponse) Validate() error {
 	}
 
 	var failures []validate.FieldError
-	if err := func() error {
-		if s.SystemRoles == nil {
-			return errors.New("nil is invalid value")
-		}
-		return nil
-	}(); err != nil {
-		failures = append(failures, validate.FieldError{
-			Name:  "system_roles",
-			Error: err,
-		})
-	}
 	if err := func() error {
 		if s.Permissions == nil {
 			return errors.New("nil is invalid value")

@@ -112,10 +112,6 @@ type Handler interface {
 	//
 	// GET /imports/uploads/{session_id}
 	GetImportUploadSession(ctx context.Context, params GetImportUploadSessionParams) (*ImportUploadSession, error)
-	// GetPermissionCatalog implements getPermissionCatalog operation.
-	//
-	// GET /permissions/catalog
-	GetPermissionCatalog(ctx context.Context) (*PermissionCatalogResponse, error)
 	// GetProject implements getProject operation.
 	//
 	// GET /projects/{project_id}

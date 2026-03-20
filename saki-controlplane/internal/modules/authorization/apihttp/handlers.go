@@ -157,10 +157,6 @@ func (h *Handlers) ListRoles(ctx context.Context, params openapi.ListRolesParams
 	}, nil
 }
 
-func (h *Handlers) GetPermissionCatalog(ctx context.Context) (*openapi.PermissionCatalogResponse, error) {
-	return h.getPermissionCatalog(ctx)
-}
-
 func (h *Handlers) CreateRole(ctx context.Context, req *openapi.RoleCreateRequest) (*openapi.RoleListItem, error) {
 	if h == nil || h.createRole == nil {
 		return nil, ogenhttp.ErrNotImplemented
@@ -257,39 +253,20 @@ func (h *Handlers) DeleteRole(ctx context.Context, params openapi.DeleteRolePara
 }
 
 func (h *Handlers) GetSystemPermissions(ctx context.Context) (*openapi.SystemPermissionsResponse, error) {
-	if h == nil || h.userSystemRoles == nil {
+	if h == nil || h.permissionCatalog == nil {
 		return nil, ogenhttp.ErrNotImplemented
 	}
-	claims, err := requireAnyPermission(ctx)
+	// 关键设计：/permissions/system 返回的是系统权限目录真值，
+	// 当前用户的权限快照已经统一收敛到 /auth/me，避免两个 endpoint 语义重叠。
+	if _, err := requireAnyPermission(ctx, "roles:read", "permissions:read"); err != nil {
+		return nil, err
+	}
+	catalog, err := h.permissionCatalog.Execute(ctx)
 	if err != nil {
 		return nil, err
 	}
-
-	roleBindings, err := h.userSystemRoles.Execute(ctx, claims.PrincipalID)
-	if err != nil {
-		return nil, err
-	}
-
-	roles := make([]openapi.UserRoleInfo, 0, len(roleBindings))
-	isSuperAdmin := false
-	for _, item := range roleBindings {
-		roles = append(roles, openapi.UserRoleInfo{
-			ID:          item.RoleID,
-			Name:        item.RoleName,
-			DisplayName: item.RoleDisplayName,
-			Color:       item.RoleColor,
-			IsSupremo:   item.RoleIsSupremo,
-		})
-		if item.RoleName == "super_admin" {
-			isSuperAdmin = true
-		}
-	}
-
 	return &openapi.SystemPermissionsResponse{
-		UserID:       claims.UserID,
-		SystemRoles:  roles,
-		Permissions:  authorizationdomain.CanonicalPermissions(claims.Permissions),
-		IsSuperAdmin: isSuperAdmin,
+		Permissions: authorizationdomain.CanonicalPermissions(catalog.SystemPermissions),
 	}, nil
 }
 
@@ -389,25 +366,6 @@ func (h *Handlers) UpdateProjectMember(ctx context.Context, req *openapi.Resourc
 
 func (h *Handlers) DeleteProjectMember(ctx context.Context, params openapi.DeleteProjectMemberParams) error {
 	return h.deleteMember(ctx, authorizationdomain.ResourceTypeProject, params.ProjectID, params.PrincipalID)
-}
-
-func (h *Handlers) getPermissionCatalog(ctx context.Context) (*openapi.PermissionCatalogResponse, error) {
-	if h == nil || h.permissionCatalog == nil {
-		return nil, ogenhttp.ErrNotImplemented
-	}
-	if _, err := requireAnyPermission(ctx, "roles:read"); err != nil {
-		return nil, err
-	}
-
-	catalog, err := h.permissionCatalog.Execute(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return &openapi.PermissionCatalogResponse{
-		AllPermissions:      authorizationdomain.CanonicalPermissions(catalog.AllPermissions),
-		SystemPermissions:   authorizationdomain.CanonicalPermissions(catalog.SystemPermissions),
-		ResourcePermissions: authorizationdomain.CanonicalPermissions(catalog.ResourcePermissions),
-	}, nil
 }
 
 func (h *Handlers) listUserSystemRoles(ctx context.Context, rawUserID string) ([]openapi.UserSystemRoleBinding, error) {

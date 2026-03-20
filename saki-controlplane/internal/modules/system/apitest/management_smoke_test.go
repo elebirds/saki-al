@@ -127,11 +127,12 @@ func TestHumanControlPlaneManagementSmoke(t *testing.T) {
 		t.Fatalf("unexpected system permissions status: %d body=%s", systemPermissionsResp.StatusCode, readBodyString(t, systemPermissionsResp))
 	}
 	systemPermissionsBody := decodeJSONResponse(t, systemPermissionsResp)
-	if systemPermissionsBody["user_id"] != "admin@example.com" {
+	systemPermissions, ok := systemPermissionsBody["permissions"].([]any)
+	if !ok || len(systemPermissions) == 0 {
 		t.Fatalf("unexpected system permissions body: %+v", systemPermissionsBody)
 	}
-	if _, ok := systemPermissionsBody["system_roles"].([]any); !ok {
-		t.Fatalf("expected system_roles in permissions snapshot, got %+v", systemPermissionsBody)
+	if _, ok := systemPermissionsBody["user_id"]; ok {
+		t.Fatalf("latest /permissions/system should not expose current-user snapshot fields, got %+v", systemPermissionsBody)
 	}
 
 	catalogResp := doJSONRequest(
@@ -142,13 +143,8 @@ func TestHumanControlPlaneManagementSmoke(t *testing.T) {
 		"",
 		adminAccessToken,
 	)
-	if catalogResp.StatusCode != http.StatusOK {
-		t.Fatalf("unexpected permission catalog status: %d body=%s", catalogResp.StatusCode, readBodyString(t, catalogResp))
-	}
-	catalogBody := decodeJSONResponse(t, catalogResp)
-	allPermissions, ok := catalogBody["all_permissions"].([]any)
-	if !ok || len(allPermissions) == 0 {
-		t.Fatalf("unexpected permission catalog body: %+v", catalogBody)
+	if catalogResp.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected removed permission catalog endpoint to return 404, got %d body=%s", catalogResp.StatusCode, readBodyString(t, catalogResp))
 	}
 
 	userRolesResp := doJSONRequest(

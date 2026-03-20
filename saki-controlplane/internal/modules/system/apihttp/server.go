@@ -147,7 +147,7 @@ func withRemovedLegacyRoutes(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// 关键设计：旧 alias 一旦退役，就要在 transport 层显式返回 404，
 		// 不能让它们因为动态路由碰巧落到其他 handler（例如 /roles/{role_id}）而表现成 400/501。
-		if r.Method == http.MethodGet && r.URL.Path == "/roles/permission-catalog" {
+		if r.Method == http.MethodGet && (r.URL.Path == "/roles/permission-catalog" || r.URL.Path == "/permissions/catalog") {
 			http.NotFound(w, r)
 			return
 		}
@@ -292,13 +292,6 @@ func (s *Server) GetCurrentUser(ctx context.Context) (*openapi.CurrentUserRespon
 		return nil, ogenhttp.ErrNotImplemented
 	}
 	return s.identity.GetCurrentUser(ctx)
-}
-
-func (s *Server) GetPermissionCatalog(ctx context.Context) (*openapi.PermissionCatalogResponse, error) {
-	if s.authorization == nil {
-		return nil, ogenhttp.ErrNotImplemented
-	}
-	return s.authorization.GetPermissionCatalog(ctx)
 }
 
 func (s *Server) CreateRole(ctx context.Context, req *openapi.RoleCreateRequest) (*openapi.RoleListItem, error) {

@@ -142,21 +142,21 @@ func TestHumanControlPlaneSystemPermissionsContract(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode system permissions body: %v", err)
 	}
-	if _, ok := body["user_id"].(string); !ok {
-		t.Fatalf("expected user_id field, got %+v", body)
-	}
-	if _, ok := body["system_roles"].([]any); !ok {
-		t.Fatalf("expected system_roles field, got %+v", body)
-	}
 	if _, ok := body["permissions"].([]any); !ok {
 		t.Fatalf("expected permissions field, got %+v", body)
 	}
-	if _, ok := body["is_super_admin"].(bool); !ok {
-		t.Fatalf("expected is_super_admin field, got %+v", body)
+	if _, ok := body["user_id"]; ok {
+		t.Fatalf("latest /permissions/system should not expose user snapshot fields, got %+v", body)
+	}
+	if _, ok := body["system_roles"]; ok {
+		t.Fatalf("latest /permissions/system should not expose role snapshot fields, got %+v", body)
+	}
+	if _, ok := body["is_super_admin"]; ok {
+		t.Fatalf("latest /permissions/system should not expose super-admin snapshot field, got %+v", body)
 	}
 }
 
-func TestHumanControlPlanePermissionCatalogContract(t *testing.T) {
+func TestHumanControlPlaneRemovedPermissionCatalogEndpointReturns404(t *testing.T) {
 	handler := newSystemHTTPHandler(t, contractDeps{})
 	token := issueSystemToken(t, handler, "admin@example.com")
 
@@ -165,22 +165,8 @@ func TestHumanControlPlanePermissionCatalogContract(t *testing.T) {
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("unexpected status code: %d body=%s", rec.Code, rec.Body.String())
-	}
-
-	var body map[string]any
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatalf("decode permission catalog body: %v", err)
-	}
-	if _, ok := body["all_permissions"].([]any); !ok {
-		t.Fatalf("expected all_permissions field, got %+v", body)
-	}
-	if _, ok := body["system_permissions"].([]any); !ok {
-		t.Fatalf("expected system_permissions field, got %+v", body)
-	}
-	if _, ok := body["resource_permissions"].([]any); !ok {
-		t.Fatalf("expected resource_permissions field, got %+v", body)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d body=%s", rec.Code, rec.Body.String())
 	}
 }
 

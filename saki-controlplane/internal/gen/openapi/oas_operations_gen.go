@@ -32,7 +32,6 @@ const (
 	GetImportTaskOperation                  OperationName = "GetImportTask"
 	GetImportTaskResultOperation            OperationName = "GetImportTaskResult"
 	GetImportUploadSessionOperation         OperationName = "GetImportUploadSession"
-	GetPermissionCatalogOperation           OperationName = "GetPermissionCatalog"
 	GetProjectOperation                     OperationName = "GetProject"
 	GetResourcePermissionsOperation         OperationName = "GetResourcePermissions"
 	GetRoleOperation                        OperationName = "GetRole"

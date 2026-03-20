@@ -2990,43 +2990,6 @@ func (o OptSystemSettingUI) Or(d SystemSettingUI) SystemSettingUI {
 	return d
 }
 
-// Ref: #/components/schemas/PermissionCatalogResponse
-type PermissionCatalogResponse struct {
-	AllPermissions      []string `json:"all_permissions"`
-	SystemPermissions   []string `json:"system_permissions"`
-	ResourcePermissions []string `json:"resource_permissions"`
-}
-
-// GetAllPermissions returns the value of AllPermissions.
-func (s *PermissionCatalogResponse) GetAllPermissions() []string {
-	return s.AllPermissions
-}
-
-// GetSystemPermissions returns the value of SystemPermissions.
-func (s *PermissionCatalogResponse) GetSystemPermissions() []string {
-	return s.SystemPermissions
-}
-
-// GetResourcePermissions returns the value of ResourcePermissions.
-func (s *PermissionCatalogResponse) GetResourcePermissions() []string {
-	return s.ResourcePermissions
-}
-
-// SetAllPermissions sets the value of AllPermissions.
-func (s *PermissionCatalogResponse) SetAllPermissions(val []string) {
-	s.AllPermissions = val
-}
-
-// SetSystemPermissions sets the value of SystemPermissions.
-func (s *PermissionCatalogResponse) SetSystemPermissions(val []string) {
-	s.SystemPermissions = val
-}
-
-// SetResourcePermissions sets the value of ResourcePermissions.
-func (s *PermissionCatalogResponse) SetResourcePermissions(val []string) {
-	s.ResourcePermissions = val
-}
-
 // Ref: #/components/schemas/PrepareProjectAnnotationImportRequest
 type PrepareProjectAnnotationImportRequest struct {
 	UploadSessionID string    `json:"upload_session_id"`
@@ -3981,20 +3944,7 @@ func (s *RuntimeSummaryResponse) SetLeaderEpoch(val int64) {
 
 // Ref: #/components/schemas/SystemPermissionsResponse
 type SystemPermissionsResponse struct {
-	UserID       string         `json:"user_id"`
-	SystemRoles  []UserRoleInfo `json:"system_roles"`
-	Permissions  []string       `json:"permissions"`
-	IsSuperAdmin bool           `json:"is_super_admin"`
-}
-
-// GetUserID returns the value of UserID.
-func (s *SystemPermissionsResponse) GetUserID() string {
-	return s.UserID
-}
-
-// GetSystemRoles returns the value of SystemRoles.
-func (s *SystemPermissionsResponse) GetSystemRoles() []UserRoleInfo {
-	return s.SystemRoles
+	Permissions []string `json:"permissions"`
 }
 
 // GetPermissions returns the value of Permissions.
@@ -4002,29 +3952,9 @@ func (s *SystemPermissionsResponse) GetPermissions() []string {
 	return s.Permissions
 }
 
-// GetIsSuperAdmin returns the value of IsSuperAdmin.
-func (s *SystemPermissionsResponse) GetIsSuperAdmin() bool {
-	return s.IsSuperAdmin
-}
-
-// SetUserID sets the value of UserID.
-func (s *SystemPermissionsResponse) SetUserID(val string) {
-	s.UserID = val
-}
-
-// SetSystemRoles sets the value of SystemRoles.
-func (s *SystemPermissionsResponse) SetSystemRoles(val []UserRoleInfo) {
-	s.SystemRoles = val
-}
-
 // SetPermissions sets the value of Permissions.
 func (s *SystemPermissionsResponse) SetPermissions(val []string) {
 	s.Permissions = val
-}
-
-// SetIsSuperAdmin sets the value of IsSuperAdmin.
-func (s *SystemPermissionsResponse) SetIsSuperAdmin(val bool) {
-	s.IsSuperAdmin = val
 }
 
 // Ref: #/components/schemas/SystemSettingConstraints

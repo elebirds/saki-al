@@ -195,13 +195,6 @@ func (UnimplementedHandler) GetImportUploadSession(ctx context.Context, params G
 	return r, ht.ErrNotImplemented
 }
 
-// GetPermissionCatalog implements getPermissionCatalog operation.
-//
-// GET /permissions/catalog
-func (UnimplementedHandler) GetPermissionCatalog(ctx context.Context) (r *PermissionCatalogResponse, _ error) {
-	return r, ht.ErrNotImplemented
-}
-
 // GetProject implements getProject operation.
 //
 // GET /projects/{project_id}

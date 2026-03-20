@@ -11,6 +11,32 @@ import (
 	"github.com/google/uuid"
 )
 
+const createIamPrincipal = `-- name: CreateIamPrincipal :one
+insert into iam_principal (kind, display_name, status)
+values ($1, $2, $3)
+returning id, kind, display_name, status, created_at, updated_at
+`
+
+type CreateIamPrincipalParams struct {
+	Kind        string             `json:"kind"`
+	DisplayName string             `json:"display_name"`
+	Status      IamPrincipalStatus `json:"status"`
+}
+
+func (q *Queries) CreateIamPrincipal(ctx context.Context, arg CreateIamPrincipalParams) (IamPrincipal, error) {
+	row := q.db.QueryRow(ctx, createIamPrincipal, arg.Kind, arg.DisplayName, arg.Status)
+	var i IamPrincipal
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.DisplayName,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getAccessPrincipalByID = `-- name: GetAccessPrincipalByID :one
 select id, subject_type, subject_key, display_name, status, created_at, updated_at
 from access_principal
@@ -57,6 +83,76 @@ func (q *Queries) GetAccessPrincipalBySubjectKey(ctx context.Context, arg GetAcc
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const getIamPrincipalByID = `-- name: GetIamPrincipalByID :one
+select id, kind, display_name, status, created_at, updated_at
+from iam_principal
+where id = $1
+`
+
+func (q *Queries) GetIamPrincipalByID(ctx context.Context, id uuid.UUID) (IamPrincipal, error) {
+	row := q.db.QueryRow(ctx, getIamPrincipalByID, id)
+	var i IamPrincipal
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.DisplayName,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const listIamPrincipalsByKind = `-- name: ListIamPrincipalsByKind :many
+select id, kind, display_name, status, created_at, updated_at
+from iam_principal
+where kind = $1
+order by created_at desc
+`
+
+func (q *Queries) ListIamPrincipalsByKind(ctx context.Context, kind string) ([]IamPrincipal, error) {
+	rows, err := q.db.Query(ctx, listIamPrincipalsByKind, kind)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []IamPrincipal
+	for rows.Next() {
+		var i IamPrincipal
+		if err := rows.Scan(
+			&i.ID,
+			&i.Kind,
+			&i.DisplayName,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const updateIamPrincipalStatus = `-- name: UpdateIamPrincipalStatus :exec
+update iam_principal
+set status = $1, updated_at = now()
+where id = $2
+`
+
+type UpdateIamPrincipalStatusParams struct {
+	Status IamPrincipalStatus `json:"status"`
+	ID     uuid.UUID          `json:"id"`
+}
+
+func (q *Queries) UpdateIamPrincipalStatus(ctx context.Context, arg UpdateIamPrincipalStatusParams) error {
+	_, err := q.db.Exec(ctx, updateIamPrincipalStatus, arg.Status, arg.ID)
+	return err
 }
 
 const upsertAccessPrincipal = `-- name: UpsertAccessPrincipal :one

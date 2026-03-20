@@ -7,6 +7,7 @@ package sqlcdb
 import (
 	"database/sql/driver"
 	"fmt"
+	"net/netip"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -483,6 +484,91 @@ func (ns NullAssetUploadIntentState) Value() (driver.Value, error) {
 	return string(ns.AssetUploadIntentState), nil
 }
 
+type IamPrincipalStatus string
+
+const (
+	IamPrincipalStatusActive   IamPrincipalStatus = "active"
+	IamPrincipalStatusDisabled IamPrincipalStatus = "disabled"
+)
+
+func (e *IamPrincipalStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = IamPrincipalStatus(s)
+	case string:
+		*e = IamPrincipalStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for IamPrincipalStatus: %T", src)
+	}
+	return nil
+}
+
+type NullIamPrincipalStatus struct {
+	IamPrincipalStatus IamPrincipalStatus `json:"iam_principal_status"`
+	Valid              bool               `json:"valid"` // Valid is true if IamPrincipalStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullIamPrincipalStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.IamPrincipalStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.IamPrincipalStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullIamPrincipalStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.IamPrincipalStatus), nil
+}
+
+type IamUserState string
+
+const (
+	IamUserStateActive   IamUserState = "active"
+	IamUserStateInvited  IamUserState = "invited"
+	IamUserStateDisabled IamUserState = "disabled"
+)
+
+func (e *IamUserState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = IamUserState(s)
+	case string:
+		*e = IamUserState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for IamUserState: %T", src)
+	}
+	return nil
+}
+
+type NullIamUserState struct {
+	IamUserState IamUserState `json:"iam_user_state"`
+	Valid        bool         `json:"valid"` // Valid is true if IamUserState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullIamUserState) Scan(value interface{}) error {
+	if value == nil {
+		ns.IamUserState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.IamUserState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullIamUserState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.IamUserState), nil
+}
+
 type ImportTaskEventPhase string
 
 const (
@@ -827,12 +913,87 @@ type AssetUploadIntent struct {
 	UpdatedAt           pgtype.Timestamptz     `json:"updated_at"`
 }
 
+type AuthzResourceMembership struct {
+	ID           uuid.UUID          `json:"id"`
+	PrincipalID  uuid.UUID          `json:"principal_id"`
+	RoleID       uuid.UUID          `json:"role_id"`
+	ResourceType string             `json:"resource_type"`
+	ResourceID   uuid.UUID          `json:"resource_id"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+}
+
+type AuthzRole struct {
+	ID          uuid.UUID          `json:"id"`
+	Name        string             `json:"name"`
+	DisplayName string             `json:"display_name"`
+	Description pgtype.Text        `json:"description"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+type AuthzRolePermission struct {
+	RoleID     uuid.UUID          `json:"role_id"`
+	Permission string             `json:"permission"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+}
+
+type AuthzSystemBinding struct {
+	ID          uuid.UUID          `json:"id"`
+	PrincipalID uuid.UUID          `json:"principal_id"`
+	RoleID      uuid.UUID          `json:"role_id"`
+	SystemName  string             `json:"system_name"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
 type Dataset struct {
 	ID        uuid.UUID          `json:"id"`
 	Name      string             `json:"name"`
 	Type      string             `json:"type"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
+type IamPasswordCredential struct {
+	ID           uuid.UUID          `json:"id"`
+	PrincipalID  uuid.UUID          `json:"principal_id"`
+	Scheme       string             `json:"scheme"`
+	PasswordHash string             `json:"password_hash"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+}
+
+type IamPrincipal struct {
+	ID          uuid.UUID          `json:"id"`
+	Kind        string             `json:"kind"`
+	DisplayName string             `json:"display_name"`
+	Status      IamPrincipalStatus `json:"status"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+type IamRefreshSession struct {
+	ID          uuid.UUID          `json:"id"`
+	PrincipalID uuid.UUID          `json:"principal_id"`
+	TokenHash   string             `json:"token_hash"`
+	UserAgent   pgtype.Text        `json:"user_agent"`
+	IpAddress   *netip.Addr        `json:"ip_address"`
+	LastSeenAt  pgtype.Timestamptz `json:"last_seen_at"`
+	ExpiresAt   pgtype.Timestamptz `json:"expires_at"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+type IamUser struct {
+	PrincipalID   uuid.UUID          `json:"principal_id"`
+	Email         string             `json:"email"`
+	Username      pgtype.Text        `json:"username"`
+	FullName      pgtype.Text        `json:"full_name"`
+	AvatarAssetID pgtype.UUID        `json:"avatar_asset_id"`
+	State         IamUserState       `json:"state"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
 }
 
 type ImportPreviewManifest struct {
@@ -937,6 +1098,23 @@ type SampleMatchRef struct {
 	RefValue  string             `json:"ref_value"`
 	IsPrimary bool               `json:"is_primary"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type SystemInstallation struct {
+	ID              uuid.UUID          `json:"id"`
+	InstallationKey string             `json:"installation_key"`
+	Metadata        []byte             `json:"metadata"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+}
+
+type SystemSetting struct {
+	ID             uuid.UUID          `json:"id"`
+	InstallationID uuid.UUID          `json:"installation_id"`
+	Key            string             `json:"key"`
+	Value          []byte             `json:"value"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
 }
 
 type TaskAssignment struct {

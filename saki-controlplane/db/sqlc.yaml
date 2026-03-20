@@ -10,6 +10,9 @@ sql:
       - "queries/importing"
       - "queries/project"
       - "queries/runtime"
+      - "queries/identity"
+      - "queries/authorization"
+      - "queries/system"
     gen:
       go:
         package: "sqlcdb"

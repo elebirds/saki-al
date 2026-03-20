@@ -113,7 +113,7 @@ func (a *Authorizer) collectRolePermissions(ctx context.Context, resolved map[st
 		if !authorizationdomain.IsKnownPermission(permission) {
 			continue
 		}
-		resolved[permission] = struct{}{}
+		resolved[authorizationdomain.CanonicalPermission(permission)] = struct{}{}
 	}
 	return nil
 }

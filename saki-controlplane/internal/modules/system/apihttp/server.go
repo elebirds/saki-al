@@ -25,6 +25,7 @@ import (
 type Dependencies struct {
 	Authenticator       *accessapp.Authenticator
 	ClaimsStore         accessapp.ClaimsStore
+	System              *Handlers
 	DatasetStore        datasetapp.Store
 	DatasetDelete       *datasetapp.DeleteDatasetUseCase
 	DatasetDeleteSample *datasetapp.DeleteSampleUseCase
@@ -49,6 +50,7 @@ type Server struct {
 	importing  *importingapi.Handlers
 	project    *projectapi.Handlers
 	runtime    *runtimeapi.Handlers
+	system     *Handlers
 }
 
 func NewHandler(deps Dependencies) (*Server, error) {
@@ -97,6 +99,7 @@ func NewHandler(deps Dependencies) (*Server, error) {
 			Store:    deps.RuntimeStore,
 			Commands: runtimequeries.NewIssueRuntimeCommandUseCase(deps.RuntimeTaskCanceler),
 		}),
+		system: deps.System,
 	}, nil
 }
 
@@ -244,6 +247,41 @@ func (s *Server) CompleteAssetUpload(ctx context.Context, req *openapi.AssetComp
 
 func (s *Server) GetCurrentUser(ctx context.Context) (*openapi.CurrentUserResponse, error) {
 	return s.access.GetCurrentUser(ctx)
+}
+
+func (s *Server) GetSystemSettings(ctx context.Context) (*openapi.SystemSettingsResponse, error) {
+	if s.system == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	return s.system.GetSystemSettings(ctx)
+}
+
+func (s *Server) GetSystemStatus(ctx context.Context) (*openapi.SystemStatusResponse, error) {
+	if s.system == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	return s.system.GetSystemStatus(ctx)
+}
+
+func (s *Server) GetSystemTypes(ctx context.Context) (*openapi.SystemTypesResponse, error) {
+	if s.system == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	return s.system.GetSystemTypes(ctx)
+}
+
+func (s *Server) PatchSystemSettings(ctx context.Context, req *openapi.SystemSettingsPatchRequest) (*openapi.SystemSettingsResponse, error) {
+	if s.system == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	return s.system.PatchSystemSettings(ctx, req)
+}
+
+func (s *Server) SetupSystem(ctx context.Context, req *openapi.SystemSetupRequest) (*openapi.AuthSessionResponse, error) {
+	if s.system == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	return s.system.SetupSystem(ctx, req)
 }
 
 func (s *Server) GetAsset(ctx context.Context, params openapi.GetAssetParams) (*openapi.Asset, error) {

@@ -17,7 +17,7 @@ func NewHandlers(authenticator *accessapp.Authenticator) *Handlers {
 }
 
 func (h *Handlers) Login(ctx context.Context, req *openapi.LoginRequest) (*openapi.AuthTokenResponse, error) {
-	token, err := h.authenticator.IssueTokenContext(ctx, req.GetUserID())
+	token, err := h.authenticator.IssueBootstrapTokenContext(ctx, req.GetUserID())
 	if err != nil {
 		return nil, err
 	}

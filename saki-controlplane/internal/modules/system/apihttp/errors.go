@@ -8,6 +8,7 @@ import (
 
 	openapi "github.com/elebirds/saki/saki-controlplane/internal/gen/openapi"
 	accessapp "github.com/elebirds/saki/saki-controlplane/internal/modules/access/app"
+	systemapp "github.com/elebirds/saki/saki-controlplane/internal/modules/system/app"
 	ogenhttp "github.com/ogen-go/ogen/http"
 	"github.com/ogen-go/ogen/validate"
 )
@@ -29,6 +30,30 @@ func mapError(err error) *openapi.ErrorResponseStatusCode {
 			Response: openapi.ErrorResponse{
 				Code:    "forbidden",
 				Message: "permission denied",
+			},
+		}
+	case errors.Is(err, systemapp.ErrAlreadyInitialized):
+		return &openapi.ErrorResponseStatusCode{
+			StatusCode: http.StatusConflict,
+			Response: openapi.ErrorResponse{
+				Code:    "already_initialized",
+				Message: "system is already initialized",
+			},
+		}
+	case errors.Is(err, systemapp.ErrNotInitialized):
+		return &openapi.ErrorResponseStatusCode{
+			StatusCode: http.StatusConflict,
+			Response: openapi.ErrorResponse{
+				Code:    "not_initialized",
+				Message: "system setup is required",
+			},
+		}
+	case errors.Is(err, systemapp.ErrInvalidSettingValue):
+		return &openapi.ErrorResponseStatusCode{
+			StatusCode: http.StatusBadRequest,
+			Response: openapi.ErrorResponse{
+				Code:    "bad_request",
+				Message: err.Error(),
 			},
 		}
 	case errors.Is(err, ogenhttp.ErrNotImplemented):

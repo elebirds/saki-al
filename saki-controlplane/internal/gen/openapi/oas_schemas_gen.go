@@ -718,6 +718,102 @@ func (s *AssetUploadInitResponseIntentState) UnmarshalText(data []byte) error {
 	}
 }
 
+// Ref: #/components/schemas/AuthSessionResponse
+type AuthSessionResponse struct {
+	AccessToken        string          `json:"access_token"`
+	RefreshToken       string          `json:"refresh_token"`
+	ExpiresIn          int64           `json:"expires_in"`
+	MustChangePassword bool            `json:"must_change_password"`
+	User               AuthSessionUser `json:"user"`
+}
+
+// GetAccessToken returns the value of AccessToken.
+func (s *AuthSessionResponse) GetAccessToken() string {
+	return s.AccessToken
+}
+
+// GetRefreshToken returns the value of RefreshToken.
+func (s *AuthSessionResponse) GetRefreshToken() string {
+	return s.RefreshToken
+}
+
+// GetExpiresIn returns the value of ExpiresIn.
+func (s *AuthSessionResponse) GetExpiresIn() int64 {
+	return s.ExpiresIn
+}
+
+// GetMustChangePassword returns the value of MustChangePassword.
+func (s *AuthSessionResponse) GetMustChangePassword() bool {
+	return s.MustChangePassword
+}
+
+// GetUser returns the value of User.
+func (s *AuthSessionResponse) GetUser() AuthSessionUser {
+	return s.User
+}
+
+// SetAccessToken sets the value of AccessToken.
+func (s *AuthSessionResponse) SetAccessToken(val string) {
+	s.AccessToken = val
+}
+
+// SetRefreshToken sets the value of RefreshToken.
+func (s *AuthSessionResponse) SetRefreshToken(val string) {
+	s.RefreshToken = val
+}
+
+// SetExpiresIn sets the value of ExpiresIn.
+func (s *AuthSessionResponse) SetExpiresIn(val int64) {
+	s.ExpiresIn = val
+}
+
+// SetMustChangePassword sets the value of MustChangePassword.
+func (s *AuthSessionResponse) SetMustChangePassword(val bool) {
+	s.MustChangePassword = val
+}
+
+// SetUser sets the value of User.
+func (s *AuthSessionResponse) SetUser(val AuthSessionUser) {
+	s.User = val
+}
+
+// Ref: #/components/schemas/AuthSessionUser
+type AuthSessionUser struct {
+	PrincipalID string `json:"principal_id"`
+	Email       string `json:"email"`
+	FullName    string `json:"full_name"`
+}
+
+// GetPrincipalID returns the value of PrincipalID.
+func (s *AuthSessionUser) GetPrincipalID() string {
+	return s.PrincipalID
+}
+
+// GetEmail returns the value of Email.
+func (s *AuthSessionUser) GetEmail() string {
+	return s.Email
+}
+
+// GetFullName returns the value of FullName.
+func (s *AuthSessionUser) GetFullName() string {
+	return s.FullName
+}
+
+// SetPrincipalID sets the value of PrincipalID.
+func (s *AuthSessionUser) SetPrincipalID(val string) {
+	s.PrincipalID = val
+}
+
+// SetEmail sets the value of Email.
+func (s *AuthSessionUser) SetEmail(val string) {
+	s.Email = val
+}
+
+// SetFullName sets the value of FullName.
+func (s *AuthSessionUser) SetFullName(val string) {
+	s.FullName = val
+}
+
 // Ref: #/components/schemas/AuthTokenResponse
 type AuthTokenResponse struct {
 	Token       string   `json:"token"`
@@ -2030,6 +2126,52 @@ func (s *LoginRequest) SetUserID(val string) {
 	s.UserID = val
 }
 
+// NewOptBool returns new OptBool with value set to v.
+func NewOptBool(v bool) OptBool {
+	return OptBool{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptBool is optional bool.
+type OptBool struct {
+	Value bool
+	Set   bool
+}
+
+// IsSet returns true if OptBool was set.
+func (o OptBool) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptBool) Reset() {
+	var v bool
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptBool) SetTo(v bool) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptBool) Get() (v bool, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptBool) Or(d bool) bool {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptCreateAnnotationRequestAttrs returns new OptCreateAnnotationRequestAttrs with value set to v.
 func NewOptCreateAnnotationRequestAttrs(v CreateAnnotationRequestAttrs) OptCreateAnnotationRequestAttrs {
 	return OptCreateAnnotationRequestAttrs{
@@ -2116,6 +2258,98 @@ func (o OptDateTime) Get() (v time.Time, ok bool) {
 
 // Or returns value if set, or given parameter if does not.
 func (o OptDateTime) Or(d time.Time) time.Time {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptFloat64 returns new OptFloat64 with value set to v.
+func NewOptFloat64(v float64) OptFloat64 {
+	return OptFloat64{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptFloat64 is optional float64.
+type OptFloat64 struct {
+	Value float64
+	Set   bool
+}
+
+// IsSet returns true if OptFloat64 was set.
+func (o OptFloat64) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptFloat64) Reset() {
+	var v float64
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptFloat64) SetTo(v float64) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptFloat64) Get() (v float64, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptFloat64) Or(d float64) float64 {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptInt returns new OptInt with value set to v.
+func NewOptInt(v int) OptInt {
+	return OptInt{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptInt is optional int.
+type OptInt struct {
+	Value int
+	Set   bool
+}
+
+// IsSet returns true if OptInt was set.
+func (o OptInt) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptInt) Reset() {
+	var v int
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptInt) SetTo(v int) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptInt) Get() (v int, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptInt) Or(d int) int {
 	if v, ok := o.Get(); ok {
 		return v
 	}
@@ -2386,6 +2620,98 @@ func (o OptString) Or(d string) string {
 	return d
 }
 
+// NewOptSystemSettingConstraints returns new OptSystemSettingConstraints with value set to v.
+func NewOptSystemSettingConstraints(v SystemSettingConstraints) OptSystemSettingConstraints {
+	return OptSystemSettingConstraints{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptSystemSettingConstraints is optional SystemSettingConstraints.
+type OptSystemSettingConstraints struct {
+	Value SystemSettingConstraints
+	Set   bool
+}
+
+// IsSet returns true if OptSystemSettingConstraints was set.
+func (o OptSystemSettingConstraints) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptSystemSettingConstraints) Reset() {
+	var v SystemSettingConstraints
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptSystemSettingConstraints) SetTo(v SystemSettingConstraints) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptSystemSettingConstraints) Get() (v SystemSettingConstraints, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptSystemSettingConstraints) Or(d SystemSettingConstraints) SystemSettingConstraints {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptSystemSettingUI returns new OptSystemSettingUI with value set to v.
+func NewOptSystemSettingUI(v SystemSettingUI) OptSystemSettingUI {
+	return OptSystemSettingUI{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptSystemSettingUI is optional SystemSettingUI.
+type OptSystemSettingUI struct {
+	Value SystemSettingUI
+	Set   bool
+}
+
+// IsSet returns true if OptSystemSettingUI was set.
+func (o OptSystemSettingUI) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptSystemSettingUI) Reset() {
+	var v SystemSettingUI
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptSystemSettingUI) SetTo(v SystemSettingUI) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptSystemSettingUI) Get() (v SystemSettingUI, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptSystemSettingUI) Or(d SystemSettingUI) SystemSettingUI {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // Ref: #/components/schemas/PrepareProjectAnnotationImportRequest
 type PrepareProjectAnnotationImportRequest struct {
 	UploadSessionID string    `json:"upload_session_id"`
@@ -2635,6 +2961,611 @@ func (s *RuntimeSummaryResponse) SetRunningTasks(val int32) {
 // SetLeaderEpoch sets the value of LeaderEpoch.
 func (s *RuntimeSummaryResponse) SetLeaderEpoch(val int64) {
 	s.LeaderEpoch = val
+}
+
+// Ref: #/components/schemas/SystemSettingConstraints
+type SystemSettingConstraints struct {
+	Min       OptFloat64 `json:"min"`
+	Max       OptFloat64 `json:"max"`
+	MinLength OptInt     `json:"min_length"`
+	MaxLength OptInt     `json:"max_length"`
+	MinItems  OptInt     `json:"min_items"`
+	MaxItems  OptInt     `json:"max_items"`
+	Step      OptFloat64 `json:"step"`
+}
+
+// GetMin returns the value of Min.
+func (s *SystemSettingConstraints) GetMin() OptFloat64 {
+	return s.Min
+}
+
+// GetMax returns the value of Max.
+func (s *SystemSettingConstraints) GetMax() OptFloat64 {
+	return s.Max
+}
+
+// GetMinLength returns the value of MinLength.
+func (s *SystemSettingConstraints) GetMinLength() OptInt {
+	return s.MinLength
+}
+
+// GetMaxLength returns the value of MaxLength.
+func (s *SystemSettingConstraints) GetMaxLength() OptInt {
+	return s.MaxLength
+}
+
+// GetMinItems returns the value of MinItems.
+func (s *SystemSettingConstraints) GetMinItems() OptInt {
+	return s.MinItems
+}
+
+// GetMaxItems returns the value of MaxItems.
+func (s *SystemSettingConstraints) GetMaxItems() OptInt {
+	return s.MaxItems
+}
+
+// GetStep returns the value of Step.
+func (s *SystemSettingConstraints) GetStep() OptFloat64 {
+	return s.Step
+}
+
+// SetMin sets the value of Min.
+func (s *SystemSettingConstraints) SetMin(val OptFloat64) {
+	s.Min = val
+}
+
+// SetMax sets the value of Max.
+func (s *SystemSettingConstraints) SetMax(val OptFloat64) {
+	s.Max = val
+}
+
+// SetMinLength sets the value of MinLength.
+func (s *SystemSettingConstraints) SetMinLength(val OptInt) {
+	s.MinLength = val
+}
+
+// SetMaxLength sets the value of MaxLength.
+func (s *SystemSettingConstraints) SetMaxLength(val OptInt) {
+	s.MaxLength = val
+}
+
+// SetMinItems sets the value of MinItems.
+func (s *SystemSettingConstraints) SetMinItems(val OptInt) {
+	s.MinItems = val
+}
+
+// SetMaxItems sets the value of MaxItems.
+func (s *SystemSettingConstraints) SetMaxItems(val OptInt) {
+	s.MaxItems = val
+}
+
+// SetStep sets the value of Step.
+func (s *SystemSettingConstraints) SetStep(val OptFloat64) {
+	s.Step = val
+}
+
+// Ref: #/components/schemas/SystemSettingField
+type SystemSettingField struct {
+	Key         string                      `json:"key"`
+	Group       string                      `json:"group"`
+	Title       string                      `json:"title"`
+	Description string                      `json:"description"`
+	Type        string                      `json:"type"`
+	Default     SystemSettingValue          `json:"default"`
+	Editable    bool                        `json:"editable"`
+	Order       int32                       `json:"order"`
+	GroupOrder  int32                       `json:"group_order"`
+	Options     []SystemSettingOption       `json:"options"`
+	Constraints OptSystemSettingConstraints `json:"constraints"`
+	UI          OptSystemSettingUI          `json:"ui"`
+}
+
+// GetKey returns the value of Key.
+func (s *SystemSettingField) GetKey() string {
+	return s.Key
+}
+
+// GetGroup returns the value of Group.
+func (s *SystemSettingField) GetGroup() string {
+	return s.Group
+}
+
+// GetTitle returns the value of Title.
+func (s *SystemSettingField) GetTitle() string {
+	return s.Title
+}
+
+// GetDescription returns the value of Description.
+func (s *SystemSettingField) GetDescription() string {
+	return s.Description
+}
+
+// GetType returns the value of Type.
+func (s *SystemSettingField) GetType() string {
+	return s.Type
+}
+
+// GetDefault returns the value of Default.
+func (s *SystemSettingField) GetDefault() SystemSettingValue {
+	return s.Default
+}
+
+// GetEditable returns the value of Editable.
+func (s *SystemSettingField) GetEditable() bool {
+	return s.Editable
+}
+
+// GetOrder returns the value of Order.
+func (s *SystemSettingField) GetOrder() int32 {
+	return s.Order
+}
+
+// GetGroupOrder returns the value of GroupOrder.
+func (s *SystemSettingField) GetGroupOrder() int32 {
+	return s.GroupOrder
+}
+
+// GetOptions returns the value of Options.
+func (s *SystemSettingField) GetOptions() []SystemSettingOption {
+	return s.Options
+}
+
+// GetConstraints returns the value of Constraints.
+func (s *SystemSettingField) GetConstraints() OptSystemSettingConstraints {
+	return s.Constraints
+}
+
+// GetUI returns the value of UI.
+func (s *SystemSettingField) GetUI() OptSystemSettingUI {
+	return s.UI
+}
+
+// SetKey sets the value of Key.
+func (s *SystemSettingField) SetKey(val string) {
+	s.Key = val
+}
+
+// SetGroup sets the value of Group.
+func (s *SystemSettingField) SetGroup(val string) {
+	s.Group = val
+}
+
+// SetTitle sets the value of Title.
+func (s *SystemSettingField) SetTitle(val string) {
+	s.Title = val
+}
+
+// SetDescription sets the value of Description.
+func (s *SystemSettingField) SetDescription(val string) {
+	s.Description = val
+}
+
+// SetType sets the value of Type.
+func (s *SystemSettingField) SetType(val string) {
+	s.Type = val
+}
+
+// SetDefault sets the value of Default.
+func (s *SystemSettingField) SetDefault(val SystemSettingValue) {
+	s.Default = val
+}
+
+// SetEditable sets the value of Editable.
+func (s *SystemSettingField) SetEditable(val bool) {
+	s.Editable = val
+}
+
+// SetOrder sets the value of Order.
+func (s *SystemSettingField) SetOrder(val int32) {
+	s.Order = val
+}
+
+// SetGroupOrder sets the value of GroupOrder.
+func (s *SystemSettingField) SetGroupOrder(val int32) {
+	s.GroupOrder = val
+}
+
+// SetOptions sets the value of Options.
+func (s *SystemSettingField) SetOptions(val []SystemSettingOption) {
+	s.Options = val
+}
+
+// SetConstraints sets the value of Constraints.
+func (s *SystemSettingField) SetConstraints(val OptSystemSettingConstraints) {
+	s.Constraints = val
+}
+
+// SetUI sets the value of UI.
+func (s *SystemSettingField) SetUI(val OptSystemSettingUI) {
+	s.UI = val
+}
+
+// Ref: #/components/schemas/SystemSettingOption
+type SystemSettingOption struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
+}
+
+// GetValue returns the value of Value.
+func (s *SystemSettingOption) GetValue() string {
+	return s.Value
+}
+
+// GetLabel returns the value of Label.
+func (s *SystemSettingOption) GetLabel() string {
+	return s.Label
+}
+
+// SetValue sets the value of Value.
+func (s *SystemSettingOption) SetValue(val string) {
+	s.Value = val
+}
+
+// SetLabel sets the value of Label.
+func (s *SystemSettingOption) SetLabel(val string) {
+	s.Label = val
+}
+
+// Ref: #/components/schemas/SystemSettingUI
+type SystemSettingUI struct {
+	Component   OptString `json:"component"`
+	Placeholder OptString `json:"placeholder"`
+	Rows        OptInt    `json:"rows"`
+}
+
+// GetComponent returns the value of Component.
+func (s *SystemSettingUI) GetComponent() OptString {
+	return s.Component
+}
+
+// GetPlaceholder returns the value of Placeholder.
+func (s *SystemSettingUI) GetPlaceholder() OptString {
+	return s.Placeholder
+}
+
+// GetRows returns the value of Rows.
+func (s *SystemSettingUI) GetRows() OptInt {
+	return s.Rows
+}
+
+// SetComponent sets the value of Component.
+func (s *SystemSettingUI) SetComponent(val OptString) {
+	s.Component = val
+}
+
+// SetPlaceholder sets the value of Placeholder.
+func (s *SystemSettingUI) SetPlaceholder(val OptString) {
+	s.Placeholder = val
+}
+
+// SetRows sets the value of Rows.
+func (s *SystemSettingUI) SetRows(val OptInt) {
+	s.Rows = val
+}
+
+// Ref: #/components/schemas/SystemSettingValue
+type SystemSettingValue struct {
+	Kind              string     `json:"kind"`
+	BoolValue         OptBool    `json:"bool_value"`
+	StringValue       OptString  `json:"string_value"`
+	IntegerValue      OptInt     `json:"integer_value"`
+	NumberValue       OptFloat64 `json:"number_value"`
+	IntegerArrayValue []int      `json:"integer_array_value"`
+}
+
+// GetKind returns the value of Kind.
+func (s *SystemSettingValue) GetKind() string {
+	return s.Kind
+}
+
+// GetBoolValue returns the value of BoolValue.
+func (s *SystemSettingValue) GetBoolValue() OptBool {
+	return s.BoolValue
+}
+
+// GetStringValue returns the value of StringValue.
+func (s *SystemSettingValue) GetStringValue() OptString {
+	return s.StringValue
+}
+
+// GetIntegerValue returns the value of IntegerValue.
+func (s *SystemSettingValue) GetIntegerValue() OptInt {
+	return s.IntegerValue
+}
+
+// GetNumberValue returns the value of NumberValue.
+func (s *SystemSettingValue) GetNumberValue() OptFloat64 {
+	return s.NumberValue
+}
+
+// GetIntegerArrayValue returns the value of IntegerArrayValue.
+func (s *SystemSettingValue) GetIntegerArrayValue() []int {
+	return s.IntegerArrayValue
+}
+
+// SetKind sets the value of Kind.
+func (s *SystemSettingValue) SetKind(val string) {
+	s.Kind = val
+}
+
+// SetBoolValue sets the value of BoolValue.
+func (s *SystemSettingValue) SetBoolValue(val OptBool) {
+	s.BoolValue = val
+}
+
+// SetStringValue sets the value of StringValue.
+func (s *SystemSettingValue) SetStringValue(val OptString) {
+	s.StringValue = val
+}
+
+// SetIntegerValue sets the value of IntegerValue.
+func (s *SystemSettingValue) SetIntegerValue(val OptInt) {
+	s.IntegerValue = val
+}
+
+// SetNumberValue sets the value of NumberValue.
+func (s *SystemSettingValue) SetNumberValue(val OptFloat64) {
+	s.NumberValue = val
+}
+
+// SetIntegerArrayValue sets the value of IntegerArrayValue.
+func (s *SystemSettingValue) SetIntegerArrayValue(val []int) {
+	s.IntegerArrayValue = val
+}
+
+// Ref: #/components/schemas/SystemSettingsPatchRequest
+type SystemSettingsPatchRequest struct {
+	Values SystemSettingsPatchRequestValues `json:"values"`
+}
+
+// GetValues returns the value of Values.
+func (s *SystemSettingsPatchRequest) GetValues() SystemSettingsPatchRequestValues {
+	return s.Values
+}
+
+// SetValues sets the value of Values.
+func (s *SystemSettingsPatchRequest) SetValues(val SystemSettingsPatchRequestValues) {
+	s.Values = val
+}
+
+type SystemSettingsPatchRequestValues map[string]SystemSettingValue
+
+func (s *SystemSettingsPatchRequestValues) init() SystemSettingsPatchRequestValues {
+	m := *s
+	if m == nil {
+		m = map[string]SystemSettingValue{}
+		*s = m
+	}
+	return m
+}
+
+// Ref: #/components/schemas/SystemSettingsResponse
+type SystemSettingsResponse struct {
+	Schema []SystemSettingField         `json:"schema"`
+	Values SystemSettingsResponseValues `json:"values"`
+}
+
+// GetSchema returns the value of Schema.
+func (s *SystemSettingsResponse) GetSchema() []SystemSettingField {
+	return s.Schema
+}
+
+// GetValues returns the value of Values.
+func (s *SystemSettingsResponse) GetValues() SystemSettingsResponseValues {
+	return s.Values
+}
+
+// SetSchema sets the value of Schema.
+func (s *SystemSettingsResponse) SetSchema(val []SystemSettingField) {
+	s.Schema = val
+}
+
+// SetValues sets the value of Values.
+func (s *SystemSettingsResponse) SetValues(val SystemSettingsResponseValues) {
+	s.Values = val
+}
+
+type SystemSettingsResponseValues map[string]SystemSettingValue
+
+func (s *SystemSettingsResponseValues) init() SystemSettingsResponseValues {
+	m := *s
+	if m == nil {
+		m = map[string]SystemSettingValue{}
+		*s = m
+	}
+	return m
+}
+
+// Ref: #/components/schemas/SystemSetupRequest
+type SystemSetupRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+	FullName string `json:"full_name"`
+}
+
+// GetEmail returns the value of Email.
+func (s *SystemSetupRequest) GetEmail() string {
+	return s.Email
+}
+
+// GetPassword returns the value of Password.
+func (s *SystemSetupRequest) GetPassword() string {
+	return s.Password
+}
+
+// GetFullName returns the value of FullName.
+func (s *SystemSetupRequest) GetFullName() string {
+	return s.FullName
+}
+
+// SetEmail sets the value of Email.
+func (s *SystemSetupRequest) SetEmail(val string) {
+	s.Email = val
+}
+
+// SetPassword sets the value of Password.
+func (s *SystemSetupRequest) SetPassword(val string) {
+	s.Password = val
+}
+
+// SetFullName sets the value of FullName.
+func (s *SystemSetupRequest) SetFullName(val string) {
+	s.FullName = val
+}
+
+// Ref: #/components/schemas/SystemStatusResponse
+type SystemStatusResponse struct {
+	InstallState      string `json:"install_state"`
+	AllowSelfRegister bool   `json:"allow_self_register"`
+	Version           string `json:"version"`
+}
+
+// GetInstallState returns the value of InstallState.
+func (s *SystemStatusResponse) GetInstallState() string {
+	return s.InstallState
+}
+
+// GetAllowSelfRegister returns the value of AllowSelfRegister.
+func (s *SystemStatusResponse) GetAllowSelfRegister() bool {
+	return s.AllowSelfRegister
+}
+
+// GetVersion returns the value of Version.
+func (s *SystemStatusResponse) GetVersion() string {
+	return s.Version
+}
+
+// SetInstallState sets the value of InstallState.
+func (s *SystemStatusResponse) SetInstallState(val string) {
+	s.InstallState = val
+}
+
+// SetAllowSelfRegister sets the value of AllowSelfRegister.
+func (s *SystemStatusResponse) SetAllowSelfRegister(val bool) {
+	s.AllowSelfRegister = val
+}
+
+// SetVersion sets the value of Version.
+func (s *SystemStatusResponse) SetVersion(val string) {
+	s.Version = val
+}
+
+// Ref: #/components/schemas/SystemTypeInfo
+type SystemTypeInfo struct {
+	Value                  string   `json:"value"`
+	Label                  string   `json:"label"`
+	Description            string   `json:"description"`
+	Color                  string   `json:"color"`
+	Enabled                bool     `json:"enabled"`
+	AllowedAnnotationTypes []string `json:"allowed_annotation_types"`
+	MustAnnotationTypes    []string `json:"must_annotation_types"`
+	BannedAnnotationTypes  []string `json:"banned_annotation_types"`
+}
+
+// GetValue returns the value of Value.
+func (s *SystemTypeInfo) GetValue() string {
+	return s.Value
+}
+
+// GetLabel returns the value of Label.
+func (s *SystemTypeInfo) GetLabel() string {
+	return s.Label
+}
+
+// GetDescription returns the value of Description.
+func (s *SystemTypeInfo) GetDescription() string {
+	return s.Description
+}
+
+// GetColor returns the value of Color.
+func (s *SystemTypeInfo) GetColor() string {
+	return s.Color
+}
+
+// GetEnabled returns the value of Enabled.
+func (s *SystemTypeInfo) GetEnabled() bool {
+	return s.Enabled
+}
+
+// GetAllowedAnnotationTypes returns the value of AllowedAnnotationTypes.
+func (s *SystemTypeInfo) GetAllowedAnnotationTypes() []string {
+	return s.AllowedAnnotationTypes
+}
+
+// GetMustAnnotationTypes returns the value of MustAnnotationTypes.
+func (s *SystemTypeInfo) GetMustAnnotationTypes() []string {
+	return s.MustAnnotationTypes
+}
+
+// GetBannedAnnotationTypes returns the value of BannedAnnotationTypes.
+func (s *SystemTypeInfo) GetBannedAnnotationTypes() []string {
+	return s.BannedAnnotationTypes
+}
+
+// SetValue sets the value of Value.
+func (s *SystemTypeInfo) SetValue(val string) {
+	s.Value = val
+}
+
+// SetLabel sets the value of Label.
+func (s *SystemTypeInfo) SetLabel(val string) {
+	s.Label = val
+}
+
+// SetDescription sets the value of Description.
+func (s *SystemTypeInfo) SetDescription(val string) {
+	s.Description = val
+}
+
+// SetColor sets the value of Color.
+func (s *SystemTypeInfo) SetColor(val string) {
+	s.Color = val
+}
+
+// SetEnabled sets the value of Enabled.
+func (s *SystemTypeInfo) SetEnabled(val bool) {
+	s.Enabled = val
+}
+
+// SetAllowedAnnotationTypes sets the value of AllowedAnnotationTypes.
+func (s *SystemTypeInfo) SetAllowedAnnotationTypes(val []string) {
+	s.AllowedAnnotationTypes = val
+}
+
+// SetMustAnnotationTypes sets the value of MustAnnotationTypes.
+func (s *SystemTypeInfo) SetMustAnnotationTypes(val []string) {
+	s.MustAnnotationTypes = val
+}
+
+// SetBannedAnnotationTypes sets the value of BannedAnnotationTypes.
+func (s *SystemTypeInfo) SetBannedAnnotationTypes(val []string) {
+	s.BannedAnnotationTypes = val
+}
+
+// Ref: #/components/schemas/SystemTypesResponse
+type SystemTypesResponse struct {
+	TaskTypes    []SystemTypeInfo `json:"task_types"`
+	DatasetTypes []SystemTypeInfo `json:"dataset_types"`
+}
+
+// GetTaskTypes returns the value of TaskTypes.
+func (s *SystemTypesResponse) GetTaskTypes() []SystemTypeInfo {
+	return s.TaskTypes
+}
+
+// GetDatasetTypes returns the value of DatasetTypes.
+func (s *SystemTypesResponse) GetDatasetTypes() []SystemTypeInfo {
+	return s.DatasetTypes
+}
+
+// SetTaskTypes sets the value of TaskTypes.
+func (s *SystemTypesResponse) SetTaskTypes(val []SystemTypeInfo) {
+	s.TaskTypes = val
+}
+
+// SetDatasetTypes sets the value of DatasetTypes.
+func (s *SystemTypesResponse) SetDatasetTypes(val []SystemTypeInfo) {
+	s.DatasetTypes = val
 }
 
 type UnlinkProjectDatasetsBadRequest ErrorResponse

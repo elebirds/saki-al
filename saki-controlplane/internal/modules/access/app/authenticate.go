@@ -67,29 +67,26 @@ func (a *Authenticator) IssueTokenContext(ctx context.Context, userID string) (s
 	if err != nil {
 		return "", err
 	}
-	if snapshot == nil {
+	return a.issueTokenFromSnapshot(snapshot)
+}
+
+func (a *Authenticator) IssueBootstrapTokenContext(ctx context.Context, userID string) (string, error) {
+	if a.store == nil {
+		return "", ErrMissingAccessStore
+	}
+
+	bootstrapStore, ok := a.store.(BootstrapClaimsStore)
+	if !ok {
 		return "", ErrUnauthorized
 	}
 
-	claims := claimsFromSnapshot(snapshot, a.now().Add(a.ttl))
-	payload, err := json.Marshal(struct {
-		PrincipalID uuid.UUID `json:"principal_id"`
-		UserID      string    `json:"user_id"`
-		Permissions []string  `json:"permissions"`
-		ExpiresAt   int64     `json:"expires_at"`
-	}{
-		PrincipalID: claims.PrincipalID,
-		UserID:      claims.UserID,
-		Permissions: claims.Permissions,
-		ExpiresAt:   claims.ExpiresAt.Unix(),
-	})
+	// 关键设计：legacy /auth/login 只允许迁移期 bootstrap principal 继续使用。
+	// 新的人类控制面 identity 用户必须走后续真正带密码校验的 /auth/login，而不能借旧壳接口无密码拿 token。
+	snapshot, err := bootstrapStore.LoadBootstrapClaimsByUserID(ctx, userID)
 	if err != nil {
 		return "", err
 	}
-
-	encodedPayload := base64.RawURLEncoding.EncodeToString(payload)
-	signature := a.sign(encodedPayload)
-	return encodedPayload + "." + signature, nil
+	return a.issueTokenFromSnapshot(snapshot)
 }
 
 func (a *Authenticator) AuthenticateContext(ctx context.Context, token string) (*Claims, error) {
@@ -157,6 +154,32 @@ func (a *Authenticator) sign(payload string) string {
 	mac := hmac.New(sha256.New, a.secret)
 	_, _ = mac.Write([]byte(payload))
 	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}
+
+func (a *Authenticator) issueTokenFromSnapshot(snapshot *ClaimsSnapshot) (string, error) {
+	if snapshot == nil {
+		return "", ErrUnauthorized
+	}
+
+	claims := claimsFromSnapshot(snapshot, a.now().Add(a.ttl))
+	payload, err := json.Marshal(struct {
+		PrincipalID uuid.UUID `json:"principal_id"`
+		UserID      string    `json:"user_id"`
+		Permissions []string  `json:"permissions"`
+		ExpiresAt   int64     `json:"expires_at"`
+	}{
+		PrincipalID: claims.PrincipalID,
+		UserID:      claims.UserID,
+		Permissions: claims.Permissions,
+		ExpiresAt:   claims.ExpiresAt.Unix(),
+	})
+	if err != nil {
+		return "", err
+	}
+
+	encodedPayload := base64.RawURLEncoding.EncodeToString(payload)
+	signature := a.sign(encodedPayload)
+	return encodedPayload + "." + signature, nil
 }
 
 func splitToken(token string) (payload string, signature string, ok bool) {

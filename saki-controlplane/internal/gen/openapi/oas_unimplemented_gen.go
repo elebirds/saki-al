@@ -146,6 +146,27 @@ func (UnimplementedHandler) GetRuntimeSummary(ctx context.Context) (r *RuntimeSu
 	return r, ht.ErrNotImplemented
 }
 
+// GetSystemSettings implements getSystemSettings operation.
+//
+// GET /system/settings
+func (UnimplementedHandler) GetSystemSettings(ctx context.Context) (r *SystemSettingsResponse, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// GetSystemStatus implements getSystemStatus operation.
+//
+// GET /system/status
+func (UnimplementedHandler) GetSystemStatus(ctx context.Context) (r *SystemStatusResponse, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// GetSystemTypes implements getSystemTypes operation.
+//
+// GET /system/types
+func (UnimplementedHandler) GetSystemTypes(ctx context.Context) (r *SystemTypesResponse, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // Healthz implements healthz operation.
 //
 // GET /healthz
@@ -223,6 +244,13 @@ func (UnimplementedHandler) Login(ctx context.Context, req *LoginRequest) (r *Au
 	return r, ht.ErrNotImplemented
 }
 
+// PatchSystemSettings implements patchSystemSettings operation.
+//
+// PATCH /system/settings
+func (UnimplementedHandler) PatchSystemSettings(ctx context.Context, req *SystemSettingsPatchRequest) (r *SystemSettingsResponse, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // PrepareProjectAnnotationImport implements prepareProjectAnnotationImport operation.
 //
 // POST /projects/{project_id}/datasets/{dataset_id}/imports/annotations:prepare
@@ -235,6 +263,13 @@ func (UnimplementedHandler) PrepareProjectAnnotationImport(ctx context.Context, 
 // GET /auth/permissions/{permission}
 func (UnimplementedHandler) RequirePermission(ctx context.Context, params RequirePermissionParams) error {
 	return ht.ErrNotImplemented
+}
+
+// SetupSystem implements setupSystem operation.
+//
+// POST /system/setup
+func (UnimplementedHandler) SetupSystem(ctx context.Context, req *SystemSetupRequest) (r *AuthSessionResponse, _ error) {
+	return r, ht.ErrNotImplemented
 }
 
 // SignAssetDownload implements signAssetDownload operation.

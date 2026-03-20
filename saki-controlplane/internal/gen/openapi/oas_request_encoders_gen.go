@@ -150,8 +150,36 @@ func encodeLoginRequest(
 	return nil
 }
 
+func encodePatchSystemSettingsRequest(
+	req *SystemSettingsPatchRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
 func encodePrepareProjectAnnotationImportRequest(
 	req *PrepareProjectAnnotationImportRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodeSetupSystemRequest(
+	req *SystemSetupRequest,
 	r *http.Request,
 ) error {
 	const contentType = "application/json"

@@ -574,6 +574,97 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /system/status:
+    get:
+      operationId: getSystemStatus
+      responses:
+        "200":
+          description: system status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemStatusResponse"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /system/types:
+    get:
+      operationId: getSystemTypes
+      responses:
+        "200":
+          description: available task and dataset types
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemTypesResponse"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /system/setup:
+    post:
+      operationId: setupSystem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SystemSetupRequest"
+      responses:
+        "200":
+          description: initial admin session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSessionResponse"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /system/settings:
+    get:
+      operationId: getSystemSettings
+      responses:
+        "200":
+          description: system settings schema and effective values
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemSettingsResponse"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: patchSystemSettings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SystemSettingsPatchRequest"
+      responses:
+        "200":
+          description: updated system settings schema and effective values
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemSettingsResponse"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /auth/me:
     get:
       operationId: getCurrentUser
@@ -1227,6 +1318,235 @@ components:
           type: array
           items:
             type: string
+    SystemStatusResponse:
+      type: object
+      required:
+        - install_state
+        - allow_self_register
+        - version
+      properties:
+        install_state:
+          type: string
+        allow_self_register:
+          type: boolean
+        version:
+          type: string
+    SystemTypeInfo:
+      type: object
+      required:
+        - value
+        - label
+        - description
+        - color
+        - enabled
+        - allowed_annotation_types
+        - must_annotation_types
+        - banned_annotation_types
+      properties:
+        value:
+          type: string
+        label:
+          type: string
+        description:
+          type: string
+        color:
+          type: string
+        enabled:
+          type: boolean
+        allowed_annotation_types:
+          type: array
+          items:
+            type: string
+        must_annotation_types:
+          type: array
+          items:
+            type: string
+        banned_annotation_types:
+          type: array
+          items:
+            type: string
+    SystemTypesResponse:
+      type: object
+      required:
+        - task_types
+        - dataset_types
+      properties:
+        task_types:
+          type: array
+          items:
+            $ref: "#/components/schemas/SystemTypeInfo"
+        dataset_types:
+          type: array
+          items:
+            $ref: "#/components/schemas/SystemTypeInfo"
+    SystemSetupRequest:
+      type: object
+      required:
+        - email
+        - password
+        - full_name
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+        full_name:
+          type: string
+    AuthSessionUser:
+      type: object
+      required:
+        - principal_id
+        - email
+        - full_name
+      properties:
+        principal_id:
+          type: string
+        email:
+          type: string
+          format: email
+        full_name:
+          type: string
+    AuthSessionResponse:
+      type: object
+      required:
+        - access_token
+        - refresh_token
+        - expires_in
+        - must_change_password
+        - user
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        expires_in:
+          type: integer
+          format: int64
+        must_change_password:
+          type: boolean
+        user:
+          $ref: "#/components/schemas/AuthSessionUser"
+    SystemSettingValue:
+      type: object
+      required:
+        - kind
+      properties:
+        kind:
+          type: string
+        bool_value:
+          type: boolean
+        string_value:
+          type: string
+        integer_value:
+          type: integer
+        number_value:
+          type: number
+        integer_array_value:
+          type: array
+          items:
+            type: integer
+    SystemSettingOption:
+      type: object
+      required:
+        - value
+        - label
+      properties:
+        value:
+          type: string
+        label:
+          type: string
+    SystemSettingConstraints:
+      type: object
+      properties:
+        min:
+          type: number
+        max:
+          type: number
+        min_length:
+          type: integer
+        max_length:
+          type: integer
+        min_items:
+          type: integer
+        max_items:
+          type: integer
+        step:
+          type: number
+    SystemSettingUI:
+      type: object
+      properties:
+        component:
+          type: string
+        placeholder:
+          type: string
+        rows:
+          type: integer
+    SystemSettingField:
+      type: object
+      required:
+        - key
+        - group
+        - title
+        - description
+        - type
+        - default
+        - editable
+        - order
+        - group_order
+        - options
+      properties:
+        key:
+          type: string
+        group:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        type:
+          type: string
+        default:
+          $ref: "#/components/schemas/SystemSettingValue"
+        editable:
+          type: boolean
+        order:
+          type: integer
+          format: int32
+        group_order:
+          type: integer
+          format: int32
+        options:
+          type: array
+          items:
+            $ref: "#/components/schemas/SystemSettingOption"
+        constraints:
+          $ref: "#/components/schemas/SystemSettingConstraints"
+        ui:
+          $ref: "#/components/schemas/SystemSettingUI"
+    SystemSettingsResponse:
+      type: object
+      required:
+        - schema
+        - values
+      properties:
+        schema:
+          type: array
+          items:
+            $ref: "#/components/schemas/SystemSettingField"
+        values:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/SystemSettingValue"
+    SystemSettingsPatchRequest:
+      type: object
+      required:
+        - values
+      properties:
+        values:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/SystemSettingValue"
     RuntimeSummaryResponse:
       type: object
       required:

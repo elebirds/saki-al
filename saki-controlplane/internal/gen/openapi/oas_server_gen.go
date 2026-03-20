@@ -84,6 +84,18 @@ type Handler interface {
 	//
 	// GET /runtime/summary
 	GetRuntimeSummary(ctx context.Context) (*RuntimeSummaryResponse, error)
+	// GetSystemSettings implements getSystemSettings operation.
+	//
+	// GET /system/settings
+	GetSystemSettings(ctx context.Context) (*SystemSettingsResponse, error)
+	// GetSystemStatus implements getSystemStatus operation.
+	//
+	// GET /system/status
+	GetSystemStatus(ctx context.Context) (*SystemStatusResponse, error)
+	// GetSystemTypes implements getSystemTypes operation.
+	//
+	// GET /system/types
+	GetSystemTypes(ctx context.Context) (*SystemTypesResponse, error)
 	// Healthz implements healthz operation.
 	//
 	// GET /healthz
@@ -128,6 +140,10 @@ type Handler interface {
 	//
 	// POST /auth/login
 	Login(ctx context.Context, req *LoginRequest) (*AuthTokenResponse, error)
+	// PatchSystemSettings implements patchSystemSettings operation.
+	//
+	// PATCH /system/settings
+	PatchSystemSettings(ctx context.Context, req *SystemSettingsPatchRequest) (*SystemSettingsResponse, error)
 	// PrepareProjectAnnotationImport implements prepareProjectAnnotationImport operation.
 	//
 	// POST /projects/{project_id}/datasets/{dataset_id}/imports/annotations:prepare
@@ -136,6 +152,10 @@ type Handler interface {
 	//
 	// GET /auth/permissions/{permission}
 	RequirePermission(ctx context.Context, params RequirePermissionParams) error
+	// SetupSystem implements setupSystem operation.
+	//
+	// POST /system/setup
+	SetupSystem(ctx context.Context, req *SystemSetupRequest) (*AuthSessionResponse, error)
 	// SignAssetDownload implements signAssetDownload operation.
 	//
 	// POST /assets/{asset_id}:sign-download

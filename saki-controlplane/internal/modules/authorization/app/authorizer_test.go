@@ -90,6 +90,31 @@ func TestAuthorizerResolvesMigrationPermissionSnapshot(t *testing.T) {
 	}
 }
 
+func TestAuthorizerCanonicalizesLegacyPermissionAliases(t *testing.T) {
+	principalID := uuid.MustParse("00000000-0000-0000-0000-000000000783")
+	systemRoleID := uuid.MustParse("00000000-0000-0000-0000-000000000784")
+
+	store := &fakeAuthorizerStore{
+		systemBindings: []authorizationdomain.SystemBinding{
+			{PrincipalID: principalID, RoleID: systemRoleID, SystemName: authorizationdomain.SystemNameControlplane},
+		},
+		rolePermissions: map[uuid.UUID][]string{
+			systemRoleID: {"system_setting:read", "system_setting:update"},
+		},
+	}
+
+	authorizer := NewAuthorizer(store)
+	permissions, err := authorizer.ResolvePermissionSnapshot(context.Background(), principalID)
+	if err != nil {
+		t.Fatalf("resolve permission snapshot: %v", err)
+	}
+
+	expected := []string{"system:read", "system:write"}
+	if !slices.Equal(permissions, expected) {
+		t.Fatalf("permissions got %v want %v", permissions, expected)
+	}
+}
+
 type fakeAuthorizerStore struct {
 	systemBindings  []authorizationdomain.SystemBinding
 	memberships     []authorizationdomain.ResourceMembership

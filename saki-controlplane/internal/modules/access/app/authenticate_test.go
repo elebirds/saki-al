@@ -74,6 +74,25 @@ func TestIssueTokenUsesAggregateClaimsLoader(t *testing.T) {
 	}
 }
 
+func TestIssueBootstrapTokenRejectsIdentityOnlyPrincipal(t *testing.T) {
+	principalID := uuid.MustParse("00000000-0000-0000-0000-000000000333")
+	store := &fakeStore{
+		claimsByUserID: map[string]*ClaimsSnapshot{
+			"admin@example.com": {
+				PrincipalID: principalID,
+				UserID:      "admin@example.com",
+				Permissions: []string{"system:write"},
+			},
+		},
+	}
+	authenticator := NewAuthenticator("test-secret", time.Hour).WithStore(store)
+
+	_, err := authenticator.IssueBootstrapTokenContext(context.Background(), "admin@example.com")
+	if !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("expected bootstrap login to reject identity-only principal, got %v", err)
+	}
+}
+
 func TestBootstrapSeedUpsertsConfiguredPrincipals(t *testing.T) {
 	store := fakeStore{
 		claimsByUserID:      map[string]*ClaimsSnapshot{},
@@ -107,6 +126,7 @@ func TestBootstrapSeedUpsertsConfiguredPrincipals(t *testing.T) {
 
 type fakeStore struct {
 	claimsByUserID       map[string]*ClaimsSnapshot
+	bootstrapClaimsByUID map[string]*ClaimsSnapshot
 	claimsByPrincipalID  map[uuid.UUID]*ClaimsSnapshot
 	loadByUserIDErr      map[string]error
 	loadByPrincipalErr   map[uuid.UUID]error
@@ -143,6 +163,13 @@ func (s *fakeStore) LoadClaimsByPrincipalID(_ context.Context, principalID uuid.
 	return cloneClaims(claims), nil
 }
 
+func (s *fakeStore) LoadBootstrapClaimsByUserID(_ context.Context, userID string) (*ClaimsSnapshot, error) {
+	if s.bootstrapClaimsByUID == nil {
+		return nil, nil
+	}
+	return cloneClaims(s.bootstrapClaimsByUID[userID]), nil
+}
+
 func (s *fakeStore) UpsertBootstrapPrincipal(_ context.Context, spec BootstrapPrincipalSpec) (*accessdomain.Principal, error) {
 	if s.upsertedSubjects == nil {
 		s.upsertedSubjects = map[string]BootstrapPrincipalSpec{}
@@ -169,6 +196,10 @@ func (s *fakeStore) UpsertBootstrapPrincipal(_ context.Context, spec BootstrapPr
 		s.claimsByPrincipalID = map[uuid.UUID]*ClaimsSnapshot{}
 	}
 	s.claimsByPrincipalID[principal.ID] = cloneClaims(claims)
+	if s.bootstrapClaimsByUID == nil {
+		s.bootstrapClaimsByUID = map[string]*ClaimsSnapshot{}
+	}
+	s.bootstrapClaimsByUID[spec.UserID] = cloneClaims(claims)
 	return principal, nil
 }
 

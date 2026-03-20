@@ -30,6 +30,7 @@ type BootstrapStore struct {
 }
 
 var _ accessapp.ClaimsStore = (*ClaimsStore)(nil)
+var _ accessapp.BootstrapClaimsStore = (*ClaimsStore)(nil)
 var _ accessapp.BootstrapStore = (*BootstrapStore)(nil)
 
 func NewClaimsStore(deps ClaimsStoreDeps) *ClaimsStore {
@@ -49,6 +50,10 @@ func (s *ClaimsStore) LoadClaimsByUserID(ctx context.Context, userID string) (*a
 	if claims, err := s.loadIdentityClaimsByUserID(ctx, userID); err != nil || claims != nil {
 		return claims, err
 	}
+	return s.loadLegacyClaimsByUserID(ctx, userID)
+}
+
+func (s *ClaimsStore) LoadBootstrapClaimsByUserID(ctx context.Context, userID string) (*accessapp.ClaimsSnapshot, error) {
 	return s.loadLegacyClaimsByUserID(ctx, userID)
 }
 

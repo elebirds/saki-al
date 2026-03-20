@@ -24,6 +24,12 @@ func TestLoadConfigDefaults(t *testing.T) {
 	if cfg.PublicAPIBind == "" || cfg.RuntimeBind == "" {
 		t.Fatal("default binds must be set")
 	}
+	if cfg.AuthTokenTTL != "10m" {
+		t.Fatalf("default auth token ttl got %q want 10m", cfg.AuthTokenTTL)
+	}
+	if cfg.BuildVersion == "" {
+		t.Fatal("default build version must be set")
+	}
 }
 
 func TestLoadConfigReadsBootstrapDependencies(t *testing.T) {

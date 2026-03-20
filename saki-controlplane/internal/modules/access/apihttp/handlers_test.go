@@ -52,8 +52,8 @@ func TestLoginReturnsRepoBackedPermissions(t *testing.T) {
 	if !slices.Equal(body.Permissions, []string{"projects:read"}) {
 		t.Fatalf("expected authorizer-backed permissions, got %+v", body)
 	}
-	if store.loadByUserIDCalls != 1 {
-		t.Fatalf("expected one aggregate user lookup, got %d", store.loadByUserIDCalls)
+	if store.loadByBootstrapUserIDCalls != 1 {
+		t.Fatalf("expected one bootstrap user lookup, got %d", store.loadByBootstrapUserIDCalls)
 	}
 }
 
@@ -80,6 +80,22 @@ func TestLoginRejectsDisabledPrincipal(t *testing.T) {
 	}
 
 	req := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewBufferString(`{"user_id":"disabled-user"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("unexpected status: %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestLoginRejectsIdentityBackedPrincipalWithoutBootstrapGrant(t *testing.T) {
+	handler, err := newTestHTTPHandler()
+	if err != nil {
+		t.Fatalf("new http handler: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewBufferString(`{"user_id":"identity@example.com"}`))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -281,17 +297,41 @@ func (fakeAnnotationStore) ListByProjectSample(context.Context, uuid.UUID, uuid.
 }
 
 type fakeAccessStore struct {
-	claimsByUserID         map[string]*accessapp.ClaimsSnapshot
-	claimsByPrincipalID    map[uuid.UUID]*accessapp.ClaimsSnapshot
-	loadByUserIDErr        map[string]error
-	loadByPrincipalErr     map[uuid.UUID]error
-	loadByUserIDCalls      int
-	loadByPrincipalIDCalls int
+	claimsByUserID             map[string]*accessapp.ClaimsSnapshot
+	bootstrapClaimsByUID       map[string]*accessapp.ClaimsSnapshot
+	claimsByPrincipalID        map[uuid.UUID]*accessapp.ClaimsSnapshot
+	loadByUserIDErr            map[string]error
+	loadByPrincipalErr         map[uuid.UUID]error
+	loadByUserIDCalls          int
+	loadByBootstrapUserIDCalls int
+	loadByPrincipalIDCalls     int
 }
 
 func newFakeAccessStore() *fakeAccessStore {
 	return &fakeAccessStore{
 		claimsByUserID: map[string]*accessapp.ClaimsSnapshot{
+			"user-1": {
+				PrincipalID: uuid.MustParse("00000000-0000-0000-0000-000000000101"),
+				UserID:      "user-1",
+				Permissions: []string{"projects:read"},
+			},
+			"user-2": {
+				PrincipalID: uuid.MustParse("00000000-0000-0000-0000-000000000102"),
+				UserID:      "user-2",
+				Permissions: []string{"projects:read"},
+			},
+			"user-3": {
+				PrincipalID: uuid.MustParse("00000000-0000-0000-0000-000000000103"),
+				UserID:      "user-3",
+				Permissions: []string{"projects:read"},
+			},
+			"identity@example.com": {
+				PrincipalID: uuid.MustParse("00000000-0000-0000-0000-000000000104"),
+				UserID:      "identity@example.com",
+				Permissions: []string{"system:write"},
+			},
+		},
+		bootstrapClaimsByUID: map[string]*accessapp.ClaimsSnapshot{
 			"user-1": {
 				PrincipalID: uuid.MustParse("00000000-0000-0000-0000-000000000101"),
 				UserID:      "user-1",
@@ -346,6 +386,14 @@ func (s *fakeAccessStore) LoadClaimsByPrincipalID(_ context.Context, principalID
 		return nil, err
 	}
 	return cloneAccessClaims(s.claimsByPrincipalID[principalID]), nil
+}
+
+func (s *fakeAccessStore) LoadBootstrapClaimsByUserID(_ context.Context, userID string) (*accessapp.ClaimsSnapshot, error) {
+	s.loadByBootstrapUserIDCalls++
+	if err := s.loadByUserIDErr[userID]; err != nil {
+		return nil, err
+	}
+	return cloneAccessClaims(s.bootstrapClaimsByUID[userID]), nil
 }
 
 func (s *fakeAccessStore) UpsertBootstrapPrincipal(context.Context, accessapp.BootstrapPrincipalSpec) (*accessdomain.Principal, error) {

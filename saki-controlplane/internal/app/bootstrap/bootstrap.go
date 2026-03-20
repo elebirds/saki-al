@@ -33,6 +33,8 @@ import (
 	runtimeapp "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/runtime"
 	runtimerepo "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/repo"
 	systemapi "github.com/elebirds/saki/saki-controlplane/internal/modules/system/apihttp"
+	systemapp "github.com/elebirds/saki/saki-controlplane/internal/modules/system/app"
+	systemrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/system/repo"
 )
 
 var objectProviderFactory = storage.NewMinIOProvider
@@ -157,6 +159,8 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 	)
 	projectRepo := projectrepo.NewProjectRepo(pool)
 	projectStore := projectapp.NewRepoStore(projectRepo)
+	installationRepo := systemrepo.NewInstallationRepo(pool)
+	settingRepo := systemrepo.NewSettingRepo(pool)
 	importUploadRepo := importrepo.NewUploadRepo(pool)
 	importPreviewRepo := importrepo.NewPreviewRepo(pool)
 	importTaskRepo := importrepo.NewTaskRepo(pool)
@@ -187,8 +191,9 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 		}
 	}
 
+	authenticator := accessapp.NewAuthenticator(cfg.AuthTokenSecret, tokenTTL).WithStore(claimsStore)
 	handler, err := systemapi.NewHTTPHandler(systemapi.Dependencies{
-		Authenticator:       accessapp.NewAuthenticator(cfg.AuthTokenSecret, tokenTTL).WithStore(claimsStore),
+		Authenticator:       authenticator,
 		ClaimsStore:         claimsStore,
 		DatasetStore:        datasetStore,
 		DatasetDelete:       datasetDelete,
@@ -229,6 +234,12 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 			Provider:        importDeps.Provider,
 			UploadURLExpiry: importDeps.UploadURLExpiry,
 		},
+		System: systemapi.NewHandlers(systemapi.HandlersDeps{
+			Status:   systemapp.NewStatusUseCase(systemapp.NewInstallationService(installationRepo), systemapp.NewSettingsService(settingRepo), cfg.BuildVersion),
+			Types:    systemapp.NewTypesUseCase(),
+			Setup:    systemapp.NewSetupUseCase(systemrepo.NewSetupStore(pool), authenticator, nil, tokenTTL),
+			Settings: systemapp.NewSettingsUseCase(systemapp.NewInstallationService(installationRepo), settingRepo),
+		}),
 	})
 	if err != nil {
 		pool.Close()

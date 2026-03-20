@@ -33,6 +33,7 @@ func (p *BootstrapPrincipals) UnmarshalText(text []byte) error {
 type Config struct {
 	PublicAPIBind                string              `env:"PUBLIC_API_BIND" envDefault:":8080"`
 	RuntimeBind                  string              `env:"RUNTIME_BIND" envDefault:":8081"`
+	BuildVersion                 string              `env:"BUILD_VERSION" envDefault:"dev"`
 	RuntimeRoles                 []string            `env:"RUNTIME_ROLES" envDefault:"ingress,scheduler,delivery,recovery" envSeparator:","`
 	RuntimeAssignAckTimeout      string              `env:"RUNTIME_ASSIGN_ACK_TIMEOUT" envDefault:"30s"`
 	RuntimeAgentHeartbeatTimeout string              `env:"RUNTIME_AGENT_HEARTBEAT_TIMEOUT" envDefault:"30s"`
@@ -40,7 +41,7 @@ type Config struct {
 	LogFormat                    string              `env:"LOG_FORMAT" envDefault:"AUTO"`
 	DatabaseDSN                  string              `env:"DATABASE_DSN"`
 	AuthTokenSecret              string              `env:"AUTH_TOKEN_SECRET" envDefault:"dev-secret"`
-	AuthTokenTTL                 string              `env:"AUTH_TOKEN_TTL" envDefault:"24h"`
+	AuthTokenTTL                 string              `env:"AUTH_TOKEN_TTL" envDefault:"10m"`
 	AuthBootstrapPrincipals      BootstrapPrincipals `env:"AUTH_BOOTSTRAP_PRINCIPALS"`
 	MinIOEndpoint                string              `env:"MINIO_ENDPOINT"`
 	MinIOAccessKey               string              `env:"MINIO_ACCESS_KEY"`

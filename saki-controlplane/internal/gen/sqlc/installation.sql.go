@@ -7,13 +7,14 @@ package sqlcdb
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const getSystemInstallation = `-- name: GetSystemInstallation :one
-select id, installation_key, metadata, created_at, updated_at
+select id, installation_key, install_state, metadata, setup_at, setup_by_principal_id, created_at, updated_at
 from system_installation
-order by created_at desc
-limit 1
+where installation_key = 'primary'
 `
 
 func (q *Queries) GetSystemInstallation(ctx context.Context) (SystemInstallation, error) {
@@ -22,7 +23,10 @@ func (q *Queries) GetSystemInstallation(ctx context.Context) (SystemInstallation
 	err := row.Scan(
 		&i.ID,
 		&i.InstallationKey,
+		&i.InstallState,
 		&i.Metadata,
+		&i.SetupAt,
+		&i.SetupByPrincipalID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -30,26 +34,45 @@ func (q *Queries) GetSystemInstallation(ctx context.Context) (SystemInstallation
 }
 
 const upsertSystemInstallation = `-- name: UpsertSystemInstallation :one
-insert into system_installation (installation_key, metadata)
-values ($1, $2)
+insert into system_installation (installation_key, install_state, metadata, setup_at, setup_by_principal_id)
+values (
+    'primary',
+    $1,
+    $2,
+    $3,
+    $4
+)
 on conflict (installation_key) do update
-set metadata = excluded.metadata,
+set install_state = excluded.install_state,
+    metadata = excluded.metadata,
+    setup_at = excluded.setup_at,
+    setup_by_principal_id = excluded.setup_by_principal_id,
     updated_at = now()
-returning id, installation_key, metadata, created_at, updated_at
+returning id, installation_key, install_state, metadata, setup_at, setup_by_principal_id, created_at, updated_at
 `
 
 type UpsertSystemInstallationParams struct {
-	InstallationKey string `json:"installation_key"`
-	Metadata        []byte `json:"metadata"`
+	InstallState       SystemInstallationState `json:"install_state"`
+	Metadata           []byte                  `json:"metadata"`
+	SetupAt            pgtype.Timestamptz      `json:"setup_at"`
+	SetupByPrincipalID pgtype.UUID             `json:"setup_by_principal_id"`
 }
 
 func (q *Queries) UpsertSystemInstallation(ctx context.Context, arg UpsertSystemInstallationParams) (SystemInstallation, error) {
-	row := q.db.QueryRow(ctx, upsertSystemInstallation, arg.InstallationKey, arg.Metadata)
+	row := q.db.QueryRow(ctx, upsertSystemInstallation,
+		arg.InstallState,
+		arg.Metadata,
+		arg.SetupAt,
+		arg.SetupByPrincipalID,
+	)
 	var i SystemInstallation
 	err := row.Scan(
 		&i.ID,
 		&i.InstallationKey,
+		&i.InstallState,
 		&i.Metadata,
+		&i.SetupAt,
+		&i.SetupByPrincipalID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

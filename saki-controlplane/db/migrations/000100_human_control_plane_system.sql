@@ -1,13 +1,18 @@
 -- +goose Up
+create type system_installation_state as enum ('uninitialized', 'ready');
+
 create table system_installation (
     id uuid primary key default gen_random_uuid(),
-    installation_key text not null,
+    installation_key text not null default 'primary',
+    install_state system_installation_state not null default 'uninitialized',
     metadata jsonb not null default '{}'::jsonb,
+    setup_at timestamptz,
+    setup_by_principal_id uuid references iam_principal(id) on delete set null,
     created_at timestamptz not null default now(),
-    updated_at timestamptz not null default now()
+    updated_at timestamptz not null default now(),
+    constraint system_installation_singleton_key check (installation_key = 'primary'),
+    constraint system_installation_key_unique unique (installation_key)
 );
-
-create unique index idx_system_installation_singleton on system_installation (installation_key);
 
 create table system_setting (
     id uuid primary key default gen_random_uuid(),
@@ -21,5 +26,5 @@ create table system_setting (
 
 -- +goose Down
 drop table if exists system_setting;
-drop index if exists idx_system_installation_singleton;
 drop table if exists system_installation;
+drop type if exists system_installation_state;

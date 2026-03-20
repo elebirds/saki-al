@@ -787,6 +787,48 @@ func (ns NullRuntimeTaskStatus) Value() (driver.Value, error) {
 	return string(ns.RuntimeTaskStatus), nil
 }
 
+type SystemInstallationState string
+
+const (
+	SystemInstallationStateUninitialized SystemInstallationState = "uninitialized"
+	SystemInstallationStateReady         SystemInstallationState = "ready"
+)
+
+func (e *SystemInstallationState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = SystemInstallationState(s)
+	case string:
+		*e = SystemInstallationState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for SystemInstallationState: %T", src)
+	}
+	return nil
+}
+
+type NullSystemInstallationState struct {
+	SystemInstallationState SystemInstallationState `json:"system_installation_state"`
+	Valid                   bool                    `json:"valid"` // Valid is true if SystemInstallationState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullSystemInstallationState) Scan(value interface{}) error {
+	if value == nil {
+		ns.SystemInstallationState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.SystemInstallationState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullSystemInstallationState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.SystemInstallationState), nil
+}
+
 type AccessPermissionGrant struct {
 	PrincipalID uuid.UUID          `json:"principal_id"`
 	Permission  string             `json:"permission"`
@@ -1101,11 +1143,14 @@ type SampleMatchRef struct {
 }
 
 type SystemInstallation struct {
-	ID              uuid.UUID          `json:"id"`
-	InstallationKey string             `json:"installation_key"`
-	Metadata        []byte             `json:"metadata"`
-	CreatedAt       pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+	ID                 uuid.UUID               `json:"id"`
+	InstallationKey    string                  `json:"installation_key"`
+	InstallState       SystemInstallationState `json:"install_state"`
+	Metadata           []byte                  `json:"metadata"`
+	SetupAt            pgtype.Timestamptz      `json:"setup_at"`
+	SetupByPrincipalID pgtype.UUID             `json:"setup_by_principal_id"`
+	CreatedAt          pgtype.Timestamptz      `json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz      `json:"updated_at"`
 }
 
 type SystemSetting struct {

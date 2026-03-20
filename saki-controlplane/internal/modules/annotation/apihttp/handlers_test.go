@@ -69,9 +69,9 @@ func TestCreateAndListSampleAnnotationsEndpoints(t *testing.T) {
 		t.Fatalf("create sample: %v", err)
 	}
 
-	handler, err := systemapi.NewHTTPHandler(systemapi.Dependencies{
-		Authenticator:       accessapp.NewAuthenticator("test-secret", time.Hour),
-		AccessStore:         fakeAccessStore{},
+		handler, err := systemapi.NewHTTPHandler(systemapi.Dependencies{
+			Authenticator:       accessapp.NewAuthenticator("test-secret", time.Hour),
+			ClaimsStore:         fakeAccessStore{},
 		DatasetStore:        datasetapp.NewRepoStore(datasetRepo),
 		ProjectStore:        projectapp.NewRepoStore(projectRepo),
 		RuntimeStore:        runtimequeries.NewMemoryAdminStore(),
@@ -128,15 +128,11 @@ func (fakeRuntimeTaskCanceler) Handle(context.Context, runtimecommands.CancelTas
 
 type fakeAccessStore struct{}
 
-func (fakeAccessStore) GetPrincipalByUserID(context.Context, string) (*accessdomain.Principal, error) {
+func (fakeAccessStore) LoadClaimsByUserID(context.Context, string) (*accessapp.ClaimsSnapshot, error) {
 	return nil, nil
 }
 
-func (fakeAccessStore) GetPrincipalByID(context.Context, uuid.UUID) (*accessdomain.Principal, error) {
-	return nil, nil
-}
-
-func (fakeAccessStore) ListPermissions(context.Context, uuid.UUID) ([]string, error) {
+func (fakeAccessStore) LoadClaimsByPrincipalID(context.Context, uuid.UUID) (*accessapp.ClaimsSnapshot, error) {
 	return nil, nil
 }
 

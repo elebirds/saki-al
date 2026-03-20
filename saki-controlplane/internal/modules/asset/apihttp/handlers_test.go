@@ -492,9 +492,9 @@ func newAssetHTTPHandlerWithSubjectKey(t *testing.T, subjectKey string, module *
 		provider = &fakeProvider{bucket: "assets"}
 	}
 
-	handler, err := systemapi.NewHTTPHandler(systemapi.Dependencies{
-		Authenticator:       authenticator,
-		AccessStore:         accessStore,
+		handler, err := systemapi.NewHTTPHandler(systemapi.Dependencies{
+			Authenticator:       authenticator,
+			ClaimsStore:         accessStore,
 		DatasetStore:        datasetapp.NewMemoryStore(),
 		ProjectStore:        projectapp.NewMemoryStore(),
 		RuntimeStore:        runtimequeries.NewMemoryAdminStore(),
@@ -693,27 +693,26 @@ func newFakeAccessStore(subjectKey string) *fakeAccessStore {
 	}
 }
 
-func (s *fakeAccessStore) GetPrincipalByUserID(_ context.Context, userID string) (*accessdomain.Principal, error) {
+func (s *fakeAccessStore) LoadClaimsByUserID(_ context.Context, userID string) (*accessapp.ClaimsSnapshot, error) {
 	if s.principal != nil && s.principal.SubjectKey == userID {
-		copy := *s.principal
-		return &copy, nil
+		return &accessapp.ClaimsSnapshot{
+			PrincipalID: s.principal.ID,
+			UserID:      s.principal.SubjectKey,
+			Permissions: append([]string(nil), s.permissions...),
+		}, nil
 	}
 	return nil, nil
 }
 
-func (s *fakeAccessStore) GetPrincipalByID(_ context.Context, principalID uuid.UUID) (*accessdomain.Principal, error) {
+func (s *fakeAccessStore) LoadClaimsByPrincipalID(_ context.Context, principalID uuid.UUID) (*accessapp.ClaimsSnapshot, error) {
 	if s.principal != nil && s.principal.ID == principalID {
-		copy := *s.principal
-		return &copy, nil
+		return &accessapp.ClaimsSnapshot{
+			PrincipalID: s.principal.ID,
+			UserID:      s.principal.SubjectKey,
+			Permissions: append([]string(nil), s.permissions...),
+		}, nil
 	}
 	return nil, nil
-}
-
-func (s *fakeAccessStore) ListPermissions(_ context.Context, principalID uuid.UUID) ([]string, error) {
-	if s.principal == nil || s.principal.ID != principalID {
-		return nil, nil
-	}
-	return append([]string(nil), s.permissions...), nil
 }
 
 func (s *fakeAccessStore) UpsertBootstrapPrincipal(context.Context, accessapp.BootstrapPrincipalSpec) (*accessdomain.Principal, error) {

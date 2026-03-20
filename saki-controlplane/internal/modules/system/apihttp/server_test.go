@@ -71,7 +71,7 @@ func TestServerReturnsStructuredErrorResponse(t *testing.T) {
 func newTestHTTPHandler() (http.Handler, error) {
 	return NewHTTPHandler(Dependencies{
 		Authenticator:       accessapp.NewAuthenticator("test-secret", time.Hour),
-		AccessStore:         fakeAccessStore{},
+		ClaimsStore:         fakeAccessStore{},
 		DatasetStore:        datasetapp.NewMemoryStore(),
 		ProjectStore:        projectapp.NewMemoryStore(),
 		RuntimeStore:        runtimequeries.NewMemoryAdminStore(),
@@ -112,15 +112,11 @@ func (fakeAnnotationStore) ListByProjectSample(context.Context, uuid.UUID, uuid.
 
 type fakeAccessStore struct{}
 
-func (fakeAccessStore) GetPrincipalByUserID(context.Context, string) (*accessdomain.Principal, error) {
+func (fakeAccessStore) LoadClaimsByUserID(context.Context, string) (*accessapp.ClaimsSnapshot, error) {
 	return nil, nil
 }
 
-func (fakeAccessStore) GetPrincipalByID(context.Context, uuid.UUID) (*accessdomain.Principal, error) {
-	return nil, nil
-}
-
-func (fakeAccessStore) ListPermissions(context.Context, uuid.UUID) ([]string, error) {
+func (fakeAccessStore) LoadClaimsByPrincipalID(context.Context, uuid.UUID) (*accessapp.ClaimsSnapshot, error) {
 	return nil, nil
 }
 

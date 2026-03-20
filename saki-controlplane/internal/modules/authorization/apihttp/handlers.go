@@ -25,16 +25,46 @@ type UserSystemRolesExecutor interface {
 	Execute(ctx context.Context, principalID uuid.UUID) ([]authorizationapp.UserSystemRoleBindingView, error)
 }
 
+type CreateRoleExecutor interface {
+	Execute(ctx context.Context, cmd authorizationapp.CreateRoleCommand) (*authorizationapp.RoleView, error)
+}
+
+type GetRoleExecutor interface {
+	Execute(ctx context.Context, roleID uuid.UUID) (*authorizationapp.RoleView, error)
+}
+
+type UpdateRoleExecutor interface {
+	Execute(ctx context.Context, cmd authorizationapp.UpdateRoleCommand) (*authorizationapp.RoleView, error)
+}
+
+type DeleteRoleExecutor interface {
+	Execute(ctx context.Context, roleID uuid.UUID) error
+}
+
+type ReplaceUserSystemRolesExecutor interface {
+	Execute(ctx context.Context, cmd authorizationapp.ReplaceUserSystemRolesCommand) ([]authorizationapp.UserSystemRoleBindingView, error)
+}
+
 type HandlersDeps struct {
 	ListRoles         ListRolesExecutor
 	PermissionCatalog PermissionCatalogExecutor
 	UserSystemRoles   UserSystemRolesExecutor
+	CreateRole        CreateRoleExecutor
+	GetRole           GetRoleExecutor
+	UpdateRole        UpdateRoleExecutor
+	DeleteRole        DeleteRoleExecutor
+	ReplaceUserRoles  ReplaceUserSystemRolesExecutor
 }
 
 type Handlers struct {
 	listRoles         ListRolesExecutor
 	permissionCatalog PermissionCatalogExecutor
 	userSystemRoles   UserSystemRolesExecutor
+	createRole        CreateRoleExecutor
+	getRole           GetRoleExecutor
+	updateRole        UpdateRoleExecutor
+	deleteRole        DeleteRoleExecutor
+	replaceUserRoles  ReplaceUserSystemRolesExecutor
 }
 
 func NewHandlers(deps HandlersDeps) *Handlers {
@@ -42,6 +72,11 @@ func NewHandlers(deps HandlersDeps) *Handlers {
 		listRoles:         deps.ListRoles,
 		permissionCatalog: deps.PermissionCatalog,
 		userSystemRoles:   deps.UserSystemRoles,
+		createRole:        deps.CreateRole,
+		getRole:           deps.GetRole,
+		updateRole:        deps.UpdateRole,
+		deleteRole:        deps.DeleteRole,
+		replaceUserRoles:  deps.ReplaceUserRoles,
 	}
 }
 
@@ -82,6 +117,101 @@ func (h *Handlers) ListRoles(ctx context.Context, params openapi.ListRolesParams
 
 func (h *Handlers) GetRolePermissionCatalog(ctx context.Context) (*openapi.PermissionCatalogResponse, error) {
 	return h.getPermissionCatalog(ctx)
+}
+
+func (h *Handlers) CreateRole(ctx context.Context, req *openapi.RoleCreateRequest) (*openapi.RoleListItem, error) {
+	if h == nil || h.createRole == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	if _, err := requireAnyPermission(ctx, "roles:write", "role:create:all", "role:update:all", "role:assign:all"); err != nil {
+		return nil, err
+	}
+	if req.GetName() == "" || req.GetDisplayName() == "" {
+		return nil, authorizationapp.ErrInvalidRoleInput
+	}
+
+	description, hasDescription := req.GetDescription().Get()
+	color, hasColor := req.GetColor().Get()
+	role, err := h.createRole.Execute(ctx, authorizationapp.CreateRoleCommand{
+		Name:        req.GetName(),
+		DisplayName: req.GetDisplayName(),
+		Description: optStringPtr(description, hasDescription),
+		Color:       optStringPtr(color, hasColor),
+		Permissions: req.GetPermissions(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	response := mapRole(*role)
+	return &response, nil
+}
+
+func (h *Handlers) GetRole(ctx context.Context, params openapi.GetRoleParams) (*openapi.RoleListItem, error) {
+	if h == nil || h.getRole == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	if _, err := requireAnyPermission(ctx, "roles:read", "role:read:all"); err != nil {
+		return nil, err
+	}
+
+	roleID, err := uuid.Parse(params.RoleID)
+	if err != nil {
+		return nil, authorizationapp.ErrInvalidRoleInput
+	}
+	role, err := h.getRole.Execute(ctx, roleID)
+	if err != nil {
+		return nil, err
+	}
+	response := mapRole(*role)
+	return &response, nil
+}
+
+func (h *Handlers) UpdateRole(ctx context.Context, req *openapi.RoleUpdateRequest, params openapi.UpdateRoleParams) (*openapi.RoleListItem, error) {
+	if h == nil || h.updateRole == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	if _, err := requireAnyPermission(ctx, "roles:write", "role:update:all", "role:assign:all"); err != nil {
+		return nil, err
+	}
+
+	roleID, err := uuid.Parse(params.RoleID)
+	if err != nil {
+		return nil, authorizationapp.ErrInvalidRoleInput
+	}
+	displayName, hasDisplayName := req.GetDisplayName().Get()
+	description, hasDescription := req.GetDescription().Get()
+	color, hasColor := req.GetColor().Get()
+	role, err := h.updateRole.Execute(ctx, authorizationapp.UpdateRoleCommand{
+		RoleID:            roleID,
+		DisplayName:       optStringPtr(displayName, hasDisplayName),
+		ChangeDisplayName: hasDisplayName,
+		Description:       optStringPtr(description, hasDescription),
+		ChangeDescription: hasDescription,
+		Color:             optStringPtr(color, hasColor),
+		ChangeColor:       hasColor,
+		Permissions:       req.GetPermissions(),
+		ChangePermissions: req.Permissions != nil,
+	})
+	if err != nil {
+		return nil, err
+	}
+	response := mapRole(*role)
+	return &response, nil
+}
+
+func (h *Handlers) DeleteRole(ctx context.Context, params openapi.DeleteRoleParams) error {
+	if h == nil || h.deleteRole == nil {
+		return ogenhttp.ErrNotImplemented
+	}
+	if _, err := requireAnyPermission(ctx, "roles:write", "role:delete:all", "role:assign:all"); err != nil {
+		return err
+	}
+
+	roleID, err := uuid.Parse(params.RoleID)
+	if err != nil {
+		return authorizationapp.ErrInvalidRoleInput
+	}
+	return h.deleteRole.Execute(ctx, roleID)
 }
 
 func (h *Handlers) GetSystemPermissions(ctx context.Context) (*openapi.SystemPermissionsResponse, error) {
@@ -129,6 +259,28 @@ func (h *Handlers) ListUserSystemRolesLegacy(ctx context.Context, params openapi
 	return h.listUserSystemRoles(ctx, params.UserID)
 }
 
+func (h *Handlers) ReplaceUserSystemRoles(ctx context.Context, req *openapi.ReplaceUserSystemRolesRequest, params openapi.ReplaceUserSystemRolesParams) ([]openapi.UserSystemRoleBinding, error) {
+	if h == nil || h.replaceUserRoles == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	if _, err := requireAnyPermission(ctx, "roles:write", "users:write", "role:assign:all", "role:revoke:all", "user:manage:all"); err != nil {
+		return nil, err
+	}
+
+	principalID, err := uuid.Parse(params.UserID)
+	if err != nil {
+		return nil, authorizationapp.ErrInvalidRoleInput
+	}
+	result, err := h.replaceUserRoles.Execute(ctx, authorizationapp.ReplaceUserSystemRolesCommand{
+		UserID:  principalID,
+		RoleIDs: req.GetRoleIds(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return mapUserSystemRoleBindings(result), nil
+}
+
 func (h *Handlers) getPermissionCatalog(ctx context.Context) (*openapi.PermissionCatalogResponse, error) {
 	if h == nil || h.permissionCatalog == nil {
 		return nil, ogenhttp.ErrNotImplemented
@@ -168,18 +320,7 @@ func (h *Handlers) listUserSystemRoles(ctx context.Context, rawUserID string) ([
 		return nil, err
 	}
 
-	items := make([]openapi.UserSystemRoleBinding, 0, len(result))
-	for _, item := range result {
-		items = append(items, openapi.UserSystemRoleBinding{
-			ID:              item.ID,
-			UserID:          item.UserID,
-			RoleID:          item.RoleID,
-			RoleName:        item.RoleName,
-			RoleDisplayName: item.RoleDisplayName,
-			AssignedAt:      item.AssignedAt,
-		})
-	}
-	return items, nil
+	return mapUserSystemRoleBindings(result), nil
 }
 
 func mapRole(item authorizationapp.RoleView) openapi.RoleListItem {
@@ -207,6 +348,29 @@ func mapRole(item authorizationapp.RoleView) openapi.RoleListItem {
 		})
 	}
 	return result
+}
+
+func mapUserSystemRoleBindings(items []authorizationapp.UserSystemRoleBindingView) []openapi.UserSystemRoleBinding {
+	result := make([]openapi.UserSystemRoleBinding, 0, len(items))
+	for _, item := range items {
+		result = append(result, openapi.UserSystemRoleBinding{
+			ID:              item.ID,
+			UserID:          item.UserID,
+			RoleID:          item.RoleID,
+			RoleName:        item.RoleName,
+			RoleDisplayName: item.RoleDisplayName,
+			AssignedAt:      item.AssignedAt,
+		})
+	}
+	return result
+}
+
+func optStringPtr(value string, ok bool) *string {
+	if !ok {
+		return nil
+	}
+	copy := value
+	return &copy
 }
 
 func requireAnyPermission(ctx context.Context, permissions ...string) (*accessapp.Claims, error) {

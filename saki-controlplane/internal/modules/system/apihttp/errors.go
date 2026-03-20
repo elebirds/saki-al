@@ -8,6 +8,7 @@ import (
 
 	openapi "github.com/elebirds/saki/saki-controlplane/internal/gen/openapi"
 	accessapp "github.com/elebirds/saki/saki-controlplane/internal/modules/access/app"
+	authorizationapp "github.com/elebirds/saki/saki-controlplane/internal/modules/authorization/app"
 	identityapp "github.com/elebirds/saki/saki-controlplane/internal/modules/identity/app"
 	systemapp "github.com/elebirds/saki/saki-controlplane/internal/modules/system/app"
 	ogenhttp "github.com/ogen-go/ogen/http"
@@ -52,6 +53,41 @@ func mapError(err error) *openapi.ErrorResponseStatusCode {
 			Response: openapi.ErrorResponse{
 				Code:    "unauthorized",
 				Message: "invalid credentials or session",
+			},
+		}
+	case errors.Is(err, identityapp.ErrInvalidUserInput),
+		errors.Is(err, authorizationapp.ErrInvalidRoleInput),
+		errors.Is(err, authorizationapp.ErrInvalidRolePermission),
+		errors.Is(err, authorizationapp.ErrInvalidRoleScope):
+		return &openapi.ErrorResponseStatusCode{
+			StatusCode: http.StatusBadRequest,
+			Response: openapi.ErrorResponse{
+				Code:    "bad_request",
+				Message: err.Error(),
+			},
+		}
+	case errors.Is(err, identityapp.ErrUserNotFound), errors.Is(err, authorizationapp.ErrRoleNotFound):
+		return &openapi.ErrorResponseStatusCode{
+			StatusCode: http.StatusNotFound,
+			Response: openapi.ErrorResponse{
+				Code:    "not_found",
+				Message: err.Error(),
+			},
+		}
+	case errors.Is(err, identityapp.ErrUserAlreadyExists), errors.Is(err, authorizationapp.ErrRoleAlreadyExists):
+		return &openapi.ErrorResponseStatusCode{
+			StatusCode: http.StatusConflict,
+			Response: openapi.ErrorResponse{
+				Code:    "already_exists",
+				Message: err.Error(),
+			},
+		}
+	case errors.Is(err, authorizationapp.ErrRoleImmutable):
+		return &openapi.ErrorResponseStatusCode{
+			StatusCode: http.StatusConflict,
+			Response: openapi.ErrorResponse{
+				Code:    "conflict",
+				Message: err.Error(),
 			},
 		}
 	case errors.Is(err, identityapp.ErrSelfRegistrationDisabled):

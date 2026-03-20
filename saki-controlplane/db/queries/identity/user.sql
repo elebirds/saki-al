@@ -5,18 +5,23 @@ where principal_id = sqlc.arg(principal_id);
 
 -- name: CountIamUsers :one
 select count(*)
-from iam_user;
+from iam_user
+where state <> 'deleted';
 
 -- name: GetIamUserByEmail :one
 select principal_id, email, username, full_name, avatar_asset_id, state, created_at, updated_at
 from iam_user
-where lower(email) = lower(sqlc.arg(email));
+where lower(email) = lower(sqlc.arg(email))
+  and state <> 'deleted';
 
 -- name: GetIamUserByIdentifier :one
 select principal_id, email, username, full_name, avatar_asset_id, state, created_at, updated_at
 from iam_user
-where lower(email) = lower(sqlc.arg(identifier))
-   or username = sqlc.arg(identifier)
+where (
+    lower(email) = lower(sqlc.arg(identifier))
+    or username = sqlc.arg(identifier)
+)
+  and state <> 'deleted'
 order by case when lower(email) = lower(sqlc.arg(identifier)) then 0 else 1 end
 limit 1;
 
@@ -40,6 +45,7 @@ select
 from iam_user u
 join iam_principal p on p.id = u.principal_id
 left join iam_password_credential c on c.principal_id = u.principal_id
+where u.state <> 'deleted'
 group by
     u.principal_id,
     u.email,
@@ -57,4 +63,20 @@ offset sqlc.arg(offset_count);
 -- name: UpdateIamUserProfile :exec
 update iam_user
 set email = sqlc.arg(email), username = sqlc.arg(username), full_name = sqlc.arg(full_name), avatar_asset_id = sqlc.arg(avatar_asset_id), updated_at = now()
+where principal_id = sqlc.arg(principal_id);
+
+-- name: UpdateIamUserState :exec
+update iam_user
+set state = sqlc.arg(state), updated_at = now()
+where principal_id = sqlc.arg(principal_id);
+
+-- name: SoftDeleteIamUser :exec
+update iam_user
+set
+    state = 'deleted',
+    email = sqlc.arg(email),
+    username = null,
+    full_name = sqlc.arg(full_name),
+    avatar_asset_id = null,
+    updated_at = now()
 where principal_id = sqlc.arg(principal_id);

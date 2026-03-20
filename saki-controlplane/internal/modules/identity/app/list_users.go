@@ -140,6 +140,7 @@ func (u *ListUsersUseCase) Execute(ctx context.Context, input ListUsersInput) (*
 
 func isUserActive(record identitydomain.AdminUserRecord) bool {
 	return record.User.State != identitydomain.UserStateDisabled &&
+		record.User.State != identitydomain.UserStateDeleted &&
 		record.PrincipalStatus != identitydomain.PrincipalStatusDisabled
 }
 

@@ -59,10 +59,18 @@ type Invoker interface {
 	//
 	// POST /projects
 	CreateProject(ctx context.Context, request *CreateProjectRequest) (*Project, error)
+	// CreateRole invokes createRole operation.
+	//
+	// POST /roles
+	CreateRole(ctx context.Context, request *RoleCreateRequest) (*RoleListItem, error)
 	// CreateSampleAnnotations invokes createSampleAnnotations operation.
 	//
 	// POST /projects/{project_id}/samples/{sample_id}/annotations
 	CreateSampleAnnotations(ctx context.Context, request *CreateAnnotationRequest, params CreateSampleAnnotationsParams) ([]Annotation, error)
+	// CreateUser invokes createUser operation.
+	//
+	// POST /users
+	CreateUser(ctx context.Context, request *UserCreateRequest) (*UserListItem, error)
 	// DeleteDataset invokes deleteDataset operation.
 	//
 	// DELETE /datasets/{dataset_id}
@@ -71,6 +79,14 @@ type Invoker interface {
 	//
 	// DELETE /datasets/{dataset_id}/samples/{sample_id}
 	DeleteDatasetSample(ctx context.Context, params DeleteDatasetSampleParams) (DeleteDatasetSampleRes, error)
+	// DeleteRole invokes deleteRole operation.
+	//
+	// DELETE /roles/{role_id}
+	DeleteRole(ctx context.Context, params DeleteRoleParams) error
+	// DeleteUser invokes deleteUser operation.
+	//
+	// DELETE /users/{user_id}
+	DeleteUser(ctx context.Context, params DeleteUserParams) error
 	// ExecuteProjectAnnotationImport invokes executeProjectAnnotationImport operation.
 	//
 	// POST /projects/{project_id}/datasets/{dataset_id}/imports/annotations:execute
@@ -103,6 +119,10 @@ type Invoker interface {
 	//
 	// GET /projects/{project_id}
 	GetProject(ctx context.Context, params GetProjectParams) (*Project, error)
+	// GetRole invokes getRole operation.
+	//
+	// GET /roles/{role_id}
+	GetRole(ctx context.Context, params GetRoleParams) (*RoleListItem, error)
 	// GetRolePermissionCatalog invokes getRolePermissionCatalog operation.
 	//
 	// GET /roles/permission-catalog
@@ -127,6 +147,10 @@ type Invoker interface {
 	//
 	// GET /system/types
 	GetSystemTypes(ctx context.Context) (*SystemTypesResponse, error)
+	// GetUser invokes getUser operation.
+	//
+	// GET /users/{user_id}
+	GetUser(ctx context.Context, params GetUserParams) (*UserListItem, error)
 	// Healthz invokes healthz operation.
 	//
 	// GET /healthz
@@ -207,6 +231,10 @@ type Invoker interface {
 	//
 	// POST /auth/register
 	RegisterAuthUser(ctx context.Context, request *AuthRegisterRequest) (*AuthSessionResponse, error)
+	// ReplaceUserSystemRoles invokes replaceUserSystemRoles operation.
+	//
+	// PUT /users/{user_id}/system-roles
+	ReplaceUserSystemRoles(ctx context.Context, request *ReplaceUserSystemRolesRequest, params ReplaceUserSystemRolesParams) ([]UserSystemRoleBinding, error)
 	// RequirePermission invokes requirePermission operation.
 	//
 	// GET /auth/permissions/{permission}
@@ -231,6 +259,14 @@ type Invoker interface {
 	//
 	// PUT /datasets/{dataset_id}
 	UpdateDataset(ctx context.Context, request *UpdateDatasetRequest, params UpdateDatasetParams) (UpdateDatasetRes, error)
+	// UpdateRole invokes updateRole operation.
+	//
+	// PATCH /roles/{role_id}
+	UpdateRole(ctx context.Context, request *RoleUpdateRequest, params UpdateRoleParams) (*RoleListItem, error)
+	// UpdateUser invokes updateUser operation.
+	//
+	// PATCH /users/{user_id}
+	UpdateUser(ctx context.Context, request *UserUpdateRequest, params UpdateUserParams) (*UserListItem, error)
 }
 
 // Client implements OAS client.
@@ -958,6 +994,81 @@ func (c *Client) sendCreateProject(ctx context.Context, request *CreateProjectRe
 	return result, nil
 }
 
+// CreateRole invokes createRole operation.
+//
+// POST /roles
+func (c *Client) CreateRole(ctx context.Context, request *RoleCreateRequest) (*RoleListItem, error) {
+	res, err := c.sendCreateRole(ctx, request)
+	return res, err
+}
+
+func (c *Client) sendCreateRole(ctx context.Context, request *RoleCreateRequest) (res *RoleListItem, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("createRole"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/roles"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, CreateRoleOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/roles"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeCreateRoleRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeCreateRoleResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // CreateSampleAnnotations invokes createSampleAnnotations operation.
 //
 // POST /projects/{project_id}/samples/{sample_id}/annotations
@@ -1064,6 +1175,81 @@ func (c *Client) sendCreateSampleAnnotations(ctx context.Context, request *Creat
 
 	stage = "DecodeResponse"
 	result, err := decodeCreateSampleAnnotationsResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// CreateUser invokes createUser operation.
+//
+// POST /users
+func (c *Client) CreateUser(ctx context.Context, request *UserCreateRequest) (*UserListItem, error) {
+	res, err := c.sendCreateUser(ctx, request)
+	return res, err
+}
+
+func (c *Client) sendCreateUser(ctx context.Context, request *UserCreateRequest) (res *UserListItem, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("createUser"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/users"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, CreateUserOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/users"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeCreateUserRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeCreateUserResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -1263,6 +1449,186 @@ func (c *Client) sendDeleteDatasetSample(ctx context.Context, params DeleteDatas
 
 	stage = "DecodeResponse"
 	result, err := decodeDeleteDatasetSampleResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// DeleteRole invokes deleteRole operation.
+//
+// DELETE /roles/{role_id}
+func (c *Client) DeleteRole(ctx context.Context, params DeleteRoleParams) error {
+	_, err := c.sendDeleteRole(ctx, params)
+	return err
+}
+
+func (c *Client) sendDeleteRole(ctx context.Context, params DeleteRoleParams) (res *DeleteRoleNoContent, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("deleteRole"),
+		semconv.HTTPRequestMethodKey.String("DELETE"),
+		semconv.URLTemplateKey.String("/roles/{role_id}"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, DeleteRoleOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [2]string
+	pathParts[0] = "/roles/"
+	{
+		// Encode "role_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "role_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.RoleID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "DELETE", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeDeleteRoleResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// DeleteUser invokes deleteUser operation.
+//
+// DELETE /users/{user_id}
+func (c *Client) DeleteUser(ctx context.Context, params DeleteUserParams) error {
+	_, err := c.sendDeleteUser(ctx, params)
+	return err
+}
+
+func (c *Client) sendDeleteUser(ctx context.Context, params DeleteUserParams) (res *DeleteUserNoContent, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("deleteUser"),
+		semconv.HTTPRequestMethodKey.String("DELETE"),
+		semconv.URLTemplateKey.String("/users/{user_id}"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, DeleteUserOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [2]string
+	pathParts[0] = "/users/"
+	{
+		// Encode "user_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "user_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.UserID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "DELETE", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeDeleteUserResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -1996,6 +2362,96 @@ func (c *Client) sendGetProject(ctx context.Context, params GetProjectParams) (r
 	return result, nil
 }
 
+// GetRole invokes getRole operation.
+//
+// GET /roles/{role_id}
+func (c *Client) GetRole(ctx context.Context, params GetRoleParams) (*RoleListItem, error) {
+	res, err := c.sendGetRole(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendGetRole(ctx context.Context, params GetRoleParams) (res *RoleListItem, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("getRole"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/roles/{role_id}"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, GetRoleOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [2]string
+	pathParts[0] = "/roles/"
+	{
+		// Encode "role_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "role_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.RoleID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeGetRoleResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // GetRolePermissionCatalog invokes getRolePermissionCatalog operation.
 //
 // GET /roles/permission-catalog
@@ -2421,6 +2877,96 @@ func (c *Client) sendGetSystemTypes(ctx context.Context) (res *SystemTypesRespon
 
 	stage = "DecodeResponse"
 	result, err := decodeGetSystemTypesResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// GetUser invokes getUser operation.
+//
+// GET /users/{user_id}
+func (c *Client) GetUser(ctx context.Context, params GetUserParams) (*UserListItem, error) {
+	res, err := c.sendGetUser(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendGetUser(ctx context.Context, params GetUserParams) (res *UserListItem, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("getUser"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/users/{user_id}"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, GetUserOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [2]string
+	pathParts[0] = "/users/"
+	{
+		// Encode "user_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "user_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.UserID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeGetUserResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -4214,6 +4760,100 @@ func (c *Client) sendRegisterAuthUser(ctx context.Context, request *AuthRegister
 	return result, nil
 }
 
+// ReplaceUserSystemRoles invokes replaceUserSystemRoles operation.
+//
+// PUT /users/{user_id}/system-roles
+func (c *Client) ReplaceUserSystemRoles(ctx context.Context, request *ReplaceUserSystemRolesRequest, params ReplaceUserSystemRolesParams) ([]UserSystemRoleBinding, error) {
+	res, err := c.sendReplaceUserSystemRoles(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendReplaceUserSystemRoles(ctx context.Context, request *ReplaceUserSystemRolesRequest, params ReplaceUserSystemRolesParams) (res []UserSystemRoleBinding, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("replaceUserSystemRoles"),
+		semconv.HTTPRequestMethodKey.String("PUT"),
+		semconv.URLTemplateKey.String("/users/{user_id}/system-roles"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, ReplaceUserSystemRolesOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/users/"
+	{
+		// Encode "user_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "user_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.UserID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/system-roles"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "PUT", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeReplaceUserSystemRolesRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeReplaceUserSystemRolesResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // RequirePermission invokes requirePermission operation.
 //
 // GET /auth/permissions/{permission}
@@ -4747,6 +5387,192 @@ func (c *Client) sendUpdateDataset(ctx context.Context, request *UpdateDatasetRe
 
 	stage = "DecodeResponse"
 	result, err := decodeUpdateDatasetResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// UpdateRole invokes updateRole operation.
+//
+// PATCH /roles/{role_id}
+func (c *Client) UpdateRole(ctx context.Context, request *RoleUpdateRequest, params UpdateRoleParams) (*RoleListItem, error) {
+	res, err := c.sendUpdateRole(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendUpdateRole(ctx context.Context, request *RoleUpdateRequest, params UpdateRoleParams) (res *RoleListItem, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("updateRole"),
+		semconv.HTTPRequestMethodKey.String("PATCH"),
+		semconv.URLTemplateKey.String("/roles/{role_id}"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, UpdateRoleOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [2]string
+	pathParts[0] = "/roles/"
+	{
+		// Encode "role_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "role_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.RoleID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "PATCH", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeUpdateRoleRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeUpdateRoleResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// UpdateUser invokes updateUser operation.
+//
+// PATCH /users/{user_id}
+func (c *Client) UpdateUser(ctx context.Context, request *UserUpdateRequest, params UpdateUserParams) (*UserListItem, error) {
+	res, err := c.sendUpdateUser(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendUpdateUser(ctx context.Context, request *UserUpdateRequest, params UpdateUserParams) (res *UserListItem, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("updateUser"),
+		semconv.HTTPRequestMethodKey.String("PATCH"),
+		semconv.URLTemplateKey.String("/users/{user_id}"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, UpdateUserOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [2]string
+	pathParts[0] = "/users/"
+	{
+		// Encode "user_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "user_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.UserID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "PATCH", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeUpdateUserRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeUpdateUserResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}

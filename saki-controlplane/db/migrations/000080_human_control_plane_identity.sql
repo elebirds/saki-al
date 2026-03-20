@@ -2,7 +2,7 @@
 create type iam_principal_kind as enum ('human_user', 'agent', 'internal_service');
 create type iam_principal_status as enum ('active', 'disabled');
 
-create type iam_user_state as enum ('active', 'invited', 'disabled');
+create type iam_user_state as enum ('active', 'invited', 'disabled', 'deleted');
 
 create table iam_principal (
     id uuid primary key default gen_random_uuid(),

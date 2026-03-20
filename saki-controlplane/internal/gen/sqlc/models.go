@@ -575,6 +575,7 @@ const (
 	IamUserStateActive   IamUserState = "active"
 	IamUserStateInvited  IamUserState = "invited"
 	IamUserStateDisabled IamUserState = "disabled"
+	IamUserStateDeleted  IamUserState = "deleted"
 )
 
 func (e *IamUserState) Scan(src interface{}) error {

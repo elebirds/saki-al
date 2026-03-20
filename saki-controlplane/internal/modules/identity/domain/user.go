@@ -12,6 +12,7 @@ const (
 	UserStateActive   UserState = "active"
 	UserStateInvited  UserState = "invited"
 	UserStateDisabled UserState = "disabled"
+	UserStateDeleted  UserState = "deleted"
 )
 
 type User struct {

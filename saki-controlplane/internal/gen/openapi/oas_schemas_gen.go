@@ -1316,6 +1316,12 @@ type DeleteDatasetSampleNotFound ErrorResponse
 
 func (*DeleteDatasetSampleNotFound) deleteDatasetSampleRes() {}
 
+// DeleteRoleNoContent is response for DeleteRole operation.
+type DeleteRoleNoContent struct{}
+
+// DeleteUserNoContent is response for DeleteUser operation.
+type DeleteUserNoContent struct{}
+
 // Ref: #/components/schemas/ErrorResponse
 type ErrorResponse struct {
 	Code    string `json:"code"`
@@ -3142,8 +3148,82 @@ func (s *ProjectDatasetLinkRequest) SetDatasetIds(val []string) {
 	s.DatasetIds = val
 }
 
+// Ref: #/components/schemas/ReplaceUserSystemRolesRequest
+type ReplaceUserSystemRolesRequest struct {
+	RoleIds []uuid.UUID `json:"role_ids"`
+}
+
+// GetRoleIds returns the value of RoleIds.
+func (s *ReplaceUserSystemRolesRequest) GetRoleIds() []uuid.UUID {
+	return s.RoleIds
+}
+
+// SetRoleIds sets the value of RoleIds.
+func (s *ReplaceUserSystemRolesRequest) SetRoleIds(val []uuid.UUID) {
+	s.RoleIds = val
+}
+
 // RequirePermissionNoContent is response for RequirePermission operation.
 type RequirePermissionNoContent struct{}
+
+// Ref: #/components/schemas/RoleCreateRequest
+type RoleCreateRequest struct {
+	Name        string    `json:"name"`
+	DisplayName string    `json:"display_name"`
+	Description OptString `json:"description"`
+	Color       OptString `json:"color"`
+	Permissions []string  `json:"permissions"`
+}
+
+// GetName returns the value of Name.
+func (s *RoleCreateRequest) GetName() string {
+	return s.Name
+}
+
+// GetDisplayName returns the value of DisplayName.
+func (s *RoleCreateRequest) GetDisplayName() string {
+	return s.DisplayName
+}
+
+// GetDescription returns the value of Description.
+func (s *RoleCreateRequest) GetDescription() OptString {
+	return s.Description
+}
+
+// GetColor returns the value of Color.
+func (s *RoleCreateRequest) GetColor() OptString {
+	return s.Color
+}
+
+// GetPermissions returns the value of Permissions.
+func (s *RoleCreateRequest) GetPermissions() []string {
+	return s.Permissions
+}
+
+// SetName sets the value of Name.
+func (s *RoleCreateRequest) SetName(val string) {
+	s.Name = val
+}
+
+// SetDisplayName sets the value of DisplayName.
+func (s *RoleCreateRequest) SetDisplayName(val string) {
+	s.DisplayName = val
+}
+
+// SetDescription sets the value of Description.
+func (s *RoleCreateRequest) SetDescription(val OptString) {
+	s.Description = val
+}
+
+// SetColor sets the value of Color.
+func (s *RoleCreateRequest) SetColor(val OptString) {
+	s.Color = val
+}
+
+// SetPermissions sets the value of Permissions.
+func (s *RoleCreateRequest) SetPermissions(val []string) {
+	s.Permissions = val
+}
 
 // Ref: #/components/schemas/RoleListItem
 type RoleListItem struct {
@@ -3386,6 +3466,54 @@ func (s *RolePermissionEntry) GetPermission() string {
 // SetPermission sets the value of Permission.
 func (s *RolePermissionEntry) SetPermission(val string) {
 	s.Permission = val
+}
+
+// Ref: #/components/schemas/RoleUpdateRequest
+type RoleUpdateRequest struct {
+	DisplayName OptString `json:"display_name"`
+	Description OptString `json:"description"`
+	Color       OptString `json:"color"`
+	Permissions []string  `json:"permissions"`
+}
+
+// GetDisplayName returns the value of DisplayName.
+func (s *RoleUpdateRequest) GetDisplayName() OptString {
+	return s.DisplayName
+}
+
+// GetDescription returns the value of Description.
+func (s *RoleUpdateRequest) GetDescription() OptString {
+	return s.Description
+}
+
+// GetColor returns the value of Color.
+func (s *RoleUpdateRequest) GetColor() OptString {
+	return s.Color
+}
+
+// GetPermissions returns the value of Permissions.
+func (s *RoleUpdateRequest) GetPermissions() []string {
+	return s.Permissions
+}
+
+// SetDisplayName sets the value of DisplayName.
+func (s *RoleUpdateRequest) SetDisplayName(val OptString) {
+	s.DisplayName = val
+}
+
+// SetDescription sets the value of Description.
+func (s *RoleUpdateRequest) SetDescription(val OptString) {
+	s.Description = val
+}
+
+// SetColor sets the value of Color.
+func (s *RoleUpdateRequest) SetColor(val OptString) {
+	s.Color = val
+}
+
+// SetPermissions sets the value of Permissions.
+func (s *RoleUpdateRequest) SetPermissions(val []string) {
+	s.Permissions = val
 }
 
 // Ref: #/components/schemas/RuntimeAgent
@@ -4176,6 +4304,54 @@ func (s *UpdateDatasetRequest) SetType(val string) {
 	s.Type = val
 }
 
+// Ref: #/components/schemas/UserCreateRequest
+type UserCreateRequest struct {
+	Email    string    `json:"email"`
+	Password string    `json:"password"`
+	FullName OptString `json:"full_name"`
+	IsActive OptBool   `json:"is_active"`
+}
+
+// GetEmail returns the value of Email.
+func (s *UserCreateRequest) GetEmail() string {
+	return s.Email
+}
+
+// GetPassword returns the value of Password.
+func (s *UserCreateRequest) GetPassword() string {
+	return s.Password
+}
+
+// GetFullName returns the value of FullName.
+func (s *UserCreateRequest) GetFullName() OptString {
+	return s.FullName
+}
+
+// GetIsActive returns the value of IsActive.
+func (s *UserCreateRequest) GetIsActive() OptBool {
+	return s.IsActive
+}
+
+// SetEmail sets the value of Email.
+func (s *UserCreateRequest) SetEmail(val string) {
+	s.Email = val
+}
+
+// SetPassword sets the value of Password.
+func (s *UserCreateRequest) SetPassword(val string) {
+	s.Password = val
+}
+
+// SetFullName sets the value of FullName.
+func (s *UserCreateRequest) SetFullName(val OptString) {
+	s.FullName = val
+}
+
+// SetIsActive sets the value of IsActive.
+func (s *UserCreateRequest) SetIsActive(val OptBool) {
+	s.IsActive = val
+}
+
 // Ref: #/components/schemas/UserListItem
 type UserListItem struct {
 	ID                 string         `json:"id"`
@@ -4465,4 +4641,41 @@ func (s *UserSystemRoleBinding) SetRoleDisplayName(val string) {
 // SetAssignedAt sets the value of AssignedAt.
 func (s *UserSystemRoleBinding) SetAssignedAt(val time.Time) {
 	s.AssignedAt = val
+}
+
+// Ref: #/components/schemas/UserUpdateRequest
+type UserUpdateRequest struct {
+	FullName OptString `json:"full_name"`
+	IsActive OptBool   `json:"is_active"`
+	Password OptString `json:"password"`
+}
+
+// GetFullName returns the value of FullName.
+func (s *UserUpdateRequest) GetFullName() OptString {
+	return s.FullName
+}
+
+// GetIsActive returns the value of IsActive.
+func (s *UserUpdateRequest) GetIsActive() OptBool {
+	return s.IsActive
+}
+
+// GetPassword returns the value of Password.
+func (s *UserUpdateRequest) GetPassword() OptString {
+	return s.Password
+}
+
+// SetFullName sets the value of FullName.
+func (s *UserUpdateRequest) SetFullName(val OptString) {
+	s.FullName = val
+}
+
+// SetIsActive sets the value of IsActive.
+func (s *UserUpdateRequest) SetIsActive(val OptBool) {
+	s.IsActive = val
+}
+
+// SetPassword sets the value of Password.
+func (s *UserUpdateRequest) SetPassword(val OptString) {
+	s.Password = val
 }

@@ -41,6 +41,22 @@ type ListUsersExecutor interface {
 	Execute(ctx context.Context, input identityapp.ListUsersInput) (*identityapp.ListUsersResult, error)
 }
 
+type CreateUserExecutor interface {
+	Execute(ctx context.Context, cmd identityapp.CreateUserCommand) (*identityapp.UserAdminView, error)
+}
+
+type GetUserExecutor interface {
+	Execute(ctx context.Context, principalID uuid.UUID) (*identityapp.UserAdminView, error)
+}
+
+type UpdateUserExecutor interface {
+	Execute(ctx context.Context, cmd identityapp.UpdateUserCommand) (*identityapp.UserAdminView, error)
+}
+
+type DeleteUserExecutor interface {
+	Execute(ctx context.Context, principalID uuid.UUID) error
+}
+
 type HandlersDeps struct {
 	Login          LoginExecutor
 	Refresh        RefreshExecutor
@@ -49,6 +65,10 @@ type HandlersDeps struct {
 	ChangePassword ChangePasswordExecutor
 	CurrentUser    CurrentUserExecutor
 	ListUsers      ListUsersExecutor
+	CreateUser     CreateUserExecutor
+	GetUser        GetUserExecutor
+	UpdateUser     UpdateUserExecutor
+	DeleteUser     DeleteUserExecutor
 }
 
 type Handlers struct {
@@ -59,6 +79,10 @@ type Handlers struct {
 	changePassword ChangePasswordExecutor
 	currentUser    CurrentUserExecutor
 	listUsers      ListUsersExecutor
+	createUser     CreateUserExecutor
+	getUser        GetUserExecutor
+	updateUser     UpdateUserExecutor
+	deleteUser     DeleteUserExecutor
 }
 
 func NewHandlers(deps HandlersDeps) *Handlers {
@@ -70,6 +94,10 @@ func NewHandlers(deps HandlersDeps) *Handlers {
 		changePassword: deps.ChangePassword,
 		currentUser:    deps.CurrentUser,
 		listUsers:      deps.ListUsers,
+		createUser:     deps.CreateUser,
+		getUser:        deps.GetUser,
+		updateUser:     deps.UpdateUser,
+		deleteUser:     deps.DeleteUser,
 	}
 }
 
@@ -182,28 +210,7 @@ func (h *Handlers) ListUsers(ctx context.Context, params openapi.ListUsersParams
 
 	items := make([]openapi.UserListItem, 0, len(result.Items))
 	for _, item := range result.Items {
-		openapiItem := openapi.UserListItem{
-			ID:                 item.ID,
-			Email:              item.Email,
-			IsActive:           item.IsActive,
-			MustChangePassword: item.MustChangePassword,
-			CreatedAt:          item.CreatedAt,
-			UpdatedAt:          item.UpdatedAt,
-			Roles:              make([]openapi.UserRoleInfo, 0, len(item.Roles)),
-		}
-		if item.FullName != "" {
-			openapiItem.FullName.SetTo(item.FullName)
-		}
-		for _, role := range item.Roles {
-			openapiItem.Roles = append(openapiItem.Roles, openapi.UserRoleInfo{
-				ID:          role.ID,
-				Name:        role.Name,
-				DisplayName: role.DisplayName,
-				Color:       role.Color,
-				IsSupremo:   role.IsSupremo,
-			})
-		}
-		items = append(items, openapiItem)
+		items = append(items, mapUser(item))
 	}
 
 	return &openapi.UserListResponse{
@@ -214,6 +221,101 @@ func (h *Handlers) ListUsers(ctx context.Context, params openapi.ListUsersParams
 		Size:    int32(result.Size),
 		HasMore: result.HasMore,
 	}, nil
+}
+
+func (h *Handlers) CreateUser(ctx context.Context, req *openapi.UserCreateRequest) (*openapi.UserListItem, error) {
+	if h == nil || h.createUser == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	if _, err := requireAnyPermission(ctx, "users:write", "user:create:all", "user:manage:all"); err != nil {
+		return nil, err
+	}
+	if req.GetEmail() == "" || req.GetPassword() == "" {
+		return nil, identityapp.ErrInvalidUserInput
+	}
+
+	fullName, hasFullName := req.GetFullName().Get()
+	isActive, hasIsActive := req.GetIsActive().Get()
+	if !hasIsActive {
+		isActive = true
+	}
+
+	item, err := h.createUser.Execute(ctx, identityapp.CreateUserCommand{
+		Email:    req.GetEmail(),
+		Password: req.GetPassword(),
+		FullName: optStringPtr(fullName, hasFullName),
+		IsActive: isActive,
+	})
+	if err != nil {
+		return nil, err
+	}
+	response := mapUser(*item)
+	return &response, nil
+}
+
+func (h *Handlers) GetUser(ctx context.Context, params openapi.GetUserParams) (*openapi.UserListItem, error) {
+	if h == nil || h.getUser == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	if _, err := requireAnyPermission(ctx, "users:read", "user:read:all"); err != nil {
+		return nil, err
+	}
+
+	principalID, err := uuid.Parse(params.UserID)
+	if err != nil {
+		return nil, identityapp.ErrInvalidUserInput
+	}
+	item, err := h.getUser.Execute(ctx, principalID)
+	if err != nil {
+		return nil, err
+	}
+	response := mapUser(*item)
+	return &response, nil
+}
+
+func (h *Handlers) UpdateUser(ctx context.Context, req *openapi.UserUpdateRequest, params openapi.UpdateUserParams) (*openapi.UserListItem, error) {
+	if h == nil || h.updateUser == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	if _, err := requireAnyPermission(ctx, "users:write", "user:update:all", "user:manage:all"); err != nil {
+		return nil, err
+	}
+
+	principalID, err := uuid.Parse(params.UserID)
+	if err != nil {
+		return nil, identityapp.ErrInvalidUserInput
+	}
+	fullName, hasFullName := req.GetFullName().Get()
+	isActive, hasIsActive := req.GetIsActive().Get()
+	password, hasPassword := req.GetPassword().Get()
+
+	item, err := h.updateUser.Execute(ctx, identityapp.UpdateUserCommand{
+		UserID:         principalID,
+		FullName:       optStringPtr(fullName, hasFullName),
+		ChangeFullName: hasFullName,
+		IsActive:       optBoolPtr(isActive, hasIsActive),
+		Password:       optStringPtr(password, hasPassword),
+	})
+	if err != nil {
+		return nil, err
+	}
+	response := mapUser(*item)
+	return &response, nil
+}
+
+func (h *Handlers) DeleteUser(ctx context.Context, params openapi.DeleteUserParams) error {
+	if h == nil || h.deleteUser == nil {
+		return ogenhttp.ErrNotImplemented
+	}
+	if _, err := requireAnyPermission(ctx, "users:write", "user:delete:all", "user:manage:all"); err != nil {
+		return err
+	}
+
+	principalID, err := uuid.Parse(params.UserID)
+	if err != nil {
+		return identityapp.ErrInvalidUserInput
+	}
+	return h.deleteUser.Execute(ctx, principalID)
 }
 
 func mapAuthSession(session *identityapp.AuthSession) *openapi.AuthSessionResponse {
@@ -234,6 +336,47 @@ func mapAuthSession(session *identityapp.AuthSession) *openapi.AuthSessionRespon
 	response.Token.SetTo(session.AccessToken)
 	response.UserID.SetTo(session.User.Email)
 	return response
+}
+
+func mapUser(item identityapp.UserAdminView) openapi.UserListItem {
+	response := openapi.UserListItem{
+		ID:                 item.ID,
+		Email:              item.Email,
+		IsActive:           item.IsActive,
+		MustChangePassword: item.MustChangePassword,
+		CreatedAt:          item.CreatedAt,
+		UpdatedAt:          item.UpdatedAt,
+		Roles:              make([]openapi.UserRoleInfo, 0, len(item.Roles)),
+	}
+	if item.FullName != "" {
+		response.FullName.SetTo(item.FullName)
+	}
+	for _, role := range item.Roles {
+		response.Roles = append(response.Roles, openapi.UserRoleInfo{
+			ID:          role.ID,
+			Name:        role.Name,
+			DisplayName: role.DisplayName,
+			Color:       role.Color,
+			IsSupremo:   role.IsSupremo,
+		})
+	}
+	return response
+}
+
+func optStringPtr(value string, ok bool) *string {
+	if !ok {
+		return nil
+	}
+	copy := value
+	return &copy
+}
+
+func optBoolPtr(value bool, ok bool) *bool {
+	if !ok {
+		return nil
+	}
+	copy := value
+	return &copy
 }
 
 func requireAnyPermission(ctx context.Context, permissions ...string) (*accessapp.Claims, error) {

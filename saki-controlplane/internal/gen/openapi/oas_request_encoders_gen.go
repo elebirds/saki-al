@@ -80,8 +80,36 @@ func encodeCreateProjectRequest(
 	return nil
 }
 
+func encodeCreateRoleRequest(
+	req *RoleCreateRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
 func encodeCreateSampleAnnotationsRequest(
 	req *CreateAnnotationRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodeCreateUserRequest(
+	req *UserCreateRequest,
 	r *http.Request,
 ) error {
 	const contentType = "application/json"
@@ -234,6 +262,20 @@ func encodeRegisterAuthUserRequest(
 	return nil
 }
 
+func encodeReplaceUserSystemRolesRequest(
+	req *ReplaceUserSystemRolesRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
 func encodeSetupSystemRequest(
 	req *SystemSetupRequest,
 	r *http.Request,
@@ -292,6 +334,34 @@ func encodeUnlinkProjectDatasetsRequest(
 
 func encodeUpdateDatasetRequest(
 	req *UpdateDatasetRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodeUpdateRoleRequest(
+	req *RoleUpdateRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodeUpdateUserRequest(
+	req *UserUpdateRequest,
 	r *http.Request,
 ) error {
 	const contentType = "application/json"

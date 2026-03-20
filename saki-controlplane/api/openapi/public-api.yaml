@@ -751,6 +751,93 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserCreateRequest"
+      responses:
+        "200":
+          description: created user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserListItem"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /users/{user_id}:
+    get:
+      operationId: getUser
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: user detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserListItem"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateUser
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserUpdateRequest"
+      responses:
+        "200":
+          description: updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserListItem"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteUser
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: user deleted
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /users/{user_id}/system-roles:
     get:
       operationId: listUserSystemRoles
@@ -763,6 +850,35 @@ paths:
       responses:
         "200":
           description: system role bindings for user
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserSystemRoleBinding"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: replaceUserSystemRoles
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReplaceUserSystemRolesRequest"
+      responses:
+        "200":
+          description: replaced system role bindings
           content:
             application/json:
               schema:
@@ -807,6 +923,93 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/RoleListResponse"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createRole
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoleCreateRequest"
+      responses:
+        "200":
+          description: created role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoleListItem"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /roles/{role_id}:
+    get:
+      operationId: getRole
+      parameters:
+        - name: role_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: role detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoleListItem"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateRole
+      parameters:
+        - name: role_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoleUpdateRequest"
+      responses:
+        "200":
+          description: updated role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoleListItem"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteRole
+      parameters:
+        - name: role_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: role deleted
         default:
           description: unexpected error
           content:
@@ -1563,6 +1766,40 @@ components:
           type: string
         new_password:
           type: string
+    UserCreateRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+        full_name:
+          type: string
+        is_active:
+          type: boolean
+    UserUpdateRequest:
+      type: object
+      properties:
+        full_name:
+          type: string
+        is_active:
+          type: boolean
+        password:
+          type: string
+    ReplaceUserSystemRolesRequest:
+      type: object
+      required:
+        - role_ids
+      properties:
+        role_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
     CurrentUserResponse:
       type: object
       required:
@@ -1631,6 +1868,38 @@ components:
       properties:
         permission:
           type: string
+    RoleCreateRequest:
+      type: object
+      required:
+        - name
+        - display_name
+        - permissions
+      properties:
+        name:
+          type: string
+        display_name:
+          type: string
+        description:
+          type: string
+        color:
+          type: string
+        permissions:
+          type: array
+          items:
+            type: string
+    RoleUpdateRequest:
+      type: object
+      properties:
+        display_name:
+          type: string
+        description:
+          type: string
+        color:
+          type: string
+        permissions:
+          type: array
+          items:
+            type: string
     RoleListItem:
       type: object
       required:

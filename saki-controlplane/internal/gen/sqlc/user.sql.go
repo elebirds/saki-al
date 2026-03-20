@@ -15,6 +15,7 @@ import (
 const countIamUsers = `-- name: CountIamUsers :one
 select count(*)
 from iam_user
+where state <> 'deleted'
 `
 
 func (q *Queries) CountIamUsers(ctx context.Context) (int64, error) {
@@ -64,6 +65,7 @@ const getIamUserByEmail = `-- name: GetIamUserByEmail :one
 select principal_id, email, username, full_name, avatar_asset_id, state, created_at, updated_at
 from iam_user
 where lower(email) = lower($1)
+  and state <> 'deleted'
 `
 
 func (q *Queries) GetIamUserByEmail(ctx context.Context, email string) (IamUser, error) {
@@ -85,8 +87,11 @@ func (q *Queries) GetIamUserByEmail(ctx context.Context, email string) (IamUser,
 const getIamUserByIdentifier = `-- name: GetIamUserByIdentifier :one
 select principal_id, email, username, full_name, avatar_asset_id, state, created_at, updated_at
 from iam_user
-where lower(email) = lower($1)
-   or username = $1
+where (
+    lower(email) = lower($1)
+    or username = $1
+)
+  and state <> 'deleted'
 order by case when lower(email) = lower($1) then 0 else 1 end
 limit 1
 `
@@ -144,6 +149,7 @@ select
 from iam_user u
 join iam_principal p on p.id = u.principal_id
 left join iam_password_credential c on c.principal_id = u.principal_id
+where u.state <> 'deleted'
 group by
     u.principal_id,
     u.email,
@@ -208,6 +214,29 @@ func (q *Queries) ListIamUsersForAdmin(ctx context.Context, arg ListIamUsersForA
 	return items, nil
 }
 
+const softDeleteIamUser = `-- name: SoftDeleteIamUser :exec
+update iam_user
+set
+    state = 'deleted',
+    email = $1,
+    username = null,
+    full_name = $2,
+    avatar_asset_id = null,
+    updated_at = now()
+where principal_id = $3
+`
+
+type SoftDeleteIamUserParams struct {
+	Email       string      `json:"email"`
+	FullName    pgtype.Text `json:"full_name"`
+	PrincipalID uuid.UUID   `json:"principal_id"`
+}
+
+func (q *Queries) SoftDeleteIamUser(ctx context.Context, arg SoftDeleteIamUserParams) error {
+	_, err := q.db.Exec(ctx, softDeleteIamUser, arg.Email, arg.FullName, arg.PrincipalID)
+	return err
+}
+
 const updateIamUserProfile = `-- name: UpdateIamUserProfile :exec
 update iam_user
 set email = $1, username = $2, full_name = $3, avatar_asset_id = $4, updated_at = now()
@@ -230,5 +259,21 @@ func (q *Queries) UpdateIamUserProfile(ctx context.Context, arg UpdateIamUserPro
 		arg.AvatarAssetID,
 		arg.PrincipalID,
 	)
+	return err
+}
+
+const updateIamUserState = `-- name: UpdateIamUserState :exec
+update iam_user
+set state = $1, updated_at = now()
+where principal_id = $2
+`
+
+type UpdateIamUserStateParams struct {
+	State       IamUserState `json:"state"`
+	PrincipalID uuid.UUID    `json:"principal_id"`
+}
+
+func (q *Queries) UpdateIamUserState(ctx context.Context, arg UpdateIamUserStateParams) error {
+	_, err := q.db.Exec(ctx, updateIamUserState, arg.State, arg.PrincipalID)
 	return err
 }

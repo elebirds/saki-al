@@ -41,7 +41,10 @@ type AuthAccount struct {
 }
 
 func (a *AuthAccount) IsDisabled() bool {
-	return a == nil || a.Principal.IsDisabled() || a.User.State == identitydomain.UserStateDisabled
+	return a == nil ||
+		a.Principal.IsDisabled() ||
+		a.User.State == identitydomain.UserStateDisabled ||
+		a.User.State == identitydomain.UserStateDeleted
 }
 
 func (a *AuthAccount) DisplayFullName() string {

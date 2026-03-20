@@ -640,6 +640,136 @@ func decodeDeleteDatasetSampleParams(args [2]string, argsEscaped bool, r *http.R
 	return params, nil
 }
 
+// DeleteRoleParams is parameters of deleteRole operation.
+type DeleteRoleParams struct {
+	RoleID string
+}
+
+func unpackDeleteRoleParams(packed middleware.Parameters) (params DeleteRoleParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "role_id",
+			In:   "path",
+		}
+		params.RoleID = packed[key].(string)
+	}
+	return params
+}
+
+func decodeDeleteRoleParams(args [1]string, argsEscaped bool, r *http.Request) (params DeleteRoleParams, _ error) {
+	// Decode path: role_id.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "role_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.RoleID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "role_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
+// DeleteUserParams is parameters of deleteUser operation.
+type DeleteUserParams struct {
+	UserID string
+}
+
+func unpackDeleteUserParams(packed middleware.Parameters) (params DeleteUserParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "user_id",
+			In:   "path",
+		}
+		params.UserID = packed[key].(string)
+	}
+	return params
+}
+
+func decodeDeleteUserParams(args [1]string, argsEscaped bool, r *http.Request) (params DeleteUserParams, _ error) {
+	// Decode path: user_id.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "user_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.UserID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "user_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
 // ExecuteProjectAnnotationImportParams is parameters of executeProjectAnnotationImport operation.
 type ExecuteProjectAnnotationImportParams struct {
 	ProjectID string
@@ -1141,6 +1271,136 @@ func decodeGetProjectParams(args [1]string, argsEscaped bool, r *http.Request) (
 	}(); err != nil {
 		return params, &ogenerrors.DecodeParamError{
 			Name: "project_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
+// GetRoleParams is parameters of getRole operation.
+type GetRoleParams struct {
+	RoleID string
+}
+
+func unpackGetRoleParams(packed middleware.Parameters) (params GetRoleParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "role_id",
+			In:   "path",
+		}
+		params.RoleID = packed[key].(string)
+	}
+	return params
+}
+
+func decodeGetRoleParams(args [1]string, argsEscaped bool, r *http.Request) (params GetRoleParams, _ error) {
+	// Decode path: role_id.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "role_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.RoleID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "role_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
+// GetUserParams is parameters of getUser operation.
+type GetUserParams struct {
+	UserID string
+}
+
+func unpackGetUserParams(packed middleware.Parameters) (params GetUserParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "user_id",
+			In:   "path",
+		}
+		params.UserID = packed[key].(string)
+	}
+	return params
+}
+
+func decodeGetUserParams(args [1]string, argsEscaped bool, r *http.Request) (params GetUserParams, _ error) {
+	// Decode path: user_id.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "user_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.UserID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "user_id",
 			In:   "path",
 			Err:  err,
 		}
@@ -2331,6 +2591,71 @@ func decodePrepareProjectAnnotationImportParams(args [2]string, argsEscaped bool
 	return params, nil
 }
 
+// ReplaceUserSystemRolesParams is parameters of replaceUserSystemRoles operation.
+type ReplaceUserSystemRolesParams struct {
+	UserID string
+}
+
+func unpackReplaceUserSystemRolesParams(packed middleware.Parameters) (params ReplaceUserSystemRolesParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "user_id",
+			In:   "path",
+		}
+		params.UserID = packed[key].(string)
+	}
+	return params
+}
+
+func decodeReplaceUserSystemRolesParams(args [1]string, argsEscaped bool, r *http.Request) (params ReplaceUserSystemRolesParams, _ error) {
+	// Decode path: user_id.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "user_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.UserID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "user_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
 // RequirePermissionParams is parameters of requirePermission operation.
 type RequirePermissionParams struct {
 	Permission string
@@ -2649,6 +2974,136 @@ func decodeUpdateDatasetParams(args [1]string, argsEscaped bool, r *http.Request
 	}(); err != nil {
 		return params, &ogenerrors.DecodeParamError{
 			Name: "dataset_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
+// UpdateRoleParams is parameters of updateRole operation.
+type UpdateRoleParams struct {
+	RoleID string
+}
+
+func unpackUpdateRoleParams(packed middleware.Parameters) (params UpdateRoleParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "role_id",
+			In:   "path",
+		}
+		params.RoleID = packed[key].(string)
+	}
+	return params
+}
+
+func decodeUpdateRoleParams(args [1]string, argsEscaped bool, r *http.Request) (params UpdateRoleParams, _ error) {
+	// Decode path: role_id.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "role_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.RoleID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "role_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
+// UpdateUserParams is parameters of updateUser operation.
+type UpdateUserParams struct {
+	UserID string
+}
+
+func unpackUpdateUserParams(packed middleware.Parameters) (params UpdateUserParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "user_id",
+			In:   "path",
+		}
+		params.UserID = packed[key].(string)
+	}
+	return params
+}
+
+func decodeUpdateUserParams(args [1]string, argsEscaped bool, r *http.Request) (params UpdateUserParams, _ error) {
+	// Decode path: user_id.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "user_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.UserID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "user_id",
 			In:   "path",
 			Err:  err,
 		}

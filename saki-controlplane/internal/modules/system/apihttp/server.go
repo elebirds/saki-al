@@ -308,6 +308,34 @@ func (s *Server) GetRolePermissionCatalog(ctx context.Context) (*openapi.Permiss
 	return s.authorization.GetRolePermissionCatalog(ctx)
 }
 
+func (s *Server) CreateRole(ctx context.Context, req *openapi.RoleCreateRequest) (*openapi.RoleListItem, error) {
+	if s.authorization == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	return s.authorization.CreateRole(ctx, req)
+}
+
+func (s *Server) GetRole(ctx context.Context, params openapi.GetRoleParams) (*openapi.RoleListItem, error) {
+	if s.authorization == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	return s.authorization.GetRole(ctx, params)
+}
+
+func (s *Server) UpdateRole(ctx context.Context, req *openapi.RoleUpdateRequest, params openapi.UpdateRoleParams) (*openapi.RoleListItem, error) {
+	if s.authorization == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	return s.authorization.UpdateRole(ctx, req, params)
+}
+
+func (s *Server) DeleteRole(ctx context.Context, params openapi.DeleteRoleParams) error {
+	if s.authorization == nil {
+		return ogenhttp.ErrNotImplemented
+	}
+	return s.authorization.DeleteRole(ctx, params)
+}
+
 func (s *Server) GetSystemPermissions(ctx context.Context) (*openapi.SystemPermissionsResponse, error) {
 	if s.authorization == nil {
 		return nil, ogenhttp.ErrNotImplemented
@@ -342,11 +370,58 @@ func (s *Server) ListUserSystemRolesLegacy(ctx context.Context, params openapi.L
 	return s.authorization.ListUserSystemRolesLegacy(ctx, params)
 }
 
+func (s *Server) ReplaceUserSystemRoles(ctx context.Context, req *openapi.ReplaceUserSystemRolesRequest, params openapi.ReplaceUserSystemRolesParams) ([]openapi.UserSystemRoleBinding, error) {
+	if s.authorization == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	if _, err := uuid.Parse(params.UserID); err != nil {
+		return nil, newBadRequest("invalid user_id")
+	}
+	return s.authorization.ReplaceUserSystemRoles(ctx, req, params)
+}
+
 func (s *Server) ListUsers(ctx context.Context, params openapi.ListUsersParams) (*openapi.UserListResponse, error) {
 	if s.identity == nil {
 		return nil, ogenhttp.ErrNotImplemented
 	}
 	return s.identity.ListUsers(ctx, params)
+}
+
+func (s *Server) CreateUser(ctx context.Context, req *openapi.UserCreateRequest) (*openapi.UserListItem, error) {
+	if s.identity == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	return s.identity.CreateUser(ctx, req)
+}
+
+func (s *Server) GetUser(ctx context.Context, params openapi.GetUserParams) (*openapi.UserListItem, error) {
+	if s.identity == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	if _, err := uuid.Parse(params.UserID); err != nil {
+		return nil, newBadRequest("invalid user_id")
+	}
+	return s.identity.GetUser(ctx, params)
+}
+
+func (s *Server) UpdateUser(ctx context.Context, req *openapi.UserUpdateRequest, params openapi.UpdateUserParams) (*openapi.UserListItem, error) {
+	if s.identity == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	if _, err := uuid.Parse(params.UserID); err != nil {
+		return nil, newBadRequest("invalid user_id")
+	}
+	return s.identity.UpdateUser(ctx, req, params)
+}
+
+func (s *Server) DeleteUser(ctx context.Context, params openapi.DeleteUserParams) error {
+	if s.identity == nil {
+		return ogenhttp.ErrNotImplemented
+	}
+	if _, err := uuid.Parse(params.UserID); err != nil {
+		return newBadRequest("invalid user_id")
+	}
+	return s.identity.DeleteUser(ctx, params)
 }
 
 func (s *Server) GetSystemSettings(ctx context.Context) (*openapi.SystemSettingsResponse, error) {

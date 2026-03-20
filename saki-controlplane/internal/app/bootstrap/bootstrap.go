@@ -110,6 +110,7 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 		authorizationMembershipRepo,
 	)
 	identityUserRepo := identityrepo.NewUserRepo(pool)
+	identityAdminStore := identityrepo.NewAdminStore(pool)
 	claimsStore := accessrepo.NewClaimsStore(accessrepo.ClaimsStoreDeps{
 		LegacyPrincipals:   accessPrincipalRepo,
 		IdentityPrincipals: identityrepo.NewPrincipalRepo(pool),
@@ -206,10 +207,16 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 	identitySessions := identityrepo.NewSessionRepo(pool)
 	identityAuthStore := identityrepo.NewAuthStore(pool)
 	identitySessionService := identityapp.NewSessionService(identitySessions, nil)
+	authorizationAdminStore := authorizationrepo.NewAdminStore(pool)
 	authorizationHandlers := authorizationapi.NewHandlers(authorizationapi.HandlersDeps{
 		ListRoles:         authorizationapp.NewListRolesUseCase(authorizationRoleRepo),
 		PermissionCatalog: authorizationapp.NewPermissionCatalogUseCase(),
 		UserSystemRoles:   authorizationapp.NewListUserSystemRolesUseCase(authorizationBindingRepo, authorizationRoleRepo),
+		CreateRole:        authorizationapp.NewCreateRoleUseCase(authorizationAdminStore),
+		GetRole:           authorizationapp.NewGetRoleUseCase(authorizationAdminStore),
+		UpdateRole:        authorizationapp.NewUpdateRoleUseCase(authorizationAdminStore),
+		DeleteRole:        authorizationapp.NewDeleteRoleUseCase(authorizationAdminStore),
+		ReplaceUserRoles:  authorizationapp.NewReplaceUserSystemRolesUseCase(authorizationAdminStore),
 	})
 	handler, err := systemapi.NewHTTPHandler(systemapi.Dependencies{
 		Authenticator:       authenticator,
@@ -261,6 +268,10 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 			ChangePassword: identityapp.NewChangePasswordUseCase(identityAuthStore, authenticator, nil, nil, tokenTTL),
 			CurrentUser:    identityapp.NewCurrentUserUseCase(identityAuthStore),
 			ListUsers:      identityapp.NewListUsersUseCase(identityUserRepo, authorizationBindingRepo, authorizationRoleRepo),
+			CreateUser:     identityapp.NewCreateUserUseCase(identityAdminStore, authorizationBindingRepo, authorizationRoleRepo),
+			GetUser:        identityapp.NewGetUserUseCase(identityAdminStore, authorizationBindingRepo, authorizationRoleRepo),
+			UpdateUser:     identityapp.NewUpdateUserUseCase(identityAdminStore, authorizationBindingRepo, authorizationRoleRepo),
+			DeleteUser:     identityapp.NewDeleteUserUseCase(identityAdminStore),
 		}),
 		Authorization: authorizationHandlers,
 		System: systemapi.NewHandlers(systemapi.HandlersDeps{

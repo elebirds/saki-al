@@ -187,6 +187,219 @@ func TestHumanControlPlaneManagementSmoke(t *testing.T) {
 	}
 }
 
+func TestHumanControlPlaneManagementWriteSmoke(t *testing.T) {
+	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+
+	container, dsn := startSystemSmokePostgres(t)
+	defer func() {
+		_ = testcontainers.TerminateContainer(container)
+	}()
+
+	sqlDB, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("open sql db: %v", err)
+	}
+	defer sqlDB.Close()
+
+	goose.SetDialect("postgres")
+	if err := goose.Up(sqlDB, systemSmokeMigrationsDir(t)); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+
+	t.Setenv("DATABASE_DSN", dsn)
+	t.Setenv("AUTH_TOKEN_SECRET", "smoke-secret")
+	t.Setenv("AUTH_TOKEN_TTL", "10m")
+	t.Setenv("PUBLIC_API_BIND", "127.0.0.1:0")
+	t.Setenv("BUILD_VERSION", "smoke-build")
+
+	server, _, err := bootstrap.NewPublicAPI(t.Context())
+	if err != nil {
+		t.Fatalf("bootstrap public api: %v", err)
+	}
+	httpServer := httptest.NewServer(server.Handler)
+	defer httpServer.Close()
+
+	setupBody := decodeJSONResponse(t, doJSONRequest(
+		t,
+		httpServer.Client(),
+		http.MethodPost,
+		httpServer.URL+"/system/setup",
+		`{"email":"admin@example.com","password":"secret-pass","full_name":"Initial Admin"}`,
+		"",
+	))
+	adminAccessToken, _ := setupBody["access_token"].(string)
+	if adminAccessToken == "" {
+		t.Fatalf("expected setup to return admin session, got %+v", setupBody)
+	}
+
+	createRoleResp := doJSONRequest(
+		t,
+		httpServer.Client(),
+		http.MethodPost,
+		httpServer.URL+"/roles",
+		`{"name":"auditor","display_name":"Auditor","description":"Read-only audit role","color":"cyan","permissions":["users:read","roles:read"]}`,
+		adminAccessToken,
+	)
+	if createRoleResp.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected create role status: %d body=%s", createRoleResp.StatusCode, readBodyString(t, createRoleResp))
+	}
+	roleBody := decodeJSONResponse(t, createRoleResp)
+	roleID, _ := roleBody["id"].(string)
+	if roleID == "" || roleBody["name"] != "auditor" {
+		t.Fatalf("unexpected role body: %+v", roleBody)
+	}
+
+	getRoleResp := doJSONRequest(
+		t,
+		httpServer.Client(),
+		http.MethodGet,
+		httpServer.URL+"/roles/"+roleID,
+		"",
+		adminAccessToken,
+	)
+	if getRoleResp.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected get role status: %d body=%s", getRoleResp.StatusCode, readBodyString(t, getRoleResp))
+	}
+	gotRoleBody := decodeJSONResponse(t, getRoleResp)
+	if gotRoleBody["id"] != roleID || gotRoleBody["name"] != "auditor" {
+		t.Fatalf("unexpected role detail body: %+v", gotRoleBody)
+	}
+
+	updateRoleResp := doJSONRequest(
+		t,
+		httpServer.Client(),
+		http.MethodPatch,
+		httpServer.URL+"/roles/"+roleID,
+		`{"display_name":"Security Auditor","color":"geekblue","permissions":["users:read"]}`,
+		adminAccessToken,
+	)
+	if updateRoleResp.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected update role status: %d body=%s", updateRoleResp.StatusCode, readBodyString(t, updateRoleResp))
+	}
+	updatedRoleBody := decodeJSONResponse(t, updateRoleResp)
+	if updatedRoleBody["display_name"] != "Security Auditor" || updatedRoleBody["color"] != "geekblue" {
+		t.Fatalf("unexpected updated role body: %+v", updatedRoleBody)
+	}
+
+	createUserResp := doJSONRequest(
+		t,
+		httpServer.Client(),
+		http.MethodPost,
+		httpServer.URL+"/users",
+		`{"email":"auditor@example.com","password":"temp-pass","full_name":"Audit User","is_active":true}`,
+		adminAccessToken,
+	)
+	if createUserResp.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected create user status: %d body=%s", createUserResp.StatusCode, readBodyString(t, createUserResp))
+	}
+	userBody := decodeJSONResponse(t, createUserResp)
+	userID, _ := userBody["id"].(string)
+	if userID == "" || userBody["email"] != "auditor@example.com" {
+		t.Fatalf("unexpected user body: %+v", userBody)
+	}
+	if userBody["must_change_password"] != true {
+		t.Fatalf("expected admin-created user to require password change, got %+v", userBody)
+	}
+
+	getUserResp := doJSONRequest(
+		t,
+		httpServer.Client(),
+		http.MethodGet,
+		httpServer.URL+"/users/"+userID,
+		"",
+		adminAccessToken,
+	)
+	if getUserResp.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected get user status: %d body=%s", getUserResp.StatusCode, readBodyString(t, getUserResp))
+	}
+	gotUserBody := decodeJSONResponse(t, getUserResp)
+	if gotUserBody["id"] != userID || gotUserBody["email"] != "auditor@example.com" {
+		t.Fatalf("unexpected user detail body: %+v", gotUserBody)
+	}
+
+	replaceRolesResp := doJSONRequest(
+		t,
+		httpServer.Client(),
+		http.MethodPut,
+		httpServer.URL+"/users/"+userID+"/system-roles",
+		`{"role_ids":["`+roleID+`"]}`,
+		adminAccessToken,
+	)
+	if replaceRolesResp.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected replace user roles status: %d body=%s", replaceRolesResp.StatusCode, readBodyString(t, replaceRolesResp))
+	}
+	replacedRolesBody := decodeJSONArrayResponse(t, replaceRolesResp)
+	if len(replacedRolesBody) != 1 || replacedRolesBody[0]["role_id"] != roleID {
+		t.Fatalf("unexpected replaced roles body: %+v", replacedRolesBody)
+	}
+
+	updateUserResp := doJSONRequest(
+		t,
+		httpServer.Client(),
+		http.MethodPatch,
+		httpServer.URL+"/users/"+userID,
+		`{"full_name":"Audit User Updated","is_active":false}`,
+		adminAccessToken,
+	)
+	if updateUserResp.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected update user status: %d body=%s", updateUserResp.StatusCode, readBodyString(t, updateUserResp))
+	}
+	updatedUserBody := decodeJSONResponse(t, updateUserResp)
+	if updatedUserBody["full_name"] != "Audit User Updated" || updatedUserBody["is_active"] != false {
+		t.Fatalf("unexpected updated user body: %+v", updatedUserBody)
+	}
+
+	deleteUserResp := doJSONRequest(
+		t,
+		httpServer.Client(),
+		http.MethodDelete,
+		httpServer.URL+"/users/"+userID,
+		"",
+		adminAccessToken,
+	)
+	if deleteUserResp.StatusCode != http.StatusNoContent {
+		t.Fatalf("unexpected delete user status: %d body=%s", deleteUserResp.StatusCode, readBodyString(t, deleteUserResp))
+	}
+
+	usersResp := doJSONRequest(
+		t,
+		httpServer.Client(),
+		http.MethodGet,
+		httpServer.URL+"/users?page=1&limit=20",
+		"",
+		adminAccessToken,
+	)
+	if usersResp.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected users status after delete: %d body=%s", usersResp.StatusCode, readBodyString(t, usersResp))
+	}
+	usersBody := decodeJSONResponse(t, usersResp)
+	items, ok := usersBody["items"].([]any)
+	if !ok {
+		t.Fatalf("unexpected users body after delete: %+v", usersBody)
+	}
+	for _, item := range items {
+		row, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		if row["id"] == userID {
+			t.Fatalf("expected deleted user to disappear from list, got %+v", usersBody)
+		}
+	}
+
+	deleteRoleResp := doJSONRequest(
+		t,
+		httpServer.Client(),
+		http.MethodDelete,
+		httpServer.URL+"/roles/"+roleID,
+		"",
+		adminAccessToken,
+	)
+	if deleteRoleResp.StatusCode != http.StatusNoContent {
+		t.Fatalf("unexpected delete role status: %d body=%s", deleteRoleResp.StatusCode, readBodyString(t, deleteRoleResp))
+	}
+}
+
 func decodeJSONArrayResponse(t *testing.T, resp *http.Response) []map[string]any {
 	t.Helper()
 	defer resp.Body.Close()

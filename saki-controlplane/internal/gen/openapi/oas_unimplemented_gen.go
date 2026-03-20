@@ -69,10 +69,24 @@ func (UnimplementedHandler) CreateProject(ctx context.Context, req *CreateProjec
 	return r, ht.ErrNotImplemented
 }
 
+// CreateRole implements createRole operation.
+//
+// POST /roles
+func (UnimplementedHandler) CreateRole(ctx context.Context, req *RoleCreateRequest) (r *RoleListItem, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // CreateSampleAnnotations implements createSampleAnnotations operation.
 //
 // POST /projects/{project_id}/samples/{sample_id}/annotations
 func (UnimplementedHandler) CreateSampleAnnotations(ctx context.Context, req *CreateAnnotationRequest, params CreateSampleAnnotationsParams) (r []Annotation, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// CreateUser implements createUser operation.
+//
+// POST /users
+func (UnimplementedHandler) CreateUser(ctx context.Context, req *UserCreateRequest) (r *UserListItem, _ error) {
 	return r, ht.ErrNotImplemented
 }
 
@@ -88,6 +102,20 @@ func (UnimplementedHandler) DeleteDataset(ctx context.Context, params DeleteData
 // DELETE /datasets/{dataset_id}/samples/{sample_id}
 func (UnimplementedHandler) DeleteDatasetSample(ctx context.Context, params DeleteDatasetSampleParams) (r DeleteDatasetSampleRes, _ error) {
 	return r, ht.ErrNotImplemented
+}
+
+// DeleteRole implements deleteRole operation.
+//
+// DELETE /roles/{role_id}
+func (UnimplementedHandler) DeleteRole(ctx context.Context, params DeleteRoleParams) error {
+	return ht.ErrNotImplemented
+}
+
+// DeleteUser implements deleteUser operation.
+//
+// DELETE /users/{user_id}
+func (UnimplementedHandler) DeleteUser(ctx context.Context, params DeleteUserParams) error {
+	return ht.ErrNotImplemented
 }
 
 // ExecuteProjectAnnotationImport implements executeProjectAnnotationImport operation.
@@ -146,6 +174,13 @@ func (UnimplementedHandler) GetProject(ctx context.Context, params GetProjectPar
 	return r, ht.ErrNotImplemented
 }
 
+// GetRole implements getRole operation.
+//
+// GET /roles/{role_id}
+func (UnimplementedHandler) GetRole(ctx context.Context, params GetRoleParams) (r *RoleListItem, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // GetRolePermissionCatalog implements getRolePermissionCatalog operation.
 //
 // GET /roles/permission-catalog
@@ -185,6 +220,13 @@ func (UnimplementedHandler) GetSystemStatus(ctx context.Context) (r *SystemStatu
 //
 // GET /system/types
 func (UnimplementedHandler) GetSystemTypes(ctx context.Context) (r *SystemTypesResponse, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// GetUser implements getUser operation.
+//
+// GET /users/{user_id}
+func (UnimplementedHandler) GetUser(ctx context.Context, params GetUserParams) (r *UserListItem, _ error) {
 	return r, ht.ErrNotImplemented
 }
 
@@ -328,6 +370,13 @@ func (UnimplementedHandler) RegisterAuthUser(ctx context.Context, req *AuthRegis
 	return r, ht.ErrNotImplemented
 }
 
+// ReplaceUserSystemRoles implements replaceUserSystemRoles operation.
+//
+// PUT /users/{user_id}/system-roles
+func (UnimplementedHandler) ReplaceUserSystemRoles(ctx context.Context, req *ReplaceUserSystemRolesRequest, params ReplaceUserSystemRolesParams) (r []UserSystemRoleBinding, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // RequirePermission implements requirePermission operation.
 //
 // GET /auth/permissions/{permission}
@@ -367,6 +416,20 @@ func (UnimplementedHandler) UnlinkProjectDatasets(ctx context.Context, req *Proj
 //
 // PUT /datasets/{dataset_id}
 func (UnimplementedHandler) UpdateDataset(ctx context.Context, req *UpdateDatasetRequest, params UpdateDatasetParams) (r UpdateDatasetRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// UpdateRole implements updateRole operation.
+//
+// PATCH /roles/{role_id}
+func (UnimplementedHandler) UpdateRole(ctx context.Context, req *RoleUpdateRequest, params UpdateRoleParams) (r *RoleListItem, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// UpdateUser implements updateUser operation.
+//
+// PATCH /users/{user_id}
+func (UnimplementedHandler) UpdateUser(ctx context.Context, req *UserUpdateRequest, params UpdateUserParams) (r *UserListItem, _ error) {
 	return r, ht.ErrNotImplemented
 }
 

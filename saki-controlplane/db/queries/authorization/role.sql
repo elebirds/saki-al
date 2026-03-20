@@ -51,3 +51,7 @@ set scope_kind = sqlc.arg(scope_kind),
     updated_at = now()
 where id = sqlc.arg(id)
 returning id, scope_kind, name, display_name, description, built_in, mutable, color, is_supremo, sort_order, created_at, updated_at;
+
+-- name: DeleteAuthzRole :exec
+delete from authz_role
+where id = sqlc.arg(id);

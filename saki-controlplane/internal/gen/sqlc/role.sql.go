@@ -84,6 +84,16 @@ func (q *Queries) CreateAuthzRole(ctx context.Context, arg CreateAuthzRoleParams
 	return i, err
 }
 
+const deleteAuthzRole = `-- name: DeleteAuthzRole :exec
+delete from authz_role
+where id = $1
+`
+
+func (q *Queries) DeleteAuthzRole(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteAuthzRole, id)
+	return err
+}
+
 const getAuthzRoleByID = `-- name: GetAuthzRoleByID :one
 select id, scope_kind, name, display_name, description, built_in, mutable, color, is_supremo, sort_order, created_at, updated_at
 from authz_role

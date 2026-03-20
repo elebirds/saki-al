@@ -40,10 +40,18 @@ type Handler interface {
 	//
 	// POST /projects
 	CreateProject(ctx context.Context, req *CreateProjectRequest) (*Project, error)
+	// CreateRole implements createRole operation.
+	//
+	// POST /roles
+	CreateRole(ctx context.Context, req *RoleCreateRequest) (*RoleListItem, error)
 	// CreateSampleAnnotations implements createSampleAnnotations operation.
 	//
 	// POST /projects/{project_id}/samples/{sample_id}/annotations
 	CreateSampleAnnotations(ctx context.Context, req *CreateAnnotationRequest, params CreateSampleAnnotationsParams) ([]Annotation, error)
+	// CreateUser implements createUser operation.
+	//
+	// POST /users
+	CreateUser(ctx context.Context, req *UserCreateRequest) (*UserListItem, error)
 	// DeleteDataset implements deleteDataset operation.
 	//
 	// DELETE /datasets/{dataset_id}
@@ -52,6 +60,14 @@ type Handler interface {
 	//
 	// DELETE /datasets/{dataset_id}/samples/{sample_id}
 	DeleteDatasetSample(ctx context.Context, params DeleteDatasetSampleParams) (DeleteDatasetSampleRes, error)
+	// DeleteRole implements deleteRole operation.
+	//
+	// DELETE /roles/{role_id}
+	DeleteRole(ctx context.Context, params DeleteRoleParams) error
+	// DeleteUser implements deleteUser operation.
+	//
+	// DELETE /users/{user_id}
+	DeleteUser(ctx context.Context, params DeleteUserParams) error
 	// ExecuteProjectAnnotationImport implements executeProjectAnnotationImport operation.
 	//
 	// POST /projects/{project_id}/datasets/{dataset_id}/imports/annotations:execute
@@ -84,6 +100,10 @@ type Handler interface {
 	//
 	// GET /projects/{project_id}
 	GetProject(ctx context.Context, params GetProjectParams) (*Project, error)
+	// GetRole implements getRole operation.
+	//
+	// GET /roles/{role_id}
+	GetRole(ctx context.Context, params GetRoleParams) (*RoleListItem, error)
 	// GetRolePermissionCatalog implements getRolePermissionCatalog operation.
 	//
 	// GET /roles/permission-catalog
@@ -108,6 +128,10 @@ type Handler interface {
 	//
 	// GET /system/types
 	GetSystemTypes(ctx context.Context) (*SystemTypesResponse, error)
+	// GetUser implements getUser operation.
+	//
+	// GET /users/{user_id}
+	GetUser(ctx context.Context, params GetUserParams) (*UserListItem, error)
 	// Healthz implements healthz operation.
 	//
 	// GET /healthz
@@ -188,6 +212,10 @@ type Handler interface {
 	//
 	// POST /auth/register
 	RegisterAuthUser(ctx context.Context, req *AuthRegisterRequest) (*AuthSessionResponse, error)
+	// ReplaceUserSystemRoles implements replaceUserSystemRoles operation.
+	//
+	// PUT /users/{user_id}/system-roles
+	ReplaceUserSystemRoles(ctx context.Context, req *ReplaceUserSystemRolesRequest, params ReplaceUserSystemRolesParams) ([]UserSystemRoleBinding, error)
 	// RequirePermission implements requirePermission operation.
 	//
 	// GET /auth/permissions/{permission}
@@ -212,6 +240,14 @@ type Handler interface {
 	//
 	// PUT /datasets/{dataset_id}
 	UpdateDataset(ctx context.Context, req *UpdateDatasetRequest, params UpdateDatasetParams) (UpdateDatasetRes, error)
+	// UpdateRole implements updateRole operation.
+	//
+	// PATCH /roles/{role_id}
+	UpdateRole(ctx context.Context, req *RoleUpdateRequest, params UpdateRoleParams) (*RoleListItem, error)
+	// UpdateUser implements updateUser operation.
+	//
+	// PATCH /users/{user_id}
+	UpdateUser(ctx context.Context, req *UserUpdateRequest, params UpdateUserParams) (*UserListItem, error)
 	// NewError creates *ErrorResponseStatusCode from error returned by handler.
 	//
 	// Used for common default response.

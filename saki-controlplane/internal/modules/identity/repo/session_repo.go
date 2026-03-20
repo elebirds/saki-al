@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"time"
 
+	appdb "github.com/elebirds/saki/saki-controlplane/internal/app/db"
 	sqlcdb "github.com/elebirds/saki/saki-controlplane/internal/gen/sqlc"
 	identityapp "github.com/elebirds/saki/saki-controlplane/internal/modules/identity/app"
 	identitydomain "github.com/elebirds/saki/saki-controlplane/internal/modules/identity/domain"
@@ -16,13 +17,17 @@ import (
 )
 
 type SessionRepo struct {
-	q *sqlcdb.Queries
+	q  *sqlcdb.Queries
+	tx *appdb.TxRunner
 }
 
 var _ identityapp.RefreshSessionStore = (*SessionRepo)(nil)
 
 func NewSessionRepo(pool *pgxpool.Pool) *SessionRepo {
-	return &SessionRepo{q: sqlcdb.New(pool)}
+	return &SessionRepo{
+		q:  sqlcdb.New(pool),
+		tx: appdb.NewTxRunner(pool),
+	}
 }
 
 func (r *SessionRepo) CreateRefreshSession(ctx context.Context, params identityapp.CreateRefreshSessionParams) (*identitydomain.RefreshSession, error) {
@@ -53,6 +58,43 @@ func (r *SessionRepo) GetRefreshSessionByTokenHash(ctx context.Context, tokenHas
 
 func (r *SessionRepo) DeleteRefreshSession(ctx context.Context, id uuid.UUID) error {
 	return r.q.DeleteIamRefreshSession(ctx, id)
+}
+
+func (r *SessionRepo) RotateRefreshSession(ctx context.Context, params identityapp.RotateRefreshSessionParams) (*identitydomain.RefreshSession, error) {
+	var rotated *identitydomain.RefreshSession
+	err := r.tx.InTx(ctx, func(tx pgx.Tx) error {
+		q := sqlcdb.New(tx)
+
+		consumed, err := q.ConsumeActiveIamRefreshSessionByTokenHash(ctx, sqlcdb.ConsumeActiveIamRefreshSessionByTokenHashParams{
+			TokenHash: params.CurrentTokenHash,
+			Now:       timeValue(params.Now),
+		})
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return identityapp.ErrRefreshSessionNotConsumed
+			}
+			return err
+		}
+
+		row, err := q.CreateIamRefreshSession(ctx, sqlcdb.CreateIamRefreshSessionParams{
+			PrincipalID: consumed.PrincipalID,
+			TokenHash:   params.NewTokenHash,
+			UserAgent:   textValue(params.UserAgent),
+			IpAddress:   cloneRepoAddr(params.IPAddress),
+			LastSeenAt:  timeValue(params.Now),
+			ExpiresAt:   timeValue(params.ExpiresAt),
+		})
+		if err != nil {
+			return err
+		}
+
+		rotated = mapRefreshSession(row)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return rotated, nil
 }
 
 func (r *SessionRepo) ListRefreshSessionsByPrincipal(ctx context.Context, principalID uuid.UUID) ([]identitydomain.RefreshSession, error) {

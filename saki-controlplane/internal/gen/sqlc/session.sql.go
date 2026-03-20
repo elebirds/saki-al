@@ -13,6 +13,35 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const consumeActiveIamRefreshSessionByTokenHash = `-- name: ConsumeActiveIamRefreshSessionByTokenHash :one
+delete from iam_refresh_session
+where token_hash = $1
+  and expires_at > $2
+returning id, principal_id, token_hash, user_agent, ip_address, last_seen_at, expires_at, created_at, updated_at
+`
+
+type ConsumeActiveIamRefreshSessionByTokenHashParams struct {
+	TokenHash string             `json:"token_hash"`
+	Now       pgtype.Timestamptz `json:"now"`
+}
+
+func (q *Queries) ConsumeActiveIamRefreshSessionByTokenHash(ctx context.Context, arg ConsumeActiveIamRefreshSessionByTokenHashParams) (IamRefreshSession, error) {
+	row := q.db.QueryRow(ctx, consumeActiveIamRefreshSessionByTokenHash, arg.TokenHash, arg.Now)
+	var i IamRefreshSession
+	err := row.Scan(
+		&i.ID,
+		&i.PrincipalID,
+		&i.TokenHash,
+		&i.UserAgent,
+		&i.IpAddress,
+		&i.LastSeenAt,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const createIamRefreshSession = `-- name: CreateIamRefreshSession :one
 insert into iam_refresh_session (principal_id, token_hash, user_agent, ip_address, last_seen_at, expires_at)
 values ($1, $2, $3, $4, $5, $6)

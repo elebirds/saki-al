@@ -8371,8 +8371,8 @@ func (s *ResourceMember) encodeFields(e *jx.Encoder) {
 		e.Str(s.ResourceID)
 	}
 	{
-		e.FieldStart("user_id")
-		e.Str(s.UserID)
+		e.FieldStart("principal_id")
+		e.Str(s.PrincipalID)
 	}
 	{
 		e.FieldStart("role_id")
@@ -8418,7 +8418,7 @@ var jsonFieldsNameOfResourceMember = [13]string{
 	0:  "id",
 	1:  "resource_type",
 	2:  "resource_id",
-	3:  "user_id",
+	3:  "principal_id",
 	4:  "role_id",
 	5:  "created_at",
 	6:  "updated_at",
@@ -8473,17 +8473,17 @@ func (s *ResourceMember) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"resource_id\"")
 			}
-		case "user_id":
+		case "principal_id":
 			requiredBitSet[0] |= 1 << 3
 			if err := func() error {
 				v, err := d.Str()
-				s.UserID = string(v)
+				s.PrincipalID = string(v)
 				if err != nil {
 					return err
 				}
 				return nil
 			}(); err != nil {
-				return errors.Wrap(err, "decode field \"user_id\"")
+				return errors.Wrap(err, "decode field \"principal_id\"")
 			}
 		case "role_id":
 			requiredBitSet[0] |= 1 << 4
@@ -8658,8 +8658,8 @@ func (s *ResourceMemberCreateRequest) Encode(e *jx.Encoder) {
 // encodeFields encodes fields.
 func (s *ResourceMemberCreateRequest) encodeFields(e *jx.Encoder) {
 	{
-		e.FieldStart("user_id")
-		e.Str(s.UserID)
+		e.FieldStart("principal_id")
+		e.Str(s.PrincipalID)
 	}
 	{
 		e.FieldStart("role_id")
@@ -8668,7 +8668,7 @@ func (s *ResourceMemberCreateRequest) encodeFields(e *jx.Encoder) {
 }
 
 var jsonFieldsNameOfResourceMemberCreateRequest = [2]string{
-	0: "user_id",
+	0: "principal_id",
 	1: "role_id",
 }
 
@@ -8681,17 +8681,17 @@ func (s *ResourceMemberCreateRequest) Decode(d *jx.Decoder) error {
 
 	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
 		switch string(k) {
-		case "user_id":
+		case "principal_id":
 			requiredBitSet[0] |= 1 << 0
 			if err := func() error {
 				v, err := d.Str()
-				s.UserID = string(v)
+				s.PrincipalID = string(v)
 				if err != nil {
 					return err
 				}
 				return nil
 			}(); err != nil {
-				return errors.Wrap(err, "decode field \"user_id\"")
+				return errors.Wrap(err, "decode field \"principal_id\"")
 			}
 		case "role_id":
 			requiredBitSet[0] |= 1 << 1

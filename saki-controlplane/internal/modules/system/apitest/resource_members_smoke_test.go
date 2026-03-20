@@ -213,7 +213,7 @@ func TestHumanControlPlaneResourceMembersSmoke(t *testing.T) {
 		httpServer.Client(),
 		http.MethodPost,
 		httpServer.URL+"/datasets/"+datasetID+"/members",
-		`{"user_id":"`+memberID+`","role_id":"`+datasetContributorRoleID+`"}`,
+		`{"principal_id":"`+memberID+`","role_id":"`+datasetContributorRoleID+`"}`,
 		adminAccessToken,
 	)
 	if addDatasetMemberResp.StatusCode != http.StatusOK {
@@ -228,8 +228,11 @@ func TestHumanControlPlaneResourceMembersSmoke(t *testing.T) {
 		"",
 		adminAccessToken,
 	))
-	if len(datasetMembersBody) != 1 || datasetMembersBody[0]["user_id"] != memberID {
+	if len(datasetMembersBody) != 1 || datasetMembersBody[0]["principal_id"] != memberID {
 		t.Fatalf("unexpected dataset members body: %+v", datasetMembersBody)
+	}
+	if _, ok := datasetMembersBody[0]["user_id"]; ok {
+		t.Fatalf("expected latest dataset member payload not to expose legacy user_id, got %+v", datasetMembersBody[0])
 	}
 
 	datasetPermissionsBody := decodeJSONResponse(t, doJSONRequest(
@@ -283,7 +286,7 @@ func TestHumanControlPlaneResourceMembersSmoke(t *testing.T) {
 		httpServer.Client(),
 		http.MethodPost,
 		httpServer.URL+"/projects/"+projectID+"/members",
-		`{"user_id":"`+memberID+`","role_id":"`+projectManagerRoleID+`"}`,
+		`{"principal_id":"`+memberID+`","role_id":"`+projectManagerRoleID+`"}`,
 		adminAccessToken,
 	)
 	if addProjectMemberResp.StatusCode != http.StatusOK {
@@ -345,11 +348,33 @@ func TestHumanControlPlaneResourceMembersSmoke(t *testing.T) {
 		httpServer.Client(),
 		http.MethodPost,
 		httpServer.URL+"/datasets/"+datasetID+"/members",
-		`{"user_id":"`+memberID+`","role_id":"`+datasetOwnerRoleID+`"}`,
+		`{"principal_id":"`+memberID+`","role_id":"`+datasetOwnerRoleID+`"}`,
 		adminAccessToken,
 	)
 	if rejectOwnerAssignResp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("expected owner role assignment rejection, got %d body=%s", rejectOwnerAssignResp.StatusCode, readBodyString(t, rejectOwnerAssignResp))
+	}
+	legacyDatasetMemberResp := doJSONRequest(
+		t,
+		httpServer.Client(),
+		http.MethodPost,
+		httpServer.URL+"/datasets/"+datasetID+"/members",
+		`{"user_id":"`+memberID+`","role_id":"`+datasetContributorRoleID+`"}`,
+		adminAccessToken,
+	)
+	if legacyDatasetMemberResp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected legacy dataset member payload to be rejected, got %d body=%s", legacyDatasetMemberResp.StatusCode, readBodyString(t, legacyDatasetMemberResp))
+	}
+	legacyProjectMemberResp := doJSONRequest(
+		t,
+		httpServer.Client(),
+		http.MethodPost,
+		httpServer.URL+"/projects/"+projectID+"/members",
+		`{"user_id":"`+memberID+`","role_id":"`+projectManagerRoleID+`"}`,
+		adminAccessToken,
+	)
+	if legacyProjectMemberResp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected legacy project member payload to be rejected, got %d body=%s", legacyProjectMemberResp.StatusCode, readBodyString(t, legacyProjectMemberResp))
 	}
 	insertResourceMembership(t, sqlDB, adminPrincipalID, datasetOwnerRoleID, "dataset", datasetID)
 	rejectOwnerDeleteResp := doJSONRequest(

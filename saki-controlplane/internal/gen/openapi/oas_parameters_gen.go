@@ -654,8 +654,8 @@ func decodeDeleteDatasetParams(args [1]string, argsEscaped bool, r *http.Request
 
 // DeleteDatasetMemberParams is parameters of deleteDatasetMember operation.
 type DeleteDatasetMemberParams struct {
-	DatasetID string
-	UserID    string
+	DatasetID   string
+	PrincipalID string
 }
 
 func unpackDeleteDatasetMemberParams(packed middleware.Parameters) (params DeleteDatasetMemberParams) {
@@ -668,10 +668,10 @@ func unpackDeleteDatasetMemberParams(packed middleware.Parameters) (params Delet
 	}
 	{
 		key := middleware.ParameterKey{
-			Name: "user_id",
+			Name: "principal_id",
 			In:   "path",
 		}
-		params.UserID = packed[key].(string)
+		params.PrincipalID = packed[key].(string)
 	}
 	return params
 }
@@ -722,7 +722,7 @@ func decodeDeleteDatasetMemberParams(args [2]string, argsEscaped bool, r *http.R
 			Err:  err,
 		}
 	}
-	// Decode path: user_id.
+	// Decode path: principal_id.
 	if err := func() error {
 		param := args[1]
 		if argsEscaped {
@@ -734,7 +734,7 @@ func decodeDeleteDatasetMemberParams(args [2]string, argsEscaped bool, r *http.R
 		}
 		if len(param) > 0 {
 			d := uri.NewPathDecoder(uri.PathDecoderConfig{
-				Param:   "user_id",
+				Param:   "principal_id",
 				Value:   param,
 				Style:   uri.PathStyleSimple,
 				Explode: false,
@@ -751,7 +751,7 @@ func decodeDeleteDatasetMemberParams(args [2]string, argsEscaped bool, r *http.R
 					return err
 				}
 
-				params.UserID = c
+				params.PrincipalID = c
 				return nil
 			}(); err != nil {
 				return err
@@ -762,7 +762,7 @@ func decodeDeleteDatasetMemberParams(args [2]string, argsEscaped bool, r *http.R
 		return nil
 	}(); err != nil {
 		return params, &ogenerrors.DecodeParamError{
-			Name: "user_id",
+			Name: "principal_id",
 			In:   "path",
 			Err:  err,
 		}
@@ -890,8 +890,8 @@ func decodeDeleteDatasetSampleParams(args [2]string, argsEscaped bool, r *http.R
 
 // DeleteProjectMemberParams is parameters of deleteProjectMember operation.
 type DeleteProjectMemberParams struct {
-	ProjectID string
-	UserID    string
+	ProjectID   string
+	PrincipalID string
 }
 
 func unpackDeleteProjectMemberParams(packed middleware.Parameters) (params DeleteProjectMemberParams) {
@@ -904,10 +904,10 @@ func unpackDeleteProjectMemberParams(packed middleware.Parameters) (params Delet
 	}
 	{
 		key := middleware.ParameterKey{
-			Name: "user_id",
+			Name: "principal_id",
 			In:   "path",
 		}
-		params.UserID = packed[key].(string)
+		params.PrincipalID = packed[key].(string)
 	}
 	return params
 }
@@ -958,7 +958,7 @@ func decodeDeleteProjectMemberParams(args [2]string, argsEscaped bool, r *http.R
 			Err:  err,
 		}
 	}
-	// Decode path: user_id.
+	// Decode path: principal_id.
 	if err := func() error {
 		param := args[1]
 		if argsEscaped {
@@ -970,7 +970,7 @@ func decodeDeleteProjectMemberParams(args [2]string, argsEscaped bool, r *http.R
 		}
 		if len(param) > 0 {
 			d := uri.NewPathDecoder(uri.PathDecoderConfig{
-				Param:   "user_id",
+				Param:   "principal_id",
 				Value:   param,
 				Style:   uri.PathStyleSimple,
 				Explode: false,
@@ -987,7 +987,7 @@ func decodeDeleteProjectMemberParams(args [2]string, argsEscaped bool, r *http.R
 					return err
 				}
 
-				params.UserID = c
+				params.PrincipalID = c
 				return nil
 			}(); err != nil {
 				return err
@@ -998,7 +998,7 @@ func decodeDeleteProjectMemberParams(args [2]string, argsEscaped bool, r *http.R
 		return nil
 	}(); err != nil {
 		return params, &ogenerrors.DecodeParamError{
-			Name: "user_id",
+			Name: "principal_id",
 			In:   "path",
 			Err:  err,
 		}
@@ -3653,8 +3653,8 @@ func decodeUpdateDatasetParams(args [1]string, argsEscaped bool, r *http.Request
 
 // UpdateDatasetMemberParams is parameters of updateDatasetMember operation.
 type UpdateDatasetMemberParams struct {
-	DatasetID string
-	UserID    string
+	DatasetID   string
+	PrincipalID string
 }
 
 func unpackUpdateDatasetMemberParams(packed middleware.Parameters) (params UpdateDatasetMemberParams) {
@@ -3667,10 +3667,10 @@ func unpackUpdateDatasetMemberParams(packed middleware.Parameters) (params Updat
 	}
 	{
 		key := middleware.ParameterKey{
-			Name: "user_id",
+			Name: "principal_id",
 			In:   "path",
 		}
-		params.UserID = packed[key].(string)
+		params.PrincipalID = packed[key].(string)
 	}
 	return params
 }
@@ -3721,7 +3721,7 @@ func decodeUpdateDatasetMemberParams(args [2]string, argsEscaped bool, r *http.R
 			Err:  err,
 		}
 	}
-	// Decode path: user_id.
+	// Decode path: principal_id.
 	if err := func() error {
 		param := args[1]
 		if argsEscaped {
@@ -3733,7 +3733,7 @@ func decodeUpdateDatasetMemberParams(args [2]string, argsEscaped bool, r *http.R
 		}
 		if len(param) > 0 {
 			d := uri.NewPathDecoder(uri.PathDecoderConfig{
-				Param:   "user_id",
+				Param:   "principal_id",
 				Value:   param,
 				Style:   uri.PathStyleSimple,
 				Explode: false,
@@ -3750,7 +3750,7 @@ func decodeUpdateDatasetMemberParams(args [2]string, argsEscaped bool, r *http.R
 					return err
 				}
 
-				params.UserID = c
+				params.PrincipalID = c
 				return nil
 			}(); err != nil {
 				return err
@@ -3761,7 +3761,7 @@ func decodeUpdateDatasetMemberParams(args [2]string, argsEscaped bool, r *http.R
 		return nil
 	}(); err != nil {
 		return params, &ogenerrors.DecodeParamError{
-			Name: "user_id",
+			Name: "principal_id",
 			In:   "path",
 			Err:  err,
 		}
@@ -3771,8 +3771,8 @@ func decodeUpdateDatasetMemberParams(args [2]string, argsEscaped bool, r *http.R
 
 // UpdateProjectMemberParams is parameters of updateProjectMember operation.
 type UpdateProjectMemberParams struct {
-	ProjectID string
-	UserID    string
+	ProjectID   string
+	PrincipalID string
 }
 
 func unpackUpdateProjectMemberParams(packed middleware.Parameters) (params UpdateProjectMemberParams) {
@@ -3785,10 +3785,10 @@ func unpackUpdateProjectMemberParams(packed middleware.Parameters) (params Updat
 	}
 	{
 		key := middleware.ParameterKey{
-			Name: "user_id",
+			Name: "principal_id",
 			In:   "path",
 		}
-		params.UserID = packed[key].(string)
+		params.PrincipalID = packed[key].(string)
 	}
 	return params
 }
@@ -3839,7 +3839,7 @@ func decodeUpdateProjectMemberParams(args [2]string, argsEscaped bool, r *http.R
 			Err:  err,
 		}
 	}
-	// Decode path: user_id.
+	// Decode path: principal_id.
 	if err := func() error {
 		param := args[1]
 		if argsEscaped {
@@ -3851,7 +3851,7 @@ func decodeUpdateProjectMemberParams(args [2]string, argsEscaped bool, r *http.R
 		}
 		if len(param) > 0 {
 			d := uri.NewPathDecoder(uri.PathDecoderConfig{
-				Param:   "user_id",
+				Param:   "principal_id",
 				Value:   param,
 				Style:   uri.PathStyleSimple,
 				Explode: false,
@@ -3868,7 +3868,7 @@ func decodeUpdateProjectMemberParams(args [2]string, argsEscaped bool, r *http.R
 					return err
 				}
 
-				params.UserID = c
+				params.PrincipalID = c
 				return nil
 			}(); err != nil {
 				return err
@@ -3879,7 +3879,7 @@ func decodeUpdateProjectMemberParams(args [2]string, argsEscaped bool, r *http.R
 		return nil
 	}(); err != nil {
 		return params, &ogenerrors.DecodeParamError{
-			Name: "user_id",
+			Name: "principal_id",
 			In:   "path",
 			Err:  err,
 		}

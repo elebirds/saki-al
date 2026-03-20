@@ -364,15 +364,15 @@ func (h *Handlers) ListDatasetMembers(ctx context.Context, params openapi.ListDa
 }
 
 func (h *Handlers) CreateDatasetMember(ctx context.Context, req *openapi.ResourceMemberCreateRequest, params openapi.CreateDatasetMemberParams) (*openapi.ResourceMember, error) {
-	return h.upsertMember(ctx, authorizationdomain.ResourceTypeDataset, params.DatasetID, req.GetUserID(), req.GetRoleID())
+	return h.upsertMember(ctx, authorizationdomain.ResourceTypeDataset, params.DatasetID, req.GetPrincipalID(), req.GetRoleID())
 }
 
 func (h *Handlers) UpdateDatasetMember(ctx context.Context, req *openapi.ResourceMemberUpdateRequest, params openapi.UpdateDatasetMemberParams) (*openapi.ResourceMember, error) {
-	return h.upsertMember(ctx, authorizationdomain.ResourceTypeDataset, params.DatasetID, params.UserID, req.GetRoleID())
+	return h.upsertMember(ctx, authorizationdomain.ResourceTypeDataset, params.DatasetID, params.PrincipalID, req.GetRoleID())
 }
 
 func (h *Handlers) DeleteDatasetMember(ctx context.Context, params openapi.DeleteDatasetMemberParams) error {
-	return h.deleteMember(ctx, authorizationdomain.ResourceTypeDataset, params.DatasetID, params.UserID)
+	return h.deleteMember(ctx, authorizationdomain.ResourceTypeDataset, params.DatasetID, params.PrincipalID)
 }
 
 func (h *Handlers) ListProjectMembers(ctx context.Context, params openapi.ListProjectMembersParams) ([]openapi.ResourceMember, error) {
@@ -380,15 +380,15 @@ func (h *Handlers) ListProjectMembers(ctx context.Context, params openapi.ListPr
 }
 
 func (h *Handlers) CreateProjectMember(ctx context.Context, req *openapi.ResourceMemberCreateRequest, params openapi.CreateProjectMemberParams) (*openapi.ResourceMember, error) {
-	return h.upsertMember(ctx, authorizationdomain.ResourceTypeProject, params.ProjectID, req.GetUserID(), req.GetRoleID())
+	return h.upsertMember(ctx, authorizationdomain.ResourceTypeProject, params.ProjectID, req.GetPrincipalID(), req.GetRoleID())
 }
 
 func (h *Handlers) UpdateProjectMember(ctx context.Context, req *openapi.ResourceMemberUpdateRequest, params openapi.UpdateProjectMemberParams) (*openapi.ResourceMember, error) {
-	return h.upsertMember(ctx, authorizationdomain.ResourceTypeProject, params.ProjectID, params.UserID, req.GetRoleID())
+	return h.upsertMember(ctx, authorizationdomain.ResourceTypeProject, params.ProjectID, params.PrincipalID, req.GetRoleID())
 }
 
 func (h *Handlers) DeleteProjectMember(ctx context.Context, params openapi.DeleteProjectMemberParams) error {
-	return h.deleteMember(ctx, authorizationdomain.ResourceTypeProject, params.ProjectID, params.UserID)
+	return h.deleteMember(ctx, authorizationdomain.ResourceTypeProject, params.ProjectID, params.PrincipalID)
 }
 
 func (h *Handlers) getPermissionCatalog(ctx context.Context) (*openapi.PermissionCatalogResponse, error) {
@@ -472,7 +472,7 @@ func (h *Handlers) listResourceMembers(ctx context.Context, resourceType string,
 	return result, nil
 }
 
-func (h *Handlers) upsertMember(ctx context.Context, resourceType string, rawResourceID string, rawUserID string, rawRoleID string) (*openapi.ResourceMember, error) {
+func (h *Handlers) upsertMember(ctx context.Context, resourceType string, rawResourceID string, rawPrincipalID string, rawRoleID string) (*openapi.ResourceMember, error) {
 	if h == nil || h.upsertResourceMember == nil {
 		return nil, ogenhttp.ErrNotImplemented
 	}
@@ -480,15 +480,16 @@ func (h *Handlers) upsertMember(ctx context.Context, resourceType string, rawRes
 	if err != nil {
 		return nil, err
 	}
-
-	_, userID, roleID, err := parseMembershipIDs(resourceID.String(), rawUserID, rawRoleID)
+	// 关键设计：members transport 合同先统一到 principal_id，
+	// 至少把“成员关系的标识语义”与 /users 资源本身解耦，避免继续沿用历史 user_id 别名。
+	_, principalID, roleID, err := parseMembershipIDs(resourceID.String(), rawPrincipalID, rawRoleID)
 	if err != nil {
 		return nil, err
 	}
 	member, err := h.upsertResourceMember.Execute(ctx, authorizationapp.UpsertResourceMemberCommand{
 		ResourceType: resourceType,
 		ResourceID:   resourceID,
-		UserID:       userID,
+		PrincipalID:  principalID,
 		RoleID:       roleID,
 	})
 	if err != nil {
@@ -498,7 +499,7 @@ func (h *Handlers) upsertMember(ctx context.Context, resourceType string, rawRes
 	return &response, nil
 }
 
-func (h *Handlers) deleteMember(ctx context.Context, resourceType string, rawResourceID string, rawUserID string) error {
+func (h *Handlers) deleteMember(ctx context.Context, resourceType string, rawResourceID string, rawPrincipalID string) error {
 	if h == nil || h.deleteResourceMember == nil {
 		return ogenhttp.ErrNotImplemented
 	}
@@ -507,11 +508,11 @@ func (h *Handlers) deleteMember(ctx context.Context, resourceType string, rawRes
 		return err
 	}
 
-	_, userID, _, err := parseMembershipIDs(resourceID.String(), rawUserID, "")
+	_, principalID, _, err := parseMembershipIDs(resourceID.String(), rawPrincipalID, "")
 	if err != nil {
 		return err
 	}
-	return h.deleteResourceMember.Execute(ctx, resourceType, resourceID, userID)
+	return h.deleteResourceMember.Execute(ctx, resourceType, resourceID, principalID)
 }
 
 func mapRole(item authorizationapp.RoleView) openapi.RoleListItem {
@@ -575,7 +576,7 @@ func mapResourceMember(item authorizationapp.ResourceMemberView) openapi.Resourc
 		ID:              item.ID,
 		ResourceType:    mapResourceType(item.ResourceType),
 		ResourceID:      item.ResourceID,
-		UserID:          item.UserID,
+		PrincipalID:     item.PrincipalID,
 		RoleID:          item.RoleID,
 		CreatedAt:       item.CreatedAt,
 		UpdatedAt:       item.UpdatedAt,
@@ -640,23 +641,23 @@ func (h *Handlers) requireResourcePermission(ctx context.Context, resourceType s
 	return uuid.Nil, accessapp.ErrForbidden
 }
 
-func parseMembershipIDs(rawResourceID string, rawUserID string, rawRoleID string) (resourceID uuid.UUID, userID uuid.UUID, roleID uuid.UUID, err error) {
+func parseMembershipIDs(rawResourceID string, rawPrincipalID string, rawRoleID string) (resourceID uuid.UUID, principalID uuid.UUID, roleID uuid.UUID, err error) {
 	resourceID, err = uuid.Parse(rawResourceID)
 	if err != nil {
 		return uuid.Nil, uuid.Nil, uuid.Nil, authorizationapp.ErrInvalidResourceInput
 	}
-	userID, err = uuid.Parse(rawUserID)
+	principalID, err = uuid.Parse(rawPrincipalID)
 	if err != nil {
 		return uuid.Nil, uuid.Nil, uuid.Nil, authorizationapp.ErrInvalidResourceInput
 	}
 	if rawRoleID == "" {
-		return resourceID, userID, uuid.Nil, nil
+		return resourceID, principalID, uuid.Nil, nil
 	}
 	roleID, err = uuid.Parse(rawRoleID)
 	if err != nil {
 		return uuid.Nil, uuid.Nil, uuid.Nil, authorizationapp.ErrInvalidResourceInput
 	}
-	return resourceID, userID, roleID, nil
+	return resourceID, principalID, roleID, nil
 }
 
 func mapResourceType(resourceType string) openapi.ResourceMemberResourceType {

@@ -66,7 +66,7 @@ type Handler interface {
 	DeleteDataset(ctx context.Context, params DeleteDatasetParams) (DeleteDatasetRes, error)
 	// DeleteDatasetMember implements deleteDatasetMember operation.
 	//
-	// DELETE /datasets/{dataset_id}/members/{user_id}
+	// DELETE /datasets/{dataset_id}/members/{principal_id}
 	DeleteDatasetMember(ctx context.Context, params DeleteDatasetMemberParams) error
 	// DeleteDatasetSample implements deleteDatasetSample operation.
 	//
@@ -74,7 +74,7 @@ type Handler interface {
 	DeleteDatasetSample(ctx context.Context, params DeleteDatasetSampleParams) (DeleteDatasetSampleRes, error)
 	// DeleteProjectMember implements deleteProjectMember operation.
 	//
-	// DELETE /projects/{project_id}/members/{user_id}
+	// DELETE /projects/{project_id}/members/{principal_id}
 	DeleteProjectMember(ctx context.Context, params DeleteProjectMemberParams) error
 	// DeleteRole implements deleteRole operation.
 	//
@@ -274,11 +274,11 @@ type Handler interface {
 	UpdateDataset(ctx context.Context, req *UpdateDatasetRequest, params UpdateDatasetParams) (UpdateDatasetRes, error)
 	// UpdateDatasetMember implements updateDatasetMember operation.
 	//
-	// PUT /datasets/{dataset_id}/members/{user_id}
+	// PUT /datasets/{dataset_id}/members/{principal_id}
 	UpdateDatasetMember(ctx context.Context, req *ResourceMemberUpdateRequest, params UpdateDatasetMemberParams) (*ResourceMember, error)
 	// UpdateProjectMember implements updateProjectMember operation.
 	//
-	// PUT /projects/{project_id}/members/{user_id}
+	// PUT /projects/{project_id}/members/{principal_id}
 	UpdateProjectMember(ctx context.Context, req *ResourceMemberUpdateRequest, params UpdateProjectMemberParams) (*ResourceMember, error)
 	// UpdateRole implements updateRole operation.
 	//

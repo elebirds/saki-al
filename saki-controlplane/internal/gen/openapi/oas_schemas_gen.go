@@ -3209,7 +3209,7 @@ type ResourceMember struct {
 	ID              string                     `json:"id"`
 	ResourceType    ResourceMemberResourceType `json:"resource_type"`
 	ResourceID      string                     `json:"resource_id"`
-	UserID          string                     `json:"user_id"`
+	PrincipalID     string                     `json:"principal_id"`
 	RoleID          string                     `json:"role_id"`
 	CreatedAt       time.Time                  `json:"created_at"`
 	UpdatedAt       time.Time                  `json:"updated_at"`
@@ -3236,9 +3236,9 @@ func (s *ResourceMember) GetResourceID() string {
 	return s.ResourceID
 }
 
-// GetUserID returns the value of UserID.
-func (s *ResourceMember) GetUserID() string {
-	return s.UserID
+// GetPrincipalID returns the value of PrincipalID.
+func (s *ResourceMember) GetPrincipalID() string {
+	return s.PrincipalID
 }
 
 // GetRoleID returns the value of RoleID.
@@ -3301,9 +3301,9 @@ func (s *ResourceMember) SetResourceID(val string) {
 	s.ResourceID = val
 }
 
-// SetUserID sets the value of UserID.
-func (s *ResourceMember) SetUserID(val string) {
-	s.UserID = val
+// SetPrincipalID sets the value of PrincipalID.
+func (s *ResourceMember) SetPrincipalID(val string) {
+	s.PrincipalID = val
 }
 
 // SetRoleID sets the value of RoleID.
@@ -3353,13 +3353,13 @@ func (s *ResourceMember) SetRoleIsSupremo(val bool) {
 
 // Ref: #/components/schemas/ResourceMemberCreateRequest
 type ResourceMemberCreateRequest struct {
-	UserID string `json:"user_id"`
-	RoleID string `json:"role_id"`
+	PrincipalID string `json:"principal_id"`
+	RoleID      string `json:"role_id"`
 }
 
-// GetUserID returns the value of UserID.
-func (s *ResourceMemberCreateRequest) GetUserID() string {
-	return s.UserID
+// GetPrincipalID returns the value of PrincipalID.
+func (s *ResourceMemberCreateRequest) GetPrincipalID() string {
+	return s.PrincipalID
 }
 
 // GetRoleID returns the value of RoleID.
@@ -3367,9 +3367,9 @@ func (s *ResourceMemberCreateRequest) GetRoleID() string {
 	return s.RoleID
 }
 
-// SetUserID sets the value of UserID.
-func (s *ResourceMemberCreateRequest) SetUserID(val string) {
-	s.UserID = val
+// SetPrincipalID sets the value of PrincipalID.
+func (s *ResourceMemberCreateRequest) SetPrincipalID(val string) {
+	s.PrincipalID = val
 }
 
 // SetRoleID sets the value of RoleID.

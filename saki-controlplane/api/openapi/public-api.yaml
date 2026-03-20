@@ -253,7 +253,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-  /projects/{project_id}/members/{user_id}:
+  /projects/{project_id}/members/{principal_id}:
     put:
       operationId: updateProjectMember
       parameters:
@@ -262,7 +262,7 @@ paths:
           required: true
           schema:
             type: string
-        - name: user_id
+        - name: principal_id
           in: path
           required: true
           schema:
@@ -294,7 +294,7 @@ paths:
           required: true
           schema:
             type: string
-        - name: user_id
+        - name: principal_id
           in: path
           required: true
           schema:
@@ -698,7 +698,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-  /datasets/{dataset_id}/members/{user_id}:
+  /datasets/{dataset_id}/members/{principal_id}:
     put:
       operationId: updateDatasetMember
       parameters:
@@ -707,7 +707,7 @@ paths:
           required: true
           schema:
             type: string
-        - name: user_id
+        - name: principal_id
           in: path
           required: true
           schema:
@@ -739,7 +739,7 @@ paths:
           required: true
           schema:
             type: string
-        - name: user_id
+        - name: principal_id
           in: path
           required: true
           schema:
@@ -2284,7 +2284,7 @@ components:
         - id
         - resource_type
         - resource_id
-        - user_id
+        - principal_id
         - role_id
         - created_at
         - updated_at
@@ -2301,7 +2301,7 @@ components:
           enum: [project, dataset]
         resource_id:
           type: string
-        user_id:
+        principal_id:
           type: string
         role_id:
           type: string
@@ -2327,10 +2327,10 @@ components:
     ResourceMemberCreateRequest:
       type: object
       required:
-        - user_id
+        - principal_id
         - role_id
       properties:
-        user_id:
+        principal_id:
           type: string
         role_id:
           type: string

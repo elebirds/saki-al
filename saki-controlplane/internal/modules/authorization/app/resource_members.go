@@ -21,7 +21,7 @@ type ResourceMemberView struct {
 	ID              string
 	ResourceType    string
 	ResourceID      string
-	UserID          string
+	PrincipalID     string
 	RoleID          string
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
@@ -70,7 +70,7 @@ func (u *ListResourceMembersUseCase) Execute(ctx context.Context, resourceType s
 type UpsertResourceMemberCommand struct {
 	ResourceType string
 	ResourceID   uuid.UUID
-	UserID       uuid.UUID
+	PrincipalID  uuid.UUID
 	RoleID       uuid.UUID
 }
 
@@ -87,10 +87,12 @@ func (u *UpsertResourceMemberUseCase) Execute(ctx context.Context, cmd UpsertRes
 	if err != nil {
 		return nil, err
 	}
-	if cmd.UserID == uuid.Nil || cmd.RoleID == uuid.Nil {
+	// 关键设计：resource members 表达的是“授权主体绑定到资源角色”的关系，
+	// 因此应用层统一使用 principal_id，而不再延续历史 user_id 命名。
+	if cmd.PrincipalID == uuid.Nil || cmd.RoleID == uuid.Nil {
 		return nil, ErrInvalidResourceInput
 	}
-	return u.store.UpsertResourceMember(ctx, cmd.UserID, cmd.RoleID, ref)
+	return u.store.UpsertResourceMember(ctx, cmd.PrincipalID, cmd.RoleID, ref)
 }
 
 type DeleteResourceMemberUseCase struct {

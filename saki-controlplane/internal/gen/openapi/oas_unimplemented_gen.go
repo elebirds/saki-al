@@ -113,7 +113,7 @@ func (UnimplementedHandler) DeleteDataset(ctx context.Context, params DeleteData
 
 // DeleteDatasetMember implements deleteDatasetMember operation.
 //
-// DELETE /datasets/{dataset_id}/members/{user_id}
+// DELETE /datasets/{dataset_id}/members/{principal_id}
 func (UnimplementedHandler) DeleteDatasetMember(ctx context.Context, params DeleteDatasetMemberParams) error {
 	return ht.ErrNotImplemented
 }
@@ -127,7 +127,7 @@ func (UnimplementedHandler) DeleteDatasetSample(ctx context.Context, params Dele
 
 // DeleteProjectMember implements deleteProjectMember operation.
 //
-// DELETE /projects/{project_id}/members/{user_id}
+// DELETE /projects/{project_id}/members/{principal_id}
 func (UnimplementedHandler) DeleteProjectMember(ctx context.Context, params DeleteProjectMemberParams) error {
 	return ht.ErrNotImplemented
 }
@@ -477,14 +477,14 @@ func (UnimplementedHandler) UpdateDataset(ctx context.Context, req *UpdateDatase
 
 // UpdateDatasetMember implements updateDatasetMember operation.
 //
-// PUT /datasets/{dataset_id}/members/{user_id}
+// PUT /datasets/{dataset_id}/members/{principal_id}
 func (UnimplementedHandler) UpdateDatasetMember(ctx context.Context, req *ResourceMemberUpdateRequest, params UpdateDatasetMemberParams) (r *ResourceMember, _ error) {
 	return r, ht.ErrNotImplemented
 }
 
 // UpdateProjectMember implements updateProjectMember operation.
 //
-// PUT /projects/{project_id}/members/{user_id}
+// PUT /projects/{project_id}/members/{principal_id}
 func (UnimplementedHandler) UpdateProjectMember(ctx context.Context, req *ResourceMemberUpdateRequest, params UpdateProjectMemberParams) (r *ResourceMember, _ error) {
 	return r, ht.ErrNotImplemented
 }

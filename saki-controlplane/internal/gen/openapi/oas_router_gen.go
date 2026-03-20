@@ -717,7 +717,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 									break
 								}
 
-								// Param: "user_id"
+								// Param: "principal_id"
 								// Leaf parameter, slashes are prohibited
 								idx := strings.IndexByte(elem, '/')
 								if idx >= 0 {
@@ -1471,7 +1471,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 										break
 									}
 
-									// Param: "user_id"
+									// Param: "principal_id"
 									// Leaf parameter, slashes are prohibited
 									idx := strings.IndexByte(elem, '/')
 									if idx >= 0 {
@@ -2690,7 +2690,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 									break
 								}
 
-								// Param: "user_id"
+								// Param: "principal_id"
 								// Leaf parameter, slashes are prohibited
 								idx := strings.IndexByte(elem, '/')
 								if idx >= 0 {
@@ -2707,7 +2707,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 										r.summary = ""
 										r.operationID = "deleteDatasetMember"
 										r.operationGroup = ""
-										r.pathPattern = "/datasets/{dataset_id}/members/{user_id}"
+										r.pathPattern = "/datasets/{dataset_id}/members/{principal_id}"
 										r.args = args
 										r.count = 2
 										return r, true
@@ -2716,7 +2716,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 										r.summary = ""
 										r.operationID = "updateDatasetMember"
 										r.operationGroup = ""
-										r.pathPattern = "/datasets/{dataset_id}/members/{user_id}"
+										r.pathPattern = "/datasets/{dataset_id}/members/{principal_id}"
 										r.args = args
 										r.count = 2
 										return r, true
@@ -3436,7 +3436,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 										break
 									}
 
-									// Param: "user_id"
+									// Param: "principal_id"
 									// Leaf parameter, slashes are prohibited
 									idx := strings.IndexByte(elem, '/')
 									if idx >= 0 {
@@ -3453,7 +3453,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 											r.summary = ""
 											r.operationID = "deleteProjectMember"
 											r.operationGroup = ""
-											r.pathPattern = "/projects/{project_id}/members/{user_id}"
+											r.pathPattern = "/projects/{project_id}/members/{principal_id}"
 											r.args = args
 											r.count = 2
 											return r, true
@@ -3462,7 +3462,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 											r.summary = ""
 											r.operationID = "updateProjectMember"
 											r.operationGroup = ""
-											r.pathPattern = "/projects/{project_id}/members/{user_id}"
+											r.pathPattern = "/projects/{project_id}/members/{principal_id}"
 											r.args = args
 											r.count = 2
 											return r, true

@@ -346,7 +346,7 @@ func mapResourceMemberView(membership sqlcdb.AuthzResourceMembership, user sqlcd
 		ID:              membership.ID.String(),
 		ResourceType:    membership.ResourceType,
 		ResourceID:      membership.ResourceID.String(),
-		UserID:          membership.PrincipalID.String(),
+		PrincipalID:     membership.PrincipalID.String(),
 		RoleID:          membership.RoleID.String(),
 		CreatedAt:       membership.CreatedAt.Time,
 		UpdatedAt:       membership.UpdatedAt.Time,

@@ -2242,14 +2242,14 @@ func (s *Server) handleDeleteDatasetRequest(args [1]string, argsEscaped bool, w 
 
 // handleDeleteDatasetMemberRequest handles deleteDatasetMember operation.
 //
-// DELETE /datasets/{dataset_id}/members/{user_id}
+// DELETE /datasets/{dataset_id}/members/{principal_id}
 func (s *Server) handleDeleteDatasetMemberRequest(args [2]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
 	statusWriter := &codeRecorder{ResponseWriter: w}
 	w = statusWriter
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("deleteDatasetMember"),
 		semconv.HTTPRequestMethodKey.String("DELETE"),
-		semconv.HTTPRouteKey.String("/datasets/{dataset_id}/members/{user_id}"),
+		semconv.HTTPRouteKey.String("/datasets/{dataset_id}/members/{principal_id}"),
 	}
 	// Add attributes from config.
 	otelAttrs = append(otelAttrs, s.cfg.Attributes...)
@@ -2342,9 +2342,9 @@ func (s *Server) handleDeleteDatasetMemberRequest(args [2]string, argsEscaped bo
 					In:   "path",
 				}: params.DatasetID,
 				{
-					Name: "user_id",
+					Name: "principal_id",
 					In:   "path",
-				}: params.UserID,
+				}: params.PrincipalID,
 			},
 			Raw: r,
 		}
@@ -2554,14 +2554,14 @@ func (s *Server) handleDeleteDatasetSampleRequest(args [2]string, argsEscaped bo
 
 // handleDeleteProjectMemberRequest handles deleteProjectMember operation.
 //
-// DELETE /projects/{project_id}/members/{user_id}
+// DELETE /projects/{project_id}/members/{principal_id}
 func (s *Server) handleDeleteProjectMemberRequest(args [2]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
 	statusWriter := &codeRecorder{ResponseWriter: w}
 	w = statusWriter
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("deleteProjectMember"),
 		semconv.HTTPRequestMethodKey.String("DELETE"),
-		semconv.HTTPRouteKey.String("/projects/{project_id}/members/{user_id}"),
+		semconv.HTTPRouteKey.String("/projects/{project_id}/members/{principal_id}"),
 	}
 	// Add attributes from config.
 	otelAttrs = append(otelAttrs, s.cfg.Attributes...)
@@ -2654,9 +2654,9 @@ func (s *Server) handleDeleteProjectMemberRequest(args [2]string, argsEscaped bo
 					In:   "path",
 				}: params.ProjectID,
 				{
-					Name: "user_id",
+					Name: "principal_id",
 					In:   "path",
-				}: params.UserID,
+				}: params.PrincipalID,
 			},
 			Raw: r,
 		}
@@ -10124,14 +10124,14 @@ func (s *Server) handleUpdateDatasetRequest(args [1]string, argsEscaped bool, w 
 
 // handleUpdateDatasetMemberRequest handles updateDatasetMember operation.
 //
-// PUT /datasets/{dataset_id}/members/{user_id}
+// PUT /datasets/{dataset_id}/members/{principal_id}
 func (s *Server) handleUpdateDatasetMemberRequest(args [2]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
 	statusWriter := &codeRecorder{ResponseWriter: w}
 	w = statusWriter
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("updateDatasetMember"),
 		semconv.HTTPRequestMethodKey.String("PUT"),
-		semconv.HTTPRouteKey.String("/datasets/{dataset_id}/members/{user_id}"),
+		semconv.HTTPRouteKey.String("/datasets/{dataset_id}/members/{principal_id}"),
 	}
 	// Add attributes from config.
 	otelAttrs = append(otelAttrs, s.cfg.Attributes...)
@@ -10239,9 +10239,9 @@ func (s *Server) handleUpdateDatasetMemberRequest(args [2]string, argsEscaped bo
 					In:   "path",
 				}: params.DatasetID,
 				{
-					Name: "user_id",
+					Name: "principal_id",
 					In:   "path",
-				}: params.UserID,
+				}: params.PrincipalID,
 			},
 			Raw: r,
 		}
@@ -10295,14 +10295,14 @@ func (s *Server) handleUpdateDatasetMemberRequest(args [2]string, argsEscaped bo
 
 // handleUpdateProjectMemberRequest handles updateProjectMember operation.
 //
-// PUT /projects/{project_id}/members/{user_id}
+// PUT /projects/{project_id}/members/{principal_id}
 func (s *Server) handleUpdateProjectMemberRequest(args [2]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
 	statusWriter := &codeRecorder{ResponseWriter: w}
 	w = statusWriter
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("updateProjectMember"),
 		semconv.HTTPRequestMethodKey.String("PUT"),
-		semconv.HTTPRouteKey.String("/projects/{project_id}/members/{user_id}"),
+		semconv.HTTPRouteKey.String("/projects/{project_id}/members/{principal_id}"),
 	}
 	// Add attributes from config.
 	otelAttrs = append(otelAttrs, s.cfg.Attributes...)
@@ -10410,9 +10410,9 @@ func (s *Server) handleUpdateProjectMemberRequest(args [2]string, argsEscaped bo
 					In:   "path",
 				}: params.ProjectID,
 				{
-					Name: "user_id",
+					Name: "principal_id",
 					In:   "path",
-				}: params.UserID,
+				}: params.PrincipalID,
 			},
 			Raw: r,
 		}

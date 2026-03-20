@@ -451,8 +451,8 @@ func (s *Server) UpdateDatasetMember(ctx context.Context, req *openapi.ResourceM
 	if _, err := uuid.Parse(params.DatasetID); err != nil {
 		return nil, newBadRequest("invalid dataset_id")
 	}
-	if _, err := uuid.Parse(params.UserID); err != nil {
-		return nil, newBadRequest("invalid user_id")
+	if _, err := uuid.Parse(params.PrincipalID); err != nil {
+		return nil, newBadRequest("invalid principal_id")
 	}
 	return s.authorization.UpdateDatasetMember(ctx, req, params)
 }
@@ -464,8 +464,8 @@ func (s *Server) DeleteDatasetMember(ctx context.Context, params openapi.DeleteD
 	if _, err := uuid.Parse(params.DatasetID); err != nil {
 		return newBadRequest("invalid dataset_id")
 	}
-	if _, err := uuid.Parse(params.UserID); err != nil {
-		return newBadRequest("invalid user_id")
+	if _, err := uuid.Parse(params.PrincipalID); err != nil {
+		return newBadRequest("invalid principal_id")
 	}
 	return s.authorization.DeleteDatasetMember(ctx, params)
 }
@@ -507,8 +507,8 @@ func (s *Server) UpdateProjectMember(ctx context.Context, req *openapi.ResourceM
 	if _, err := uuid.Parse(params.ProjectID); err != nil {
 		return nil, newBadRequest("invalid project_id")
 	}
-	if _, err := uuid.Parse(params.UserID); err != nil {
-		return nil, newBadRequest("invalid user_id")
+	if _, err := uuid.Parse(params.PrincipalID); err != nil {
+		return nil, newBadRequest("invalid principal_id")
 	}
 	return s.authorization.UpdateProjectMember(ctx, req, params)
 }
@@ -520,8 +520,8 @@ func (s *Server) DeleteProjectMember(ctx context.Context, params openapi.DeleteP
 	if _, err := uuid.Parse(params.ProjectID); err != nil {
 		return newBadRequest("invalid project_id")
 	}
-	if _, err := uuid.Parse(params.UserID); err != nil {
-		return newBadRequest("invalid user_id")
+	if _, err := uuid.Parse(params.PrincipalID); err != nil {
+		return newBadRequest("invalid principal_id")
 	}
 	return s.authorization.DeleteProjectMember(ctx, params)
 }

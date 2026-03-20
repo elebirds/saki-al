@@ -85,7 +85,7 @@ type Invoker interface {
 	DeleteDataset(ctx context.Context, params DeleteDatasetParams) (DeleteDatasetRes, error)
 	// DeleteDatasetMember invokes deleteDatasetMember operation.
 	//
-	// DELETE /datasets/{dataset_id}/members/{user_id}
+	// DELETE /datasets/{dataset_id}/members/{principal_id}
 	DeleteDatasetMember(ctx context.Context, params DeleteDatasetMemberParams) error
 	// DeleteDatasetSample invokes deleteDatasetSample operation.
 	//
@@ -93,7 +93,7 @@ type Invoker interface {
 	DeleteDatasetSample(ctx context.Context, params DeleteDatasetSampleParams) (DeleteDatasetSampleRes, error)
 	// DeleteProjectMember invokes deleteProjectMember operation.
 	//
-	// DELETE /projects/{project_id}/members/{user_id}
+	// DELETE /projects/{project_id}/members/{principal_id}
 	DeleteProjectMember(ctx context.Context, params DeleteProjectMemberParams) error
 	// DeleteRole invokes deleteRole operation.
 	//
@@ -293,11 +293,11 @@ type Invoker interface {
 	UpdateDataset(ctx context.Context, request *UpdateDatasetRequest, params UpdateDatasetParams) (UpdateDatasetRes, error)
 	// UpdateDatasetMember invokes updateDatasetMember operation.
 	//
-	// PUT /datasets/{dataset_id}/members/{user_id}
+	// PUT /datasets/{dataset_id}/members/{principal_id}
 	UpdateDatasetMember(ctx context.Context, request *ResourceMemberUpdateRequest, params UpdateDatasetMemberParams) (*ResourceMember, error)
 	// UpdateProjectMember invokes updateProjectMember operation.
 	//
-	// PUT /projects/{project_id}/members/{user_id}
+	// PUT /projects/{project_id}/members/{principal_id}
 	UpdateProjectMember(ctx context.Context, request *ResourceMemberUpdateRequest, params UpdateProjectMemberParams) (*ResourceMember, error)
 	// UpdateRole invokes updateRole operation.
 	//
@@ -1577,7 +1577,7 @@ func (c *Client) sendDeleteDataset(ctx context.Context, params DeleteDatasetPara
 
 // DeleteDatasetMember invokes deleteDatasetMember operation.
 //
-// DELETE /datasets/{dataset_id}/members/{user_id}
+// DELETE /datasets/{dataset_id}/members/{principal_id}
 func (c *Client) DeleteDatasetMember(ctx context.Context, params DeleteDatasetMemberParams) error {
 	_, err := c.sendDeleteDatasetMember(ctx, params)
 	return err
@@ -1587,7 +1587,7 @@ func (c *Client) sendDeleteDatasetMember(ctx context.Context, params DeleteDatas
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("deleteDatasetMember"),
 		semconv.HTTPRequestMethodKey.String("DELETE"),
-		semconv.URLTemplateKey.String("/datasets/{dataset_id}/members/{user_id}"),
+		semconv.URLTemplateKey.String("/datasets/{dataset_id}/members/{principal_id}"),
 	}
 	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
 
@@ -1642,14 +1642,14 @@ func (c *Client) sendDeleteDatasetMember(ctx context.Context, params DeleteDatas
 	}
 	pathParts[2] = "/members/"
 	{
-		// Encode "user_id" parameter.
+		// Encode "principal_id" parameter.
 		e := uri.NewPathEncoder(uri.PathEncoderConfig{
-			Param:   "user_id",
+			Param:   "principal_id",
 			Style:   uri.PathStyleSimple,
 			Explode: false,
 		})
 		if err := func() error {
-			return e.EncodeValue(conv.StringToString(params.UserID))
+			return e.EncodeValue(conv.StringToString(params.PrincipalID))
 		}(); err != nil {
 			return res, errors.Wrap(err, "encode path")
 		}
@@ -1795,7 +1795,7 @@ func (c *Client) sendDeleteDatasetSample(ctx context.Context, params DeleteDatas
 
 // DeleteProjectMember invokes deleteProjectMember operation.
 //
-// DELETE /projects/{project_id}/members/{user_id}
+// DELETE /projects/{project_id}/members/{principal_id}
 func (c *Client) DeleteProjectMember(ctx context.Context, params DeleteProjectMemberParams) error {
 	_, err := c.sendDeleteProjectMember(ctx, params)
 	return err
@@ -1805,7 +1805,7 @@ func (c *Client) sendDeleteProjectMember(ctx context.Context, params DeleteProje
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("deleteProjectMember"),
 		semconv.HTTPRequestMethodKey.String("DELETE"),
-		semconv.URLTemplateKey.String("/projects/{project_id}/members/{user_id}"),
+		semconv.URLTemplateKey.String("/projects/{project_id}/members/{principal_id}"),
 	}
 	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
 
@@ -1860,14 +1860,14 @@ func (c *Client) sendDeleteProjectMember(ctx context.Context, params DeleteProje
 	}
 	pathParts[2] = "/members/"
 	{
-		// Encode "user_id" parameter.
+		// Encode "principal_id" parameter.
 		e := uri.NewPathEncoder(uri.PathEncoderConfig{
-			Param:   "user_id",
+			Param:   "principal_id",
 			Style:   uri.PathStyleSimple,
 			Explode: false,
 		})
 		if err := func() error {
-			return e.EncodeValue(conv.StringToString(params.UserID))
+			return e.EncodeValue(conv.StringToString(params.PrincipalID))
 		}(); err != nil {
 			return res, errors.Wrap(err, "encode path")
 		}
@@ -6219,7 +6219,7 @@ func (c *Client) sendUpdateDataset(ctx context.Context, request *UpdateDatasetRe
 
 // UpdateDatasetMember invokes updateDatasetMember operation.
 //
-// PUT /datasets/{dataset_id}/members/{user_id}
+// PUT /datasets/{dataset_id}/members/{principal_id}
 func (c *Client) UpdateDatasetMember(ctx context.Context, request *ResourceMemberUpdateRequest, params UpdateDatasetMemberParams) (*ResourceMember, error) {
 	res, err := c.sendUpdateDatasetMember(ctx, request, params)
 	return res, err
@@ -6229,7 +6229,7 @@ func (c *Client) sendUpdateDatasetMember(ctx context.Context, request *ResourceM
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("updateDatasetMember"),
 		semconv.HTTPRequestMethodKey.String("PUT"),
-		semconv.URLTemplateKey.String("/datasets/{dataset_id}/members/{user_id}"),
+		semconv.URLTemplateKey.String("/datasets/{dataset_id}/members/{principal_id}"),
 	}
 	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
 
@@ -6284,14 +6284,14 @@ func (c *Client) sendUpdateDatasetMember(ctx context.Context, request *ResourceM
 	}
 	pathParts[2] = "/members/"
 	{
-		// Encode "user_id" parameter.
+		// Encode "principal_id" parameter.
 		e := uri.NewPathEncoder(uri.PathEncoderConfig{
-			Param:   "user_id",
+			Param:   "principal_id",
 			Style:   uri.PathStyleSimple,
 			Explode: false,
 		})
 		if err := func() error {
-			return e.EncodeValue(conv.StringToString(params.UserID))
+			return e.EncodeValue(conv.StringToString(params.PrincipalID))
 		}(); err != nil {
 			return res, errors.Wrap(err, "encode path")
 		}
@@ -6331,7 +6331,7 @@ func (c *Client) sendUpdateDatasetMember(ctx context.Context, request *ResourceM
 
 // UpdateProjectMember invokes updateProjectMember operation.
 //
-// PUT /projects/{project_id}/members/{user_id}
+// PUT /projects/{project_id}/members/{principal_id}
 func (c *Client) UpdateProjectMember(ctx context.Context, request *ResourceMemberUpdateRequest, params UpdateProjectMemberParams) (*ResourceMember, error) {
 	res, err := c.sendUpdateProjectMember(ctx, request, params)
 	return res, err
@@ -6341,7 +6341,7 @@ func (c *Client) sendUpdateProjectMember(ctx context.Context, request *ResourceM
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("updateProjectMember"),
 		semconv.HTTPRequestMethodKey.String("PUT"),
-		semconv.URLTemplateKey.String("/projects/{project_id}/members/{user_id}"),
+		semconv.URLTemplateKey.String("/projects/{project_id}/members/{principal_id}"),
 	}
 	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
 
@@ -6396,14 +6396,14 @@ func (c *Client) sendUpdateProjectMember(ctx context.Context, request *ResourceM
 	}
 	pathParts[2] = "/members/"
 	{
-		// Encode "user_id" parameter.
+		// Encode "principal_id" parameter.
 		e := uri.NewPathEncoder(uri.PathEncoderConfig{
-			Param:   "user_id",
+			Param:   "principal_id",
 			Style:   uri.PathStyleSimple,
 			Explode: false,
 		})
 		if err := func() error {
-			return e.EncodeValue(conv.StringToString(params.UserID))
+			return e.EncodeValue(conv.StringToString(params.PrincipalID))
 		}(); err != nil {
 			return res, errors.Wrap(err, "encode path")
 		}

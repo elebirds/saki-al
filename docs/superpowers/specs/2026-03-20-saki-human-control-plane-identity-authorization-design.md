@@ -42,6 +42,7 @@
 - 近期不存在强需求去接企业级外部 IdP。
 - 当前主要客户端仍是 `saki-web`，其次才可能有脚本/CLI。
 - 系统还处于快速开发期，没有线上已部署存量需要兼容；因此数据库与 API 语义都允许做未发布重整。
+- 仍需考虑从旧 `saki-api` 数据库迁移历史用户、角色、成员和系统设置数据。
 - `controlplane` 本身已经明确存在多个部署 role，这些 role 的配置与运行职责不应混入用户 RBAC。
 
 ### 3.2 设计原则
@@ -63,6 +64,9 @@
 
 6. 部署角色与授权角色分离。  
    `public-api / scheduler / supervisor / relay / admin` 这类 controlplane 进程角色，和 `super_admin / project_owner / dataset_member` 这类业务授权角色不是一个维度。
+
+7. 兼容的是历史数据，不是历史错误协议。  
+   对旧密码哈希、旧用户/角色/成员数据要提供迁移路径；但不继续把“前端先 SHA-256 再提交”保留为正式新协议。
 
 ## 4. 方案比较
 
@@ -336,6 +340,50 @@
 
 如果未来需要邮箱验证或邀请制，可以在 `identity` 内扩展，但不作为本次第一阶段设计前提。
 
+### 8.7 旧凭据兼容与渐进升级
+
+为了兼容旧 `saki-api` 数据，新的本地密码体系需要显式区分“当前凭据方案”和“历史凭据方案”。
+
+建议 `iam_password_credential` 增加 `scheme` 字段，第一阶段至少支持：
+
+- `password_argon2id`
+- `legacy_frontend_sha256_argon2`
+
+其中：
+
+- `password_argon2id` 表示服务端直接对 HTTPS 内提交的原始密码做 `Argon2id`
+- `legacy_frontend_sha256_argon2` 表示旧库中遗留的 `Argon2(SHA256(password))`
+
+迁移策略固定为：
+
+1. 旧库导入时，历史 `hashed_password` 进入新凭据表，`scheme = legacy_frontend_sha256_argon2`
+2. 新 `/auth/login` 只接受 HTTPS 内提交的原始密码，不接受“客户端已 SHA-256”作为正式协议
+3. 服务端在验证旧凭据时，先对原始密码执行一次 SHA-256，再校验遗留哈希
+4. 旧凭据一旦登录成功，立即升级写回为 `password_argon2id`
+5. 用户改密、管理员重置密码、`setup/register` 新建用户，统一只写 `password_argon2id`
+
+这样可以同时满足：
+
+- 历史用户数据不丢失
+- 新客户端协议保持干净
+- 用户只需成功登录一次即可自动完成凭据升级
+
+### 8.8 为什么不保留前端密码哈希协议
+
+旧前端“先 SHA-256 再提交”的约定不作为新协议保留，原因如下：
+
+- 它不能替代 HTTPS，只是把密码换成另一个可重放的静态口令
+- 它对 XSS、恶意前端代码或浏览器本地泄漏没有额外保护
+- 它会把 Web、CLI、脚本客户端都绑死在一个私有约定上
+- 它会污染未来与 OIDC / WebAuthn / PAKE 的演进边界
+
+因此新协议明确改为：
+
+- 应用层传输原始密码
+- 传输层必须依赖 HTTPS
+- 服务端统一进行 `Argon2id` 哈希与校验
+- 历史前端哈希方案只作为服务端兼容旧数据的验证分支存在，不再作为客户端契约
+
 ## 9. 授权模型
 
 ### 9.1 permission catalog 由代码定义
@@ -382,7 +430,32 @@
 
 如果未来真的需要更细粒度的共享、条件表达式或跨层继承，再考虑演进到 FGA/ReBAC 体系；第一阶段不提前引入。
 
-### 9.4 权限变更生效策略
+### 9.4 为什么当前不引入独立 FGA/ReBAC
+
+第一阶段明确不引入 `OpenFGA / SpiceDB / Zanzibar-style` 独立授权系统。
+
+原因如下：
+
+- 当前资源种类和共享关系还没有复杂到需要图关系引擎
+- 当前最主要的问题是边界混乱，而不是授权表达能力不足
+- 过早引入独立 FGA 会增加写路径一致性、排障和运维复杂度
+- 现阶段 `RBAC + resource membership` 已足够覆盖 `system / project / dataset` 的授权场景
+
+但授权层仍要按未来可迁移方式实现：
+
+- 统一 `principal`
+- 统一 permission catalog
+- 授权判断收口到 `authorization` 模块
+- 业务代码不得散落自行拼装成员关系和权限规则
+
+只有当后续出现以下信号时，才重新评估是否引入 FGA/ReBAC：
+
+- 组织/团队/用户组及嵌套关系成为一等概念
+- 资源之间出现复杂继承链、委托关系或条件授权
+- 需要统一回答“谁能访问什么、为什么有权限”
+- controlplane 内部进一步拆分后，需要共享授权基础设施
+
+### 9.5 权限变更生效策略
 
 默认策略如下：
 
@@ -486,8 +559,29 @@
 - 路径不必强行兼容旧命名，只要前端与文档同步切换即可。
 - 旧“伪 OAuth”命名统一退役。
 - 旧 `saki-api` 的 user/role/member 语义保留功能，不保留历史实现结构。
+- 旧 access token 与旧 refresh token 默认不兼容，切换到新 controlplane 后要求重新登录。
 
-## 13. 与未来外部 IdP 的关系
+## 13. 与旧数据的兼容策略
+
+本次重构需要兼容的对象主要是“旧数据库中的业务真相”，而不是“旧客户端协议”。
+
+明确策略如下：
+
+| 对象 | 策略 |
+| --- | --- |
+| 历史用户资料 | 迁移到 `iam_principal + iam_user` |
+| 历史密码哈希 | 迁移到 `iam_password_credential`，按 `legacy_frontend_sha256_argon2` 标记 |
+| 历史系统角色与绑定 | 迁移到 `authz_role / authz_role_permission / authz_system_binding` |
+| 历史项目/数据集成员关系 | 迁移到 `authz_resource_membership` |
+| 历史系统设置 | 迁移到新 `system_setting` |
+| 历史 access token / refresh token | 不迁移；新系统上线后统一失效 |
+
+这条边界必须保持清晰：
+
+- 兼容的是数据库内的历史状态
+- 不兼容的是旧的 session wire format 和旧的前端密码协议
+
+## 14. 与未来外部 IdP 的关系
 
 虽然当前不以外部 OAuth / OIDC 为前提，但新版仍建议预留以下薄接缝：
 
@@ -502,7 +596,38 @@
 
 这里的重点是“预留缝”，不是“现在就做完整 federation”。
 
-## 14. 实施顺序建议
+## 15. OAuth/OIDC 兼容边界
+
+新版设计不保留完整 OAuth/OIDC server 语义，也不自建完整 OAuth 授权服务器。
+
+### 15.1 不保留的内容
+
+- 不继续使用 `OAuth2PasswordRequestForm`
+- 不继续使用 `/login/access-token`、`/login/refresh-token` 这类伪 OAuth 命名
+- 不实现 `authorization code / PKCE / consent / client registry / discovery / jwks`
+- 不引入重型 OAuth server 框架作为第一阶段基础设施
+
+### 15.2 保留的兼容概念
+
+- `Bearer` access token 语义
+- `access token / refresh token` 的职责分离
+- token 中稳定的主体/过期时间语义
+- `401 / 403` 的标准错误语义
+- 可扩展的 credential/provider 边界
+
+### 15.3 为什么不直接做一个 OAuth 系统
+
+对当前科研系统而言，真正需要的是：
+
+- 本地账号与密码凭据
+- 可治理的 refresh session
+- 清晰的 RBAC 与 membership
+- 稳定的 setup / register / change-password / settings
+
+而不是一个完整的 OAuth 产品能力栈。  
+过早引入完整 OAuth server，只会让当前系统承担额外的 client/scopes/redirect/consent 复杂度，却不能实质解决当前重构主问题。
+
+## 16. 实施顺序建议
 
 ### 阶段 1：冻结领域与存储模型
 
@@ -538,7 +663,7 @@
 - 删除旧伪 OAuth 命名
 - 删除旧 `saki-api` 对应的 access/system/rbac 对外入口
 
-## 15. 最终结论
+## 17. 最终结论
 
 对于当前 Saki，最合适的路线不是：
 

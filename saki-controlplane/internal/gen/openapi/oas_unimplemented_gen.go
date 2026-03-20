@@ -62,10 +62,24 @@ func (UnimplementedHandler) CreateDataset(ctx context.Context, req *CreateDatase
 	return r, ht.ErrNotImplemented
 }
 
+// CreateDatasetMember implements createDatasetMember operation.
+//
+// POST /datasets/{dataset_id}/members
+func (UnimplementedHandler) CreateDatasetMember(ctx context.Context, req *ResourceMemberCreateRequest, params CreateDatasetMemberParams) (r *ResourceMember, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // CreateProject implements createProject operation.
 //
 // POST /projects
 func (UnimplementedHandler) CreateProject(ctx context.Context, req *CreateProjectRequest) (r *Project, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// CreateProjectMember implements createProjectMember operation.
+//
+// POST /projects/{project_id}/members
+func (UnimplementedHandler) CreateProjectMember(ctx context.Context, req *ResourceMemberCreateRequest, params CreateProjectMemberParams) (r *ResourceMember, _ error) {
 	return r, ht.ErrNotImplemented
 }
 
@@ -97,11 +111,25 @@ func (UnimplementedHandler) DeleteDataset(ctx context.Context, params DeleteData
 	return r, ht.ErrNotImplemented
 }
 
+// DeleteDatasetMember implements deleteDatasetMember operation.
+//
+// DELETE /datasets/{dataset_id}/members/{user_id}
+func (UnimplementedHandler) DeleteDatasetMember(ctx context.Context, params DeleteDatasetMemberParams) error {
+	return ht.ErrNotImplemented
+}
+
 // DeleteDatasetSample implements deleteDatasetSample operation.
 //
 // DELETE /datasets/{dataset_id}/samples/{sample_id}
 func (UnimplementedHandler) DeleteDatasetSample(ctx context.Context, params DeleteDatasetSampleParams) (r DeleteDatasetSampleRes, _ error) {
 	return r, ht.ErrNotImplemented
+}
+
+// DeleteProjectMember implements deleteProjectMember operation.
+//
+// DELETE /projects/{project_id}/members/{user_id}
+func (UnimplementedHandler) DeleteProjectMember(ctx context.Context, params DeleteProjectMemberParams) error {
+	return ht.ErrNotImplemented
 }
 
 // DeleteRole implements deleteRole operation.
@@ -171,6 +199,13 @@ func (UnimplementedHandler) GetImportUploadSession(ctx context.Context, params G
 //
 // GET /projects/{project_id}
 func (UnimplementedHandler) GetProject(ctx context.Context, params GetProjectParams) (r *Project, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// GetResourcePermissions implements getResourcePermissions operation.
+//
+// GET /permissions/resource
+func (UnimplementedHandler) GetResourcePermissions(ctx context.Context, params GetResourcePermissionsParams) (r *ResourcePermissionsResponse, _ error) {
 	return r, ht.ErrNotImplemented
 }
 
@@ -258,6 +293,27 @@ func (UnimplementedHandler) LinkProjectDatasets(ctx context.Context, req *Projec
 	return r, ht.ErrNotImplemented
 }
 
+// ListAvailableDatasetRoles implements listAvailableDatasetRoles operation.
+//
+// GET /datasets/{dataset_id}/available-roles
+func (UnimplementedHandler) ListAvailableDatasetRoles(ctx context.Context, params ListAvailableDatasetRolesParams) (r []ResourceRoleInfo, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// ListAvailableProjectRoles implements listAvailableProjectRoles operation.
+//
+// GET /projects/{project_id}/available-roles
+func (UnimplementedHandler) ListAvailableProjectRoles(ctx context.Context, params ListAvailableProjectRolesParams) (r []ResourceRoleInfo, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// ListDatasetMembers implements listDatasetMembers operation.
+//
+// GET /datasets/{dataset_id}/members
+func (UnimplementedHandler) ListDatasetMembers(ctx context.Context, params ListDatasetMembersParams) (r []ResourceMember, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // ListDatasets implements listDatasets operation.
 //
 // GET /datasets
@@ -276,6 +332,13 @@ func (UnimplementedHandler) ListProjectDatasetDetails(ctx context.Context, param
 //
 // GET /projects/{project_id}/datasets
 func (UnimplementedHandler) ListProjectDatasets(ctx context.Context, params ListProjectDatasetsParams) (r ListProjectDatasetsRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// ListProjectMembers implements listProjectMembers operation.
+//
+// GET /projects/{project_id}/members
+func (UnimplementedHandler) ListProjectMembers(ctx context.Context, params ListProjectMembersParams) (r []ResourceMember, _ error) {
 	return r, ht.ErrNotImplemented
 }
 
@@ -416,6 +479,20 @@ func (UnimplementedHandler) UnlinkProjectDatasets(ctx context.Context, req *Proj
 //
 // PUT /datasets/{dataset_id}
 func (UnimplementedHandler) UpdateDataset(ctx context.Context, req *UpdateDatasetRequest, params UpdateDatasetParams) (r UpdateDatasetRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// UpdateDatasetMember implements updateDatasetMember operation.
+//
+// PUT /datasets/{dataset_id}/members/{user_id}
+func (UnimplementedHandler) UpdateDatasetMember(ctx context.Context, req *ResourceMemberUpdateRequest, params UpdateDatasetMemberParams) (r *ResourceMember, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// UpdateProjectMember implements updateProjectMember operation.
+//
+// PUT /projects/{project_id}/members/{user_id}
+func (UnimplementedHandler) UpdateProjectMember(ctx context.Context, req *ResourceMemberUpdateRequest, params UpdateProjectMemberParams) (r *ResourceMember, _ error) {
 	return r, ht.ErrNotImplemented
 }
 

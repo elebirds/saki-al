@@ -109,13 +109,14 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 		authorizationBindingRepo,
 		authorizationMembershipRepo,
 	)
+	authorizer := authorizationapp.NewAuthorizer(authorizationStore)
 	identityUserRepo := identityrepo.NewUserRepo(pool)
 	identityAdminStore := identityrepo.NewAdminStore(pool)
 	claimsStore := accessrepo.NewClaimsStore(accessrepo.ClaimsStoreDeps{
 		LegacyPrincipals:   accessPrincipalRepo,
 		IdentityPrincipals: identityrepo.NewPrincipalRepo(pool),
 		IdentityUsers:      identityUserRepo,
-		Authorizer:         authorizationapp.NewAuthorizer(authorizationStore),
+		Authorizer:         authorizer,
 	})
 	bootstrapPrincipals := make([]accessapp.BootstrapPrincipalSpec, 0, len(cfg.AuthBootstrapPrincipals))
 	for _, principal := range cfg.AuthBootstrapPrincipals {
@@ -208,15 +209,22 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 	identityAuthStore := identityrepo.NewAuthStore(pool)
 	identitySessionService := identityapp.NewSessionService(identitySessions, nil)
 	authorizationAdminStore := authorizationrepo.NewAdminStore(pool)
+	authorizationMembershipAdminStore := authorizationrepo.NewMembershipAdminStore(pool)
 	authorizationHandlers := authorizationapi.NewHandlers(authorizationapi.HandlersDeps{
-		ListRoles:         authorizationapp.NewListRolesUseCase(authorizationRoleRepo),
-		PermissionCatalog: authorizationapp.NewPermissionCatalogUseCase(),
-		UserSystemRoles:   authorizationapp.NewListUserSystemRolesUseCase(authorizationBindingRepo, authorizationRoleRepo),
-		CreateRole:        authorizationapp.NewCreateRoleUseCase(authorizationAdminStore),
-		GetRole:           authorizationapp.NewGetRoleUseCase(authorizationAdminStore),
-		UpdateRole:        authorizationapp.NewUpdateRoleUseCase(authorizationAdminStore),
-		DeleteRole:        authorizationapp.NewDeleteRoleUseCase(authorizationAdminStore),
-		ReplaceUserRoles:  authorizationapp.NewReplaceUserSystemRolesUseCase(authorizationAdminStore),
+		ListRoles:             authorizationapp.NewListRolesUseCase(authorizationRoleRepo),
+		PermissionCatalog:     authorizationapp.NewPermissionCatalogUseCase(),
+		UserSystemRoles:       authorizationapp.NewListUserSystemRolesUseCase(authorizationBindingRepo, authorizationRoleRepo),
+		CreateRole:            authorizationapp.NewCreateRoleUseCase(authorizationAdminStore),
+		GetRole:               authorizationapp.NewGetRoleUseCase(authorizationAdminStore),
+		UpdateRole:            authorizationapp.NewUpdateRoleUseCase(authorizationAdminStore),
+		DeleteRole:            authorizationapp.NewDeleteRoleUseCase(authorizationAdminStore),
+		ReplaceUserRoles:      authorizationapp.NewReplaceUserSystemRolesUseCase(authorizationAdminStore),
+		ListResourceMembers:   authorizationapp.NewListResourceMembersUseCase(authorizationMembershipAdminStore),
+		UpsertResourceMember:  authorizationapp.NewUpsertResourceMemberUseCase(authorizationMembershipAdminStore),
+		DeleteResourceMember:  authorizationapp.NewDeleteResourceMemberUseCase(authorizationMembershipAdminStore),
+		ListAssignableRoles:   authorizationapp.NewListAssignableResourceRolesUseCase(authorizationMembershipAdminStore),
+		GetResourcePermission: authorizationapp.NewGetResourcePermissionsUseCase(authorizationMembershipAdminStore, authorizer),
+		ResolveResourceAccess: authorizationapp.NewResolveEffectiveResourcePermissionsUseCase(authorizer),
 	})
 	handler, err := systemapi.NewHTTPHandler(systemapi.Dependencies{
 		Authenticator:       authenticator,

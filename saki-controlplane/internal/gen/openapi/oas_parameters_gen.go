@@ -339,6 +339,136 @@ func decodeCompleteImportUploadSessionParams(args [1]string, argsEscaped bool, r
 	return params, nil
 }
 
+// CreateDatasetMemberParams is parameters of createDatasetMember operation.
+type CreateDatasetMemberParams struct {
+	DatasetID string
+}
+
+func unpackCreateDatasetMemberParams(packed middleware.Parameters) (params CreateDatasetMemberParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "dataset_id",
+			In:   "path",
+		}
+		params.DatasetID = packed[key].(string)
+	}
+	return params
+}
+
+func decodeCreateDatasetMemberParams(args [1]string, argsEscaped bool, r *http.Request) (params CreateDatasetMemberParams, _ error) {
+	// Decode path: dataset_id.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "dataset_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.DatasetID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "dataset_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
+// CreateProjectMemberParams is parameters of createProjectMember operation.
+type CreateProjectMemberParams struct {
+	ProjectID string
+}
+
+func unpackCreateProjectMemberParams(packed middleware.Parameters) (params CreateProjectMemberParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "project_id",
+			In:   "path",
+		}
+		params.ProjectID = packed[key].(string)
+	}
+	return params
+}
+
+func decodeCreateProjectMemberParams(args [1]string, argsEscaped bool, r *http.Request) (params CreateProjectMemberParams, _ error) {
+	// Decode path: project_id.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "project_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.ProjectID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "project_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
 // CreateSampleAnnotationsParams is parameters of createSampleAnnotations operation.
 type CreateSampleAnnotationsParams struct {
 	ProjectID string
@@ -522,6 +652,124 @@ func decodeDeleteDatasetParams(args [1]string, argsEscaped bool, r *http.Request
 	return params, nil
 }
 
+// DeleteDatasetMemberParams is parameters of deleteDatasetMember operation.
+type DeleteDatasetMemberParams struct {
+	DatasetID string
+	UserID    string
+}
+
+func unpackDeleteDatasetMemberParams(packed middleware.Parameters) (params DeleteDatasetMemberParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "dataset_id",
+			In:   "path",
+		}
+		params.DatasetID = packed[key].(string)
+	}
+	{
+		key := middleware.ParameterKey{
+			Name: "user_id",
+			In:   "path",
+		}
+		params.UserID = packed[key].(string)
+	}
+	return params
+}
+
+func decodeDeleteDatasetMemberParams(args [2]string, argsEscaped bool, r *http.Request) (params DeleteDatasetMemberParams, _ error) {
+	// Decode path: dataset_id.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "dataset_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.DatasetID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "dataset_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	// Decode path: user_id.
+	if err := func() error {
+		param := args[1]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[1])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "user_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.UserID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "user_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
 // DeleteDatasetSampleParams is parameters of deleteDatasetSample operation.
 type DeleteDatasetSampleParams struct {
 	DatasetID string
@@ -633,6 +881,124 @@ func decodeDeleteDatasetSampleParams(args [2]string, argsEscaped bool, r *http.R
 	}(); err != nil {
 		return params, &ogenerrors.DecodeParamError{
 			Name: "sample_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
+// DeleteProjectMemberParams is parameters of deleteProjectMember operation.
+type DeleteProjectMemberParams struct {
+	ProjectID string
+	UserID    string
+}
+
+func unpackDeleteProjectMemberParams(packed middleware.Parameters) (params DeleteProjectMemberParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "project_id",
+			In:   "path",
+		}
+		params.ProjectID = packed[key].(string)
+	}
+	{
+		key := middleware.ParameterKey{
+			Name: "user_id",
+			In:   "path",
+		}
+		params.UserID = packed[key].(string)
+	}
+	return params
+}
+
+func decodeDeleteProjectMemberParams(args [2]string, argsEscaped bool, r *http.Request) (params DeleteProjectMemberParams, _ error) {
+	// Decode path: project_id.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "project_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.ProjectID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "project_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	// Decode path: user_id.
+	if err := func() error {
+		param := args[1]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[1])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "user_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.UserID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "user_id",
 			In:   "path",
 			Err:  err,
 		}
@@ -1278,6 +1644,115 @@ func decodeGetProjectParams(args [1]string, argsEscaped bool, r *http.Request) (
 	return params, nil
 }
 
+// GetResourcePermissionsParams is parameters of getResourcePermissions operation.
+type GetResourcePermissionsParams struct {
+	ResourceType GetResourcePermissionsResourceType
+	ResourceID   string
+}
+
+func unpackGetResourcePermissionsParams(packed middleware.Parameters) (params GetResourcePermissionsParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "resource_type",
+			In:   "query",
+		}
+		params.ResourceType = packed[key].(GetResourcePermissionsResourceType)
+	}
+	{
+		key := middleware.ParameterKey{
+			Name: "resource_id",
+			In:   "query",
+		}
+		params.ResourceID = packed[key].(string)
+	}
+	return params
+}
+
+func decodeGetResourcePermissionsParams(args [0]string, argsEscaped bool, r *http.Request) (params GetResourcePermissionsParams, _ error) {
+	q := uri.NewQueryDecoder(r.URL.Query())
+	// Decode query: resource_type.
+	if err := func() error {
+		cfg := uri.QueryParameterDecodingConfig{
+			Name:    "resource_type",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.HasParam(cfg); err == nil {
+			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.ResourceType = GetResourcePermissionsResourceType(c)
+				return nil
+			}); err != nil {
+				return err
+			}
+			if err := func() error {
+				if err := params.ResourceType.Validate(); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "resource_type",
+			In:   "query",
+			Err:  err,
+		}
+	}
+	// Decode query: resource_id.
+	if err := func() error {
+		cfg := uri.QueryParameterDecodingConfig{
+			Name:    "resource_id",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.HasParam(cfg); err == nil {
+			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.ResourceID = c
+				return nil
+			}); err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "resource_id",
+			In:   "query",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
 // GetRoleParams is parameters of getRole operation.
 type GetRoleParams struct {
 	RoleID string
@@ -1466,6 +1941,201 @@ func decodeLinkProjectDatasetsParams(args [1]string, argsEscaped bool, r *http.R
 	}(); err != nil {
 		return params, &ogenerrors.DecodeParamError{
 			Name: "project_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
+// ListAvailableDatasetRolesParams is parameters of listAvailableDatasetRoles operation.
+type ListAvailableDatasetRolesParams struct {
+	DatasetID string
+}
+
+func unpackListAvailableDatasetRolesParams(packed middleware.Parameters) (params ListAvailableDatasetRolesParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "dataset_id",
+			In:   "path",
+		}
+		params.DatasetID = packed[key].(string)
+	}
+	return params
+}
+
+func decodeListAvailableDatasetRolesParams(args [1]string, argsEscaped bool, r *http.Request) (params ListAvailableDatasetRolesParams, _ error) {
+	// Decode path: dataset_id.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "dataset_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.DatasetID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "dataset_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
+// ListAvailableProjectRolesParams is parameters of listAvailableProjectRoles operation.
+type ListAvailableProjectRolesParams struct {
+	ProjectID string
+}
+
+func unpackListAvailableProjectRolesParams(packed middleware.Parameters) (params ListAvailableProjectRolesParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "project_id",
+			In:   "path",
+		}
+		params.ProjectID = packed[key].(string)
+	}
+	return params
+}
+
+func decodeListAvailableProjectRolesParams(args [1]string, argsEscaped bool, r *http.Request) (params ListAvailableProjectRolesParams, _ error) {
+	// Decode path: project_id.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "project_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.ProjectID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "project_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
+// ListDatasetMembersParams is parameters of listDatasetMembers operation.
+type ListDatasetMembersParams struct {
+	DatasetID string
+}
+
+func unpackListDatasetMembersParams(packed middleware.Parameters) (params ListDatasetMembersParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "dataset_id",
+			In:   "path",
+		}
+		params.DatasetID = packed[key].(string)
+	}
+	return params
+}
+
+func decodeListDatasetMembersParams(args [1]string, argsEscaped bool, r *http.Request) (params ListDatasetMembersParams, _ error) {
+	// Decode path: dataset_id.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "dataset_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.DatasetID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "dataset_id",
 			In:   "path",
 			Err:  err,
 		}
@@ -1781,6 +2451,71 @@ func unpackListProjectDatasetsParams(packed middleware.Parameters) (params ListP
 }
 
 func decodeListProjectDatasetsParams(args [1]string, argsEscaped bool, r *http.Request) (params ListProjectDatasetsParams, _ error) {
+	// Decode path: project_id.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "project_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.ProjectID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "project_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
+// ListProjectMembersParams is parameters of listProjectMembers operation.
+type ListProjectMembersParams struct {
+	ProjectID string
+}
+
+func unpackListProjectMembersParams(packed middleware.Parameters) (params ListProjectMembersParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "project_id",
+			In:   "path",
+		}
+		params.ProjectID = packed[key].(string)
+	}
+	return params
+}
+
+func decodeListProjectMembersParams(args [1]string, argsEscaped bool, r *http.Request) (params ListProjectMembersParams, _ error) {
 	// Decode path: project_id.
 	if err := func() error {
 		param := args[0]
@@ -2974,6 +3709,242 @@ func decodeUpdateDatasetParams(args [1]string, argsEscaped bool, r *http.Request
 	}(); err != nil {
 		return params, &ogenerrors.DecodeParamError{
 			Name: "dataset_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
+// UpdateDatasetMemberParams is parameters of updateDatasetMember operation.
+type UpdateDatasetMemberParams struct {
+	DatasetID string
+	UserID    string
+}
+
+func unpackUpdateDatasetMemberParams(packed middleware.Parameters) (params UpdateDatasetMemberParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "dataset_id",
+			In:   "path",
+		}
+		params.DatasetID = packed[key].(string)
+	}
+	{
+		key := middleware.ParameterKey{
+			Name: "user_id",
+			In:   "path",
+		}
+		params.UserID = packed[key].(string)
+	}
+	return params
+}
+
+func decodeUpdateDatasetMemberParams(args [2]string, argsEscaped bool, r *http.Request) (params UpdateDatasetMemberParams, _ error) {
+	// Decode path: dataset_id.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "dataset_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.DatasetID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "dataset_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	// Decode path: user_id.
+	if err := func() error {
+		param := args[1]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[1])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "user_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.UserID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "user_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
+// UpdateProjectMemberParams is parameters of updateProjectMember operation.
+type UpdateProjectMemberParams struct {
+	ProjectID string
+	UserID    string
+}
+
+func unpackUpdateProjectMemberParams(packed middleware.Parameters) (params UpdateProjectMemberParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "project_id",
+			In:   "path",
+		}
+		params.ProjectID = packed[key].(string)
+	}
+	{
+		key := middleware.ParameterKey{
+			Name: "user_id",
+			In:   "path",
+		}
+		params.UserID = packed[key].(string)
+	}
+	return params
+}
+
+func decodeUpdateProjectMemberParams(args [2]string, argsEscaped bool, r *http.Request) (params UpdateProjectMemberParams, _ error) {
+	// Decode path: project_id.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "project_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.ProjectID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "project_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	// Decode path: user_id.
+	if err := func() error {
+		param := args[1]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[1])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "user_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.UserID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "user_id",
 			In:   "path",
 			Err:  err,
 		}

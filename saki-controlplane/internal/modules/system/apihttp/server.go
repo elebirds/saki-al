@@ -343,6 +343,13 @@ func (s *Server) GetSystemPermissions(ctx context.Context) (*openapi.SystemPermi
 	return s.authorization.GetSystemPermissions(ctx)
 }
 
+func (s *Server) GetResourcePermissions(ctx context.Context, params openapi.GetResourcePermissionsParams) (*openapi.ResourcePermissionsResponse, error) {
+	if s.authorization == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	return s.authorization.GetResourcePermissions(ctx, params)
+}
+
 func (s *Server) ListRoles(ctx context.Context, params openapi.ListRolesParams) (*openapi.RoleListResponse, error) {
 	if s.authorization == nil {
 		return nil, ogenhttp.ErrNotImplemented
@@ -422,6 +429,118 @@ func (s *Server) DeleteUser(ctx context.Context, params openapi.DeleteUserParams
 		return newBadRequest("invalid user_id")
 	}
 	return s.identity.DeleteUser(ctx, params)
+}
+
+func (s *Server) ListAvailableDatasetRoles(ctx context.Context, params openapi.ListAvailableDatasetRolesParams) ([]openapi.ResourceRoleInfo, error) {
+	if s.authorization == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	if _, err := uuid.Parse(params.DatasetID); err != nil {
+		return nil, newBadRequest("invalid dataset_id")
+	}
+	return s.authorization.ListAvailableDatasetRoles(ctx, params)
+}
+
+func (s *Server) ListDatasetMembers(ctx context.Context, params openapi.ListDatasetMembersParams) ([]openapi.ResourceMember, error) {
+	if s.authorization == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	if _, err := uuid.Parse(params.DatasetID); err != nil {
+		return nil, newBadRequest("invalid dataset_id")
+	}
+	return s.authorization.ListDatasetMembers(ctx, params)
+}
+
+func (s *Server) CreateDatasetMember(ctx context.Context, req *openapi.ResourceMemberCreateRequest, params openapi.CreateDatasetMemberParams) (*openapi.ResourceMember, error) {
+	if s.authorization == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	if _, err := uuid.Parse(params.DatasetID); err != nil {
+		return nil, newBadRequest("invalid dataset_id")
+	}
+	return s.authorization.CreateDatasetMember(ctx, req, params)
+}
+
+func (s *Server) UpdateDatasetMember(ctx context.Context, req *openapi.ResourceMemberUpdateRequest, params openapi.UpdateDatasetMemberParams) (*openapi.ResourceMember, error) {
+	if s.authorization == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	if _, err := uuid.Parse(params.DatasetID); err != nil {
+		return nil, newBadRequest("invalid dataset_id")
+	}
+	if _, err := uuid.Parse(params.UserID); err != nil {
+		return nil, newBadRequest("invalid user_id")
+	}
+	return s.authorization.UpdateDatasetMember(ctx, req, params)
+}
+
+func (s *Server) DeleteDatasetMember(ctx context.Context, params openapi.DeleteDatasetMemberParams) error {
+	if s.authorization == nil {
+		return ogenhttp.ErrNotImplemented
+	}
+	if _, err := uuid.Parse(params.DatasetID); err != nil {
+		return newBadRequest("invalid dataset_id")
+	}
+	if _, err := uuid.Parse(params.UserID); err != nil {
+		return newBadRequest("invalid user_id")
+	}
+	return s.authorization.DeleteDatasetMember(ctx, params)
+}
+
+func (s *Server) ListAvailableProjectRoles(ctx context.Context, params openapi.ListAvailableProjectRolesParams) ([]openapi.ResourceRoleInfo, error) {
+	if s.authorization == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	if _, err := uuid.Parse(params.ProjectID); err != nil {
+		return nil, newBadRequest("invalid project_id")
+	}
+	return s.authorization.ListAvailableProjectRoles(ctx, params)
+}
+
+func (s *Server) ListProjectMembers(ctx context.Context, params openapi.ListProjectMembersParams) ([]openapi.ResourceMember, error) {
+	if s.authorization == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	if _, err := uuid.Parse(params.ProjectID); err != nil {
+		return nil, newBadRequest("invalid project_id")
+	}
+	return s.authorization.ListProjectMembers(ctx, params)
+}
+
+func (s *Server) CreateProjectMember(ctx context.Context, req *openapi.ResourceMemberCreateRequest, params openapi.CreateProjectMemberParams) (*openapi.ResourceMember, error) {
+	if s.authorization == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	if _, err := uuid.Parse(params.ProjectID); err != nil {
+		return nil, newBadRequest("invalid project_id")
+	}
+	return s.authorization.CreateProjectMember(ctx, req, params)
+}
+
+func (s *Server) UpdateProjectMember(ctx context.Context, req *openapi.ResourceMemberUpdateRequest, params openapi.UpdateProjectMemberParams) (*openapi.ResourceMember, error) {
+	if s.authorization == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	if _, err := uuid.Parse(params.ProjectID); err != nil {
+		return nil, newBadRequest("invalid project_id")
+	}
+	if _, err := uuid.Parse(params.UserID); err != nil {
+		return nil, newBadRequest("invalid user_id")
+	}
+	return s.authorization.UpdateProjectMember(ctx, req, params)
+}
+
+func (s *Server) DeleteProjectMember(ctx context.Context, params openapi.DeleteProjectMemberParams) error {
+	if s.authorization == nil {
+		return ogenhttp.ErrNotImplemented
+	}
+	if _, err := uuid.Parse(params.ProjectID); err != nil {
+		return newBadRequest("invalid project_id")
+	}
+	if _, err := uuid.Parse(params.UserID); err != nil {
+		return newBadRequest("invalid user_id")
+	}
+	return s.authorization.DeleteProjectMember(ctx, params)
 }
 
 func (s *Server) GetSystemSettings(ctx context.Context) (*openapi.SystemSettingsResponse, error) {

@@ -66,8 +66,36 @@ func encodeCreateDatasetRequest(
 	return nil
 }
 
+func encodeCreateDatasetMemberRequest(
+	req *ResourceMemberCreateRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
 func encodeCreateProjectRequest(
 	req *CreateProjectRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodeCreateProjectMemberRequest(
+	req *ResourceMemberCreateRequest,
 	r *http.Request,
 ) error {
 	const contentType = "application/json"
@@ -334,6 +362,34 @@ func encodeUnlinkProjectDatasetsRequest(
 
 func encodeUpdateDatasetRequest(
 	req *UpdateDatasetRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodeUpdateDatasetMemberRequest(
+	req *ResourceMemberUpdateRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodeUpdateProjectMemberRequest(
+	req *ResourceMemberUpdateRequest,
 	r *http.Request,
 ) error {
 	const contentType = "application/json"

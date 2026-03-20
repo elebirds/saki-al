@@ -58,7 +58,10 @@ func mapError(err error) *openapi.ErrorResponseStatusCode {
 	case errors.Is(err, identityapp.ErrInvalidUserInput),
 		errors.Is(err, authorizationapp.ErrInvalidRoleInput),
 		errors.Is(err, authorizationapp.ErrInvalidRolePermission),
-		errors.Is(err, authorizationapp.ErrInvalidRoleScope):
+		errors.Is(err, authorizationapp.ErrInvalidRoleScope),
+		errors.Is(err, authorizationapp.ErrInvalidResourceInput),
+		errors.Is(err, authorizationapp.ErrInvalidResourceType),
+		errors.Is(err, authorizationapp.ErrResourceRoleNotAssignable):
 		return &openapi.ErrorResponseStatusCode{
 			StatusCode: http.StatusBadRequest,
 			Response: openapi.ErrorResponse{
@@ -66,7 +69,10 @@ func mapError(err error) *openapi.ErrorResponseStatusCode {
 				Message: err.Error(),
 			},
 		}
-	case errors.Is(err, identityapp.ErrUserNotFound), errors.Is(err, authorizationapp.ErrRoleNotFound):
+	case errors.Is(err, identityapp.ErrUserNotFound),
+		errors.Is(err, authorizationapp.ErrRoleNotFound),
+		errors.Is(err, authorizationapp.ErrResourceNotFound),
+		errors.Is(err, authorizationapp.ErrResourceMembershipNotFound):
 		return &openapi.ErrorResponseStatusCode{
 			StatusCode: http.StatusNotFound,
 			Response: openapi.ErrorResponse{
@@ -91,6 +97,14 @@ func mapError(err error) *openapi.ErrorResponseStatusCode {
 			},
 		}
 	case errors.Is(err, authorizationapp.ErrLastSuperAdmin):
+		return &openapi.ErrorResponseStatusCode{
+			StatusCode: http.StatusConflict,
+			Response: openapi.ErrorResponse{
+				Code:    "conflict",
+				Message: err.Error(),
+			},
+		}
+	case errors.Is(err, authorizationapp.ErrResourceOwnerImmutable):
 		return &openapi.ErrorResponseStatusCode{
 			StatusCode: http.StatusConflict,
 			Response: openapi.ErrorResponse{

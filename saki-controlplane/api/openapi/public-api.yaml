@@ -202,6 +202,136 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /projects/{project_id}/members:
+    get:
+      operationId: listProjectMembers
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: project members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ResourceMember"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createProjectMember
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResourceMemberCreateRequest"
+      responses:
+        "200":
+          description: created or updated project member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResourceMember"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /projects/{project_id}/members/{user_id}:
+    put:
+      operationId: updateProjectMember
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResourceMemberUpdateRequest"
+      responses:
+        "200":
+          description: updated project member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResourceMember"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteProjectMember
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: project member removed
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /projects/{project_id}/available-roles:
+    get:
+      operationId: listAvailableProjectRoles
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: assignable project roles
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ResourceRoleInfo"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /projects/{project_id}/datasets:
     get:
       operationId: listProjectDatasets
@@ -511,6 +641,136 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /datasets/{dataset_id}/members:
+    get:
+      operationId: listDatasetMembers
+      parameters:
+        - name: dataset_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: dataset members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ResourceMember"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createDatasetMember
+      parameters:
+        - name: dataset_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResourceMemberCreateRequest"
+      responses:
+        "200":
+          description: created or updated dataset member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResourceMember"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /datasets/{dataset_id}/members/{user_id}:
+    put:
+      operationId: updateDatasetMember
+      parameters:
+        - name: dataset_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResourceMemberUpdateRequest"
+      responses:
+        "200":
+          description: updated dataset member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResourceMember"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteDatasetMember
+      parameters:
+        - name: dataset_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: dataset member removed
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /datasets/{dataset_id}/available-roles:
+    get:
+      operationId: listAvailableDatasetRoles
+      parameters:
+        - name: dataset_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: assignable dataset roles
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ResourceRoleInfo"
         default:
           description: unexpected error
           content:
@@ -1128,6 +1388,34 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SystemPermissionsResponse"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /permissions/resource:
+    get:
+      operationId: getResourcePermissions
+      parameters:
+        - name: resource_type
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [project, dataset]
+        - name: resource_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: current user resource permission snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResourcePermissionsResponse"
         default:
           description: unexpected error
           content:
@@ -1996,6 +2284,104 @@ components:
         color:
           type: string
         is_supremo:
+          type: boolean
+    ResourceRoleInfo:
+      type: object
+      required:
+        - id
+        - name
+        - display_name
+        - color
+        - is_supremo
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        display_name:
+          type: string
+        description:
+          type: string
+        color:
+          type: string
+        is_supremo:
+          type: boolean
+    ResourceMember:
+      type: object
+      required:
+        - id
+        - resource_type
+        - resource_id
+        - user_id
+        - role_id
+        - created_at
+        - updated_at
+        - user_email
+        - role_name
+        - role_display_name
+        - role_color
+        - role_is_supremo
+      properties:
+        id:
+          type: string
+        resource_type:
+          type: string
+          enum: [project, dataset]
+        resource_id:
+          type: string
+        user_id:
+          type: string
+        role_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        user_email:
+          type: string
+          format: email
+        user_full_name:
+          type: string
+        role_name:
+          type: string
+        role_display_name:
+          type: string
+        role_color:
+          type: string
+        role_is_supremo:
+          type: boolean
+    ResourceMemberCreateRequest:
+      type: object
+      required:
+        - user_id
+        - role_id
+      properties:
+        user_id:
+          type: string
+        role_id:
+          type: string
+    ResourceMemberUpdateRequest:
+      type: object
+      required:
+        - role_id
+      properties:
+        role_id:
+          type: string
+    ResourcePermissionsResponse:
+      type: object
+      required:
+        - permissions
+        - is_owner
+      properties:
+        resource_role:
+          $ref: "#/components/schemas/ResourceRoleInfo"
+        permissions:
+          type: array
+          items:
+            type: string
+        is_owner:
           type: boolean
     UserListItem:
       type: object

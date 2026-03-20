@@ -55,10 +55,18 @@ type Invoker interface {
 	//
 	// POST /datasets
 	CreateDataset(ctx context.Context, request *CreateDatasetRequest) (*Dataset, error)
+	// CreateDatasetMember invokes createDatasetMember operation.
+	//
+	// POST /datasets/{dataset_id}/members
+	CreateDatasetMember(ctx context.Context, request *ResourceMemberCreateRequest, params CreateDatasetMemberParams) (*ResourceMember, error)
 	// CreateProject invokes createProject operation.
 	//
 	// POST /projects
 	CreateProject(ctx context.Context, request *CreateProjectRequest) (*Project, error)
+	// CreateProjectMember invokes createProjectMember operation.
+	//
+	// POST /projects/{project_id}/members
+	CreateProjectMember(ctx context.Context, request *ResourceMemberCreateRequest, params CreateProjectMemberParams) (*ResourceMember, error)
 	// CreateRole invokes createRole operation.
 	//
 	// POST /roles
@@ -75,10 +83,18 @@ type Invoker interface {
 	//
 	// DELETE /datasets/{dataset_id}
 	DeleteDataset(ctx context.Context, params DeleteDatasetParams) (DeleteDatasetRes, error)
+	// DeleteDatasetMember invokes deleteDatasetMember operation.
+	//
+	// DELETE /datasets/{dataset_id}/members/{user_id}
+	DeleteDatasetMember(ctx context.Context, params DeleteDatasetMemberParams) error
 	// DeleteDatasetSample invokes deleteDatasetSample operation.
 	//
 	// DELETE /datasets/{dataset_id}/samples/{sample_id}
 	DeleteDatasetSample(ctx context.Context, params DeleteDatasetSampleParams) (DeleteDatasetSampleRes, error)
+	// DeleteProjectMember invokes deleteProjectMember operation.
+	//
+	// DELETE /projects/{project_id}/members/{user_id}
+	DeleteProjectMember(ctx context.Context, params DeleteProjectMemberParams) error
 	// DeleteRole invokes deleteRole operation.
 	//
 	// DELETE /roles/{role_id}
@@ -119,6 +135,10 @@ type Invoker interface {
 	//
 	// GET /projects/{project_id}
 	GetProject(ctx context.Context, params GetProjectParams) (*Project, error)
+	// GetResourcePermissions invokes getResourcePermissions operation.
+	//
+	// GET /permissions/resource
+	GetResourcePermissions(ctx context.Context, params GetResourcePermissionsParams) (*ResourcePermissionsResponse, error)
 	// GetRole invokes getRole operation.
 	//
 	// GET /roles/{role_id}
@@ -167,6 +187,18 @@ type Invoker interface {
 	//
 	// POST /projects/{project_id}/datasets
 	LinkProjectDatasets(ctx context.Context, request *ProjectDatasetLinkRequest, params LinkProjectDatasetsParams) (LinkProjectDatasetsRes, error)
+	// ListAvailableDatasetRoles invokes listAvailableDatasetRoles operation.
+	//
+	// GET /datasets/{dataset_id}/available-roles
+	ListAvailableDatasetRoles(ctx context.Context, params ListAvailableDatasetRolesParams) ([]ResourceRoleInfo, error)
+	// ListAvailableProjectRoles invokes listAvailableProjectRoles operation.
+	//
+	// GET /projects/{project_id}/available-roles
+	ListAvailableProjectRoles(ctx context.Context, params ListAvailableProjectRolesParams) ([]ResourceRoleInfo, error)
+	// ListDatasetMembers invokes listDatasetMembers operation.
+	//
+	// GET /datasets/{dataset_id}/members
+	ListDatasetMembers(ctx context.Context, params ListDatasetMembersParams) ([]ResourceMember, error)
 	// ListDatasets invokes listDatasets operation.
 	//
 	// GET /datasets
@@ -179,6 +211,10 @@ type Invoker interface {
 	//
 	// GET /projects/{project_id}/datasets
 	ListProjectDatasets(ctx context.Context, params ListProjectDatasetsParams) (ListProjectDatasetsRes, error)
+	// ListProjectMembers invokes listProjectMembers operation.
+	//
+	// GET /projects/{project_id}/members
+	ListProjectMembers(ctx context.Context, params ListProjectMembersParams) ([]ResourceMember, error)
 	// ListProjects invokes listProjects operation.
 	//
 	// GET /projects
@@ -259,6 +295,14 @@ type Invoker interface {
 	//
 	// PUT /datasets/{dataset_id}
 	UpdateDataset(ctx context.Context, request *UpdateDatasetRequest, params UpdateDatasetParams) (UpdateDatasetRes, error)
+	// UpdateDatasetMember invokes updateDatasetMember operation.
+	//
+	// PUT /datasets/{dataset_id}/members/{user_id}
+	UpdateDatasetMember(ctx context.Context, request *ResourceMemberUpdateRequest, params UpdateDatasetMemberParams) (*ResourceMember, error)
+	// UpdateProjectMember invokes updateProjectMember operation.
+	//
+	// PUT /projects/{project_id}/members/{user_id}
+	UpdateProjectMember(ctx context.Context, request *ResourceMemberUpdateRequest, params UpdateProjectMemberParams) (*ResourceMember, error)
 	// UpdateRole invokes updateRole operation.
 	//
 	// PATCH /roles/{role_id}
@@ -919,6 +963,100 @@ func (c *Client) sendCreateDataset(ctx context.Context, request *CreateDatasetRe
 	return result, nil
 }
 
+// CreateDatasetMember invokes createDatasetMember operation.
+//
+// POST /datasets/{dataset_id}/members
+func (c *Client) CreateDatasetMember(ctx context.Context, request *ResourceMemberCreateRequest, params CreateDatasetMemberParams) (*ResourceMember, error) {
+	res, err := c.sendCreateDatasetMember(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendCreateDatasetMember(ctx context.Context, request *ResourceMemberCreateRequest, params CreateDatasetMemberParams) (res *ResourceMember, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("createDatasetMember"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/datasets/{dataset_id}/members"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, CreateDatasetMemberOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/datasets/"
+	{
+		// Encode "dataset_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "dataset_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.DatasetID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/members"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeCreateDatasetMemberRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeCreateDatasetMemberResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // CreateProject invokes createProject operation.
 //
 // POST /projects
@@ -987,6 +1125,100 @@ func (c *Client) sendCreateProject(ctx context.Context, request *CreateProjectRe
 
 	stage = "DecodeResponse"
 	result, err := decodeCreateProjectResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// CreateProjectMember invokes createProjectMember operation.
+//
+// POST /projects/{project_id}/members
+func (c *Client) CreateProjectMember(ctx context.Context, request *ResourceMemberCreateRequest, params CreateProjectMemberParams) (*ResourceMember, error) {
+	res, err := c.sendCreateProjectMember(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendCreateProjectMember(ctx context.Context, request *ResourceMemberCreateRequest, params CreateProjectMemberParams) (res *ResourceMember, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("createProjectMember"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/projects/{project_id}/members"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, CreateProjectMemberOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/projects/"
+	{
+		// Encode "project_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "project_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.ProjectID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/members"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeCreateProjectMemberRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeCreateProjectMemberResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -1347,6 +1579,115 @@ func (c *Client) sendDeleteDataset(ctx context.Context, params DeleteDatasetPara
 	return result, nil
 }
 
+// DeleteDatasetMember invokes deleteDatasetMember operation.
+//
+// DELETE /datasets/{dataset_id}/members/{user_id}
+func (c *Client) DeleteDatasetMember(ctx context.Context, params DeleteDatasetMemberParams) error {
+	_, err := c.sendDeleteDatasetMember(ctx, params)
+	return err
+}
+
+func (c *Client) sendDeleteDatasetMember(ctx context.Context, params DeleteDatasetMemberParams) (res *DeleteDatasetMemberNoContent, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("deleteDatasetMember"),
+		semconv.HTTPRequestMethodKey.String("DELETE"),
+		semconv.URLTemplateKey.String("/datasets/{dataset_id}/members/{user_id}"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, DeleteDatasetMemberOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [4]string
+	pathParts[0] = "/datasets/"
+	{
+		// Encode "dataset_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "dataset_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.DatasetID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/members/"
+	{
+		// Encode "user_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "user_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.UserID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[3] = encoded
+	}
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "DELETE", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeDeleteDatasetMemberResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // DeleteDatasetSample invokes deleteDatasetSample operation.
 //
 // DELETE /datasets/{dataset_id}/samples/{sample_id}
@@ -1449,6 +1790,115 @@ func (c *Client) sendDeleteDatasetSample(ctx context.Context, params DeleteDatas
 
 	stage = "DecodeResponse"
 	result, err := decodeDeleteDatasetSampleResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// DeleteProjectMember invokes deleteProjectMember operation.
+//
+// DELETE /projects/{project_id}/members/{user_id}
+func (c *Client) DeleteProjectMember(ctx context.Context, params DeleteProjectMemberParams) error {
+	_, err := c.sendDeleteProjectMember(ctx, params)
+	return err
+}
+
+func (c *Client) sendDeleteProjectMember(ctx context.Context, params DeleteProjectMemberParams) (res *DeleteProjectMemberNoContent, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("deleteProjectMember"),
+		semconv.HTTPRequestMethodKey.String("DELETE"),
+		semconv.URLTemplateKey.String("/projects/{project_id}/members/{user_id}"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, DeleteProjectMemberOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [4]string
+	pathParts[0] = "/projects/"
+	{
+		// Encode "project_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "project_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.ProjectID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/members/"
+	{
+		// Encode "user_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "user_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.UserID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[3] = encoded
+	}
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "DELETE", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeDeleteProjectMemberResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -2355,6 +2805,110 @@ func (c *Client) sendGetProject(ctx context.Context, params GetProjectParams) (r
 
 	stage = "DecodeResponse"
 	result, err := decodeGetProjectResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// GetResourcePermissions invokes getResourcePermissions operation.
+//
+// GET /permissions/resource
+func (c *Client) GetResourcePermissions(ctx context.Context, params GetResourcePermissionsParams) (*ResourcePermissionsResponse, error) {
+	res, err := c.sendGetResourcePermissions(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendGetResourcePermissions(ctx context.Context, params GetResourcePermissionsParams) (res *ResourcePermissionsResponse, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("getResourcePermissions"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/permissions/resource"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, GetResourcePermissionsOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/permissions/resource"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeQueryParams"
+	q := uri.NewQueryEncoder()
+	{
+		// Encode "resource_type" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "resource_type",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			return e.EncodeValue(conv.StringToString(string(params.ResourceType)))
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	{
+		// Encode "resource_id" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "resource_id",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			return e.EncodeValue(conv.StringToString(params.ResourceID))
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	u.RawQuery = q.Values().Encode()
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeGetResourcePermissionsResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -3290,6 +3844,279 @@ func (c *Client) sendLinkProjectDatasets(ctx context.Context, request *ProjectDa
 	return result, nil
 }
 
+// ListAvailableDatasetRoles invokes listAvailableDatasetRoles operation.
+//
+// GET /datasets/{dataset_id}/available-roles
+func (c *Client) ListAvailableDatasetRoles(ctx context.Context, params ListAvailableDatasetRolesParams) ([]ResourceRoleInfo, error) {
+	res, err := c.sendListAvailableDatasetRoles(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendListAvailableDatasetRoles(ctx context.Context, params ListAvailableDatasetRolesParams) (res []ResourceRoleInfo, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("listAvailableDatasetRoles"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/datasets/{dataset_id}/available-roles"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, ListAvailableDatasetRolesOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/datasets/"
+	{
+		// Encode "dataset_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "dataset_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.DatasetID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/available-roles"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeListAvailableDatasetRolesResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// ListAvailableProjectRoles invokes listAvailableProjectRoles operation.
+//
+// GET /projects/{project_id}/available-roles
+func (c *Client) ListAvailableProjectRoles(ctx context.Context, params ListAvailableProjectRolesParams) ([]ResourceRoleInfo, error) {
+	res, err := c.sendListAvailableProjectRoles(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendListAvailableProjectRoles(ctx context.Context, params ListAvailableProjectRolesParams) (res []ResourceRoleInfo, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("listAvailableProjectRoles"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/projects/{project_id}/available-roles"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, ListAvailableProjectRolesOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/projects/"
+	{
+		// Encode "project_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "project_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.ProjectID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/available-roles"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeListAvailableProjectRolesResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// ListDatasetMembers invokes listDatasetMembers operation.
+//
+// GET /datasets/{dataset_id}/members
+func (c *Client) ListDatasetMembers(ctx context.Context, params ListDatasetMembersParams) ([]ResourceMember, error) {
+	res, err := c.sendListDatasetMembers(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendListDatasetMembers(ctx context.Context, params ListDatasetMembersParams) (res []ResourceMember, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("listDatasetMembers"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/datasets/{dataset_id}/members"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, ListDatasetMembersOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/datasets/"
+	{
+		// Encode "dataset_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "dataset_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.DatasetID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/members"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeListDatasetMembersResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // ListDatasets invokes listDatasets operation.
 //
 // GET /datasets
@@ -3592,6 +4419,97 @@ func (c *Client) sendListProjectDatasets(ctx context.Context, params ListProject
 
 	stage = "DecodeResponse"
 	result, err := decodeListProjectDatasetsResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// ListProjectMembers invokes listProjectMembers operation.
+//
+// GET /projects/{project_id}/members
+func (c *Client) ListProjectMembers(ctx context.Context, params ListProjectMembersParams) ([]ResourceMember, error) {
+	res, err := c.sendListProjectMembers(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendListProjectMembers(ctx context.Context, params ListProjectMembersParams) (res []ResourceMember, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("listProjectMembers"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/projects/{project_id}/members"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, ListProjectMembersOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/projects/"
+	{
+		// Encode "project_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "project_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.ProjectID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/members"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeListProjectMembersResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -5387,6 +6305,230 @@ func (c *Client) sendUpdateDataset(ctx context.Context, request *UpdateDatasetRe
 
 	stage = "DecodeResponse"
 	result, err := decodeUpdateDatasetResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// UpdateDatasetMember invokes updateDatasetMember operation.
+//
+// PUT /datasets/{dataset_id}/members/{user_id}
+func (c *Client) UpdateDatasetMember(ctx context.Context, request *ResourceMemberUpdateRequest, params UpdateDatasetMemberParams) (*ResourceMember, error) {
+	res, err := c.sendUpdateDatasetMember(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendUpdateDatasetMember(ctx context.Context, request *ResourceMemberUpdateRequest, params UpdateDatasetMemberParams) (res *ResourceMember, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("updateDatasetMember"),
+		semconv.HTTPRequestMethodKey.String("PUT"),
+		semconv.URLTemplateKey.String("/datasets/{dataset_id}/members/{user_id}"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, UpdateDatasetMemberOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [4]string
+	pathParts[0] = "/datasets/"
+	{
+		// Encode "dataset_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "dataset_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.DatasetID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/members/"
+	{
+		// Encode "user_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "user_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.UserID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[3] = encoded
+	}
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "PUT", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeUpdateDatasetMemberRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeUpdateDatasetMemberResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// UpdateProjectMember invokes updateProjectMember operation.
+//
+// PUT /projects/{project_id}/members/{user_id}
+func (c *Client) UpdateProjectMember(ctx context.Context, request *ResourceMemberUpdateRequest, params UpdateProjectMemberParams) (*ResourceMember, error) {
+	res, err := c.sendUpdateProjectMember(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendUpdateProjectMember(ctx context.Context, request *ResourceMemberUpdateRequest, params UpdateProjectMemberParams) (res *ResourceMember, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("updateProjectMember"),
+		semconv.HTTPRequestMethodKey.String("PUT"),
+		semconv.URLTemplateKey.String("/projects/{project_id}/members/{user_id}"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, UpdateProjectMemberOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [4]string
+	pathParts[0] = "/projects/"
+	{
+		// Encode "project_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "project_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.ProjectID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/members/"
+	{
+		// Encode "user_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "user_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.UserID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[3] = encoded
+	}
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "PUT", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeUpdateProjectMemberRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeUpdateProjectMemberResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}

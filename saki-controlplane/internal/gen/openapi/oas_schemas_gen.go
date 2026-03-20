@@ -1294,6 +1294,9 @@ type DeleteDatasetBadRequest ErrorResponse
 
 func (*DeleteDatasetBadRequest) deleteDatasetRes() {}
 
+// DeleteDatasetMemberNoContent is response for DeleteDatasetMember operation.
+type DeleteDatasetMemberNoContent struct{}
+
 // DeleteDatasetNoContent is response for DeleteDataset operation.
 type DeleteDatasetNoContent struct{}
 
@@ -1315,6 +1318,9 @@ func (*DeleteDatasetSampleNoContent) deleteDatasetSampleRes() {}
 type DeleteDatasetSampleNotFound ErrorResponse
 
 func (*DeleteDatasetSampleNotFound) deleteDatasetSampleRes() {}
+
+// DeleteProjectMemberNoContent is response for DeleteProjectMember operation.
+type DeleteProjectMemberNoContent struct{}
 
 // DeleteRoleNoContent is response for DeleteRole operation.
 type DeleteRoleNoContent struct{}
@@ -1396,6 +1402,47 @@ func (*GetDatasetBadRequest) getDatasetRes() {}
 type GetDatasetNotFound ErrorResponse
 
 func (*GetDatasetNotFound) getDatasetRes() {}
+
+type GetResourcePermissionsResourceType string
+
+const (
+	GetResourcePermissionsResourceTypeProject GetResourcePermissionsResourceType = "project"
+	GetResourcePermissionsResourceTypeDataset GetResourcePermissionsResourceType = "dataset"
+)
+
+// AllValues returns all GetResourcePermissionsResourceType values.
+func (GetResourcePermissionsResourceType) AllValues() []GetResourcePermissionsResourceType {
+	return []GetResourcePermissionsResourceType{
+		GetResourcePermissionsResourceTypeProject,
+		GetResourcePermissionsResourceTypeDataset,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s GetResourcePermissionsResourceType) MarshalText() ([]byte, error) {
+	switch s {
+	case GetResourcePermissionsResourceTypeProject:
+		return []byte(s), nil
+	case GetResourcePermissionsResourceTypeDataset:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *GetResourcePermissionsResourceType) UnmarshalText(data []byte) error {
+	switch GetResourcePermissionsResourceType(data) {
+	case GetResourcePermissionsResourceTypeProject:
+		*s = GetResourcePermissionsResourceTypeProject
+		return nil
+	case GetResourcePermissionsResourceTypeDataset:
+		*s = GetResourcePermissionsResourceTypeDataset
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
 
 // Ref: #/components/schemas/HealthResponse
 type HealthResponse struct {
@@ -2814,6 +2861,52 @@ func (o OptNilString) Or(d string) string {
 	return d
 }
 
+// NewOptResourceRoleInfo returns new OptResourceRoleInfo with value set to v.
+func NewOptResourceRoleInfo(v ResourceRoleInfo) OptResourceRoleInfo {
+	return OptResourceRoleInfo{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptResourceRoleInfo is optional ResourceRoleInfo.
+type OptResourceRoleInfo struct {
+	Value ResourceRoleInfo
+	Set   bool
+}
+
+// IsSet returns true if OptResourceRoleInfo was set.
+func (o OptResourceRoleInfo) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptResourceRoleInfo) Reset() {
+	var v ResourceRoleInfo
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptResourceRoleInfo) SetTo(v ResourceRoleInfo) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptResourceRoleInfo) Get() (v ResourceRoleInfo, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptResourceRoleInfo) Or(d ResourceRoleInfo) ResourceRoleInfo {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptString returns new OptString with value set to v.
 func NewOptString(v string) OptString {
 	return OptString{
@@ -3165,6 +3258,342 @@ func (s *ReplaceUserSystemRolesRequest) SetRoleIds(val []uuid.UUID) {
 
 // RequirePermissionNoContent is response for RequirePermission operation.
 type RequirePermissionNoContent struct{}
+
+// Ref: #/components/schemas/ResourceMember
+type ResourceMember struct {
+	ID              string                     `json:"id"`
+	ResourceType    ResourceMemberResourceType `json:"resource_type"`
+	ResourceID      string                     `json:"resource_id"`
+	UserID          string                     `json:"user_id"`
+	RoleID          string                     `json:"role_id"`
+	CreatedAt       time.Time                  `json:"created_at"`
+	UpdatedAt       time.Time                  `json:"updated_at"`
+	UserEmail       string                     `json:"user_email"`
+	UserFullName    OptString                  `json:"user_full_name"`
+	RoleName        string                     `json:"role_name"`
+	RoleDisplayName string                     `json:"role_display_name"`
+	RoleColor       string                     `json:"role_color"`
+	RoleIsSupremo   bool                       `json:"role_is_supremo"`
+}
+
+// GetID returns the value of ID.
+func (s *ResourceMember) GetID() string {
+	return s.ID
+}
+
+// GetResourceType returns the value of ResourceType.
+func (s *ResourceMember) GetResourceType() ResourceMemberResourceType {
+	return s.ResourceType
+}
+
+// GetResourceID returns the value of ResourceID.
+func (s *ResourceMember) GetResourceID() string {
+	return s.ResourceID
+}
+
+// GetUserID returns the value of UserID.
+func (s *ResourceMember) GetUserID() string {
+	return s.UserID
+}
+
+// GetRoleID returns the value of RoleID.
+func (s *ResourceMember) GetRoleID() string {
+	return s.RoleID
+}
+
+// GetCreatedAt returns the value of CreatedAt.
+func (s *ResourceMember) GetCreatedAt() time.Time {
+	return s.CreatedAt
+}
+
+// GetUpdatedAt returns the value of UpdatedAt.
+func (s *ResourceMember) GetUpdatedAt() time.Time {
+	return s.UpdatedAt
+}
+
+// GetUserEmail returns the value of UserEmail.
+func (s *ResourceMember) GetUserEmail() string {
+	return s.UserEmail
+}
+
+// GetUserFullName returns the value of UserFullName.
+func (s *ResourceMember) GetUserFullName() OptString {
+	return s.UserFullName
+}
+
+// GetRoleName returns the value of RoleName.
+func (s *ResourceMember) GetRoleName() string {
+	return s.RoleName
+}
+
+// GetRoleDisplayName returns the value of RoleDisplayName.
+func (s *ResourceMember) GetRoleDisplayName() string {
+	return s.RoleDisplayName
+}
+
+// GetRoleColor returns the value of RoleColor.
+func (s *ResourceMember) GetRoleColor() string {
+	return s.RoleColor
+}
+
+// GetRoleIsSupremo returns the value of RoleIsSupremo.
+func (s *ResourceMember) GetRoleIsSupremo() bool {
+	return s.RoleIsSupremo
+}
+
+// SetID sets the value of ID.
+func (s *ResourceMember) SetID(val string) {
+	s.ID = val
+}
+
+// SetResourceType sets the value of ResourceType.
+func (s *ResourceMember) SetResourceType(val ResourceMemberResourceType) {
+	s.ResourceType = val
+}
+
+// SetResourceID sets the value of ResourceID.
+func (s *ResourceMember) SetResourceID(val string) {
+	s.ResourceID = val
+}
+
+// SetUserID sets the value of UserID.
+func (s *ResourceMember) SetUserID(val string) {
+	s.UserID = val
+}
+
+// SetRoleID sets the value of RoleID.
+func (s *ResourceMember) SetRoleID(val string) {
+	s.RoleID = val
+}
+
+// SetCreatedAt sets the value of CreatedAt.
+func (s *ResourceMember) SetCreatedAt(val time.Time) {
+	s.CreatedAt = val
+}
+
+// SetUpdatedAt sets the value of UpdatedAt.
+func (s *ResourceMember) SetUpdatedAt(val time.Time) {
+	s.UpdatedAt = val
+}
+
+// SetUserEmail sets the value of UserEmail.
+func (s *ResourceMember) SetUserEmail(val string) {
+	s.UserEmail = val
+}
+
+// SetUserFullName sets the value of UserFullName.
+func (s *ResourceMember) SetUserFullName(val OptString) {
+	s.UserFullName = val
+}
+
+// SetRoleName sets the value of RoleName.
+func (s *ResourceMember) SetRoleName(val string) {
+	s.RoleName = val
+}
+
+// SetRoleDisplayName sets the value of RoleDisplayName.
+func (s *ResourceMember) SetRoleDisplayName(val string) {
+	s.RoleDisplayName = val
+}
+
+// SetRoleColor sets the value of RoleColor.
+func (s *ResourceMember) SetRoleColor(val string) {
+	s.RoleColor = val
+}
+
+// SetRoleIsSupremo sets the value of RoleIsSupremo.
+func (s *ResourceMember) SetRoleIsSupremo(val bool) {
+	s.RoleIsSupremo = val
+}
+
+// Ref: #/components/schemas/ResourceMemberCreateRequest
+type ResourceMemberCreateRequest struct {
+	UserID string `json:"user_id"`
+	RoleID string `json:"role_id"`
+}
+
+// GetUserID returns the value of UserID.
+func (s *ResourceMemberCreateRequest) GetUserID() string {
+	return s.UserID
+}
+
+// GetRoleID returns the value of RoleID.
+func (s *ResourceMemberCreateRequest) GetRoleID() string {
+	return s.RoleID
+}
+
+// SetUserID sets the value of UserID.
+func (s *ResourceMemberCreateRequest) SetUserID(val string) {
+	s.UserID = val
+}
+
+// SetRoleID sets the value of RoleID.
+func (s *ResourceMemberCreateRequest) SetRoleID(val string) {
+	s.RoleID = val
+}
+
+type ResourceMemberResourceType string
+
+const (
+	ResourceMemberResourceTypeProject ResourceMemberResourceType = "project"
+	ResourceMemberResourceTypeDataset ResourceMemberResourceType = "dataset"
+)
+
+// AllValues returns all ResourceMemberResourceType values.
+func (ResourceMemberResourceType) AllValues() []ResourceMemberResourceType {
+	return []ResourceMemberResourceType{
+		ResourceMemberResourceTypeProject,
+		ResourceMemberResourceTypeDataset,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s ResourceMemberResourceType) MarshalText() ([]byte, error) {
+	switch s {
+	case ResourceMemberResourceTypeProject:
+		return []byte(s), nil
+	case ResourceMemberResourceTypeDataset:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *ResourceMemberResourceType) UnmarshalText(data []byte) error {
+	switch ResourceMemberResourceType(data) {
+	case ResourceMemberResourceTypeProject:
+		*s = ResourceMemberResourceTypeProject
+		return nil
+	case ResourceMemberResourceTypeDataset:
+		*s = ResourceMemberResourceTypeDataset
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Ref: #/components/schemas/ResourceMemberUpdateRequest
+type ResourceMemberUpdateRequest struct {
+	RoleID string `json:"role_id"`
+}
+
+// GetRoleID returns the value of RoleID.
+func (s *ResourceMemberUpdateRequest) GetRoleID() string {
+	return s.RoleID
+}
+
+// SetRoleID sets the value of RoleID.
+func (s *ResourceMemberUpdateRequest) SetRoleID(val string) {
+	s.RoleID = val
+}
+
+// Ref: #/components/schemas/ResourcePermissionsResponse
+type ResourcePermissionsResponse struct {
+	ResourceRole OptResourceRoleInfo `json:"resource_role"`
+	Permissions  []string            `json:"permissions"`
+	IsOwner      bool                `json:"is_owner"`
+}
+
+// GetResourceRole returns the value of ResourceRole.
+func (s *ResourcePermissionsResponse) GetResourceRole() OptResourceRoleInfo {
+	return s.ResourceRole
+}
+
+// GetPermissions returns the value of Permissions.
+func (s *ResourcePermissionsResponse) GetPermissions() []string {
+	return s.Permissions
+}
+
+// GetIsOwner returns the value of IsOwner.
+func (s *ResourcePermissionsResponse) GetIsOwner() bool {
+	return s.IsOwner
+}
+
+// SetResourceRole sets the value of ResourceRole.
+func (s *ResourcePermissionsResponse) SetResourceRole(val OptResourceRoleInfo) {
+	s.ResourceRole = val
+}
+
+// SetPermissions sets the value of Permissions.
+func (s *ResourcePermissionsResponse) SetPermissions(val []string) {
+	s.Permissions = val
+}
+
+// SetIsOwner sets the value of IsOwner.
+func (s *ResourcePermissionsResponse) SetIsOwner(val bool) {
+	s.IsOwner = val
+}
+
+// Ref: #/components/schemas/ResourceRoleInfo
+type ResourceRoleInfo struct {
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	DisplayName string    `json:"display_name"`
+	Description OptString `json:"description"`
+	Color       string    `json:"color"`
+	IsSupremo   bool      `json:"is_supremo"`
+}
+
+// GetID returns the value of ID.
+func (s *ResourceRoleInfo) GetID() string {
+	return s.ID
+}
+
+// GetName returns the value of Name.
+func (s *ResourceRoleInfo) GetName() string {
+	return s.Name
+}
+
+// GetDisplayName returns the value of DisplayName.
+func (s *ResourceRoleInfo) GetDisplayName() string {
+	return s.DisplayName
+}
+
+// GetDescription returns the value of Description.
+func (s *ResourceRoleInfo) GetDescription() OptString {
+	return s.Description
+}
+
+// GetColor returns the value of Color.
+func (s *ResourceRoleInfo) GetColor() string {
+	return s.Color
+}
+
+// GetIsSupremo returns the value of IsSupremo.
+func (s *ResourceRoleInfo) GetIsSupremo() bool {
+	return s.IsSupremo
+}
+
+// SetID sets the value of ID.
+func (s *ResourceRoleInfo) SetID(val string) {
+	s.ID = val
+}
+
+// SetName sets the value of Name.
+func (s *ResourceRoleInfo) SetName(val string) {
+	s.Name = val
+}
+
+// SetDisplayName sets the value of DisplayName.
+func (s *ResourceRoleInfo) SetDisplayName(val string) {
+	s.DisplayName = val
+}
+
+// SetDescription sets the value of Description.
+func (s *ResourceRoleInfo) SetDescription(val OptString) {
+	s.Description = val
+}
+
+// SetColor sets the value of Color.
+func (s *ResourceRoleInfo) SetColor(val string) {
+	s.Color = val
+}
+
+// SetIsSupremo sets the value of IsSupremo.
+func (s *ResourceRoleInfo) SetIsSupremo(val bool) {
+	s.IsSupremo = val
+}
 
 // Ref: #/components/schemas/RoleCreateRequest
 type RoleCreateRequest struct {

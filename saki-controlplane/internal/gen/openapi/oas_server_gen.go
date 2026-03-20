@@ -36,10 +36,18 @@ type Handler interface {
 	//
 	// POST /datasets
 	CreateDataset(ctx context.Context, req *CreateDatasetRequest) (*Dataset, error)
+	// CreateDatasetMember implements createDatasetMember operation.
+	//
+	// POST /datasets/{dataset_id}/members
+	CreateDatasetMember(ctx context.Context, req *ResourceMemberCreateRequest, params CreateDatasetMemberParams) (*ResourceMember, error)
 	// CreateProject implements createProject operation.
 	//
 	// POST /projects
 	CreateProject(ctx context.Context, req *CreateProjectRequest) (*Project, error)
+	// CreateProjectMember implements createProjectMember operation.
+	//
+	// POST /projects/{project_id}/members
+	CreateProjectMember(ctx context.Context, req *ResourceMemberCreateRequest, params CreateProjectMemberParams) (*ResourceMember, error)
 	// CreateRole implements createRole operation.
 	//
 	// POST /roles
@@ -56,10 +64,18 @@ type Handler interface {
 	//
 	// DELETE /datasets/{dataset_id}
 	DeleteDataset(ctx context.Context, params DeleteDatasetParams) (DeleteDatasetRes, error)
+	// DeleteDatasetMember implements deleteDatasetMember operation.
+	//
+	// DELETE /datasets/{dataset_id}/members/{user_id}
+	DeleteDatasetMember(ctx context.Context, params DeleteDatasetMemberParams) error
 	// DeleteDatasetSample implements deleteDatasetSample operation.
 	//
 	// DELETE /datasets/{dataset_id}/samples/{sample_id}
 	DeleteDatasetSample(ctx context.Context, params DeleteDatasetSampleParams) (DeleteDatasetSampleRes, error)
+	// DeleteProjectMember implements deleteProjectMember operation.
+	//
+	// DELETE /projects/{project_id}/members/{user_id}
+	DeleteProjectMember(ctx context.Context, params DeleteProjectMemberParams) error
 	// DeleteRole implements deleteRole operation.
 	//
 	// DELETE /roles/{role_id}
@@ -100,6 +116,10 @@ type Handler interface {
 	//
 	// GET /projects/{project_id}
 	GetProject(ctx context.Context, params GetProjectParams) (*Project, error)
+	// GetResourcePermissions implements getResourcePermissions operation.
+	//
+	// GET /permissions/resource
+	GetResourcePermissions(ctx context.Context, params GetResourcePermissionsParams) (*ResourcePermissionsResponse, error)
 	// GetRole implements getRole operation.
 	//
 	// GET /roles/{role_id}
@@ -148,6 +168,18 @@ type Handler interface {
 	//
 	// POST /projects/{project_id}/datasets
 	LinkProjectDatasets(ctx context.Context, req *ProjectDatasetLinkRequest, params LinkProjectDatasetsParams) (LinkProjectDatasetsRes, error)
+	// ListAvailableDatasetRoles implements listAvailableDatasetRoles operation.
+	//
+	// GET /datasets/{dataset_id}/available-roles
+	ListAvailableDatasetRoles(ctx context.Context, params ListAvailableDatasetRolesParams) ([]ResourceRoleInfo, error)
+	// ListAvailableProjectRoles implements listAvailableProjectRoles operation.
+	//
+	// GET /projects/{project_id}/available-roles
+	ListAvailableProjectRoles(ctx context.Context, params ListAvailableProjectRolesParams) ([]ResourceRoleInfo, error)
+	// ListDatasetMembers implements listDatasetMembers operation.
+	//
+	// GET /datasets/{dataset_id}/members
+	ListDatasetMembers(ctx context.Context, params ListDatasetMembersParams) ([]ResourceMember, error)
 	// ListDatasets implements listDatasets operation.
 	//
 	// GET /datasets
@@ -160,6 +192,10 @@ type Handler interface {
 	//
 	// GET /projects/{project_id}/datasets
 	ListProjectDatasets(ctx context.Context, params ListProjectDatasetsParams) (ListProjectDatasetsRes, error)
+	// ListProjectMembers implements listProjectMembers operation.
+	//
+	// GET /projects/{project_id}/members
+	ListProjectMembers(ctx context.Context, params ListProjectMembersParams) ([]ResourceMember, error)
 	// ListProjects implements listProjects operation.
 	//
 	// GET /projects
@@ -240,6 +276,14 @@ type Handler interface {
 	//
 	// PUT /datasets/{dataset_id}
 	UpdateDataset(ctx context.Context, req *UpdateDatasetRequest, params UpdateDatasetParams) (UpdateDatasetRes, error)
+	// UpdateDatasetMember implements updateDatasetMember operation.
+	//
+	// PUT /datasets/{dataset_id}/members/{user_id}
+	UpdateDatasetMember(ctx context.Context, req *ResourceMemberUpdateRequest, params UpdateDatasetMemberParams) (*ResourceMember, error)
+	// UpdateProjectMember implements updateProjectMember operation.
+	//
+	// PUT /projects/{project_id}/members/{user_id}
+	UpdateProjectMember(ctx context.Context, req *ResourceMemberUpdateRequest, params UpdateProjectMemberParams) (*ResourceMember, error)
 	// UpdateRole implements updateRole operation.
 	//
 	// PATCH /roles/{role_id}

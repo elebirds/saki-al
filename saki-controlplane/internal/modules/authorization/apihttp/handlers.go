@@ -45,38 +45,80 @@ type ReplaceUserSystemRolesExecutor interface {
 	Execute(ctx context.Context, cmd authorizationapp.ReplaceUserSystemRolesCommand) ([]authorizationapp.UserSystemRoleBindingView, error)
 }
 
+type ListResourceMembersExecutor interface {
+	Execute(ctx context.Context, resourceType string, resourceID uuid.UUID) ([]authorizationapp.ResourceMemberView, error)
+}
+
+type UpsertResourceMemberExecutor interface {
+	Execute(ctx context.Context, cmd authorizationapp.UpsertResourceMemberCommand) (*authorizationapp.ResourceMemberView, error)
+}
+
+type DeleteResourceMemberExecutor interface {
+	Execute(ctx context.Context, resourceType string, resourceID uuid.UUID, principalID uuid.UUID) error
+}
+
+type ListAssignableResourceRolesExecutor interface {
+	Execute(ctx context.Context, resourceType string, resourceID uuid.UUID) ([]authorizationapp.ResourceRoleView, error)
+}
+
+type GetResourcePermissionsExecutor interface {
+	Execute(ctx context.Context, principalID uuid.UUID, resourceType string, resourceID uuid.UUID) (*authorizationapp.ResourcePermissionsView, error)
+}
+
+type ResolveEffectiveResourcePermissionsExecutor interface {
+	Execute(ctx context.Context, principalID uuid.UUID, resourceType string, resourceID uuid.UUID) ([]string, error)
+}
+
 type HandlersDeps struct {
-	ListRoles         ListRolesExecutor
-	PermissionCatalog PermissionCatalogExecutor
-	UserSystemRoles   UserSystemRolesExecutor
-	CreateRole        CreateRoleExecutor
-	GetRole           GetRoleExecutor
-	UpdateRole        UpdateRoleExecutor
-	DeleteRole        DeleteRoleExecutor
-	ReplaceUserRoles  ReplaceUserSystemRolesExecutor
+	ListRoles             ListRolesExecutor
+	PermissionCatalog     PermissionCatalogExecutor
+	UserSystemRoles       UserSystemRolesExecutor
+	CreateRole            CreateRoleExecutor
+	GetRole               GetRoleExecutor
+	UpdateRole            UpdateRoleExecutor
+	DeleteRole            DeleteRoleExecutor
+	ReplaceUserRoles      ReplaceUserSystemRolesExecutor
+	ListResourceMembers   ListResourceMembersExecutor
+	UpsertResourceMember  UpsertResourceMemberExecutor
+	DeleteResourceMember  DeleteResourceMemberExecutor
+	ListAssignableRoles   ListAssignableResourceRolesExecutor
+	GetResourcePermission GetResourcePermissionsExecutor
+	ResolveResourceAccess ResolveEffectiveResourcePermissionsExecutor
 }
 
 type Handlers struct {
-	listRoles         ListRolesExecutor
-	permissionCatalog PermissionCatalogExecutor
-	userSystemRoles   UserSystemRolesExecutor
-	createRole        CreateRoleExecutor
-	getRole           GetRoleExecutor
-	updateRole        UpdateRoleExecutor
-	deleteRole        DeleteRoleExecutor
-	replaceUserRoles  ReplaceUserSystemRolesExecutor
+	listRoles             ListRolesExecutor
+	permissionCatalog     PermissionCatalogExecutor
+	userSystemRoles       UserSystemRolesExecutor
+	createRole            CreateRoleExecutor
+	getRole               GetRoleExecutor
+	updateRole            UpdateRoleExecutor
+	deleteRole            DeleteRoleExecutor
+	replaceUserRoles      ReplaceUserSystemRolesExecutor
+	listResourceMembersEx ListResourceMembersExecutor
+	upsertResourceMember  UpsertResourceMemberExecutor
+	deleteResourceMember  DeleteResourceMemberExecutor
+	listAssignableRoles   ListAssignableResourceRolesExecutor
+	getResourcePermission GetResourcePermissionsExecutor
+	resolveResourceAccess ResolveEffectiveResourcePermissionsExecutor
 }
 
 func NewHandlers(deps HandlersDeps) *Handlers {
 	return &Handlers{
-		listRoles:         deps.ListRoles,
-		permissionCatalog: deps.PermissionCatalog,
-		userSystemRoles:   deps.UserSystemRoles,
-		createRole:        deps.CreateRole,
-		getRole:           deps.GetRole,
-		updateRole:        deps.UpdateRole,
-		deleteRole:        deps.DeleteRole,
-		replaceUserRoles:  deps.ReplaceUserRoles,
+		listRoles:             deps.ListRoles,
+		permissionCatalog:     deps.PermissionCatalog,
+		userSystemRoles:       deps.UserSystemRoles,
+		createRole:            deps.CreateRole,
+		getRole:               deps.GetRole,
+		updateRole:            deps.UpdateRole,
+		deleteRole:            deps.DeleteRole,
+		replaceUserRoles:      deps.ReplaceUserRoles,
+		listResourceMembersEx: deps.ListResourceMembers,
+		upsertResourceMember:  deps.UpsertResourceMember,
+		deleteResourceMember:  deps.DeleteResourceMember,
+		listAssignableRoles:   deps.ListAssignableRoles,
+		getResourcePermission: deps.GetResourcePermission,
+		resolveResourceAccess: deps.ResolveResourceAccess,
 	}
 }
 
@@ -285,6 +327,74 @@ func (h *Handlers) ReplaceUserSystemRoles(ctx context.Context, req *openapi.Repl
 	return mapUserSystemRoleBindings(result), nil
 }
 
+func (h *Handlers) GetResourcePermissions(ctx context.Context, params openapi.GetResourcePermissionsParams) (*openapi.ResourcePermissionsResponse, error) {
+	if h == nil || h.getResourcePermission == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	claims, err := requireAnyPermission(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	resourceID, err := uuid.Parse(params.ResourceID)
+	if err != nil {
+		return nil, authorizationapp.ErrInvalidResourceInput
+	}
+	result, err := h.getResourcePermission.Execute(ctx, claims.PrincipalID, string(params.ResourceType), resourceID)
+	if err != nil {
+		return nil, err
+	}
+
+	response := &openapi.ResourcePermissionsResponse{
+		Permissions: authorizationdomain.ExpandedPermissionsForTransport(result.Permissions),
+		IsOwner:     result.IsOwner,
+	}
+	if result.ResourceRole != nil {
+		response.ResourceRole.SetTo(mapResourceRole(*result.ResourceRole))
+	}
+	return response, nil
+}
+
+func (h *Handlers) ListAvailableDatasetRoles(ctx context.Context, params openapi.ListAvailableDatasetRolesParams) ([]openapi.ResourceRoleInfo, error) {
+	return h.listAvailableResourceRoles(ctx, authorizationdomain.ResourceTypeDataset, params.DatasetID)
+}
+
+func (h *Handlers) ListAvailableProjectRoles(ctx context.Context, params openapi.ListAvailableProjectRolesParams) ([]openapi.ResourceRoleInfo, error) {
+	return h.listAvailableResourceRoles(ctx, authorizationdomain.ResourceTypeProject, params.ProjectID)
+}
+
+func (h *Handlers) ListDatasetMembers(ctx context.Context, params openapi.ListDatasetMembersParams) ([]openapi.ResourceMember, error) {
+	return h.listResourceMembers(ctx, authorizationdomain.ResourceTypeDataset, params.DatasetID)
+}
+
+func (h *Handlers) CreateDatasetMember(ctx context.Context, req *openapi.ResourceMemberCreateRequest, params openapi.CreateDatasetMemberParams) (*openapi.ResourceMember, error) {
+	return h.upsertMember(ctx, authorizationdomain.ResourceTypeDataset, params.DatasetID, req.GetUserID(), req.GetRoleID())
+}
+
+func (h *Handlers) UpdateDatasetMember(ctx context.Context, req *openapi.ResourceMemberUpdateRequest, params openapi.UpdateDatasetMemberParams) (*openapi.ResourceMember, error) {
+	return h.upsertMember(ctx, authorizationdomain.ResourceTypeDataset, params.DatasetID, params.UserID, req.GetRoleID())
+}
+
+func (h *Handlers) DeleteDatasetMember(ctx context.Context, params openapi.DeleteDatasetMemberParams) error {
+	return h.deleteMember(ctx, authorizationdomain.ResourceTypeDataset, params.DatasetID, params.UserID)
+}
+
+func (h *Handlers) ListProjectMembers(ctx context.Context, params openapi.ListProjectMembersParams) ([]openapi.ResourceMember, error) {
+	return h.listResourceMembers(ctx, authorizationdomain.ResourceTypeProject, params.ProjectID)
+}
+
+func (h *Handlers) CreateProjectMember(ctx context.Context, req *openapi.ResourceMemberCreateRequest, params openapi.CreateProjectMemberParams) (*openapi.ResourceMember, error) {
+	return h.upsertMember(ctx, authorizationdomain.ResourceTypeProject, params.ProjectID, req.GetUserID(), req.GetRoleID())
+}
+
+func (h *Handlers) UpdateProjectMember(ctx context.Context, req *openapi.ResourceMemberUpdateRequest, params openapi.UpdateProjectMemberParams) (*openapi.ResourceMember, error) {
+	return h.upsertMember(ctx, authorizationdomain.ResourceTypeProject, params.ProjectID, params.UserID, req.GetRoleID())
+}
+
+func (h *Handlers) DeleteProjectMember(ctx context.Context, params openapi.DeleteProjectMemberParams) error {
+	return h.deleteMember(ctx, authorizationdomain.ResourceTypeProject, params.ProjectID, params.UserID)
+}
+
 func (h *Handlers) getPermissionCatalog(ctx context.Context) (*openapi.PermissionCatalogResponse, error) {
 	if h == nil || h.permissionCatalog == nil {
 		return nil, ogenhttp.ErrNotImplemented
@@ -325,6 +435,87 @@ func (h *Handlers) listUserSystemRoles(ctx context.Context, rawUserID string) ([
 	}
 
 	return mapUserSystemRoleBindings(result), nil
+}
+
+func (h *Handlers) listAvailableResourceRoles(ctx context.Context, resourceType string, rawResourceID string) ([]openapi.ResourceRoleInfo, error) {
+	if h == nil || h.listAssignableRoles == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	resourceID, err := h.requireResourcePermission(ctx, resourceType, rawResourceID, authorizationdomain.ResourceMemberWritePermission(resourceType))
+	if err != nil {
+		return nil, err
+	}
+
+	items, err := h.listAssignableRoles.Execute(ctx, resourceType, resourceID)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]openapi.ResourceRoleInfo, 0, len(items))
+	for _, item := range items {
+		result = append(result, mapResourceRole(item))
+	}
+	return result, nil
+}
+
+func (h *Handlers) listResourceMembers(ctx context.Context, resourceType string, rawResourceID string) ([]openapi.ResourceMember, error) {
+	if h == nil || h.listResourceMembersEx == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	resourceID, err := h.requireResourcePermission(ctx, resourceType, rawResourceID, authorizationdomain.ResourceReadPermission(resourceType), authorizationdomain.ResourceMemberWritePermission(resourceType))
+	if err != nil {
+		return nil, err
+	}
+	items, err := h.listResourceMembersEx.Execute(ctx, resourceType, resourceID)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]openapi.ResourceMember, 0, len(items))
+	for _, item := range items {
+		result = append(result, mapResourceMember(item))
+	}
+	return result, nil
+}
+
+func (h *Handlers) upsertMember(ctx context.Context, resourceType string, rawResourceID string, rawUserID string, rawRoleID string) (*openapi.ResourceMember, error) {
+	if h == nil || h.upsertResourceMember == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	resourceID, err := h.requireResourcePermission(ctx, resourceType, rawResourceID, authorizationdomain.ResourceMemberWritePermission(resourceType))
+	if err != nil {
+		return nil, err
+	}
+
+	_, userID, roleID, err := parseMembershipIDs(resourceID.String(), rawUserID, rawRoleID)
+	if err != nil {
+		return nil, err
+	}
+	member, err := h.upsertResourceMember.Execute(ctx, authorizationapp.UpsertResourceMemberCommand{
+		ResourceType: resourceType,
+		ResourceID:   resourceID,
+		UserID:       userID,
+		RoleID:       roleID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	response := mapResourceMember(*member)
+	return &response, nil
+}
+
+func (h *Handlers) deleteMember(ctx context.Context, resourceType string, rawResourceID string, rawUserID string) error {
+	if h == nil || h.deleteResourceMember == nil {
+		return ogenhttp.ErrNotImplemented
+	}
+	resourceID, err := h.requireResourcePermission(ctx, resourceType, rawResourceID, authorizationdomain.ResourceMemberWritePermission(resourceType))
+	if err != nil {
+		return err
+	}
+
+	_, userID, _, err := parseMembershipIDs(resourceID.String(), rawUserID, "")
+	if err != nil {
+		return err
+	}
+	return h.deleteResourceMember.Execute(ctx, resourceType, resourceID, userID)
 }
 
 func mapRole(item authorizationapp.RoleView) openapi.RoleListItem {
@@ -369,6 +560,41 @@ func mapUserSystemRoleBindings(items []authorizationapp.UserSystemRoleBindingVie
 	return result
 }
 
+func mapResourceRole(item authorizationapp.ResourceRoleView) openapi.ResourceRoleInfo {
+	result := openapi.ResourceRoleInfo{
+		ID:          item.ID,
+		Name:        item.Name,
+		DisplayName: item.DisplayName,
+		Color:       item.Color,
+		IsSupremo:   item.IsSupremo,
+	}
+	if item.Description != "" {
+		result.Description.SetTo(item.Description)
+	}
+	return result
+}
+
+func mapResourceMember(item authorizationapp.ResourceMemberView) openapi.ResourceMember {
+	result := openapi.ResourceMember{
+		ID:              item.ID,
+		ResourceType:    mapResourceType(item.ResourceType),
+		ResourceID:      item.ResourceID,
+		UserID:          item.UserID,
+		RoleID:          item.RoleID,
+		CreatedAt:       item.CreatedAt,
+		UpdatedAt:       item.UpdatedAt,
+		UserEmail:       item.UserEmail,
+		RoleName:        item.RoleName,
+		RoleDisplayName: item.RoleDisplayName,
+		RoleColor:       item.RoleColor,
+		RoleIsSupremo:   item.RoleIsSupremo,
+	}
+	if item.UserFullName != "" {
+		result.UserFullName.SetTo(item.UserFullName)
+	}
+	return result
+}
+
 func optStringPtr(value string, ok bool) *string {
 	if !ok {
 		return nil
@@ -390,6 +616,60 @@ func requireRoleReplacementPermission(ctx context.Context) (*accessapp.Claims, e
 		return claims, nil
 	}
 	return nil, accessapp.ErrForbidden
+}
+
+func (h *Handlers) requireResourcePermission(ctx context.Context, resourceType string, rawResourceID string, permissions ...string) (uuid.UUID, error) {
+	claims, ok := authctx.ClaimsFromContext(ctx)
+	if !ok {
+		return uuid.Nil, accessapp.ErrUnauthorized
+	}
+	if h == nil || h.resolveResourceAccess == nil {
+		return uuid.Nil, ogenhttp.ErrNotImplemented
+	}
+
+	resourceID, err := uuid.Parse(rawResourceID)
+	if err != nil {
+		return uuid.Nil, authorizationapp.ErrInvalidResourceInput
+	}
+
+	effective, err := h.resolveResourceAccess.Execute(ctx, claims.PrincipalID, resourceType, resourceID)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	for _, permission := range permissions {
+		if slices.Contains(effective, permission) {
+			return resourceID, nil
+		}
+	}
+	return uuid.Nil, accessapp.ErrForbidden
+}
+
+func parseMembershipIDs(rawResourceID string, rawUserID string, rawRoleID string) (resourceID uuid.UUID, userID uuid.UUID, roleID uuid.UUID, err error) {
+	resourceID, err = uuid.Parse(rawResourceID)
+	if err != nil {
+		return uuid.Nil, uuid.Nil, uuid.Nil, authorizationapp.ErrInvalidResourceInput
+	}
+	userID, err = uuid.Parse(rawUserID)
+	if err != nil {
+		return uuid.Nil, uuid.Nil, uuid.Nil, authorizationapp.ErrInvalidResourceInput
+	}
+	if rawRoleID == "" {
+		return resourceID, userID, uuid.Nil, nil
+	}
+	roleID, err = uuid.Parse(rawRoleID)
+	if err != nil {
+		return uuid.Nil, uuid.Nil, uuid.Nil, authorizationapp.ErrInvalidResourceInput
+	}
+	return resourceID, userID, roleID, nil
+}
+
+func mapResourceType(resourceType string) openapi.ResourceMemberResourceType {
+	switch resourceType {
+	case authorizationdomain.ResourceTypeProject:
+		return openapi.ResourceMemberResourceTypeProject
+	default:
+		return openapi.ResourceMemberResourceTypeDataset
+	}
 }
 
 func requireAnyPermission(ctx context.Context, permissions ...string) (*accessapp.Claims, error) {

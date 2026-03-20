@@ -110,10 +110,38 @@ func encodeCreateDatasetResponse(response *Dataset, w http.ResponseWriter, span 
 	return nil
 }
 
+func encodeCreateDatasetMemberResponse(response *ResourceMember, w http.ResponseWriter, span trace.Span) error {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(200)
+	span.SetStatus(codes.Ok, http.StatusText(200))
+
+	e := new(jx.Encoder)
+	response.Encode(e)
+	if _, err := e.WriteTo(w); err != nil {
+		return errors.Wrap(err, "write")
+	}
+
+	return nil
+}
+
 func encodeCreateProjectResponse(response *Project, w http.ResponseWriter, span trace.Span) error {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(201)
 	span.SetStatus(codes.Ok, http.StatusText(201))
+
+	e := new(jx.Encoder)
+	response.Encode(e)
+	if _, err := e.WriteTo(w); err != nil {
+		return errors.Wrap(err, "write")
+	}
+
+	return nil
+}
+
+func encodeCreateProjectMemberResponse(response *ResourceMember, w http.ResponseWriter, span trace.Span) error {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(200)
+	span.SetStatus(codes.Ok, http.StatusText(200))
 
 	e := new(jx.Encoder)
 	response.Encode(e)
@@ -209,6 +237,13 @@ func encodeDeleteDatasetResponse(response DeleteDatasetRes, w http.ResponseWrite
 	}
 }
 
+func encodeDeleteDatasetMemberResponse(response *DeleteDatasetMemberNoContent, w http.ResponseWriter, span trace.Span) error {
+	w.WriteHeader(204)
+	span.SetStatus(codes.Ok, http.StatusText(204))
+
+	return nil
+}
+
 func encodeDeleteDatasetSampleResponse(response DeleteDatasetSampleRes, w http.ResponseWriter, span trace.Span) error {
 	switch response := response.(type) {
 	case *DeleteDatasetSampleNoContent:
@@ -246,6 +281,13 @@ func encodeDeleteDatasetSampleResponse(response DeleteDatasetSampleRes, w http.R
 	default:
 		return errors.Errorf("unexpected response type: %T", response)
 	}
+}
+
+func encodeDeleteProjectMemberResponse(response *DeleteProjectMemberNoContent, w http.ResponseWriter, span trace.Span) error {
+	w.WriteHeader(204)
+	span.SetStatus(codes.Ok, http.StatusText(204))
+
+	return nil
 }
 
 func encodeDeleteRoleResponse(response *DeleteRoleNoContent, w http.ResponseWriter, span trace.Span) error {
@@ -393,6 +435,20 @@ func encodeGetImportUploadSessionResponse(response *ImportUploadSession, w http.
 }
 
 func encodeGetProjectResponse(response *Project, w http.ResponseWriter, span trace.Span) error {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(200)
+	span.SetStatus(codes.Ok, http.StatusText(200))
+
+	e := new(jx.Encoder)
+	response.Encode(e)
+	if _, err := e.WriteTo(w); err != nil {
+		return errors.Wrap(err, "write")
+	}
+
+	return nil
+}
+
+func encodeGetResourcePermissionsResponse(response *ResourcePermissionsResponse, w http.ResponseWriter, span trace.Span) error {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(200)
 	span.SetStatus(codes.Ok, http.StatusText(200))
@@ -606,6 +662,60 @@ func encodeLinkProjectDatasetsResponse(response LinkProjectDatasetsRes, w http.R
 	}
 }
 
+func encodeListAvailableDatasetRolesResponse(response []ResourceRoleInfo, w http.ResponseWriter, span trace.Span) error {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(200)
+	span.SetStatus(codes.Ok, http.StatusText(200))
+
+	e := new(jx.Encoder)
+	e.ArrStart()
+	for _, elem := range response {
+		elem.Encode(e)
+	}
+	e.ArrEnd()
+	if _, err := e.WriteTo(w); err != nil {
+		return errors.Wrap(err, "write")
+	}
+
+	return nil
+}
+
+func encodeListAvailableProjectRolesResponse(response []ResourceRoleInfo, w http.ResponseWriter, span trace.Span) error {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(200)
+	span.SetStatus(codes.Ok, http.StatusText(200))
+
+	e := new(jx.Encoder)
+	e.ArrStart()
+	for _, elem := range response {
+		elem.Encode(e)
+	}
+	e.ArrEnd()
+	if _, err := e.WriteTo(w); err != nil {
+		return errors.Wrap(err, "write")
+	}
+
+	return nil
+}
+
+func encodeListDatasetMembersResponse(response []ResourceMember, w http.ResponseWriter, span trace.Span) error {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(200)
+	span.SetStatus(codes.Ok, http.StatusText(200))
+
+	e := new(jx.Encoder)
+	e.ArrStart()
+	for _, elem := range response {
+		elem.Encode(e)
+	}
+	e.ArrEnd()
+	if _, err := e.WriteTo(w); err != nil {
+		return errors.Wrap(err, "write")
+	}
+
+	return nil
+}
+
 func encodeListDatasetsResponse(response *DatasetListResponse, w http.ResponseWriter, span trace.Span) error {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(200)
@@ -710,6 +820,24 @@ func encodeListProjectDatasetsResponse(response ListProjectDatasetsRes, w http.R
 	default:
 		return errors.Errorf("unexpected response type: %T", response)
 	}
+}
+
+func encodeListProjectMembersResponse(response []ResourceMember, w http.ResponseWriter, span trace.Span) error {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(200)
+	span.SetStatus(codes.Ok, http.StatusText(200))
+
+	e := new(jx.Encoder)
+	e.ArrStart()
+	for _, elem := range response {
+		elem.Encode(e)
+	}
+	e.ArrEnd()
+	if _, err := e.WriteTo(w); err != nil {
+		return errors.Wrap(err, "write")
+	}
+
+	return nil
 }
 
 func encodeListProjectsResponse(response []Project, w http.ResponseWriter, span trace.Span) error {
@@ -1064,6 +1192,34 @@ func encodeUpdateDatasetResponse(response UpdateDatasetRes, w http.ResponseWrite
 	default:
 		return errors.Errorf("unexpected response type: %T", response)
 	}
+}
+
+func encodeUpdateDatasetMemberResponse(response *ResourceMember, w http.ResponseWriter, span trace.Span) error {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(200)
+	span.SetStatus(codes.Ok, http.StatusText(200))
+
+	e := new(jx.Encoder)
+	response.Encode(e)
+	if _, err := e.WriteTo(w); err != nil {
+		return errors.Wrap(err, "write")
+	}
+
+	return nil
+}
+
+func encodeUpdateProjectMemberResponse(response *ResourceMember, w http.ResponseWriter, span trace.Span) error {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(200)
+	span.SetStatus(codes.Ok, http.StatusText(200))
+
+	e := new(jx.Encoder)
+	response.Encode(e)
+	if _, err := e.WriteTo(w); err != nil {
+		return errors.Wrap(err, "write")
+	}
+
+	return nil
 }
 
 func encodeUpdateRoleResponse(response *RoleListItem, w http.ResponseWriter, span trace.Span) error {

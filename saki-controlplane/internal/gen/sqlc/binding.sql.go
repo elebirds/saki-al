@@ -58,8 +58,9 @@ func (q *Queries) ListAuthzSystemBindingsByPrincipal(ctx context.Context, princi
 const upsertAuthzSystemBinding = `-- name: UpsertAuthzSystemBinding :one
 insert into authz_system_binding (principal_id, role_id, system_name)
 values ($1, $2, $3)
-on conflict (system_name, principal_id, role_id) do update
-set updated_at = now()
+on conflict (system_name, principal_id) do update
+set role_id = excluded.role_id,
+    updated_at = now()
 returning id, principal_id, role_id, system_name, created_at, updated_at
 `
 

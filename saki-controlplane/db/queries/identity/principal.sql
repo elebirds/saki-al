@@ -4,8 +4,8 @@ from iam_principal
 where id = sqlc.arg(id);
 
 -- name: CreateIamPrincipal :one
-insert into iam_principal (kind, display_name, status)
-values (sqlc.arg(kind), sqlc.arg(display_name), sqlc.arg(status))
+insert into iam_principal (kind, display_name)
+values (sqlc.arg(kind), sqlc.arg(display_name))
 returning id, kind, display_name, status, created_at, updated_at;
 
 -- name: ListIamPrincipalsByKind :many

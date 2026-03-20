@@ -7,8 +7,9 @@ order by created_at desc;
 -- name: UpsertAuthzSystemBinding :one
 insert into authz_system_binding (principal_id, role_id, system_name)
 values (sqlc.arg(principal_id), sqlc.arg(role_id), sqlc.arg(system_name))
-on conflict (system_name, principal_id, role_id) do update
-set updated_at = now()
+on conflict (system_name, principal_id) do update
+set role_id = excluded.role_id,
+    updated_at = now()
 returning id, principal_id, role_id, system_name, created_at, updated_at;
 
 -- name: DeleteAuthzSystemBinding :exec

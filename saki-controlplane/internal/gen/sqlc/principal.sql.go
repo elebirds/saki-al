@@ -12,19 +12,18 @@ import (
 )
 
 const createIamPrincipal = `-- name: CreateIamPrincipal :one
-insert into iam_principal (kind, display_name, status)
-values ($1, $2, $3)
+insert into iam_principal (kind, display_name)
+values ($1, $2)
 returning id, kind, display_name, status, created_at, updated_at
 `
 
 type CreateIamPrincipalParams struct {
-	Kind        string             `json:"kind"`
-	DisplayName string             `json:"display_name"`
-	Status      IamPrincipalStatus `json:"status"`
+	Kind        IamPrincipalKind `json:"kind"`
+	DisplayName string           `json:"display_name"`
 }
 
 func (q *Queries) CreateIamPrincipal(ctx context.Context, arg CreateIamPrincipalParams) (IamPrincipal, error) {
-	row := q.db.QueryRow(ctx, createIamPrincipal, arg.Kind, arg.DisplayName, arg.Status)
+	row := q.db.QueryRow(ctx, createIamPrincipal, arg.Kind, arg.DisplayName)
 	var i IamPrincipal
 	err := row.Scan(
 		&i.ID,
@@ -112,7 +111,7 @@ where kind = $1
 order by created_at desc
 `
 
-func (q *Queries) ListIamPrincipalsByKind(ctx context.Context, kind string) ([]IamPrincipal, error) {
+func (q *Queries) ListIamPrincipalsByKind(ctx context.Context, kind IamPrincipalKind) ([]IamPrincipal, error) {
 	rows, err := q.db.Query(ctx, listIamPrincipalsByKind, kind)
 	if err != nil {
 		return nil, err

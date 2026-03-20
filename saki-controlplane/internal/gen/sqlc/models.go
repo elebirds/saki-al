@@ -484,6 +484,49 @@ func (ns NullAssetUploadIntentState) Value() (driver.Value, error) {
 	return string(ns.AssetUploadIntentState), nil
 }
 
+type IamPrincipalKind string
+
+const (
+	IamPrincipalKindHumanUser       IamPrincipalKind = "human_user"
+	IamPrincipalKindAgent           IamPrincipalKind = "agent"
+	IamPrincipalKindInternalService IamPrincipalKind = "internal_service"
+)
+
+func (e *IamPrincipalKind) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = IamPrincipalKind(s)
+	case string:
+		*e = IamPrincipalKind(s)
+	default:
+		return fmt.Errorf("unsupported scan type for IamPrincipalKind: %T", src)
+	}
+	return nil
+}
+
+type NullIamPrincipalKind struct {
+	IamPrincipalKind IamPrincipalKind `json:"iam_principal_kind"`
+	Valid            bool             `json:"valid"` // Valid is true if IamPrincipalKind is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullIamPrincipalKind) Scan(value interface{}) error {
+	if value == nil {
+		ns.IamPrincipalKind, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.IamPrincipalKind.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullIamPrincipalKind) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.IamPrincipalKind), nil
+}
+
 type IamPrincipalStatus string
 
 const (
@@ -1008,7 +1051,7 @@ type IamPasswordCredential struct {
 
 type IamPrincipal struct {
 	ID          uuid.UUID          `json:"id"`
-	Kind        string             `json:"kind"`
+	Kind        IamPrincipalKind   `json:"kind"`
 	DisplayName string             `json:"display_name"`
 	Status      IamPrincipalStatus `json:"status"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`

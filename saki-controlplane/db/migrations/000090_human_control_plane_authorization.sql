@@ -25,7 +25,7 @@ create table authz_system_binding (
     system_name text not null,
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now(),
-    constraint authz_system_binding_unique unique (system_name, principal_id, role_id)
+    constraint authz_system_binding_unique unique (system_name, principal_id)
 );
 
 create index idx_authz_system_binding_principal on authz_system_binding (principal_id);

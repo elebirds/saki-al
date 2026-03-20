@@ -1,11 +1,12 @@
 -- +goose Up
+create type iam_principal_kind as enum ('human_user', 'agent', 'internal_service');
 create type iam_principal_status as enum ('active', 'disabled');
 
 create type iam_user_state as enum ('active', 'invited', 'disabled');
 
 create table iam_principal (
     id uuid primary key default gen_random_uuid(),
-    kind text not null,
+    kind iam_principal_kind not null,
     display_name text not null,
     status iam_principal_status not null default 'active',
     created_at timestamptz not null default now(),
@@ -20,11 +21,11 @@ create table iam_user (
     avatar_asset_id uuid references asset(id) on delete set null,
     state iam_user_state not null default 'active',
     created_at timestamptz not null default now(),
-    updated_at timestamptz not null default now(),
-    constraint iam_user_email_unique unique (email)
+    updated_at timestamptz not null default now()
 );
 
 create unique index idx_iam_user_username on iam_user (username) where username is not null;
+create unique index iam_user_email_unique on iam_user (lower(email));
 
 create table iam_password_credential (
     id uuid primary key default gen_random_uuid(),
@@ -61,8 +62,10 @@ drop index if exists idx_iam_refresh_session_principal;
 drop table if exists iam_refresh_session;
 drop index if exists idx_iam_password_credential_principal;
 drop table if exists iam_password_credential;
+drop index if exists iam_user_email_unique;
 drop index if exists idx_iam_user_username;
 drop table if exists iam_user;
 drop table if exists iam_principal;
 drop type if exists iam_user_state;
 drop type if exists iam_principal_status;
+drop type if exists iam_principal_kind;

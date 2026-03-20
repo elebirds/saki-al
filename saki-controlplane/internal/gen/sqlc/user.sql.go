@@ -13,18 +13,17 @@ import (
 )
 
 const createIamUser = `-- name: CreateIamUser :one
-insert into iam_user (principal_id, email, username, full_name, avatar_asset_id, state)
-values ($1, $2, $3, $4, $5, $6)
+insert into iam_user (principal_id, email, username, full_name, avatar_asset_id)
+values ($1, $2, $3, $4, $5)
 returning principal_id, email, username, full_name, avatar_asset_id, state, created_at, updated_at
 `
 
 type CreateIamUserParams struct {
-	PrincipalID   uuid.UUID    `json:"principal_id"`
-	Email         string       `json:"email"`
-	Username      pgtype.Text  `json:"username"`
-	FullName      pgtype.Text  `json:"full_name"`
-	AvatarAssetID pgtype.UUID  `json:"avatar_asset_id"`
-	State         IamUserState `json:"state"`
+	PrincipalID   uuid.UUID   `json:"principal_id"`
+	Email         string      `json:"email"`
+	Username      pgtype.Text `json:"username"`
+	FullName      pgtype.Text `json:"full_name"`
+	AvatarAssetID pgtype.UUID `json:"avatar_asset_id"`
 }
 
 func (q *Queries) CreateIamUser(ctx context.Context, arg CreateIamUserParams) (IamUser, error) {
@@ -34,7 +33,6 @@ func (q *Queries) CreateIamUser(ctx context.Context, arg CreateIamUserParams) (I
 		arg.Username,
 		arg.FullName,
 		arg.AvatarAssetID,
-		arg.State,
 	)
 	var i IamUser
 	err := row.Scan(

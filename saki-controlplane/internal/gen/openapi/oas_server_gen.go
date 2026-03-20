@@ -84,10 +84,18 @@ type Handler interface {
 	//
 	// GET /projects/{project_id}
 	GetProject(ctx context.Context, params GetProjectParams) (*Project, error)
+	// GetRolePermissionCatalog implements getRolePermissionCatalog operation.
+	//
+	// GET /roles/permission-catalog
+	GetRolePermissionCatalog(ctx context.Context) (*PermissionCatalogResponse, error)
 	// GetRuntimeSummary implements getRuntimeSummary operation.
 	//
 	// GET /runtime/summary
 	GetRuntimeSummary(ctx context.Context) (*RuntimeSummaryResponse, error)
+	// GetSystemPermissions implements getSystemPermissions operation.
+	//
+	// GET /permissions/system
+	GetSystemPermissions(ctx context.Context) (*SystemPermissionsResponse, error)
 	// GetSystemSettings implements getSystemSettings operation.
 	//
 	// GET /system/settings
@@ -132,6 +140,10 @@ type Handler interface {
 	//
 	// GET /projects
 	ListProjects(ctx context.Context) ([]Project, error)
+	// ListRoles implements listRoles operation.
+	//
+	// GET /roles
+	ListRoles(ctx context.Context, params ListRolesParams) (*RoleListResponse, error)
 	// ListRuntimeAgents implements listRuntimeAgents operation.
 	//
 	// GET /runtime/agents
@@ -140,6 +152,18 @@ type Handler interface {
 	//
 	// GET /projects/{project_id}/samples/{sample_id}/annotations
 	ListSampleAnnotations(ctx context.Context, params ListSampleAnnotationsParams) ([]Annotation, error)
+	// ListUserSystemRoles implements listUserSystemRoles operation.
+	//
+	// GET /users/{user_id}/system-roles
+	ListUserSystemRoles(ctx context.Context, params ListUserSystemRolesParams) ([]UserSystemRoleBinding, error)
+	// ListUserSystemRolesLegacy implements listUserSystemRolesLegacy operation.
+	//
+	// GET /roles/users/{user_id}/roles
+	ListUserSystemRolesLegacy(ctx context.Context, params ListUserSystemRolesLegacyParams) ([]UserSystemRoleBinding, error)
+	// ListUsers implements listUsers operation.
+	//
+	// GET /users
+	ListUsers(ctx context.Context, params ListUsersParams) (*UserListResponse, error)
 	// Login implements login operation.
 	//
 	// POST /auth/login

@@ -155,14 +155,34 @@ func ensureSuperAdminRole(ctx context.Context, q *sqlcdb.Queries) (uuid.UUID, er
 	case err == nil:
 	case errors.Is(err, pgx.ErrNoRows):
 		role, err = q.CreateAuthzRole(ctx, sqlcdb.CreateAuthzRoleParams{
+			ScopeKind:   string(authorizationdomain.RoleScopeSystem),
 			Name:        systemapp.BuiltinRoleSuperAdmin,
 			DisplayName: "Super Admin",
 			Description: textValue("Builtin bootstrap role with full control over the human control plane."),
+			BuiltIn:     true,
+			Mutable:     false,
+			Color:       "red",
+			IsSupremo:   true,
+			SortOrder:   0,
 		})
 		if err != nil {
 			return uuid.UUID{}, err
 		}
 	default:
+		return uuid.UUID{}, err
+	}
+	role, err = q.UpdateAuthzRoleMetadata(ctx, sqlcdb.UpdateAuthzRoleMetadataParams{
+		ID:          role.ID,
+		ScopeKind:   string(authorizationdomain.RoleScopeSystem),
+		DisplayName: "Super Admin",
+		Description: textValue("Builtin bootstrap role with full control over the human control plane."),
+		BuiltIn:     true,
+		Mutable:     false,
+		Color:       "red",
+		IsSupremo:   true,
+		SortOrder:   0,
+	})
+	if err != nil {
 		return uuid.UUID{}, err
 	}
 

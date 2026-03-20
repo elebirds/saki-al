@@ -2,12 +2,15 @@ package apihttp
 
 import (
 	"context"
+	"slices"
 
 	authctx "github.com/elebirds/saki/saki-controlplane/internal/app/auth"
 	openapi "github.com/elebirds/saki/saki-controlplane/internal/gen/openapi"
 	accessapp "github.com/elebirds/saki/saki-controlplane/internal/modules/access/app"
+	authorizationdomain "github.com/elebirds/saki/saki-controlplane/internal/modules/authorization/domain"
 	identityapp "github.com/elebirds/saki/saki-controlplane/internal/modules/identity/app"
 	"github.com/google/uuid"
+	ogenhttp "github.com/ogen-go/ogen/http"
 )
 
 type LoginExecutor interface {
@@ -34,6 +37,10 @@ type CurrentUserExecutor interface {
 	Execute(ctx context.Context, principalID uuid.UUID, permissions []string) (*identityapp.CurrentUser, error)
 }
 
+type ListUsersExecutor interface {
+	Execute(ctx context.Context, input identityapp.ListUsersInput) (*identityapp.ListUsersResult, error)
+}
+
 type HandlersDeps struct {
 	Login          LoginExecutor
 	Refresh        RefreshExecutor
@@ -41,6 +48,7 @@ type HandlersDeps struct {
 	Register       RegisterExecutor
 	ChangePassword ChangePasswordExecutor
 	CurrentUser    CurrentUserExecutor
+	ListUsers      ListUsersExecutor
 }
 
 type Handlers struct {
@@ -50,6 +58,7 @@ type Handlers struct {
 	register       RegisterExecutor
 	changePassword ChangePasswordExecutor
 	currentUser    CurrentUserExecutor
+	listUsers      ListUsersExecutor
 }
 
 func NewHandlers(deps HandlersDeps) *Handlers {
@@ -60,6 +69,7 @@ func NewHandlers(deps HandlersDeps) *Handlers {
 		register:       deps.Register,
 		changePassword: deps.ChangePassword,
 		currentUser:    deps.CurrentUser,
+		listUsers:      deps.ListUsers,
 	}
 }
 
@@ -145,11 +155,65 @@ func (h *Handlers) GetCurrentUser(ctx context.Context) (*openapi.CurrentUserResp
 			FullName:    currentUser.User.FullName,
 		},
 		SystemRoles:        append([]string(nil), currentUser.SystemRoles...),
-		Permissions:        append([]string(nil), currentUser.Permissions...),
+		Permissions:        authorizationdomain.ExpandedPermissionsForTransport(currentUser.Permissions),
 		MustChangePassword: currentUser.MustChangePassword,
 	}
 	response.UserID.SetTo(currentUser.User.Email)
 	return response, nil
+}
+
+func (h *Handlers) ListUsers(ctx context.Context, params openapi.ListUsersParams) (*openapi.UserListResponse, error) {
+	if h == nil || h.listUsers == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	if _, err := requireAnyPermission(ctx, "users:read", "user:read", "user:read:all"); err != nil {
+		return nil, err
+	}
+
+	page, _ := params.Page.Get()
+	limit, _ := params.Limit.Get()
+	result, err := h.listUsers.Execute(ctx, identityapp.ListUsersInput{
+		Page:  int(page),
+		Limit: int(limit),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]openapi.UserListItem, 0, len(result.Items))
+	for _, item := range result.Items {
+		openapiItem := openapi.UserListItem{
+			ID:                 item.ID,
+			Email:              item.Email,
+			IsActive:           item.IsActive,
+			MustChangePassword: item.MustChangePassword,
+			CreatedAt:          item.CreatedAt,
+			UpdatedAt:          item.UpdatedAt,
+			Roles:              make([]openapi.UserRoleInfo, 0, len(item.Roles)),
+		}
+		if item.FullName != "" {
+			openapiItem.FullName.SetTo(item.FullName)
+		}
+		for _, role := range item.Roles {
+			openapiItem.Roles = append(openapiItem.Roles, openapi.UserRoleInfo{
+				ID:          role.ID,
+				Name:        role.Name,
+				DisplayName: role.DisplayName,
+				Color:       role.Color,
+				IsSupremo:   role.IsSupremo,
+			})
+		}
+		items = append(items, openapiItem)
+	}
+
+	return &openapi.UserListResponse{
+		Items:   items,
+		Total:   int32(result.Total),
+		Offset:  int32(result.Offset),
+		Limit:   int32(result.Limit),
+		Size:    int32(result.Size),
+		HasMore: result.HasMore,
+	}, nil
 }
 
 func mapAuthSession(session *identityapp.AuthSession) *openapi.AuthSessionResponse {
@@ -158,7 +222,7 @@ func mapAuthSession(session *identityapp.AuthSession) *openapi.AuthSessionRespon
 		RefreshToken:       session.RefreshToken,
 		ExpiresIn:          session.ExpiresIn,
 		MustChangePassword: session.MustChangePassword,
-		Permissions:        append([]string{}, session.Permissions...),
+		Permissions:        authorizationdomain.ExpandedPermissionsForTransport(session.Permissions),
 		User: openapi.AuthSessionUser{
 			PrincipalID: session.User.PrincipalID.String(),
 			Email:       session.User.Email,
@@ -170,4 +234,17 @@ func mapAuthSession(session *identityapp.AuthSession) *openapi.AuthSessionRespon
 	response.Token.SetTo(session.AccessToken)
 	response.UserID.SetTo(session.User.Email)
 	return response
+}
+
+func requireAnyPermission(ctx context.Context, permissions ...string) (*accessapp.Claims, error) {
+	claims, ok := authctx.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, accessapp.ErrUnauthorized
+	}
+	for _, permission := range permissions {
+		if slices.Contains(claims.Permissions, permission) {
+			return claims, nil
+		}
+	}
+	return nil, accessapp.ErrForbidden
 }

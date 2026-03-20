@@ -9,6 +9,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const deleteAuthzSystemBinding = `-- name: DeleteAuthzSystemBinding :exec
@@ -44,6 +45,68 @@ func (q *Queries) ListAuthzSystemBindingsByPrincipal(ctx context.Context, princi
 			&i.SystemName,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAuthzSystemRoleBindingsByPrincipal = `-- name: ListAuthzSystemRoleBindingsByPrincipal :many
+select
+    b.id,
+    b.principal_id,
+    b.role_id,
+    b.system_name,
+    b.created_at,
+    b.updated_at,
+    r.name as role_name,
+    r.display_name as role_display_name,
+    r.color as role_color,
+    r.is_supremo as role_is_supremo
+from authz_system_binding b
+join authz_role r on r.id = b.role_id
+where b.principal_id = $1
+order by r.sort_order, r.name, b.id
+`
+
+type ListAuthzSystemRoleBindingsByPrincipalRow struct {
+	ID              uuid.UUID          `json:"id"`
+	PrincipalID     uuid.UUID          `json:"principal_id"`
+	RoleID          uuid.UUID          `json:"role_id"`
+	SystemName      string             `json:"system_name"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+	RoleName        string             `json:"role_name"`
+	RoleDisplayName string             `json:"role_display_name"`
+	RoleColor       string             `json:"role_color"`
+	RoleIsSupremo   bool               `json:"role_is_supremo"`
+}
+
+func (q *Queries) ListAuthzSystemRoleBindingsByPrincipal(ctx context.Context, principalID uuid.UUID) ([]ListAuthzSystemRoleBindingsByPrincipalRow, error) {
+	rows, err := q.db.Query(ctx, listAuthzSystemRoleBindingsByPrincipal, principalID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAuthzSystemRoleBindingsByPrincipalRow
+	for rows.Next() {
+		var i ListAuthzSystemRoleBindingsByPrincipalRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.PrincipalID,
+			&i.RoleID,
+			&i.SystemName,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.RoleName,
+			&i.RoleDisplayName,
+			&i.RoleColor,
+			&i.RoleIsSupremo,
 		); err != nil {
 			return nil, err
 		}

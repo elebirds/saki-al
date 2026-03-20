@@ -8,29 +8,102 @@ package sqlcdb
 import (
 	"context"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countAuthzRoles = `-- name: CountAuthzRoles :one
+select count(*)
+from authz_role
+where $1::text = ''
+   or scope_kind = $1
+`
+
+func (q *Queries) CountAuthzRoles(ctx context.Context, scopeKind string) (int64, error) {
+	row := q.db.QueryRow(ctx, countAuthzRoles, scopeKind)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createAuthzRole = `-- name: CreateAuthzRole :one
-insert into authz_role (name, display_name, description)
-values ($1, $2, $3)
-returning id, name, display_name, description, created_at, updated_at
+insert into authz_role (scope_kind, name, display_name, description, built_in, mutable, color, is_supremo, sort_order)
+values (
+    $1,
+    $2,
+    $3,
+    $4,
+    $5,
+    $6,
+    $7,
+    $8,
+    $9
+)
+returning id, scope_kind, name, display_name, description, built_in, mutable, color, is_supremo, sort_order, created_at, updated_at
 `
 
 type CreateAuthzRoleParams struct {
+	ScopeKind   string      `json:"scope_kind"`
 	Name        string      `json:"name"`
 	DisplayName string      `json:"display_name"`
 	Description pgtype.Text `json:"description"`
+	BuiltIn     bool        `json:"built_in"`
+	Mutable     bool        `json:"mutable"`
+	Color       string      `json:"color"`
+	IsSupremo   bool        `json:"is_supremo"`
+	SortOrder   int32       `json:"sort_order"`
 }
 
 func (q *Queries) CreateAuthzRole(ctx context.Context, arg CreateAuthzRoleParams) (AuthzRole, error) {
-	row := q.db.QueryRow(ctx, createAuthzRole, arg.Name, arg.DisplayName, arg.Description)
+	row := q.db.QueryRow(ctx, createAuthzRole,
+		arg.ScopeKind,
+		arg.Name,
+		arg.DisplayName,
+		arg.Description,
+		arg.BuiltIn,
+		arg.Mutable,
+		arg.Color,
+		arg.IsSupremo,
+		arg.SortOrder,
+	)
 	var i AuthzRole
 	err := row.Scan(
 		&i.ID,
+		&i.ScopeKind,
 		&i.Name,
 		&i.DisplayName,
 		&i.Description,
+		&i.BuiltIn,
+		&i.Mutable,
+		&i.Color,
+		&i.IsSupremo,
+		&i.SortOrder,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getAuthzRoleByID = `-- name: GetAuthzRoleByID :one
+select id, scope_kind, name, display_name, description, built_in, mutable, color, is_supremo, sort_order, created_at, updated_at
+from authz_role
+where id = $1
+`
+
+func (q *Queries) GetAuthzRoleByID(ctx context.Context, id uuid.UUID) (AuthzRole, error) {
+	row := q.db.QueryRow(ctx, getAuthzRoleByID, id)
+	var i AuthzRole
+	err := row.Scan(
+		&i.ID,
+		&i.ScopeKind,
+		&i.Name,
+		&i.DisplayName,
+		&i.Description,
+		&i.BuiltIn,
+		&i.Mutable,
+		&i.Color,
+		&i.IsSupremo,
+		&i.SortOrder,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -38,7 +111,7 @@ func (q *Queries) CreateAuthzRole(ctx context.Context, arg CreateAuthzRoleParams
 }
 
 const getAuthzRoleByName = `-- name: GetAuthzRoleByName :one
-select id, name, display_name, description, created_at, updated_at
+select id, scope_kind, name, display_name, description, built_in, mutable, color, is_supremo, sort_order, created_at, updated_at
 from authz_role
 where name = $1
 `
@@ -48,9 +121,15 @@ func (q *Queries) GetAuthzRoleByName(ctx context.Context, name string) (AuthzRol
 	var i AuthzRole
 	err := row.Scan(
 		&i.ID,
+		&i.ScopeKind,
 		&i.Name,
 		&i.DisplayName,
 		&i.Description,
+		&i.BuiltIn,
+		&i.Mutable,
+		&i.Color,
+		&i.IsSupremo,
+		&i.SortOrder,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -58,13 +137,23 @@ func (q *Queries) GetAuthzRoleByName(ctx context.Context, name string) (AuthzRol
 }
 
 const listAuthzRoles = `-- name: ListAuthzRoles :many
-select id, name, display_name, description, created_at, updated_at
+select id, scope_kind, name, display_name, description, built_in, mutable, color, is_supremo, sort_order, created_at, updated_at
 from authz_role
-order by name
+where $1::text = ''
+   or scope_kind = $1
+order by scope_kind, sort_order, name, id
+limit $3
+offset $2
 `
 
-func (q *Queries) ListAuthzRoles(ctx context.Context) ([]AuthzRole, error) {
-	rows, err := q.db.Query(ctx, listAuthzRoles)
+type ListAuthzRolesParams struct {
+	ScopeKind   string `json:"scope_kind"`
+	OffsetCount int32  `json:"offset_count"`
+	LimitCount  int32  `json:"limit_count"`
+}
+
+func (q *Queries) ListAuthzRoles(ctx context.Context, arg ListAuthzRolesParams) ([]AuthzRole, error) {
+	rows, err := q.db.Query(ctx, listAuthzRoles, arg.ScopeKind, arg.OffsetCount, arg.LimitCount)
 	if err != nil {
 		return nil, err
 	}
@@ -74,9 +163,15 @@ func (q *Queries) ListAuthzRoles(ctx context.Context) ([]AuthzRole, error) {
 		var i AuthzRole
 		if err := rows.Scan(
 			&i.ID,
+			&i.ScopeKind,
 			&i.Name,
 			&i.DisplayName,
 			&i.Description,
+			&i.BuiltIn,
+			&i.Mutable,
+			&i.Color,
+			&i.IsSupremo,
+			&i.SortOrder,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -88,4 +183,61 @@ func (q *Queries) ListAuthzRoles(ctx context.Context) ([]AuthzRole, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateAuthzRoleMetadata = `-- name: UpdateAuthzRoleMetadata :one
+update authz_role
+set scope_kind = $1,
+    display_name = $2,
+    description = $3,
+    built_in = $4,
+    mutable = $5,
+    color = $6,
+    is_supremo = $7,
+    sort_order = $8,
+    updated_at = now()
+where id = $9
+returning id, scope_kind, name, display_name, description, built_in, mutable, color, is_supremo, sort_order, created_at, updated_at
+`
+
+type UpdateAuthzRoleMetadataParams struct {
+	ScopeKind   string      `json:"scope_kind"`
+	DisplayName string      `json:"display_name"`
+	Description pgtype.Text `json:"description"`
+	BuiltIn     bool        `json:"built_in"`
+	Mutable     bool        `json:"mutable"`
+	Color       string      `json:"color"`
+	IsSupremo   bool        `json:"is_supremo"`
+	SortOrder   int32       `json:"sort_order"`
+	ID          uuid.UUID   `json:"id"`
+}
+
+func (q *Queries) UpdateAuthzRoleMetadata(ctx context.Context, arg UpdateAuthzRoleMetadataParams) (AuthzRole, error) {
+	row := q.db.QueryRow(ctx, updateAuthzRoleMetadata,
+		arg.ScopeKind,
+		arg.DisplayName,
+		arg.Description,
+		arg.BuiltIn,
+		arg.Mutable,
+		arg.Color,
+		arg.IsSupremo,
+		arg.SortOrder,
+		arg.ID,
+	)
+	var i AuthzRole
+	err := row.Scan(
+		&i.ID,
+		&i.ScopeKind,
+		&i.Name,
+		&i.DisplayName,
+		&i.Description,
+		&i.BuiltIn,
+		&i.Mutable,
+		&i.Color,
+		&i.IsSupremo,
+		&i.SortOrder,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

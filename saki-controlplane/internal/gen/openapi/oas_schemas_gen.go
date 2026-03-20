@@ -2270,6 +2270,47 @@ type ListProjectDatasetsOKApplicationJSON []string
 
 func (*ListProjectDatasetsOKApplicationJSON) listProjectDatasetsRes() {}
 
+type ListRolesType string
+
+const (
+	ListRolesTypeSystem   ListRolesType = "system"
+	ListRolesTypeResource ListRolesType = "resource"
+)
+
+// AllValues returns all ListRolesType values.
+func (ListRolesType) AllValues() []ListRolesType {
+	return []ListRolesType{
+		ListRolesTypeSystem,
+		ListRolesTypeResource,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s ListRolesType) MarshalText() ([]byte, error) {
+	switch s {
+	case ListRolesTypeSystem:
+		return []byte(s), nil
+	case ListRolesTypeResource:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *ListRolesType) UnmarshalText(data []byte) error {
+	switch ListRolesType(data) {
+	case ListRolesTypeSystem:
+		*s = ListRolesTypeSystem
+		return nil
+	case ListRolesTypeResource:
+		*s = ListRolesTypeResource
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
 // LogoutAuthSessionNoContent is response for LogoutAuthSession operation.
 type LogoutAuthSessionNoContent struct{}
 
@@ -2595,6 +2636,52 @@ func (o OptInt64) Or(d int64) int64 {
 	return d
 }
 
+// NewOptListRolesType returns new OptListRolesType with value set to v.
+func NewOptListRolesType(v ListRolesType) OptListRolesType {
+	return OptListRolesType{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptListRolesType is optional ListRolesType.
+type OptListRolesType struct {
+	Value ListRolesType
+	Set   bool
+}
+
+// IsSet returns true if OptListRolesType was set.
+func (o OptListRolesType) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptListRolesType) Reset() {
+	var v ListRolesType
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptListRolesType) SetTo(v ListRolesType) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptListRolesType) Get() (v ListRolesType, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptListRolesType) Or(d ListRolesType) ListRolesType {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptNilInt32 returns new OptNilInt32 with value set to v.
 func NewOptNilInt32(v int32) OptNilInt32 {
 	return OptNilInt32{
@@ -2859,6 +2946,43 @@ func (o OptSystemSettingUI) Or(d SystemSettingUI) SystemSettingUI {
 	return d
 }
 
+// Ref: #/components/schemas/PermissionCatalogResponse
+type PermissionCatalogResponse struct {
+	AllPermissions      []string `json:"all_permissions"`
+	SystemPermissions   []string `json:"system_permissions"`
+	ResourcePermissions []string `json:"resource_permissions"`
+}
+
+// GetAllPermissions returns the value of AllPermissions.
+func (s *PermissionCatalogResponse) GetAllPermissions() []string {
+	return s.AllPermissions
+}
+
+// GetSystemPermissions returns the value of SystemPermissions.
+func (s *PermissionCatalogResponse) GetSystemPermissions() []string {
+	return s.SystemPermissions
+}
+
+// GetResourcePermissions returns the value of ResourcePermissions.
+func (s *PermissionCatalogResponse) GetResourcePermissions() []string {
+	return s.ResourcePermissions
+}
+
+// SetAllPermissions sets the value of AllPermissions.
+func (s *PermissionCatalogResponse) SetAllPermissions(val []string) {
+	s.AllPermissions = val
+}
+
+// SetSystemPermissions sets the value of SystemPermissions.
+func (s *PermissionCatalogResponse) SetSystemPermissions(val []string) {
+	s.SystemPermissions = val
+}
+
+// SetResourcePermissions sets the value of ResourcePermissions.
+func (s *PermissionCatalogResponse) SetResourcePermissions(val []string) {
+	s.ResourcePermissions = val
+}
+
 // Ref: #/components/schemas/PrepareProjectAnnotationImportRequest
 type PrepareProjectAnnotationImportRequest struct {
 	UploadSessionID string    `json:"upload_session_id"`
@@ -3021,6 +3145,249 @@ func (s *ProjectDatasetLinkRequest) SetDatasetIds(val []string) {
 // RequirePermissionNoContent is response for RequirePermission operation.
 type RequirePermissionNoContent struct{}
 
+// Ref: #/components/schemas/RoleListItem
+type RoleListItem struct {
+	ID          string                `json:"id"`
+	Name        string                `json:"name"`
+	DisplayName string                `json:"display_name"`
+	Description OptString             `json:"description"`
+	Type        string                `json:"type"`
+	BuiltIn     bool                  `json:"built_in"`
+	Mutable     bool                  `json:"mutable"`
+	Color       string                `json:"color"`
+	IsSupremo   bool                  `json:"is_supremo"`
+	SortOrder   int32                 `json:"sort_order"`
+	IsSystem    bool                  `json:"is_system"`
+	Permissions []RolePermissionEntry `json:"permissions"`
+	CreatedAt   time.Time             `json:"created_at"`
+	UpdatedAt   time.Time             `json:"updated_at"`
+}
+
+// GetID returns the value of ID.
+func (s *RoleListItem) GetID() string {
+	return s.ID
+}
+
+// GetName returns the value of Name.
+func (s *RoleListItem) GetName() string {
+	return s.Name
+}
+
+// GetDisplayName returns the value of DisplayName.
+func (s *RoleListItem) GetDisplayName() string {
+	return s.DisplayName
+}
+
+// GetDescription returns the value of Description.
+func (s *RoleListItem) GetDescription() OptString {
+	return s.Description
+}
+
+// GetType returns the value of Type.
+func (s *RoleListItem) GetType() string {
+	return s.Type
+}
+
+// GetBuiltIn returns the value of BuiltIn.
+func (s *RoleListItem) GetBuiltIn() bool {
+	return s.BuiltIn
+}
+
+// GetMutable returns the value of Mutable.
+func (s *RoleListItem) GetMutable() bool {
+	return s.Mutable
+}
+
+// GetColor returns the value of Color.
+func (s *RoleListItem) GetColor() string {
+	return s.Color
+}
+
+// GetIsSupremo returns the value of IsSupremo.
+func (s *RoleListItem) GetIsSupremo() bool {
+	return s.IsSupremo
+}
+
+// GetSortOrder returns the value of SortOrder.
+func (s *RoleListItem) GetSortOrder() int32 {
+	return s.SortOrder
+}
+
+// GetIsSystem returns the value of IsSystem.
+func (s *RoleListItem) GetIsSystem() bool {
+	return s.IsSystem
+}
+
+// GetPermissions returns the value of Permissions.
+func (s *RoleListItem) GetPermissions() []RolePermissionEntry {
+	return s.Permissions
+}
+
+// GetCreatedAt returns the value of CreatedAt.
+func (s *RoleListItem) GetCreatedAt() time.Time {
+	return s.CreatedAt
+}
+
+// GetUpdatedAt returns the value of UpdatedAt.
+func (s *RoleListItem) GetUpdatedAt() time.Time {
+	return s.UpdatedAt
+}
+
+// SetID sets the value of ID.
+func (s *RoleListItem) SetID(val string) {
+	s.ID = val
+}
+
+// SetName sets the value of Name.
+func (s *RoleListItem) SetName(val string) {
+	s.Name = val
+}
+
+// SetDisplayName sets the value of DisplayName.
+func (s *RoleListItem) SetDisplayName(val string) {
+	s.DisplayName = val
+}
+
+// SetDescription sets the value of Description.
+func (s *RoleListItem) SetDescription(val OptString) {
+	s.Description = val
+}
+
+// SetType sets the value of Type.
+func (s *RoleListItem) SetType(val string) {
+	s.Type = val
+}
+
+// SetBuiltIn sets the value of BuiltIn.
+func (s *RoleListItem) SetBuiltIn(val bool) {
+	s.BuiltIn = val
+}
+
+// SetMutable sets the value of Mutable.
+func (s *RoleListItem) SetMutable(val bool) {
+	s.Mutable = val
+}
+
+// SetColor sets the value of Color.
+func (s *RoleListItem) SetColor(val string) {
+	s.Color = val
+}
+
+// SetIsSupremo sets the value of IsSupremo.
+func (s *RoleListItem) SetIsSupremo(val bool) {
+	s.IsSupremo = val
+}
+
+// SetSortOrder sets the value of SortOrder.
+func (s *RoleListItem) SetSortOrder(val int32) {
+	s.SortOrder = val
+}
+
+// SetIsSystem sets the value of IsSystem.
+func (s *RoleListItem) SetIsSystem(val bool) {
+	s.IsSystem = val
+}
+
+// SetPermissions sets the value of Permissions.
+func (s *RoleListItem) SetPermissions(val []RolePermissionEntry) {
+	s.Permissions = val
+}
+
+// SetCreatedAt sets the value of CreatedAt.
+func (s *RoleListItem) SetCreatedAt(val time.Time) {
+	s.CreatedAt = val
+}
+
+// SetUpdatedAt sets the value of UpdatedAt.
+func (s *RoleListItem) SetUpdatedAt(val time.Time) {
+	s.UpdatedAt = val
+}
+
+// Ref: #/components/schemas/RoleListResponse
+type RoleListResponse struct {
+	Items   []RoleListItem `json:"items"`
+	Total   int32          `json:"total"`
+	Offset  int32          `json:"offset"`
+	Limit   int32          `json:"limit"`
+	Size    int32          `json:"size"`
+	HasMore bool           `json:"has_more"`
+}
+
+// GetItems returns the value of Items.
+func (s *RoleListResponse) GetItems() []RoleListItem {
+	return s.Items
+}
+
+// GetTotal returns the value of Total.
+func (s *RoleListResponse) GetTotal() int32 {
+	return s.Total
+}
+
+// GetOffset returns the value of Offset.
+func (s *RoleListResponse) GetOffset() int32 {
+	return s.Offset
+}
+
+// GetLimit returns the value of Limit.
+func (s *RoleListResponse) GetLimit() int32 {
+	return s.Limit
+}
+
+// GetSize returns the value of Size.
+func (s *RoleListResponse) GetSize() int32 {
+	return s.Size
+}
+
+// GetHasMore returns the value of HasMore.
+func (s *RoleListResponse) GetHasMore() bool {
+	return s.HasMore
+}
+
+// SetItems sets the value of Items.
+func (s *RoleListResponse) SetItems(val []RoleListItem) {
+	s.Items = val
+}
+
+// SetTotal sets the value of Total.
+func (s *RoleListResponse) SetTotal(val int32) {
+	s.Total = val
+}
+
+// SetOffset sets the value of Offset.
+func (s *RoleListResponse) SetOffset(val int32) {
+	s.Offset = val
+}
+
+// SetLimit sets the value of Limit.
+func (s *RoleListResponse) SetLimit(val int32) {
+	s.Limit = val
+}
+
+// SetSize sets the value of Size.
+func (s *RoleListResponse) SetSize(val int32) {
+	s.Size = val
+}
+
+// SetHasMore sets the value of HasMore.
+func (s *RoleListResponse) SetHasMore(val bool) {
+	s.HasMore = val
+}
+
+// Ref: #/components/schemas/RolePermissionEntry
+type RolePermissionEntry struct {
+	Permission string `json:"permission"`
+}
+
+// GetPermission returns the value of Permission.
+func (s *RolePermissionEntry) GetPermission() string {
+	return s.Permission
+}
+
+// SetPermission sets the value of Permission.
+func (s *RolePermissionEntry) SetPermission(val string) {
+	s.Permission = val
+}
+
 // Ref: #/components/schemas/RuntimeAgent
 type RuntimeAgent struct {
 	ID         string    `json:"id"`
@@ -3108,6 +3475,54 @@ func (s *RuntimeSummaryResponse) SetRunningTasks(val int32) {
 // SetLeaderEpoch sets the value of LeaderEpoch.
 func (s *RuntimeSummaryResponse) SetLeaderEpoch(val int64) {
 	s.LeaderEpoch = val
+}
+
+// Ref: #/components/schemas/SystemPermissionsResponse
+type SystemPermissionsResponse struct {
+	UserID       string         `json:"user_id"`
+	SystemRoles  []UserRoleInfo `json:"system_roles"`
+	Permissions  []string       `json:"permissions"`
+	IsSuperAdmin bool           `json:"is_super_admin"`
+}
+
+// GetUserID returns the value of UserID.
+func (s *SystemPermissionsResponse) GetUserID() string {
+	return s.UserID
+}
+
+// GetSystemRoles returns the value of SystemRoles.
+func (s *SystemPermissionsResponse) GetSystemRoles() []UserRoleInfo {
+	return s.SystemRoles
+}
+
+// GetPermissions returns the value of Permissions.
+func (s *SystemPermissionsResponse) GetPermissions() []string {
+	return s.Permissions
+}
+
+// GetIsSuperAdmin returns the value of IsSuperAdmin.
+func (s *SystemPermissionsResponse) GetIsSuperAdmin() bool {
+	return s.IsSuperAdmin
+}
+
+// SetUserID sets the value of UserID.
+func (s *SystemPermissionsResponse) SetUserID(val string) {
+	s.UserID = val
+}
+
+// SetSystemRoles sets the value of SystemRoles.
+func (s *SystemPermissionsResponse) SetSystemRoles(val []UserRoleInfo) {
+	s.SystemRoles = val
+}
+
+// SetPermissions sets the value of Permissions.
+func (s *SystemPermissionsResponse) SetPermissions(val []string) {
+	s.Permissions = val
+}
+
+// SetIsSuperAdmin sets the value of IsSuperAdmin.
+func (s *SystemPermissionsResponse) SetIsSuperAdmin(val bool) {
+	s.IsSuperAdmin = val
 }
 
 // Ref: #/components/schemas/SystemSettingConstraints
@@ -3759,4 +4174,295 @@ func (s *UpdateDatasetRequest) SetName(val string) {
 // SetType sets the value of Type.
 func (s *UpdateDatasetRequest) SetType(val string) {
 	s.Type = val
+}
+
+// Ref: #/components/schemas/UserListItem
+type UserListItem struct {
+	ID                 string         `json:"id"`
+	Email              string         `json:"email"`
+	FullName           OptString      `json:"full_name"`
+	IsActive           bool           `json:"is_active"`
+	MustChangePassword bool           `json:"must_change_password"`
+	CreatedAt          time.Time      `json:"created_at"`
+	UpdatedAt          time.Time      `json:"updated_at"`
+	Roles              []UserRoleInfo `json:"roles"`
+}
+
+// GetID returns the value of ID.
+func (s *UserListItem) GetID() string {
+	return s.ID
+}
+
+// GetEmail returns the value of Email.
+func (s *UserListItem) GetEmail() string {
+	return s.Email
+}
+
+// GetFullName returns the value of FullName.
+func (s *UserListItem) GetFullName() OptString {
+	return s.FullName
+}
+
+// GetIsActive returns the value of IsActive.
+func (s *UserListItem) GetIsActive() bool {
+	return s.IsActive
+}
+
+// GetMustChangePassword returns the value of MustChangePassword.
+func (s *UserListItem) GetMustChangePassword() bool {
+	return s.MustChangePassword
+}
+
+// GetCreatedAt returns the value of CreatedAt.
+func (s *UserListItem) GetCreatedAt() time.Time {
+	return s.CreatedAt
+}
+
+// GetUpdatedAt returns the value of UpdatedAt.
+func (s *UserListItem) GetUpdatedAt() time.Time {
+	return s.UpdatedAt
+}
+
+// GetRoles returns the value of Roles.
+func (s *UserListItem) GetRoles() []UserRoleInfo {
+	return s.Roles
+}
+
+// SetID sets the value of ID.
+func (s *UserListItem) SetID(val string) {
+	s.ID = val
+}
+
+// SetEmail sets the value of Email.
+func (s *UserListItem) SetEmail(val string) {
+	s.Email = val
+}
+
+// SetFullName sets the value of FullName.
+func (s *UserListItem) SetFullName(val OptString) {
+	s.FullName = val
+}
+
+// SetIsActive sets the value of IsActive.
+func (s *UserListItem) SetIsActive(val bool) {
+	s.IsActive = val
+}
+
+// SetMustChangePassword sets the value of MustChangePassword.
+func (s *UserListItem) SetMustChangePassword(val bool) {
+	s.MustChangePassword = val
+}
+
+// SetCreatedAt sets the value of CreatedAt.
+func (s *UserListItem) SetCreatedAt(val time.Time) {
+	s.CreatedAt = val
+}
+
+// SetUpdatedAt sets the value of UpdatedAt.
+func (s *UserListItem) SetUpdatedAt(val time.Time) {
+	s.UpdatedAt = val
+}
+
+// SetRoles sets the value of Roles.
+func (s *UserListItem) SetRoles(val []UserRoleInfo) {
+	s.Roles = val
+}
+
+// Ref: #/components/schemas/UserListResponse
+type UserListResponse struct {
+	Items   []UserListItem `json:"items"`
+	Total   int32          `json:"total"`
+	Offset  int32          `json:"offset"`
+	Limit   int32          `json:"limit"`
+	Size    int32          `json:"size"`
+	HasMore bool           `json:"has_more"`
+}
+
+// GetItems returns the value of Items.
+func (s *UserListResponse) GetItems() []UserListItem {
+	return s.Items
+}
+
+// GetTotal returns the value of Total.
+func (s *UserListResponse) GetTotal() int32 {
+	return s.Total
+}
+
+// GetOffset returns the value of Offset.
+func (s *UserListResponse) GetOffset() int32 {
+	return s.Offset
+}
+
+// GetLimit returns the value of Limit.
+func (s *UserListResponse) GetLimit() int32 {
+	return s.Limit
+}
+
+// GetSize returns the value of Size.
+func (s *UserListResponse) GetSize() int32 {
+	return s.Size
+}
+
+// GetHasMore returns the value of HasMore.
+func (s *UserListResponse) GetHasMore() bool {
+	return s.HasMore
+}
+
+// SetItems sets the value of Items.
+func (s *UserListResponse) SetItems(val []UserListItem) {
+	s.Items = val
+}
+
+// SetTotal sets the value of Total.
+func (s *UserListResponse) SetTotal(val int32) {
+	s.Total = val
+}
+
+// SetOffset sets the value of Offset.
+func (s *UserListResponse) SetOffset(val int32) {
+	s.Offset = val
+}
+
+// SetLimit sets the value of Limit.
+func (s *UserListResponse) SetLimit(val int32) {
+	s.Limit = val
+}
+
+// SetSize sets the value of Size.
+func (s *UserListResponse) SetSize(val int32) {
+	s.Size = val
+}
+
+// SetHasMore sets the value of HasMore.
+func (s *UserListResponse) SetHasMore(val bool) {
+	s.HasMore = val
+}
+
+// Ref: #/components/schemas/UserRoleInfo
+type UserRoleInfo struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	DisplayName string `json:"display_name"`
+	Color       string `json:"color"`
+	IsSupremo   bool   `json:"is_supremo"`
+}
+
+// GetID returns the value of ID.
+func (s *UserRoleInfo) GetID() string {
+	return s.ID
+}
+
+// GetName returns the value of Name.
+func (s *UserRoleInfo) GetName() string {
+	return s.Name
+}
+
+// GetDisplayName returns the value of DisplayName.
+func (s *UserRoleInfo) GetDisplayName() string {
+	return s.DisplayName
+}
+
+// GetColor returns the value of Color.
+func (s *UserRoleInfo) GetColor() string {
+	return s.Color
+}
+
+// GetIsSupremo returns the value of IsSupremo.
+func (s *UserRoleInfo) GetIsSupremo() bool {
+	return s.IsSupremo
+}
+
+// SetID sets the value of ID.
+func (s *UserRoleInfo) SetID(val string) {
+	s.ID = val
+}
+
+// SetName sets the value of Name.
+func (s *UserRoleInfo) SetName(val string) {
+	s.Name = val
+}
+
+// SetDisplayName sets the value of DisplayName.
+func (s *UserRoleInfo) SetDisplayName(val string) {
+	s.DisplayName = val
+}
+
+// SetColor sets the value of Color.
+func (s *UserRoleInfo) SetColor(val string) {
+	s.Color = val
+}
+
+// SetIsSupremo sets the value of IsSupremo.
+func (s *UserRoleInfo) SetIsSupremo(val bool) {
+	s.IsSupremo = val
+}
+
+// Ref: #/components/schemas/UserSystemRoleBinding
+type UserSystemRoleBinding struct {
+	ID              string    `json:"id"`
+	UserID          string    `json:"user_id"`
+	RoleID          string    `json:"role_id"`
+	RoleName        string    `json:"role_name"`
+	RoleDisplayName string    `json:"role_display_name"`
+	AssignedAt      time.Time `json:"assigned_at"`
+}
+
+// GetID returns the value of ID.
+func (s *UserSystemRoleBinding) GetID() string {
+	return s.ID
+}
+
+// GetUserID returns the value of UserID.
+func (s *UserSystemRoleBinding) GetUserID() string {
+	return s.UserID
+}
+
+// GetRoleID returns the value of RoleID.
+func (s *UserSystemRoleBinding) GetRoleID() string {
+	return s.RoleID
+}
+
+// GetRoleName returns the value of RoleName.
+func (s *UserSystemRoleBinding) GetRoleName() string {
+	return s.RoleName
+}
+
+// GetRoleDisplayName returns the value of RoleDisplayName.
+func (s *UserSystemRoleBinding) GetRoleDisplayName() string {
+	return s.RoleDisplayName
+}
+
+// GetAssignedAt returns the value of AssignedAt.
+func (s *UserSystemRoleBinding) GetAssignedAt() time.Time {
+	return s.AssignedAt
+}
+
+// SetID sets the value of ID.
+func (s *UserSystemRoleBinding) SetID(val string) {
+	s.ID = val
+}
+
+// SetUserID sets the value of UserID.
+func (s *UserSystemRoleBinding) SetUserID(val string) {
+	s.UserID = val
+}
+
+// SetRoleID sets the value of RoleID.
+func (s *UserSystemRoleBinding) SetRoleID(val string) {
+	s.RoleID = val
+}
+
+// SetRoleName sets the value of RoleName.
+func (s *UserSystemRoleBinding) SetRoleName(val string) {
+	s.RoleName = val
+}
+
+// SetRoleDisplayName sets the value of RoleDisplayName.
+func (s *UserSystemRoleBinding) SetRoleDisplayName(val string) {
+	s.RoleDisplayName = val
+}
+
+// SetAssignedAt sets the value of AssignedAt.
+func (s *UserSystemRoleBinding) SetAssignedAt(val time.Time) {
+	s.AssignedAt = val
 }

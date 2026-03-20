@@ -24,3 +24,9 @@ type User struct {
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
 }
+
+type AdminUserRecord struct {
+	User               User
+	PrincipalStatus    PrincipalStatus
+	MustChangePassword bool
+}

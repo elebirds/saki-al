@@ -2,6 +2,7 @@ package repo
 
 import (
 	"context"
+	"time"
 
 	sqlcdb "github.com/elebirds/saki/saki-controlplane/internal/gen/sqlc"
 	authorizationdomain "github.com/elebirds/saki/saki-controlplane/internal/modules/authorization/domain"
@@ -11,6 +12,18 @@ import (
 
 type BindingRepo struct {
 	q *sqlcdb.Queries
+}
+
+type SystemRoleBindingDetail struct {
+	BindingID       uuid.UUID
+	PrincipalID     uuid.UUID
+	RoleID          uuid.UUID
+	SystemName      string
+	AssignedAt      time.Time
+	RoleName        string
+	RoleDisplayName string
+	RoleColor       string
+	RoleIsSupremo   bool
 }
 
 func NewBindingRepo(pool *pgxpool.Pool) *BindingRepo {
@@ -26,6 +39,29 @@ func (r *BindingRepo) ListByPrincipal(ctx context.Context, principalID uuid.UUID
 	result := make([]authorizationdomain.SystemBinding, 0, len(rows))
 	for _, row := range rows {
 		result = append(result, mapSystemBinding(row))
+	}
+	return result, nil
+}
+
+func (r *BindingRepo) ListRoleBindingsByPrincipal(ctx context.Context, principalID uuid.UUID) ([]SystemRoleBindingDetail, error) {
+	rows, err := r.q.ListAuthzSystemRoleBindingsByPrincipal(ctx, principalID)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]SystemRoleBindingDetail, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, SystemRoleBindingDetail{
+			BindingID:       row.ID,
+			PrincipalID:     row.PrincipalID,
+			RoleID:          row.RoleID,
+			SystemName:      row.SystemName,
+			AssignedAt:      row.CreatedAt.Time,
+			RoleName:        row.RoleName,
+			RoleDisplayName: row.RoleDisplayName,
+			RoleColor:       row.RoleColor,
+			RoleIsSupremo:   row.RoleIsSupremo,
+		})
 	}
 	return result, nil
 }

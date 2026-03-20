@@ -1,12 +1,19 @@
 -- +goose Up
 create table authz_role (
     id uuid primary key default gen_random_uuid(),
+    scope_kind text not null default 'system',
     name text not null,
     display_name text not null,
     description text,
+    built_in boolean not null default false,
+    mutable boolean not null default true,
+    color text not null default 'blue',
+    is_supremo boolean not null default false,
+    sort_order integer not null default 1000,
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now(),
-    constraint authz_role_name_unique unique (name)
+    constraint authz_role_name_unique unique (name),
+    constraint authz_role_scope_kind_check check (scope_kind in ('system', 'resource'))
 );
 
 create table authz_role_permission (

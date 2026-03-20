@@ -146,10 +146,24 @@ func (UnimplementedHandler) GetProject(ctx context.Context, params GetProjectPar
 	return r, ht.ErrNotImplemented
 }
 
+// GetRolePermissionCatalog implements getRolePermissionCatalog operation.
+//
+// GET /roles/permission-catalog
+func (UnimplementedHandler) GetRolePermissionCatalog(ctx context.Context) (r *PermissionCatalogResponse, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // GetRuntimeSummary implements getRuntimeSummary operation.
 //
 // GET /runtime/summary
 func (UnimplementedHandler) GetRuntimeSummary(ctx context.Context) (r *RuntimeSummaryResponse, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// GetSystemPermissions implements getSystemPermissions operation.
+//
+// GET /permissions/system
+func (UnimplementedHandler) GetSystemPermissions(ctx context.Context) (r *SystemPermissionsResponse, _ error) {
 	return r, ht.ErrNotImplemented
 }
 
@@ -230,6 +244,13 @@ func (UnimplementedHandler) ListProjects(ctx context.Context) (r []Project, _ er
 	return r, ht.ErrNotImplemented
 }
 
+// ListRoles implements listRoles operation.
+//
+// GET /roles
+func (UnimplementedHandler) ListRoles(ctx context.Context, params ListRolesParams) (r *RoleListResponse, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // ListRuntimeAgents implements listRuntimeAgents operation.
 //
 // GET /runtime/agents
@@ -241,6 +262,27 @@ func (UnimplementedHandler) ListRuntimeAgents(ctx context.Context) (r []RuntimeA
 //
 // GET /projects/{project_id}/samples/{sample_id}/annotations
 func (UnimplementedHandler) ListSampleAnnotations(ctx context.Context, params ListSampleAnnotationsParams) (r []Annotation, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// ListUserSystemRoles implements listUserSystemRoles operation.
+//
+// GET /users/{user_id}/system-roles
+func (UnimplementedHandler) ListUserSystemRoles(ctx context.Context, params ListUserSystemRolesParams) (r []UserSystemRoleBinding, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// ListUserSystemRolesLegacy implements listUserSystemRolesLegacy operation.
+//
+// GET /roles/users/{user_id}/roles
+func (UnimplementedHandler) ListUserSystemRolesLegacy(ctx context.Context, params ListUserSystemRolesLegacyParams) (r []UserSystemRoleBinding, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// ListUsers implements listUsers operation.
+//
+// GET /users
+func (UnimplementedHandler) ListUsers(ctx context.Context, params ListUsersParams) (r *UserListResponse, _ error) {
 	return r, ht.ErrNotImplemented
 }
 

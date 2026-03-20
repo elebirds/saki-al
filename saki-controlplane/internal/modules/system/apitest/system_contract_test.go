@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 	"time"
 
@@ -13,8 +14,12 @@ import (
 	systemopenapi "github.com/elebirds/saki/saki-controlplane/internal/gen/openapi"
 	accessapp "github.com/elebirds/saki/saki-controlplane/internal/modules/access/app"
 	annotationrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/repo"
+	authorizationapi "github.com/elebirds/saki/saki-controlplane/internal/modules/authorization/apihttp"
+	authorizationapp "github.com/elebirds/saki/saki-controlplane/internal/modules/authorization/app"
 	datasetapp "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/app"
 	datasetrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/repo"
+	identityapi "github.com/elebirds/saki/saki-controlplane/internal/modules/identity/apihttp"
+	identityapp "github.com/elebirds/saki/saki-controlplane/internal/modules/identity/app"
 	projectapp "github.com/elebirds/saki/saki-controlplane/internal/modules/project/app"
 	runtimecommands "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/commands"
 	runtimequeries "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/queries"
@@ -242,10 +247,68 @@ func TestHumanControlPlaneSystemSettingsPatchRejectsKindMismatch(t *testing.T) {
 	}
 }
 
+func TestHumanControlPlaneLegacyBootstrapLoginExpandsPermissionAliases(t *testing.T) {
+	handler := newLegacyBootstrapHTTPHandler(t, "seed-user", []string{"projects:read", "users:read"})
+
+	req := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewBufferString(`{"user_id":"seed-user"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unexpected status code: %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode legacy login body: %v", err)
+	}
+	permissions, ok := body["permissions"].([]any)
+	if !ok {
+		t.Fatalf("expected permissions array, got %+v", body)
+	}
+	for _, permission := range []string{"projects:read", "project:read:all", "project:read:assigned", "users:read", "user:read:all"} {
+		if !slices.Contains(permissions, any(permission)) {
+			t.Fatalf("expected legacy login permissions to contain %q, got %+v", permission, permissions)
+		}
+	}
+}
+
+func TestHumanControlPlaneLegacyBootstrapCurrentUserExpandsPermissionAliases(t *testing.T) {
+	handler, token := newLegacyBootstrapHTTPHandlerWithToken(t, "seed-user", []string{"projects:read", "users:read"})
+
+	req := httptest.NewRequest(http.MethodGet, "/auth/me", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unexpected status code: %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode legacy current user body: %v", err)
+	}
+	permissions, ok := body["permissions"].([]any)
+	if !ok {
+		t.Fatalf("expected permissions array, got %+v", body)
+	}
+	for _, permission := range []string{"projects:read", "project:read:all", "project:read:assigned", "users:read", "user:read:all"} {
+		if !slices.Contains(permissions, any(permission)) {
+			t.Fatalf("expected legacy current user permissions to contain %q, got %+v", permission, permissions)
+		}
+	}
+}
+
 type contractDeps struct {
 	status   *fakeStatusExecutor
 	setup    *fakeSetupExecutor
 	settings *fakeSettingsManager
+	users    *fakeListUsersExecutor
+	roles    *fakeListRolesExecutor
+	catalog  *fakePermissionCatalogExecutor
+	bindings *fakeUserSystemRolesExecutor
 }
 
 func newSystemHTTPHandler(t *testing.T, deps contractDeps) http.Handler {
@@ -256,7 +319,7 @@ func newSystemHTTPHandler(t *testing.T, deps contractDeps) http.Handler {
 			"admin@example.com": {
 				PrincipalID: uuid.MustParse("00000000-0000-0000-0000-000000001499"),
 				UserID:      "admin@example.com",
-				Permissions: []string{"system:read", "system:write"},
+				Permissions: []string{"system:read", "system:write", "users:read", "roles:read"},
 			},
 		},
 		byPrincipalID: map[uuid.UUID]*accessapp.ClaimsSnapshot{},
@@ -266,7 +329,28 @@ func newSystemHTTPHandler(t *testing.T, deps contractDeps) http.Handler {
 		copy := *snapshot
 		claimsStore.byPrincipalID[copy.PrincipalID] = &copy
 	}
+	if deps.users == nil {
+		deps.users = &fakeListUsersExecutor{}
+	}
+	if deps.roles == nil {
+		deps.roles = &fakeListRolesExecutor{}
+	}
+	if deps.catalog == nil {
+		deps.catalog = &fakePermissionCatalogExecutor{}
+	}
+	if deps.bindings == nil {
+		deps.bindings = &fakeUserSystemRolesExecutor{}
+	}
 
+	identityHandlers := identityapi.NewHandlers(identityapi.HandlersDeps{
+		CurrentUser: &fakeCurrentUserExecutor{},
+		ListUsers:   deps.users,
+	})
+	authorizationHandlers := authorizationapi.NewHandlers(authorizationapi.HandlersDeps{
+		ListRoles:         deps.roles,
+		PermissionCatalog: deps.catalog,
+		UserSystemRoles:   deps.bindings,
+	})
 	systemHandlers := systemapi.NewHandlers(systemapi.HandlersDeps{
 		Status:   deps.status,
 		Types:    &fakeTypesExecutor{},
@@ -277,6 +361,8 @@ func newSystemHTTPHandler(t *testing.T, deps contractDeps) http.Handler {
 	handler, err := systemapi.NewHTTPHandler(systemapi.Dependencies{
 		Authenticator:       authenticator,
 		ClaimsStore:         claimsStore,
+		Identity:            identityHandlers,
+		Authorization:       authorizationHandlers,
 		DatasetStore:        datasetapp.NewMemoryStore(),
 		ProjectStore:        projectapp.NewMemoryStore(),
 		RuntimeStore:        runtimequeries.NewMemoryAdminStore(),
@@ -292,6 +378,54 @@ func newSystemHTTPHandler(t *testing.T, deps contractDeps) http.Handler {
 	return handler
 }
 
+func newLegacyBootstrapHTTPHandler(t *testing.T, userID string, permissions []string) http.Handler {
+	t.Helper()
+
+	handler, _ := newLegacyBootstrapHTTPHandlerWithToken(t, userID, permissions)
+	return handler
+}
+
+func newLegacyBootstrapHTTPHandlerWithToken(t *testing.T, userID string, permissions []string) (http.Handler, string) {
+	t.Helper()
+
+	claimsStore := &fakeClaimsStore{
+		byUserID: map[string]*accessapp.ClaimsSnapshot{
+			userID: {
+				PrincipalID: uuid.MustParse("00000000-0000-0000-0000-000000001799"),
+				UserID:      userID,
+				Permissions: append([]string(nil), permissions...),
+			},
+		},
+		byPrincipalID: map[uuid.UUID]*accessapp.ClaimsSnapshot{},
+	}
+	for _, snapshot := range claimsStore.byUserID {
+		copy := *snapshot
+		claimsStore.byPrincipalID[copy.PrincipalID] = &copy
+	}
+
+	authenticator := accessapp.NewAuthenticator("test-secret", time.Hour).WithStore(claimsStore)
+	handler, err := systemapi.NewHTTPHandler(systemapi.Dependencies{
+		Authenticator:       authenticator,
+		ClaimsStore:         claimsStore,
+		DatasetStore:        datasetapp.NewMemoryStore(),
+		ProjectStore:        projectapp.NewMemoryStore(),
+		RuntimeStore:        runtimequeries.NewMemoryAdminStore(),
+		RuntimeTaskCanceler: fakeRuntimeTaskCanceler{},
+		AnnotationSamples:   fakeAnnotationSampleStore{},
+		AnnotationDatasets:  fakeAnnotationDatasetStore{},
+		AnnotationStore:     fakeAnnotationStore{},
+	})
+	if err != nil {
+		t.Fatalf("new legacy bootstrap http handler: %v", err)
+	}
+
+	token, err := authenticator.IssueBootstrapTokenContext(context.Background(), userID)
+	if err != nil {
+		t.Fatalf("issue bootstrap token: %v", err)
+	}
+	return handler, token
+}
+
 func issueSystemToken(t *testing.T, _ http.Handler, userID string) string {
 	t.Helper()
 
@@ -300,7 +434,7 @@ func issueSystemToken(t *testing.T, _ http.Handler, userID string) string {
 			userID: {
 				PrincipalID: uuid.MustParse("00000000-0000-0000-0000-000000001499"),
 				UserID:      userID,
-				Permissions: []string{"system:read", "system:write"},
+				Permissions: []string{"system:read", "system:write", "users:read", "roles:read"},
 			},
 		},
 		byPrincipalID: map[uuid.UUID]*accessapp.ClaimsSnapshot{},
@@ -350,6 +484,134 @@ func (f *fakeClaimsStore) LoadClaimsByPrincipalID(_ context.Context, principalID
 
 func (f *fakeClaimsStore) LoadBootstrapClaimsByUserID(ctx context.Context, userID string) (*accessapp.ClaimsSnapshot, error) {
 	return f.LoadClaimsByUserID(ctx, userID)
+}
+
+type fakeCurrentUserExecutor struct{}
+
+func (fakeCurrentUserExecutor) Execute(_ context.Context, principalID uuid.UUID, permissions []string) (*identityapp.CurrentUser, error) {
+	return &identityapp.CurrentUser{
+		User: identityapp.SessionUser{
+			PrincipalID: principalID,
+			Email:       "admin@example.com",
+			FullName:    "Admin User",
+		},
+		SystemRoles:        []string{"super_admin"},
+		Permissions:        append([]string(nil), permissions...),
+		MustChangePassword: false,
+	}, nil
+}
+
+type fakeListUsersExecutor struct {
+	result *identityapp.ListUsersResult
+}
+
+func (f *fakeListUsersExecutor) Execute(context.Context, identityapp.ListUsersInput) (*identityapp.ListUsersResult, error) {
+	if f == nil || f.result == nil {
+		return &identityapp.ListUsersResult{
+			Items: []identityapp.UserAdminView{
+				{
+					ID:                 "00000000-0000-0000-0000-000000001499",
+					Email:              "admin@example.com",
+					FullName:           "Admin User",
+					IsActive:           true,
+					MustChangePassword: false,
+					CreatedAt:          time.Date(2026, 3, 20, 1, 2, 3, 0, time.UTC),
+					UpdatedAt:          time.Date(2026, 3, 20, 1, 2, 3, 0, time.UTC),
+					Roles: []identityapp.UserRoleSummary{
+						{
+							ID:          "00000000-0000-0000-0000-000000001501",
+							Name:        "super_admin",
+							DisplayName: "Super Admin",
+							Color:       "red",
+							IsSupremo:   true,
+						},
+					},
+				},
+			},
+			Total:   1,
+			Offset:  0,
+			Limit:   20,
+			Size:    1,
+			HasMore: false,
+		}, nil
+	}
+	copy := *f.result
+	return &copy, nil
+}
+
+type fakeListRolesExecutor struct {
+	result *authorizationapp.RoleListResult
+}
+
+func (f *fakeListRolesExecutor) Execute(context.Context, authorizationapp.ListRolesInput) (*authorizationapp.RoleListResult, error) {
+	if f == nil || f.result == nil {
+		return &authorizationapp.RoleListResult{
+			Items: []authorizationapp.RoleView{
+				{
+					ID:          "00000000-0000-0000-0000-000000001501",
+					Name:        "super_admin",
+					DisplayName: "Super Admin",
+					Description: "Builtin super admin role",
+					Type:        "system",
+					BuiltIn:     true,
+					Mutable:     false,
+					Color:       "red",
+					IsSupremo:   true,
+					SortOrder:   0,
+					IsSystem:    true,
+					Permissions: []authorizationapp.RolePermissionView{
+						{Permission: "roles:read"},
+						{Permission: "users:read"},
+					},
+					CreatedAt: time.Date(2026, 3, 20, 1, 2, 3, 0, time.UTC),
+					UpdatedAt: time.Date(2026, 3, 20, 1, 2, 3, 0, time.UTC),
+				},
+			},
+			Total:   1,
+			Offset:  0,
+			Limit:   20,
+			Size:    1,
+			HasMore: false,
+		}, nil
+	}
+	copy := *f.result
+	return &copy, nil
+}
+
+type fakePermissionCatalogExecutor struct {
+	result *authorizationapp.PermissionCatalog
+}
+
+func (f *fakePermissionCatalogExecutor) Execute(context.Context) (*authorizationapp.PermissionCatalog, error) {
+	if f == nil || f.result == nil {
+		return &authorizationapp.PermissionCatalog{
+			AllPermissions:      []string{"roles:read", "system:write", "users:read"},
+			SystemPermissions:   []string{"roles:read", "system:write", "users:read"},
+			ResourcePermissions: []string{"projects:read", "projects:write"},
+		}, nil
+	}
+	copy := *f.result
+	return &copy, nil
+}
+
+type fakeUserSystemRolesExecutor struct {
+	result []authorizationapp.UserSystemRoleBindingView
+}
+
+func (f *fakeUserSystemRolesExecutor) Execute(context.Context, uuid.UUID) ([]authorizationapp.UserSystemRoleBindingView, error) {
+	if f == nil || f.result == nil {
+		return []authorizationapp.UserSystemRoleBindingView{
+			{
+				ID:              "00000000-0000-0000-0000-000000001601",
+				UserID:          "00000000-0000-0000-0000-000000001499",
+				RoleID:          "00000000-0000-0000-0000-000000001501",
+				RoleName:        "super_admin",
+				RoleDisplayName: "Super Admin",
+				AssignedAt:      time.Date(2026, 3, 20, 1, 2, 3, 0, time.UTC),
+			},
+		}, nil
+	}
+	return append([]authorizationapp.UserSystemRoleBindingView(nil), f.result...), nil
 }
 
 type fakeStatusExecutor struct {

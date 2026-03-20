@@ -1010,9 +1010,15 @@ type AuthzResourceMembership struct {
 
 type AuthzRole struct {
 	ID          uuid.UUID          `json:"id"`
+	ScopeKind   string             `json:"scope_kind"`
 	Name        string             `json:"name"`
 	DisplayName string             `json:"display_name"`
 	Description pgtype.Text        `json:"description"`
+	BuiltIn     bool               `json:"built_in"`
+	Mutable     bool               `json:"mutable"`
+	Color       string             `json:"color"`
+	IsSupremo   bool               `json:"is_supremo"`
+	SortOrder   int32              `json:"sort_order"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }

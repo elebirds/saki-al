@@ -18,6 +18,7 @@ import (
 	assetapi "github.com/elebirds/saki/saki-controlplane/internal/modules/asset/apihttp"
 	assetapp "github.com/elebirds/saki/saki-controlplane/internal/modules/asset/app"
 	assetrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/asset/repo"
+	authorizationapi "github.com/elebirds/saki/saki-controlplane/internal/modules/authorization/apihttp"
 	authorizationapp "github.com/elebirds/saki/saki-controlplane/internal/modules/authorization/app"
 	authorizationrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/authorization/repo"
 	datasetapp "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/app"
@@ -100,15 +101,20 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 	taskRepo := runtimerepo.NewTaskRepo(pool)
 	accessPrincipalRepo := accessrepo.NewPrincipalRepo(pool)
 	bootstrapStore := accessrepo.NewBootstrapStore(accessPrincipalRepo)
+	authorizationRoleRepo := authorizationrepo.NewRoleRepo(pool)
+	authorizationBindingRepo := authorizationrepo.NewBindingRepo(pool)
+	authorizationMembershipRepo := authorizationrepo.NewMembershipRepo(pool)
+	authorizationStore := authorizationrepo.NewAppStore(
+		authorizationRoleRepo,
+		authorizationBindingRepo,
+		authorizationMembershipRepo,
+	)
+	identityUserRepo := identityrepo.NewUserRepo(pool)
 	claimsStore := accessrepo.NewClaimsStore(accessrepo.ClaimsStoreDeps{
 		LegacyPrincipals:   accessPrincipalRepo,
 		IdentityPrincipals: identityrepo.NewPrincipalRepo(pool),
-		IdentityUsers:      identityrepo.NewUserRepo(pool),
-		Authorizer: authorizationapp.NewAuthorizer(authorizationrepo.NewAppStore(
-			authorizationrepo.NewRoleRepo(pool),
-			authorizationrepo.NewBindingRepo(pool),
-			authorizationrepo.NewMembershipRepo(pool),
-		)),
+		IdentityUsers:      identityUserRepo,
+		Authorizer:         authorizationapp.NewAuthorizer(authorizationStore),
 	})
 	bootstrapPrincipals := make([]accessapp.BootstrapPrincipalSpec, 0, len(cfg.AuthBootstrapPrincipals))
 	for _, principal := range cfg.AuthBootstrapPrincipals {
@@ -118,6 +124,9 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 			Permissions: append([]string(nil), principal.Permissions...),
 		})
 	}
+	// 关键设计：AUTH_BOOTSTRAP_PRINCIPALS 仍然只服务迁移期的 legacy bootstrap principal，
+	// 它们用于旧 smoke/旧免密入口兼容，不属于新的 human identity catalog，
+	// 因此这里不会写入 iam_user/authz_system_binding，也不会出现在 /users 管理面列表里。
 	if err := accessapp.NewBootstrapSeedUseCase(bootstrapStore).Execute(ctx, bootstrapPrincipals); err != nil {
 		pool.Close()
 		return nil, nil, err
@@ -197,6 +206,11 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 	identitySessions := identityrepo.NewSessionRepo(pool)
 	identityAuthStore := identityrepo.NewAuthStore(pool)
 	identitySessionService := identityapp.NewSessionService(identitySessions, nil)
+	authorizationHandlers := authorizationapi.NewHandlers(authorizationapi.HandlersDeps{
+		ListRoles:         authorizationapp.NewListRolesUseCase(authorizationRoleRepo),
+		PermissionCatalog: authorizationapp.NewPermissionCatalogUseCase(),
+		UserSystemRoles:   authorizationapp.NewListUserSystemRolesUseCase(authorizationBindingRepo, authorizationRoleRepo),
+	})
 	handler, err := systemapi.NewHTTPHandler(systemapi.Dependencies{
 		Authenticator:       authenticator,
 		ClaimsStore:         claimsStore,
@@ -246,7 +260,9 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 			Register:       identityapp.NewRegisterUseCase(identityAuthStore, authenticator, nil, tokenTTL),
 			ChangePassword: identityapp.NewChangePasswordUseCase(identityAuthStore, authenticator, nil, nil, tokenTTL),
 			CurrentUser:    identityapp.NewCurrentUserUseCase(identityAuthStore),
+			ListUsers:      identityapp.NewListUsersUseCase(identityUserRepo, authorizationBindingRepo, authorizationRoleRepo),
 		}),
+		Authorization: authorizationHandlers,
 		System: systemapi.NewHandlers(systemapi.HandlersDeps{
 			Status:   systemapp.NewStatusUseCase(systemapp.NewInstallationService(installationRepo), systemapp.NewSettingsService(settingRepo), cfg.BuildVersion),
 			Types:    systemapp.NewTypesUseCase(),

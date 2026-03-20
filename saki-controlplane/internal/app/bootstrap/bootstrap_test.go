@@ -89,7 +89,12 @@ func TestNewPublicAPISeedsAccessBeforeHandler(t *testing.T) {
 	if body.Token == "" || body.UserID != "seed-user" {
 		t.Fatalf("unexpected login response: %+v", body)
 	}
-	if !slices.Equal(body.Permissions, []string{"imports:read", "projects:read"}) {
+	for _, permission := range []string{"imports:read", "projects:read", "project:read:all", "project:read:assigned"} {
+		if !slices.Contains(body.Permissions, permission) {
+			t.Fatalf("expected login permissions to contain %q, got %+v", permission, body)
+		}
+	}
+	if len(body.Permissions) != 4 {
 		t.Fatalf("unexpected login permissions: %+v", body)
 	}
 }

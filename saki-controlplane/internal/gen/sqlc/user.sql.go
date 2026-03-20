@@ -12,6 +12,18 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countIamUsers = `-- name: CountIamUsers :one
+select count(*)
+from iam_user
+`
+
+func (q *Queries) CountIamUsers(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countIamUsers)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createIamUser = `-- name: CreateIamUser :one
 insert into iam_user (principal_id, email, username, full_name, avatar_asset_id)
 values ($1, $2, $3, $4, $5)
@@ -115,6 +127,85 @@ func (q *Queries) GetIamUserByPrincipalID(ctx context.Context, principalID uuid.
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const listIamUsersForAdmin = `-- name: ListIamUsersForAdmin :many
+select
+    u.principal_id,
+    u.email,
+    u.username,
+    u.full_name,
+    u.avatar_asset_id,
+    u.state,
+    u.created_at,
+    u.updated_at,
+    p.status as principal_status,
+    coalesce(bool_or(c.must_change_password), false)::boolean as must_change_password
+from iam_user u
+join iam_principal p on p.id = u.principal_id
+left join iam_password_credential c on c.principal_id = u.principal_id
+group by
+    u.principal_id,
+    u.email,
+    u.username,
+    u.full_name,
+    u.avatar_asset_id,
+    u.state,
+    u.created_at,
+    u.updated_at,
+    p.status
+order by u.created_at desc, u.principal_id
+limit $2
+offset $1
+`
+
+type ListIamUsersForAdminParams struct {
+	OffsetCount int32 `json:"offset_count"`
+	LimitCount  int32 `json:"limit_count"`
+}
+
+type ListIamUsersForAdminRow struct {
+	PrincipalID        uuid.UUID          `json:"principal_id"`
+	Email              string             `json:"email"`
+	Username           pgtype.Text        `json:"username"`
+	FullName           pgtype.Text        `json:"full_name"`
+	AvatarAssetID      pgtype.UUID        `json:"avatar_asset_id"`
+	State              IamUserState       `json:"state"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
+	PrincipalStatus    IamPrincipalStatus `json:"principal_status"`
+	MustChangePassword bool               `json:"must_change_password"`
+}
+
+func (q *Queries) ListIamUsersForAdmin(ctx context.Context, arg ListIamUsersForAdminParams) ([]ListIamUsersForAdminRow, error) {
+	rows, err := q.db.Query(ctx, listIamUsersForAdmin, arg.OffsetCount, arg.LimitCount)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListIamUsersForAdminRow
+	for rows.Next() {
+		var i ListIamUsersForAdminRow
+		if err := rows.Scan(
+			&i.PrincipalID,
+			&i.Email,
+			&i.Username,
+			&i.FullName,
+			&i.AvatarAssetID,
+			&i.State,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.PrincipalStatus,
+			&i.MustChangePassword,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const updateIamUserProfile = `-- name: UpdateIamUserProfile :exec

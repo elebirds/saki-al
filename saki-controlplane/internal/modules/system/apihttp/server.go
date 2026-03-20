@@ -15,6 +15,8 @@ import (
 	annotationapi "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/apihttp"
 	annotationapp "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/app"
 	assetapi "github.com/elebirds/saki/saki-controlplane/internal/modules/asset/apihttp"
+	authorizationapi "github.com/elebirds/saki/saki-controlplane/internal/modules/authorization/apihttp"
+	authorizationdomain "github.com/elebirds/saki/saki-controlplane/internal/modules/authorization/domain"
 	datasetapi "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/apihttp"
 	datasetapp "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/app"
 	identityapi "github.com/elebirds/saki/saki-controlplane/internal/modules/identity/apihttp"
@@ -24,6 +26,7 @@ import (
 	projectapp "github.com/elebirds/saki/saki-controlplane/internal/modules/project/app"
 	runtimeapi "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/apihttp"
 	runtimequeries "github.com/elebirds/saki/saki-controlplane/internal/modules/runtime/app/queries"
+	"github.com/google/uuid"
 	ogenhttp "github.com/ogen-go/ogen/http"
 )
 
@@ -31,6 +34,7 @@ type Dependencies struct {
 	Authenticator       *accessapp.Authenticator
 	ClaimsStore         accessapp.ClaimsStore
 	Identity            *identityapi.Handlers
+	Authorization       *authorizationapi.Handlers
 	System              *Handlers
 	DatasetStore        datasetapp.Store
 	DatasetDelete       *datasetapp.DeleteDatasetUseCase
@@ -53,6 +57,7 @@ type Server struct {
 	access        *accessapi.Handlers
 	annotation    *annotationapi.Handlers
 	asset         *assetapi.Handlers
+	authorization *authorizationapi.Handlers
 	dataset       *datasetapi.Handlers
 	identity      *identityapi.Handlers
 	importing     *importingapi.Handlers
@@ -96,7 +101,8 @@ func NewHandler(deps Dependencies) (*Server, error) {
 			deps.AnnotationStore,
 			deps.AnnotationMapper,
 		),
-		asset: assetapi.NewHandlers(deps.Asset),
+		asset:         assetapi.NewHandlers(deps.Asset),
+		authorization: deps.Authorization,
 		dataset: datasetapi.NewHandlersWithDependencies(datasetapi.Dependencies{
 			Store:        deps.DatasetStore,
 			Delete:       deps.DatasetDelete,
@@ -295,6 +301,54 @@ func (s *Server) GetCurrentUser(ctx context.Context) (*openapi.CurrentUserRespon
 	return s.currentLegacyBootstrapUser(ctx)
 }
 
+func (s *Server) GetRolePermissionCatalog(ctx context.Context) (*openapi.PermissionCatalogResponse, error) {
+	if s.authorization == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	return s.authorization.GetRolePermissionCatalog(ctx)
+}
+
+func (s *Server) GetSystemPermissions(ctx context.Context) (*openapi.SystemPermissionsResponse, error) {
+	if s.authorization == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	return s.authorization.GetSystemPermissions(ctx)
+}
+
+func (s *Server) ListRoles(ctx context.Context, params openapi.ListRolesParams) (*openapi.RoleListResponse, error) {
+	if s.authorization == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	return s.authorization.ListRoles(ctx, params)
+}
+
+func (s *Server) ListUserSystemRoles(ctx context.Context, params openapi.ListUserSystemRolesParams) ([]openapi.UserSystemRoleBinding, error) {
+	if s.authorization == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	if _, err := uuid.Parse(params.UserID); err != nil {
+		return nil, newBadRequest("invalid user_id")
+	}
+	return s.authorization.ListUserSystemRoles(ctx, params)
+}
+
+func (s *Server) ListUserSystemRolesLegacy(ctx context.Context, params openapi.ListUserSystemRolesLegacyParams) ([]openapi.UserSystemRoleBinding, error) {
+	if s.authorization == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	if _, err := uuid.Parse(params.UserID); err != nil {
+		return nil, newBadRequest("invalid user_id")
+	}
+	return s.authorization.ListUserSystemRolesLegacy(ctx, params)
+}
+
+func (s *Server) ListUsers(ctx context.Context, params openapi.ListUsersParams) (*openapi.UserListResponse, error) {
+	if s.identity == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	return s.identity.ListUsers(ctx, params)
+}
+
 func (s *Server) GetSystemSettings(ctx context.Context) (*openapi.SystemSettingsResponse, error) {
 	if s.system == nil {
 		return nil, ogenhttp.ErrNotImplemented
@@ -449,7 +503,9 @@ func (s *Server) loginLegacyBootstrap(ctx context.Context, userID string) (*open
 		RefreshToken:       "",
 		ExpiresIn:          expiresIn,
 		MustChangePassword: false,
-		Permissions:        append([]string{}, claims.Permissions...),
+		// 关键设计：legacy bootstrap 与新 identity 会话必须共用同一套传输层权限展开，
+		// 否则迁移期同一前端对不同登录路径会看到不同 permission 形状，导致权限初始化逻辑分叉。
+		Permissions: authorizationdomain.ExpandedPermissionsForTransport(claims.Permissions),
 		User: openapi.AuthSessionUser{
 			PrincipalID: claims.PrincipalID.String(),
 			Email:       legacyBootstrapEmailAlias(claims.UserID),
@@ -476,7 +532,7 @@ func (s *Server) currentLegacyBootstrapUser(ctx context.Context) (*openapi.Curre
 			FullName:    "",
 		},
 		SystemRoles:        []string{},
-		Permissions:        append([]string(nil), claims.Permissions...),
+		Permissions:        authorizationdomain.ExpandedPermissionsForTransport(claims.Permissions),
 		MustChangePassword: false,
 	}
 	response.UserID.SetTo(claims.UserID)

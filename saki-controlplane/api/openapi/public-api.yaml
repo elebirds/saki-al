@@ -721,6 +721,138 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /users:
+    get:
+      operationId: listUsers
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: paginated users
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserListResponse"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /users/{user_id}/system-roles:
+    get:
+      operationId: listUserSystemRoles
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: system role bindings for user
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserSystemRoleBinding"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /roles:
+    get:
+      operationId: listRoles
+      parameters:
+        - name: type
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - system
+              - resource
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: paginated roles
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoleListResponse"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /roles/permission-catalog:
+    get:
+      operationId: getRolePermissionCatalog
+      responses:
+        "200":
+          description: permission catalog alias for migration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PermissionCatalogResponse"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /roles/users/{user_id}/roles:
+    get:
+      operationId: listUserSystemRolesLegacy
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: legacy alias for user system role bindings
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserSystemRoleBinding"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /auth/register:
     post:
       operationId: registerAuthUser
@@ -777,6 +909,22 @@ paths:
       responses:
         "204":
           description: permission granted
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /permissions/system:
+    get:
+      operationId: getSystemPermissions
+      responses:
+        "200":
+          description: current user system permission snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemPermissionsResponse"
         default:
           description: unexpected error
           content:
@@ -1437,6 +1585,232 @@ components:
             type: string
         must_change_password:
           type: boolean
+    PermissionCatalogResponse:
+      type: object
+      required:
+        - all_permissions
+        - system_permissions
+        - resource_permissions
+      properties:
+        all_permissions:
+          type: array
+          items:
+            type: string
+        system_permissions:
+          type: array
+          items:
+            type: string
+        resource_permissions:
+          type: array
+          items:
+            type: string
+    SystemPermissionsResponse:
+      type: object
+      required:
+        - user_id
+        - system_roles
+        - permissions
+        - is_super_admin
+      properties:
+        user_id:
+          type: string
+        system_roles:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserRoleInfo"
+        permissions:
+          type: array
+          items:
+            type: string
+        is_super_admin:
+          type: boolean
+    RolePermissionEntry:
+      type: object
+      required:
+        - permission
+      properties:
+        permission:
+          type: string
+    RoleListItem:
+      type: object
+      required:
+        - id
+        - name
+        - display_name
+        - type
+        - built_in
+        - mutable
+        - color
+        - is_supremo
+        - sort_order
+        - is_system
+        - permissions
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        display_name:
+          type: string
+        description:
+          type: string
+        type:
+          type: string
+        built_in:
+          type: boolean
+        mutable:
+          type: boolean
+        color:
+          type: string
+        is_supremo:
+          type: boolean
+        sort_order:
+          type: integer
+          format: int32
+        is_system:
+          type: boolean
+        permissions:
+          type: array
+          items:
+            $ref: "#/components/schemas/RolePermissionEntry"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    RoleListResponse:
+      type: object
+      required:
+        - items
+        - total
+        - offset
+        - limit
+        - size
+        - has_more
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoleListItem"
+        total:
+          type: integer
+          format: int32
+        offset:
+          type: integer
+          format: int32
+        limit:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+        has_more:
+          type: boolean
+    UserRoleInfo:
+      type: object
+      required:
+        - id
+        - name
+        - display_name
+        - color
+        - is_supremo
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        display_name:
+          type: string
+        color:
+          type: string
+        is_supremo:
+          type: boolean
+    UserListItem:
+      type: object
+      required:
+        - id
+        - email
+        - is_active
+        - must_change_password
+        - created_at
+        - updated_at
+        - roles
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+          format: email
+        full_name:
+          type: string
+        is_active:
+          type: boolean
+        must_change_password:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        roles:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserRoleInfo"
+    UserListResponse:
+      type: object
+      required:
+        - items
+        - total
+        - offset
+        - limit
+        - size
+        - has_more
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserListItem"
+        total:
+          type: integer
+          format: int32
+        offset:
+          type: integer
+          format: int32
+        limit:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+        has_more:
+          type: boolean
+    UserSystemRoleBinding:
+      type: object
+      required:
+        - id
+        - user_id
+        - role_id
+        - role_name
+        - role_display_name
+        - assigned_at
+      properties:
+        id:
+          type: string
+        user_id:
+          type: string
+        role_id:
+          type: string
+        role_name:
+          type: string
+        role_display_name:
+          type: string
+        assigned_at:
+          type: string
+          format: date-time
     SystemStatusResponse:
       type: object
       required:

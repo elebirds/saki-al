@@ -9,6 +9,7 @@ import (
 	sqlcdb "github.com/elebirds/saki/saki-controlplane/internal/gen/sqlc"
 	identityapp "github.com/elebirds/saki/saki-controlplane/internal/modules/identity/app"
 	identitydomain "github.com/elebirds/saki/saki-controlplane/internal/modules/identity/domain"
+	authorizationdomain "github.com/elebirds/saki/saki-controlplane/internal/modules/authorization/domain"
 	systemapp "github.com/elebirds/saki/saki-controlplane/internal/modules/system/app"
 	systemdomain "github.com/elebirds/saki/saki-controlplane/internal/modules/system/domain"
 	"github.com/google/uuid"
@@ -249,20 +250,40 @@ func ensureRegisteredUserRole(ctx context.Context, q *sqlcdb.Queries) (uuid.UUID
 	role, err := q.GetAuthzRoleByName(ctx, identityapp.BuiltinRoleRegisteredUser)
 	switch {
 	case err == nil:
-		return role.ID, nil
 	case !errors.Is(err, pgx.ErrNoRows):
 		return uuid.Nil, err
+	case errors.Is(err, pgx.ErrNoRows):
+		// 关键设计：自助注册默认绑定一个零权限内建角色，而不是直接授予业务权限。
+		// 这样 register 流程可以保持“有主体、有会话、可继续扩展成员关系”，同时避免把默认权限散落进 handler。
+		created, err := q.CreateAuthzRole(ctx, sqlcdb.CreateAuthzRoleParams{
+			ScopeKind:   string(authorizationdomain.RoleScopeSystem),
+			Name:        identityapp.BuiltinRoleRegisteredUser,
+			DisplayName: "Registered User",
+			Description: pgtype.Text{String: "Builtin zero-permission role for self-registered human users.", Valid: true},
+			BuiltIn:     true,
+			Mutable:     false,
+			Color:       "blue",
+			IsSupremo:   false,
+			SortOrder:   100,
+		})
+		if err != nil {
+			return uuid.Nil, err
+		}
+		role = created
 	}
-
-	// 关键设计：自助注册默认绑定一个零权限内建角色，而不是直接授予业务权限。
-	// 这样 register 流程可以保持“有主体、有会话、可继续扩展成员关系”，同时避免把默认权限散落进 handler。
-	created, err := q.CreateAuthzRole(ctx, sqlcdb.CreateAuthzRoleParams{
-		Name:        identityapp.BuiltinRoleRegisteredUser,
+	role, err = q.UpdateAuthzRoleMetadata(ctx, sqlcdb.UpdateAuthzRoleMetadataParams{
+		ID:          role.ID,
+		ScopeKind:   string(authorizationdomain.RoleScopeSystem),
 		DisplayName: "Registered User",
 		Description: pgtype.Text{String: "Builtin zero-permission role for self-registered human users.", Valid: true},
+		BuiltIn:     true,
+		Mutable:     false,
+		Color:       "blue",
+		IsSupremo:   false,
+		SortOrder:   100,
 	})
 	if err != nil {
 		return uuid.Nil, err
 	}
-	return created.ID, nil
+	return role.ID, nil
 }

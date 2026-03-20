@@ -288,6 +288,15 @@ func (h *Handlers) UpdateUser(ctx context.Context, req *openapi.UserUpdateReques
 	fullName, hasFullName := req.GetFullName().Get()
 	isActive, hasIsActive := req.GetIsActive().Get()
 	password, hasPassword := req.GetPassword().Get()
+	if hasIsActive && !isActive {
+		claims, ok := authctx.ClaimsFromContext(ctx)
+		if !ok {
+			return nil, accessapp.ErrUnauthorized
+		}
+		if claims.PrincipalID == principalID {
+			return nil, accessapp.ErrForbidden
+		}
+	}
 
 	item, err := h.updateUser.Execute(ctx, identityapp.UpdateUserCommand{
 		UserID:         principalID,
@@ -314,6 +323,13 @@ func (h *Handlers) DeleteUser(ctx context.Context, params openapi.DeleteUserPara
 	principalID, err := uuid.Parse(params.UserID)
 	if err != nil {
 		return identityapp.ErrInvalidUserInput
+	}
+	claims, ok := authctx.ClaimsFromContext(ctx)
+	if !ok {
+		return accessapp.ErrUnauthorized
+	}
+	if claims.PrincipalID == principalID {
+		return accessapp.ErrForbidden
 	}
 	return h.deleteUser.Execute(ctx, principalID)
 }

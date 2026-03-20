@@ -123,7 +123,7 @@ func (h *Handlers) CreateRole(ctx context.Context, req *openapi.RoleCreateReques
 	if h == nil || h.createRole == nil {
 		return nil, ogenhttp.ErrNotImplemented
 	}
-	if _, err := requireAnyPermission(ctx, "roles:write", "role:create:all", "role:update:all", "role:assign:all"); err != nil {
+	if _, err := requireAnyPermission(ctx, "roles:write", "role:create:all"); err != nil {
 		return nil, err
 	}
 	if req.GetName() == "" || req.GetDisplayName() == "" {
@@ -170,7 +170,7 @@ func (h *Handlers) UpdateRole(ctx context.Context, req *openapi.RoleUpdateReques
 	if h == nil || h.updateRole == nil {
 		return nil, ogenhttp.ErrNotImplemented
 	}
-	if _, err := requireAnyPermission(ctx, "roles:write", "role:update:all", "role:assign:all"); err != nil {
+	if _, err := requireAnyPermission(ctx, "roles:write", "role:update:all"); err != nil {
 		return nil, err
 	}
 
@@ -203,7 +203,7 @@ func (h *Handlers) DeleteRole(ctx context.Context, params openapi.DeleteRolePara
 	if h == nil || h.deleteRole == nil {
 		return ogenhttp.ErrNotImplemented
 	}
-	if _, err := requireAnyPermission(ctx, "roles:write", "role:delete:all", "role:assign:all"); err != nil {
+	if _, err := requireAnyPermission(ctx, "roles:write", "role:delete:all"); err != nil {
 		return err
 	}
 
@@ -263,13 +263,17 @@ func (h *Handlers) ReplaceUserSystemRoles(ctx context.Context, req *openapi.Repl
 	if h == nil || h.replaceUserRoles == nil {
 		return nil, ogenhttp.ErrNotImplemented
 	}
-	if _, err := requireAnyPermission(ctx, "roles:write", "users:write", "role:assign:all", "role:revoke:all", "user:manage:all"); err != nil {
+	claims, err := requireRoleReplacementPermission(ctx)
+	if err != nil {
 		return nil, err
 	}
 
 	principalID, err := uuid.Parse(params.UserID)
 	if err != nil {
 		return nil, authorizationapp.ErrInvalidRoleInput
+	}
+	if claims.PrincipalID == principalID {
+		return nil, accessapp.ErrForbidden
 	}
 	result, err := h.replaceUserRoles.Execute(ctx, authorizationapp.ReplaceUserSystemRolesCommand{
 		UserID:  principalID,
@@ -371,6 +375,21 @@ func optStringPtr(value string, ok bool) *string {
 	}
 	copy := value
 	return &copy
+}
+
+func requireRoleReplacementPermission(ctx context.Context) (*accessapp.Claims, error) {
+	claims, err := requireAnyPermission(ctx, "roles:write")
+	if err == nil {
+		return claims, nil
+	}
+	claims, ok := authctx.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, accessapp.ErrUnauthorized
+	}
+	if slices.Contains(claims.Permissions, "role:assign:all") && slices.Contains(claims.Permissions, "role:revoke:all") {
+		return claims, nil
+	}
+	return nil, accessapp.ErrForbidden
 }
 
 func requireAnyPermission(ctx context.Context, permissions ...string) (*accessapp.Claims, error) {

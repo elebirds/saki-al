@@ -90,6 +90,14 @@ func mapError(err error) *openapi.ErrorResponseStatusCode {
 				Message: err.Error(),
 			},
 		}
+	case errors.Is(err, authorizationapp.ErrLastSuperAdmin):
+		return &openapi.ErrorResponseStatusCode{
+			StatusCode: http.StatusConflict,
+			Response: openapi.ErrorResponse{
+				Code:    "conflict",
+				Message: err.Error(),
+			},
+		}
 	case errors.Is(err, identityapp.ErrSelfRegistrationDisabled):
 		return &openapi.ErrorResponseStatusCode{
 			StatusCode: http.StatusForbidden,

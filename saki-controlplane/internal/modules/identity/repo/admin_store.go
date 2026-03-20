@@ -7,6 +7,7 @@ import (
 
 	appdb "github.com/elebirds/saki/saki-controlplane/internal/app/db"
 	sqlcdb "github.com/elebirds/saki/saki-controlplane/internal/gen/sqlc"
+	authorizationapp "github.com/elebirds/saki/saki-controlplane/internal/modules/authorization/app"
 	identityapp "github.com/elebirds/saki/saki-controlplane/internal/modules/identity/app"
 	identitydomain "github.com/elebirds/saki/saki-controlplane/internal/modules/identity/domain"
 	"github.com/google/uuid"
@@ -17,6 +18,7 @@ import (
 )
 
 const iamUserEmailUniqueConstraint = "iam_user_email_unique"
+const builtinSuperAdminRoleName = "super_admin"
 
 type AdminStore struct {
 	q  *sqlcdb.Queries
@@ -139,6 +141,15 @@ func (r *AdminStore) UpdateAdminUser(ctx context.Context, params identityapp.Upd
 
 		revokeSessions := false
 		if params.IsActive != nil {
+			if !*params.IsActive {
+				protected, err := r.rejectLastSuperAdminDisable(ctx, q, params.PrincipalID)
+				if err != nil {
+					return err
+				}
+				if protected {
+					return authorizationapp.ErrLastSuperAdmin
+				}
+			}
 			userState := identitydomain.UserStateActive
 			principalStatus := identitydomain.PrincipalStatusActive
 			if !*params.IsActive {
@@ -212,6 +223,13 @@ func (r *AdminStore) SoftDeleteAdminUser(ctx context.Context, params identityapp
 		if record == nil || record.User.State == identitydomain.UserStateDeleted {
 			return identityapp.ErrUserNotFound
 		}
+		protected, err := r.rejectLastSuperAdminDisable(ctx, q, params.PrincipalID)
+		if err != nil {
+			return err
+		}
+		if protected {
+			return authorizationapp.ErrLastSuperAdmin
+		}
 
 		if err := q.UpdateIamPrincipalStatus(ctx, sqlcdb.UpdateIamPrincipalStatusParams{
 			ID:     params.PrincipalID,
@@ -231,6 +249,38 @@ func (r *AdminStore) SoftDeleteAdminUser(ctx context.Context, params identityapp
 			FullName:    pgtype.Text{},
 		})
 	})
+}
+
+func (r *AdminStore) rejectLastSuperAdminDisable(ctx context.Context, q *sqlcdb.Queries, principalID uuid.UUID) (bool, error) {
+	superAdminRole, err := q.GetAuthzRoleByName(ctx, builtinSuperAdminRoleName)
+	switch {
+	case err == nil:
+	case errors.Is(err, pgx.ErrNoRows):
+		return false, nil
+	default:
+		return false, err
+	}
+
+	bindings, err := q.ListAuthzSystemBindingsByPrincipal(ctx, principalID)
+	if err != nil {
+		return false, err
+	}
+	hasSuperAdmin := false
+	for _, binding := range bindings {
+		if binding.RoleID == superAdminRole.ID {
+			hasSuperAdmin = true
+			break
+		}
+	}
+	if !hasSuperAdmin {
+		return false, nil
+	}
+
+	activeCount, err := q.CountActivePrincipalsBySystemRole(ctx, superAdminRole.ID)
+	if err != nil {
+		return false, err
+	}
+	return activeCount <= 1, nil
 }
 
 func (r *AdminStore) loadAdminUserRecord(ctx context.Context, q *sqlcdb.Queries, principalID uuid.UUID) (*identitydomain.AdminUserRecord, error) {

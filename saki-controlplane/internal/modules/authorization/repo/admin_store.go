@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	appdb "github.com/elebirds/saki/saki-controlplane/internal/app/db"
 	sqlcdb "github.com/elebirds/saki/saki-controlplane/internal/gen/sqlc"
@@ -19,6 +20,7 @@ import (
 )
 
 const authzRoleNameUniqueConstraint = "authz_role_name_unique"
+const builtinSuperAdminRoleName = "super_admin"
 
 type AdminStore struct {
 	q  *sqlcdb.Queries
@@ -228,6 +230,35 @@ func (r *AdminStore) ReplaceUserSystemRoles(ctx context.Context, principalID uui
 		if err != nil {
 			return err
 		}
+
+		if err := rejectLastSuperAdminRemoval(ctx, q, principalID, existingBindings, roleIDs); err != nil {
+			return err
+		}
+
+		existingRoleIDs := make([]uuid.UUID, 0, len(existingBindings))
+		for _, binding := range existingBindings {
+			existingRoleIDs = append(existingRoleIDs, binding.RoleID)
+		}
+		if sameUUIDSet(existingRoleIDs, roleIDs) {
+			rows, err := q.ListAuthzSystemRoleBindingsByPrincipal(ctx, principalID)
+			if err != nil {
+				return err
+			}
+			result = make([]authorizationapp.UserSystemRoleBindingView, 0, len(rows))
+			for _, row := range rows {
+				result = append(result, authorizationapp.UserSystemRoleBindingView{
+					ID:              row.ID.String(),
+					UserID:          row.PrincipalID.String(),
+					RoleID:          row.RoleID.String(),
+					RoleName:        row.RoleName,
+					RoleDisplayName: row.RoleDisplayName,
+					RoleColor:       row.RoleColor,
+					RoleIsSupremo:   row.RoleIsSupremo,
+					AssignedAt:      row.CreatedAt.Time,
+				})
+			}
+			return nil
+		}
 		for _, binding := range existingBindings {
 			if err := q.DeleteAuthzSystemBinding(ctx, binding.ID); err != nil {
 				return err
@@ -320,4 +351,51 @@ func isRoleConstraintViolation(err error, constraintName string) bool {
 	return errors.As(err, &pgErr) &&
 		pgErr.Code == "23505" &&
 		pgErr.ConstraintName == constraintName
+}
+
+func rejectLastSuperAdminRemoval(ctx context.Context, q *sqlcdb.Queries, principalID uuid.UUID, existingBindings []sqlcdb.AuthzSystemBinding, nextRoleIDs []uuid.UUID) error {
+	superAdminRole, err := q.GetAuthzRoleByName(ctx, builtinSuperAdminRoleName)
+	switch {
+	case err == nil:
+	case errors.Is(err, pgx.ErrNoRows):
+		return nil
+	default:
+		return err
+	}
+
+	currentHasSuperAdmin := false
+	for _, binding := range existingBindings {
+		if binding.RoleID == superAdminRole.ID {
+			currentHasSuperAdmin = true
+			break
+		}
+	}
+	if !currentHasSuperAdmin || slices.Contains(nextRoleIDs, superAdminRole.ID) {
+		return nil
+	}
+
+	activeCount, err := q.CountActivePrincipalsBySystemRole(ctx, superAdminRole.ID)
+	if err != nil {
+		return err
+	}
+	if activeCount <= 1 {
+		return authorizationapp.ErrLastSuperAdmin
+	}
+	return nil
+}
+
+func sameUUIDSet(left []uuid.UUID, right []uuid.UUID) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	leftSet := make(map[uuid.UUID]struct{}, len(left))
+	for _, id := range left {
+		leftSet[id] = struct{}{}
+	}
+	for _, id := range right {
+		if _, ok := leftSet[id]; !ok {
+			return false
+		}
+	}
+	return true
 }

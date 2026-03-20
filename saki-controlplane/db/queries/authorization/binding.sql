@@ -39,3 +39,12 @@ returning id, principal_id, role_id, system_name, created_at, updated_at;
 -- name: DeleteAuthzSystemBinding :exec
 delete from authz_system_binding
 where id = sqlc.arg(id);
+
+-- name: CountActivePrincipalsBySystemRole :one
+select count(*)
+from authz_system_binding b
+join iam_principal p on p.id = b.principal_id
+join iam_user u on u.principal_id = b.principal_id
+where b.role_id = sqlc.arg(role_id)
+  and p.status = 'active'
+  and u.state = 'active';

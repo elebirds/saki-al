@@ -12,6 +12,23 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countActivePrincipalsBySystemRole = `-- name: CountActivePrincipalsBySystemRole :one
+select count(*)
+from authz_system_binding b
+join iam_principal p on p.id = b.principal_id
+join iam_user u on u.principal_id = b.principal_id
+where b.role_id = $1
+  and p.status = 'active'
+  and u.state = 'active'
+`
+
+func (q *Queries) CountActivePrincipalsBySystemRole(ctx context.Context, roleID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countActivePrincipalsBySystemRole, roleID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const deleteAuthzSystemBinding = `-- name: DeleteAuthzSystemBinding :exec
 delete from authz_system_binding
 where id = $1

@@ -292,24 +292,27 @@ func newSystemHTTPHandler(t *testing.T, deps contractDeps) http.Handler {
 	return handler
 }
 
-func issueSystemToken(t *testing.T, handler http.Handler, userID string) string {
+func issueSystemToken(t *testing.T, _ http.Handler, userID string) string {
 	t.Helper()
 
-	req := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewBufferString(`{"user_id":"`+userID+`"}`))
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("login failed: status=%d body=%s", rec.Code, rec.Body.String())
+	store := &fakeClaimsStore{
+		byUserID: map[string]*accessapp.ClaimsSnapshot{
+			userID: {
+				PrincipalID: uuid.MustParse("00000000-0000-0000-0000-000000001499"),
+				UserID:      userID,
+				Permissions: []string{"system:read", "system:write"},
+			},
+		},
+		byPrincipalID: map[uuid.UUID]*accessapp.ClaimsSnapshot{},
+	}
+	for _, snapshot := range store.byUserID {
+		copy := *snapshot
+		store.byPrincipalID[copy.PrincipalID] = &copy
 	}
 
-	var body map[string]any
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatalf("decode login response: %v", err)
-	}
-	token, _ := body["token"].(string)
-	if token == "" {
-		t.Fatalf("missing login token: %+v", body)
+	token, err := accessapp.NewAuthenticator("test-secret", time.Hour).WithStore(store).IssueTokenContext(context.Background(), userID)
+	if err != nil {
+		t.Fatalf("issue token: %v", err)
 	}
 	return token
 }

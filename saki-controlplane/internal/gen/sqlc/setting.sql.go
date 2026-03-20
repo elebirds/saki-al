@@ -11,6 +11,32 @@ import (
 	"github.com/google/uuid"
 )
 
+const getSystemSettingByKey = `-- name: GetSystemSettingByKey :one
+select id, installation_id, key, value, created_at, updated_at
+from system_setting
+where installation_id = $1
+  and key = $2
+`
+
+type GetSystemSettingByKeyParams struct {
+	InstallationID uuid.UUID `json:"installation_id"`
+	Key            string    `json:"key"`
+}
+
+func (q *Queries) GetSystemSettingByKey(ctx context.Context, arg GetSystemSettingByKeyParams) (SystemSetting, error) {
+	row := q.db.QueryRow(ctx, getSystemSettingByKey, arg.InstallationID, arg.Key)
+	var i SystemSetting
+	err := row.Scan(
+		&i.ID,
+		&i.InstallationID,
+		&i.Key,
+		&i.Value,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const listSystemSettings = `-- name: ListSystemSettings :many
 select id, installation_id, key, value, created_at, updated_at
 from system_setting

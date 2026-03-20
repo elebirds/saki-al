@@ -54,6 +54,20 @@ func encodeCancelRuntimeTaskResponse(response *RuntimeCommandResponse, w http.Re
 	return nil
 }
 
+func encodeChangePasswordResponse(response *AuthSessionResponse, w http.ResponseWriter, span trace.Span) error {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(200)
+	span.SetStatus(codes.Ok, http.StatusText(200))
+
+	e := new(jx.Encoder)
+	response.Encode(e)
+	if _, err := e.WriteTo(w); err != nil {
+		return errors.Wrap(err, "write")
+	}
+
+	return nil
+}
+
 func encodeCompleteAssetUploadResponse(response *Asset, w http.ResponseWriter, span trace.Span) error {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(200)
@@ -654,7 +668,7 @@ func encodeListSampleAnnotationsResponse(response []Annotation, w http.ResponseW
 	return nil
 }
 
-func encodeLoginResponse(response *AuthTokenResponse, w http.ResponseWriter, span trace.Span) error {
+func encodeLoginResponse(response *AuthSessionResponse, w http.ResponseWriter, span trace.Span) error {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(200)
 	span.SetStatus(codes.Ok, http.StatusText(200))
@@ -664,6 +678,13 @@ func encodeLoginResponse(response *AuthTokenResponse, w http.ResponseWriter, spa
 	if _, err := e.WriteTo(w); err != nil {
 		return errors.Wrap(err, "write")
 	}
+
+	return nil
+}
+
+func encodeLogoutAuthSessionResponse(response *LogoutAuthSessionNoContent, w http.ResponseWriter, span trace.Span) error {
+	w.WriteHeader(204)
+	span.SetStatus(codes.Ok, http.StatusText(204))
 
 	return nil
 }
@@ -683,6 +704,34 @@ func encodePatchSystemSettingsResponse(response *SystemSettingsResponse, w http.
 }
 
 func encodePrepareProjectAnnotationImportResponse(response *PrepareProjectAnnotationImportResponse, w http.ResponseWriter, span trace.Span) error {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(200)
+	span.SetStatus(codes.Ok, http.StatusText(200))
+
+	e := new(jx.Encoder)
+	response.Encode(e)
+	if _, err := e.WriteTo(w); err != nil {
+		return errors.Wrap(err, "write")
+	}
+
+	return nil
+}
+
+func encodeRefreshAuthSessionResponse(response *AuthSessionResponse, w http.ResponseWriter, span trace.Span) error {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(200)
+	span.SetStatus(codes.Ok, http.StatusText(200))
+
+	e := new(jx.Encoder)
+	response.Encode(e)
+	if _, err := e.WriteTo(w); err != nil {
+		return errors.Wrap(err, "write")
+	}
+
+	return nil
+}
+
+func encodeRegisterAuthUserResponse(response *AuthSessionResponse, w http.ResponseWriter, span trace.Span) error {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(200)
 	span.SetStatus(codes.Ok, http.StatusText(200))

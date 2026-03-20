@@ -2,8 +2,11 @@ package apihttp
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"net/http"
+	"time"
 
 	authctx "github.com/elebirds/saki/saki-controlplane/internal/app/auth"
 	openapi "github.com/elebirds/saki/saki-controlplane/internal/gen/openapi"
@@ -14,6 +17,8 @@ import (
 	assetapi "github.com/elebirds/saki/saki-controlplane/internal/modules/asset/apihttp"
 	datasetapi "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/apihttp"
 	datasetapp "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/app"
+	identityapi "github.com/elebirds/saki/saki-controlplane/internal/modules/identity/apihttp"
+	identityapp "github.com/elebirds/saki/saki-controlplane/internal/modules/identity/app"
 	importingapi "github.com/elebirds/saki/saki-controlplane/internal/modules/importing/apihttp"
 	projectapi "github.com/elebirds/saki/saki-controlplane/internal/modules/project/apihttp"
 	projectapp "github.com/elebirds/saki/saki-controlplane/internal/modules/project/app"
@@ -25,6 +30,7 @@ import (
 type Dependencies struct {
 	Authenticator       *accessapp.Authenticator
 	ClaimsStore         accessapp.ClaimsStore
+	Identity            *identityapi.Handlers
 	System              *Handlers
 	DatasetStore        datasetapp.Store
 	DatasetDelete       *datasetapp.DeleteDatasetUseCase
@@ -43,14 +49,16 @@ type Dependencies struct {
 type Server struct {
 	openapi.UnimplementedHandler
 
-	access     *accessapi.Handlers
-	annotation *annotationapi.Handlers
-	asset      *assetapi.Handlers
-	dataset    *datasetapi.Handlers
-	importing  *importingapi.Handlers
-	project    *projectapi.Handlers
-	runtime    *runtimeapi.Handlers
-	system     *Handlers
+	authenticator *accessapp.Authenticator
+	access        *accessapi.Handlers
+	annotation    *annotationapi.Handlers
+	asset         *assetapi.Handlers
+	dataset       *datasetapi.Handlers
+	identity      *identityapi.Handlers
+	importing     *importingapi.Handlers
+	project       *projectapi.Handlers
+	runtime       *runtimeapi.Handlers
+	system        *Handlers
 }
 
 func NewHandler(deps Dependencies) (*Server, error) {
@@ -79,7 +87,8 @@ func NewHandler(deps Dependencies) (*Server, error) {
 		return nil, errors.New("annotation store is required")
 	}
 	return &Server{
-		access: accessapi.NewHandlers(deps.Authenticator),
+		authenticator: deps.Authenticator,
+		access:        accessapi.NewHandlers(deps.Authenticator),
 		annotation: annotationapi.NewHandlersWithDependencies(
 			deps.AnnotationSamples,
 			deps.AnnotationDatasets,
@@ -93,6 +102,7 @@ func NewHandler(deps Dependencies) (*Server, error) {
 			Delete:       deps.DatasetDelete,
 			DeleteSample: deps.DatasetDeleteSample,
 		}),
+		identity:  deps.Identity,
 		importing: importingapi.NewHandlers(deps.Importing),
 		project:   projectapi.NewHandlers(deps.ProjectStore, deps.DatasetStore),
 		runtime: runtimeapi.NewHandlers(runtimeapi.Dependencies{
@@ -141,8 +151,35 @@ func (s *Server) NewError(_ context.Context, err error) *openapi.ErrorResponseSt
 	return mapError(err)
 }
 
-func (s *Server) Login(ctx context.Context, req *openapi.LoginRequest) (*openapi.AuthTokenResponse, error) {
-	return s.access.Login(ctx, req)
+func (s *Server) ChangePassword(ctx context.Context, req *openapi.AuthChangePasswordRequest) (*openapi.AuthSessionResponse, error) {
+	if s.identity == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	return s.identity.ChangePassword(ctx, req)
+}
+
+func (s *Server) Login(ctx context.Context, req *openapi.AuthLoginRequest) (*openapi.AuthSessionResponse, error) {
+	// 关键设计：/auth/login 在迁移期同时承载“新的人类身份登录”和“旧 bootstrap principal 免密登录”。
+	// 这里必须显式分流并禁止协议混用，避免把迁移兼容层扩散成长期双主协议。
+	if legacyUserID, ok := req.GetUserID().Get(); ok {
+		if req.GetIdentifier().IsSet() || req.GetPassword().IsSet() {
+			return nil, newBadRequest("user_id login cannot be mixed with identifier/password")
+		}
+		return s.loginLegacyBootstrap(ctx, legacyUserID)
+	}
+
+	identifier, hasIdentifier := req.GetIdentifier().Get()
+	password, hasPassword := req.GetPassword().Get()
+	if !hasIdentifier || !hasPassword {
+		return nil, newBadRequest("identifier and password are required")
+	}
+	if identifier == "" || password == "" {
+		return nil, newBadRequest("identifier and password are required")
+	}
+	if s.identity == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	return s.identity.Login(ctx, req)
 }
 
 func (s *Server) InitAssetUpload(ctx context.Context, req *openapi.AssetUploadInitRequest) (*openapi.AssetUploadInitResponse, error) {
@@ -246,7 +283,16 @@ func (s *Server) CompleteAssetUpload(ctx context.Context, req *openapi.AssetComp
 }
 
 func (s *Server) GetCurrentUser(ctx context.Context) (*openapi.CurrentUserResponse, error) {
-	return s.access.GetCurrentUser(ctx)
+	if s.identity != nil {
+		response, err := s.identity.GetCurrentUser(ctx)
+		if err == nil {
+			return response, nil
+		}
+		if !errors.Is(err, identityapp.ErrInvalidCredentials) {
+			return nil, err
+		}
+	}
+	return s.currentLegacyBootstrapUser(ctx)
 }
 
 func (s *Server) GetSystemSettings(ctx context.Context) (*openapi.SystemSettingsResponse, error) {
@@ -356,4 +402,91 @@ func (s *Server) DeleteDatasetSample(ctx context.Context, params openapi.DeleteD
 
 func (s *Server) RequirePermission(ctx context.Context, params openapi.RequirePermissionParams) error {
 	return s.access.RequirePermission(ctx, params)
+}
+
+func (s *Server) LogoutAuthSession(ctx context.Context, req *openapi.AuthLogoutRequest) error {
+	if s.identity == nil {
+		return ogenhttp.ErrNotImplemented
+	}
+	return s.identity.LogoutAuthSession(ctx, req)
+}
+
+func (s *Server) RefreshAuthSession(ctx context.Context, req *openapi.AuthRefreshRequest) (*openapi.AuthSessionResponse, error) {
+	if s.identity == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	return s.identity.RefreshAuthSession(ctx, req)
+}
+
+func (s *Server) RegisterAuthUser(ctx context.Context, req *openapi.AuthRegisterRequest) (*openapi.AuthSessionResponse, error) {
+	if s.identity == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	return s.identity.RegisterAuthUser(ctx, req)
+}
+
+func (s *Server) loginLegacyBootstrap(ctx context.Context, userID string) (*openapi.AuthSessionResponse, error) {
+	if s.authenticator == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+
+	token, err := s.authenticator.IssueBootstrapTokenContext(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	claims, err := s.authenticator.ParseToken(token)
+	if err != nil {
+		return nil, err
+	}
+
+	expiresIn := int64(time.Until(claims.ExpiresAt).Seconds())
+	if expiresIn < 0 {
+		expiresIn = 0
+	}
+
+	response := &openapi.AuthSessionResponse{
+		AccessToken:        token,
+		RefreshToken:       "",
+		ExpiresIn:          expiresIn,
+		MustChangePassword: false,
+		Permissions:        append([]string{}, claims.Permissions...),
+		User: openapi.AuthSessionUser{
+			PrincipalID: claims.PrincipalID.String(),
+			Email:       legacyBootstrapEmailAlias(claims.UserID),
+			FullName:    "",
+		},
+	}
+	// 关键设计：legacy bootstrap 登录只保留短期 access token，不再补造 refresh session。
+	// 为兼容旧前端和 smoke，仍额外回填 token/user_id/permissions 这些历史字段别名。
+	response.Token.SetTo(token)
+	response.UserID.SetTo(claims.UserID)
+	return response, nil
+}
+
+func (s *Server) currentLegacyBootstrapUser(ctx context.Context) (*openapi.CurrentUserResponse, error) {
+	claims, ok := authctx.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, accessapp.ErrUnauthorized
+	}
+
+	response := &openapi.CurrentUserResponse{
+		User: openapi.AuthSessionUser{
+			PrincipalID: claims.PrincipalID.String(),
+			Email:       legacyBootstrapEmailAlias(claims.UserID),
+			FullName:    "",
+		},
+		SystemRoles:        []string{},
+		Permissions:        append([]string(nil), claims.Permissions...),
+		MustChangePassword: false,
+	}
+	response.UserID.SetTo(claims.UserID)
+	return response, nil
+}
+
+func legacyBootstrapEmailAlias(userID string) string {
+	sum := sha256.Sum256([]byte(userID))
+	// 关键设计：当前 OpenAPI 仍要求 user.email 满足 email 格式。
+	// 对 legacy bootstrap principal，这里生成一个不可投递的稳定别名，避免把 user_id 伪装成真实邮箱；
+	// 迁移期客户端应读取顶层 user_id，而不是把这个兼容别名当成业务身份字段。
+	return "bootstrap-" + hex.EncodeToString(sum[:8]) + "@legacy.saki.invalid"
 }

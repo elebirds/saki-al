@@ -22,6 +22,8 @@ import (
 	authorizationrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/authorization/repo"
 	datasetapp "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/app"
 	datasetrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/repo"
+	identityapi "github.com/elebirds/saki/saki-controlplane/internal/modules/identity/apihttp"
+	identityapp "github.com/elebirds/saki/saki-controlplane/internal/modules/identity/app"
 	identityrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/identity/repo"
 	importapi "github.com/elebirds/saki/saki-controlplane/internal/modules/importing/apihttp"
 	importapp "github.com/elebirds/saki/saki-controlplane/internal/modules/importing/app"
@@ -192,6 +194,9 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 	}
 
 	authenticator := accessapp.NewAuthenticator(cfg.AuthTokenSecret, tokenTTL).WithStore(claimsStore)
+	identitySessions := identityrepo.NewSessionRepo(pool)
+	identityAuthStore := identityrepo.NewAuthStore(pool)
+	identitySessionService := identityapp.NewSessionService(identitySessions, nil)
 	handler, err := systemapi.NewHTTPHandler(systemapi.Dependencies{
 		Authenticator:       authenticator,
 		ClaimsStore:         claimsStore,
@@ -234,6 +239,14 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 			Provider:        importDeps.Provider,
 			UploadURLExpiry: importDeps.UploadURLExpiry,
 		},
+		Identity: identityapi.NewHandlers(identityapi.HandlersDeps{
+			Login:          identityapp.NewLoginUseCase(identityAuthStore, authenticator, identitySessionService, nil, tokenTTL),
+			Refresh:        identityapp.NewRefreshUseCase(identityAuthStore, authenticator, identitySessionService, tokenTTL),
+			Logout:         identityapp.NewLogoutUseCase(identitySessionService),
+			Register:       identityapp.NewRegisterUseCase(identityAuthStore, authenticator, nil, tokenTTL),
+			ChangePassword: identityapp.NewChangePasswordUseCase(identityAuthStore, authenticator, nil, nil, tokenTTL),
+			CurrentUser:    identityapp.NewCurrentUserUseCase(identityAuthStore),
+		}),
 		System: systemapi.NewHandlers(systemapi.HandlersDeps{
 			Status:   systemapp.NewStatusUseCase(systemapp.NewInstallationService(installationRepo), systemapp.NewSettingsService(settingRepo), cfg.BuildVersion),
 			Types:    systemapp.NewTypesUseCase(),

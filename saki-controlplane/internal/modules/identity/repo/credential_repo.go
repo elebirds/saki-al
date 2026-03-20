@@ -4,6 +4,7 @@ import (
 	"context"
 
 	sqlcdb "github.com/elebirds/saki/saki-controlplane/internal/gen/sqlc"
+	identityapp "github.com/elebirds/saki/saki-controlplane/internal/modules/identity/app"
 	identitydomain "github.com/elebirds/saki/saki-controlplane/internal/modules/identity/domain"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -49,14 +50,37 @@ func (r *CredentialRepo) DeletePasswordCredential(ctx context.Context, principal
 	})
 }
 
+func (r *CredentialRepo) UpsertPasswordCredential(ctx context.Context, params identityapp.UpgradePasswordCredentialParams) (*identitydomain.PasswordCredential, error) {
+	row, err := r.q.UpsertIamPasswordCredential(ctx, sqlcdb.UpsertIamPasswordCredentialParams{
+		PrincipalID:        params.PrincipalID,
+		Scheme:             params.NewScheme,
+		PasswordHash:       params.NewPasswordHash,
+		MustChangePassword: params.MustChangePassword,
+		PasswordChangedAt:  timeValue(params.PasswordChangedAt),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return mapCredential(row), nil
+}
+
+func (r *CredentialRepo) DeletePasswordCredentialsByPrincipalExcludingScheme(ctx context.Context, principalID uuid.UUID, scheme string) error {
+	return r.q.DeleteIamPasswordCredentialsByPrincipalExcludingScheme(ctx, sqlcdb.DeleteIamPasswordCredentialsByPrincipalExcludingSchemeParams{
+		PrincipalID: principalID,
+		Scheme:      scheme,
+	})
+}
+
 func mapCredential(row sqlcdb.IamPasswordCredential) *identitydomain.PasswordCredential {
 	return &identitydomain.PasswordCredential{
-		ID:           row.ID,
-		PrincipalID:  row.PrincipalID,
-		Provider:     identitydomain.CredentialProviderLocalPassword,
-		Scheme:       row.Scheme,
-		PasswordHash: row.PasswordHash,
-		CreatedAt:    row.CreatedAt.Time,
-		UpdatedAt:    row.UpdatedAt.Time,
+		ID:                 row.ID,
+		PrincipalID:        row.PrincipalID,
+		Provider:           identitydomain.CredentialProviderLocalPassword,
+		Scheme:             row.Scheme,
+		PasswordHash:       row.PasswordHash,
+		MustChangePassword: row.MustChangePassword,
+		PasswordChangedAt:  fromTime(row.PasswordChangedAt),
+		CreatedAt:          row.CreatedAt.Time,
+		UpdatedAt:          row.UpdatedAt.Time,
 	}
 }

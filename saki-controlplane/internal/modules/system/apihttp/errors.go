@@ -8,13 +8,27 @@ import (
 
 	openapi "github.com/elebirds/saki/saki-controlplane/internal/gen/openapi"
 	accessapp "github.com/elebirds/saki/saki-controlplane/internal/modules/access/app"
+	identityapp "github.com/elebirds/saki/saki-controlplane/internal/modules/identity/app"
 	systemapp "github.com/elebirds/saki/saki-controlplane/internal/modules/system/app"
 	ogenhttp "github.com/ogen-go/ogen/http"
 	"github.com/ogen-go/ogen/validate"
 )
 
+type badRequestError struct {
+	message string
+}
+
+func (e *badRequestError) Error() string {
+	return e.message
+}
+
+func newBadRequest(message string) error {
+	return &badRequestError{message: message}
+}
+
 func mapError(err error) *openapi.ErrorResponseStatusCode {
 	var validateErr *validate.Error
+	var badRequestErr *badRequestError
 	switch {
 	case errors.Is(err, accessapp.ErrUnauthorized):
 		return &openapi.ErrorResponseStatusCode{
@@ -30,6 +44,22 @@ func mapError(err error) *openapi.ErrorResponseStatusCode {
 			Response: openapi.ErrorResponse{
 				Code:    "forbidden",
 				Message: "permission denied",
+			},
+		}
+	case errors.Is(err, identityapp.ErrInvalidCredentials), errors.Is(err, identityapp.ErrInvalidRefreshSession), errors.Is(err, identityapp.ErrRefreshSessionReplayDetected):
+		return &openapi.ErrorResponseStatusCode{
+			StatusCode: http.StatusUnauthorized,
+			Response: openapi.ErrorResponse{
+				Code:    "unauthorized",
+				Message: "invalid credentials or session",
+			},
+		}
+	case errors.Is(err, identityapp.ErrSelfRegistrationDisabled):
+		return &openapi.ErrorResponseStatusCode{
+			StatusCode: http.StatusForbidden,
+			Response: openapi.ErrorResponse{
+				Code:    "self_registration_disabled",
+				Message: "self registration is disabled",
 			},
 		}
 	case errors.Is(err, systemapp.ErrAlreadyInitialized):
@@ -54,6 +84,14 @@ func mapError(err error) *openapi.ErrorResponseStatusCode {
 			Response: openapi.ErrorResponse{
 				Code:    "bad_request",
 				Message: err.Error(),
+			},
+		}
+	case errors.As(err, &badRequestErr):
+		return &openapi.ErrorResponseStatusCode{
+			StatusCode: http.StatusBadRequest,
+			Response: openapi.ErrorResponse{
+				Code:    "bad_request",
+				Message: badRequestErr.Error(),
 			},
 		}
 	case errors.Is(err, ogenhttp.ErrNotImplemented):

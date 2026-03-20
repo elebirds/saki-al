@@ -66,6 +66,17 @@ func (r *UserRepo) GetByEmail(ctx context.Context, email string) (*identitydomai
 	return mapUser(row), nil
 }
 
+func (r *UserRepo) GetByIdentifier(ctx context.Context, identifier string) (*identitydomain.User, error) {
+	row, err := r.q.GetIamUserByIdentifier(ctx, identifier)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return mapUser(row), nil
+}
+
 func (r *UserRepo) UpdateProfile(ctx context.Context, params UpdateUserProfileParams) error {
 	return r.q.UpdateIamUserProfile(ctx, sqlcdb.UpdateIamUserProfileParams{
 		PrincipalID:   params.PrincipalID,

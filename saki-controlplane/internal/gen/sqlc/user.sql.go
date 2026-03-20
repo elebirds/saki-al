@@ -51,11 +51,36 @@ func (q *Queries) CreateIamUser(ctx context.Context, arg CreateIamUserParams) (I
 const getIamUserByEmail = `-- name: GetIamUserByEmail :one
 select principal_id, email, username, full_name, avatar_asset_id, state, created_at, updated_at
 from iam_user
-where email = $1
+where lower(email) = lower($1)
 `
 
 func (q *Queries) GetIamUserByEmail(ctx context.Context, email string) (IamUser, error) {
 	row := q.db.QueryRow(ctx, getIamUserByEmail, email)
+	var i IamUser
+	err := row.Scan(
+		&i.PrincipalID,
+		&i.Email,
+		&i.Username,
+		&i.FullName,
+		&i.AvatarAssetID,
+		&i.State,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getIamUserByIdentifier = `-- name: GetIamUserByIdentifier :one
+select principal_id, email, username, full_name, avatar_asset_id, state, created_at, updated_at
+from iam_user
+where lower(email) = lower($1)
+   or username = $1
+order by case when lower(email) = lower($1) then 0 else 1 end
+limit 1
+`
+
+func (q *Queries) GetIamUserByIdentifier(ctx context.Context, identifier string) (IamUser, error) {
+	row := q.db.QueryRow(ctx, getIamUserByIdentifier, identifier)
 	var i IamUser
 	err := row.Scan(
 		&i.PrincipalID,

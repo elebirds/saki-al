@@ -14,9 +14,12 @@ const DefaultRefreshSessionTTL = 30 * 24 * time.Hour
 
 var ErrInvalidRefreshSession = errors.New("invalid refresh session")
 var ErrRefreshSessionNotConsumed = errors.New("refresh session not consumed")
+var ErrRefreshSessionReplayDetected = errors.New("refresh session replay detected")
 
 type CreateRefreshSessionParams struct {
 	PrincipalID uuid.UUID
+	FamilyID    uuid.UUID
+	RotatedFrom *uuid.UUID
 	TokenHash   string
 	UserAgent   string
 	IPAddress   *netip.Addr
@@ -27,8 +30,8 @@ type CreateRefreshSessionParams struct {
 type RefreshSessionStore interface {
 	CreateRefreshSession(ctx context.Context, params CreateRefreshSessionParams) (*identitydomain.RefreshSession, error)
 	GetRefreshSessionByTokenHash(ctx context.Context, tokenHash string) (*identitydomain.RefreshSession, error)
-	DeleteRefreshSession(ctx context.Context, id uuid.UUID) error
 	RotateRefreshSession(ctx context.Context, params RotateRefreshSessionParams) (*identitydomain.RefreshSession, error)
+	RevokeRefreshSessionByTokenHash(ctx context.Context, tokenHash string, now time.Time) error
 }
 
 type RotateRefreshSessionParams struct {
@@ -108,6 +111,9 @@ func (s *SessionService) Rotate(ctx context.Context, refreshToken string, userAg
 		ExpiresAt:        now.Add(s.ttl),
 	})
 	if err != nil {
+		if errors.Is(err, ErrRefreshSessionReplayDetected) {
+			return nil, ErrRefreshSessionReplayDetected
+		}
 		if errors.Is(err, ErrRefreshSessionNotConsumed) {
 			return nil, ErrInvalidRefreshSession
 		}
@@ -118,6 +124,18 @@ func (s *SessionService) Rotate(ctx context.Context, refreshToken string, userAg
 		RefreshToken: newToken,
 		Session:      rotated,
 	}, nil
+}
+
+func (s *SessionService) Revoke(ctx context.Context, refreshToken string) error {
+	tokenHash := s.issuer.HashOpaqueToken(refreshToken)
+	err := s.store.RevokeRefreshSessionByTokenHash(ctx, tokenHash, s.now().UTC())
+	if err != nil {
+		if errors.Is(err, ErrRefreshSessionNotConsumed) {
+			return ErrInvalidRefreshSession
+		}
+		return err
+	}
+	return nil
 }
 
 func cloneAddr(addr *netip.Addr) *netip.Addr {

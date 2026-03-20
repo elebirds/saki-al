@@ -13,43 +13,38 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const consumeActiveIamRefreshSessionByTokenHash = `-- name: ConsumeActiveIamRefreshSessionByTokenHash :one
-delete from iam_refresh_session
-where token_hash = $1
-  and expires_at > $2
-returning id, principal_id, token_hash, user_agent, ip_address, last_seen_at, expires_at, created_at, updated_at
+const countIamRefreshSessionChildren = `-- name: CountIamRefreshSessionChildren :one
+select count(*)
+from iam_refresh_session
+where rotated_from = $1
 `
 
-type ConsumeActiveIamRefreshSessionByTokenHashParams struct {
-	TokenHash string             `json:"token_hash"`
-	Now       pgtype.Timestamptz `json:"now"`
-}
-
-func (q *Queries) ConsumeActiveIamRefreshSessionByTokenHash(ctx context.Context, arg ConsumeActiveIamRefreshSessionByTokenHashParams) (IamRefreshSession, error) {
-	row := q.db.QueryRow(ctx, consumeActiveIamRefreshSessionByTokenHash, arg.TokenHash, arg.Now)
-	var i IamRefreshSession
-	err := row.Scan(
-		&i.ID,
-		&i.PrincipalID,
-		&i.TokenHash,
-		&i.UserAgent,
-		&i.IpAddress,
-		&i.LastSeenAt,
-		&i.ExpiresAt,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
+func (q *Queries) CountIamRefreshSessionChildren(ctx context.Context, sessionID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countIamRefreshSessionChildren, sessionID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const createIamRefreshSession = `-- name: CreateIamRefreshSession :one
-insert into iam_refresh_session (principal_id, token_hash, user_agent, ip_address, last_seen_at, expires_at)
-values ($1, $2, $3, $4, $5, $6)
-returning id, principal_id, token_hash, user_agent, ip_address, last_seen_at, expires_at, created_at, updated_at
+insert into iam_refresh_session (principal_id, family_id, rotated_from, token_hash, user_agent, ip_address, last_seen_at, expires_at)
+values (
+    $1,
+    $2,
+    $3,
+    $4,
+    $5,
+    $6,
+    $7,
+    $8
+)
+returning id, principal_id, family_id, rotated_from, replaced_by, token_hash, user_agent, ip_address, last_seen_at, revoked_at, replay_detected_at, expires_at, created_at, updated_at
 `
 
 type CreateIamRefreshSessionParams struct {
 	PrincipalID uuid.UUID          `json:"principal_id"`
+	FamilyID    uuid.UUID          `json:"family_id"`
+	RotatedFrom pgtype.UUID        `json:"rotated_from"`
 	TokenHash   string             `json:"token_hash"`
 	UserAgent   pgtype.Text        `json:"user_agent"`
 	IpAddress   *netip.Addr        `json:"ip_address"`
@@ -60,6 +55,8 @@ type CreateIamRefreshSessionParams struct {
 func (q *Queries) CreateIamRefreshSession(ctx context.Context, arg CreateIamRefreshSessionParams) (IamRefreshSession, error) {
 	row := q.db.QueryRow(ctx, createIamRefreshSession,
 		arg.PrincipalID,
+		arg.FamilyID,
+		arg.RotatedFrom,
 		arg.TokenHash,
 		arg.UserAgent,
 		arg.IpAddress,
@@ -70,10 +67,15 @@ func (q *Queries) CreateIamRefreshSession(ctx context.Context, arg CreateIamRefr
 	err := row.Scan(
 		&i.ID,
 		&i.PrincipalID,
+		&i.FamilyID,
+		&i.RotatedFrom,
+		&i.ReplacedBy,
 		&i.TokenHash,
 		&i.UserAgent,
 		&i.IpAddress,
 		&i.LastSeenAt,
+		&i.RevokedAt,
+		&i.ReplayDetectedAt,
 		&i.ExpiresAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -81,18 +83,8 @@ func (q *Queries) CreateIamRefreshSession(ctx context.Context, arg CreateIamRefr
 	return i, err
 }
 
-const deleteIamRefreshSession = `-- name: DeleteIamRefreshSession :exec
-delete from iam_refresh_session
-where id = $1
-`
-
-func (q *Queries) DeleteIamRefreshSession(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, deleteIamRefreshSession, id)
-	return err
-}
-
 const getIamRefreshSessionByTokenHash = `-- name: GetIamRefreshSessionByTokenHash :one
-select id, principal_id, token_hash, user_agent, ip_address, last_seen_at, expires_at, created_at, updated_at
+select id, principal_id, family_id, rotated_from, replaced_by, token_hash, user_agent, ip_address, last_seen_at, revoked_at, replay_detected_at, expires_at, created_at, updated_at
 from iam_refresh_session
 where token_hash = $1
 `
@@ -103,10 +95,44 @@ func (q *Queries) GetIamRefreshSessionByTokenHash(ctx context.Context, tokenHash
 	err := row.Scan(
 		&i.ID,
 		&i.PrincipalID,
+		&i.FamilyID,
+		&i.RotatedFrom,
+		&i.ReplacedBy,
 		&i.TokenHash,
 		&i.UserAgent,
 		&i.IpAddress,
 		&i.LastSeenAt,
+		&i.RevokedAt,
+		&i.ReplayDetectedAt,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getIamRefreshSessionByTokenHashForUpdate = `-- name: GetIamRefreshSessionByTokenHashForUpdate :one
+select id, principal_id, family_id, rotated_from, replaced_by, token_hash, user_agent, ip_address, last_seen_at, revoked_at, replay_detected_at, expires_at, created_at, updated_at
+from iam_refresh_session
+where token_hash = $1
+for update
+`
+
+func (q *Queries) GetIamRefreshSessionByTokenHashForUpdate(ctx context.Context, tokenHash string) (IamRefreshSession, error) {
+	row := q.db.QueryRow(ctx, getIamRefreshSessionByTokenHashForUpdate, tokenHash)
+	var i IamRefreshSession
+	err := row.Scan(
+		&i.ID,
+		&i.PrincipalID,
+		&i.FamilyID,
+		&i.RotatedFrom,
+		&i.ReplacedBy,
+		&i.TokenHash,
+		&i.UserAgent,
+		&i.IpAddress,
+		&i.LastSeenAt,
+		&i.RevokedAt,
+		&i.ReplayDetectedAt,
 		&i.ExpiresAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -115,7 +141,7 @@ func (q *Queries) GetIamRefreshSessionByTokenHash(ctx context.Context, tokenHash
 }
 
 const listIamRefreshSessionsByPrincipal = `-- name: ListIamRefreshSessionsByPrincipal :many
-select id, principal_id, token_hash, user_agent, ip_address, last_seen_at, expires_at, created_at, updated_at
+select id, principal_id, family_id, rotated_from, replaced_by, token_hash, user_agent, ip_address, last_seen_at, revoked_at, replay_detected_at, expires_at, created_at, updated_at
 from iam_refresh_session
 where principal_id = $1
 order by created_at desc
@@ -133,10 +159,15 @@ func (q *Queries) ListIamRefreshSessionsByPrincipal(ctx context.Context, princip
 		if err := rows.Scan(
 			&i.ID,
 			&i.PrincipalID,
+			&i.FamilyID,
+			&i.RotatedFrom,
+			&i.ReplacedBy,
 			&i.TokenHash,
 			&i.UserAgent,
 			&i.IpAddress,
 			&i.LastSeenAt,
+			&i.RevokedAt,
+			&i.ReplayDetectedAt,
 			&i.ExpiresAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -149,4 +180,97 @@ func (q *Queries) ListIamRefreshSessionsByPrincipal(ctx context.Context, princip
 		return nil, err
 	}
 	return items, nil
+}
+
+const markIamRefreshSessionRotated = `-- name: MarkIamRefreshSessionRotated :execrows
+update iam_refresh_session
+set
+    replaced_by = $1,
+    revoked_at = $2,
+    last_seen_at = $3,
+    updated_at = now()
+where id = $4
+  and revoked_at is null
+  and replaced_by is null
+`
+
+type MarkIamRefreshSessionRotatedParams struct {
+	ReplacedBy pgtype.UUID        `json:"replaced_by"`
+	RevokedAt  pgtype.Timestamptz `json:"revoked_at"`
+	LastSeenAt pgtype.Timestamptz `json:"last_seen_at"`
+	ID         uuid.UUID          `json:"id"`
+}
+
+func (q *Queries) MarkIamRefreshSessionRotated(ctx context.Context, arg MarkIamRefreshSessionRotatedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markIamRefreshSessionRotated,
+		arg.ReplacedBy,
+		arg.RevokedAt,
+		arg.LastSeenAt,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const revokeIamRefreshSessionByTokenHash = `-- name: RevokeIamRefreshSessionByTokenHash :execrows
+update iam_refresh_session
+set
+    revoked_at = $1,
+    updated_at = now()
+where token_hash = $2
+  and revoked_at is null
+  and expires_at > $1
+`
+
+type RevokeIamRefreshSessionByTokenHashParams struct {
+	RevokedAt pgtype.Timestamptz `json:"revoked_at"`
+	TokenHash string             `json:"token_hash"`
+}
+
+func (q *Queries) RevokeIamRefreshSessionByTokenHash(ctx context.Context, arg RevokeIamRefreshSessionByTokenHashParams) (int64, error) {
+	result, err := q.db.Exec(ctx, revokeIamRefreshSessionByTokenHash, arg.RevokedAt, arg.TokenHash)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const revokeIamRefreshSessionFamily = `-- name: RevokeIamRefreshSessionFamily :exec
+update iam_refresh_session
+set
+    revoked_at = coalesce(revoked_at, $1),
+    replay_detected_at = coalesce(replay_detected_at, $1),
+    updated_at = now()
+where family_id = $2
+`
+
+type RevokeIamRefreshSessionFamilyParams struct {
+	Now      pgtype.Timestamptz `json:"now"`
+	FamilyID uuid.UUID          `json:"family_id"`
+}
+
+func (q *Queries) RevokeIamRefreshSessionFamily(ctx context.Context, arg RevokeIamRefreshSessionFamilyParams) error {
+	_, err := q.db.Exec(ctx, revokeIamRefreshSessionFamily, arg.Now, arg.FamilyID)
+	return err
+}
+
+const revokeIamRefreshSessionsByPrincipal = `-- name: RevokeIamRefreshSessionsByPrincipal :exec
+update iam_refresh_session
+set
+    revoked_at = coalesce(revoked_at, $1),
+    updated_at = now()
+where principal_id = $2
+  and revoked_at is null
+`
+
+type RevokeIamRefreshSessionsByPrincipalParams struct {
+	Now         pgtype.Timestamptz `json:"now"`
+	PrincipalID uuid.UUID          `json:"principal_id"`
+}
+
+func (q *Queries) RevokeIamRefreshSessionsByPrincipal(ctx context.Context, arg RevokeIamRefreshSessionsByPrincipalParams) error {
+	_, err := q.db.Exec(ctx, revokeIamRefreshSessionsByPrincipal, arg.Now, arg.PrincipalID)
+	return err
 }

@@ -103,6 +103,7 @@ func (r *SetupStore) ExecuteInitialSetup(ctx context.Context, params systemapp.E
 
 		if _, err := q.CreateIamRefreshSession(ctx, sqlcdb.CreateIamRefreshSessionParams{
 			PrincipalID: principal.ID,
+			FamilyID:    uuid.New(),
 			TokenHash:   params.RefreshTokenHash,
 			UserAgent:   textValue(params.UserAgent),
 			IpAddress:   cloneAddr(params.IPAddress),

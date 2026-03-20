@@ -718,13 +718,151 @@ func (s *AssetUploadInitResponseIntentState) UnmarshalText(data []byte) error {
 	}
 }
 
+// Ref: #/components/schemas/AuthChangePasswordRequest
+type AuthChangePasswordRequest struct {
+	OldPassword string `json:"old_password"`
+	NewPassword string `json:"new_password"`
+}
+
+// GetOldPassword returns the value of OldPassword.
+func (s *AuthChangePasswordRequest) GetOldPassword() string {
+	return s.OldPassword
+}
+
+// GetNewPassword returns the value of NewPassword.
+func (s *AuthChangePasswordRequest) GetNewPassword() string {
+	return s.NewPassword
+}
+
+// SetOldPassword sets the value of OldPassword.
+func (s *AuthChangePasswordRequest) SetOldPassword(val string) {
+	s.OldPassword = val
+}
+
+// SetNewPassword sets the value of NewPassword.
+func (s *AuthChangePasswordRequest) SetNewPassword(val string) {
+	s.NewPassword = val
+}
+
+// Ref: #/components/schemas/AuthLoginRequest
+type AuthLoginRequest struct {
+	UserID     OptString `json:"user_id"`
+	Identifier OptString `json:"identifier"`
+	Password   OptString `json:"password"`
+}
+
+// GetUserID returns the value of UserID.
+func (s *AuthLoginRequest) GetUserID() OptString {
+	return s.UserID
+}
+
+// GetIdentifier returns the value of Identifier.
+func (s *AuthLoginRequest) GetIdentifier() OptString {
+	return s.Identifier
+}
+
+// GetPassword returns the value of Password.
+func (s *AuthLoginRequest) GetPassword() OptString {
+	return s.Password
+}
+
+// SetUserID sets the value of UserID.
+func (s *AuthLoginRequest) SetUserID(val OptString) {
+	s.UserID = val
+}
+
+// SetIdentifier sets the value of Identifier.
+func (s *AuthLoginRequest) SetIdentifier(val OptString) {
+	s.Identifier = val
+}
+
+// SetPassword sets the value of Password.
+func (s *AuthLoginRequest) SetPassword(val OptString) {
+	s.Password = val
+}
+
+// Ref: #/components/schemas/AuthLogoutRequest
+type AuthLogoutRequest struct {
+	RefreshToken string `json:"refresh_token"`
+}
+
+// GetRefreshToken returns the value of RefreshToken.
+func (s *AuthLogoutRequest) GetRefreshToken() string {
+	return s.RefreshToken
+}
+
+// SetRefreshToken sets the value of RefreshToken.
+func (s *AuthLogoutRequest) SetRefreshToken(val string) {
+	s.RefreshToken = val
+}
+
+// Ref: #/components/schemas/AuthRefreshRequest
+type AuthRefreshRequest struct {
+	RefreshToken string `json:"refresh_token"`
+}
+
+// GetRefreshToken returns the value of RefreshToken.
+func (s *AuthRefreshRequest) GetRefreshToken() string {
+	return s.RefreshToken
+}
+
+// SetRefreshToken sets the value of RefreshToken.
+func (s *AuthRefreshRequest) SetRefreshToken(val string) {
+	s.RefreshToken = val
+}
+
+// Ref: #/components/schemas/AuthRegisterRequest
+type AuthRegisterRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+	FullName string `json:"full_name"`
+}
+
+// GetEmail returns the value of Email.
+func (s *AuthRegisterRequest) GetEmail() string {
+	return s.Email
+}
+
+// GetPassword returns the value of Password.
+func (s *AuthRegisterRequest) GetPassword() string {
+	return s.Password
+}
+
+// GetFullName returns the value of FullName.
+func (s *AuthRegisterRequest) GetFullName() string {
+	return s.FullName
+}
+
+// SetEmail sets the value of Email.
+func (s *AuthRegisterRequest) SetEmail(val string) {
+	s.Email = val
+}
+
+// SetPassword sets the value of Password.
+func (s *AuthRegisterRequest) SetPassword(val string) {
+	s.Password = val
+}
+
+// SetFullName sets the value of FullName.
+func (s *AuthRegisterRequest) SetFullName(val string) {
+	s.FullName = val
+}
+
 // Ref: #/components/schemas/AuthSessionResponse
 type AuthSessionResponse struct {
+	Token              OptString       `json:"token"`
 	AccessToken        string          `json:"access_token"`
 	RefreshToken       string          `json:"refresh_token"`
 	ExpiresIn          int64           `json:"expires_in"`
 	MustChangePassword bool            `json:"must_change_password"`
+	UserID             OptString       `json:"user_id"`
+	Permissions        []string        `json:"permissions"`
 	User               AuthSessionUser `json:"user"`
+}
+
+// GetToken returns the value of Token.
+func (s *AuthSessionResponse) GetToken() OptString {
+	return s.Token
 }
 
 // GetAccessToken returns the value of AccessToken.
@@ -747,9 +885,24 @@ func (s *AuthSessionResponse) GetMustChangePassword() bool {
 	return s.MustChangePassword
 }
 
+// GetUserID returns the value of UserID.
+func (s *AuthSessionResponse) GetUserID() OptString {
+	return s.UserID
+}
+
+// GetPermissions returns the value of Permissions.
+func (s *AuthSessionResponse) GetPermissions() []string {
+	return s.Permissions
+}
+
 // GetUser returns the value of User.
 func (s *AuthSessionResponse) GetUser() AuthSessionUser {
 	return s.User
+}
+
+// SetToken sets the value of Token.
+func (s *AuthSessionResponse) SetToken(val OptString) {
+	s.Token = val
 }
 
 // SetAccessToken sets the value of AccessToken.
@@ -770,6 +923,16 @@ func (s *AuthSessionResponse) SetExpiresIn(val int64) {
 // SetMustChangePassword sets the value of MustChangePassword.
 func (s *AuthSessionResponse) SetMustChangePassword(val bool) {
 	s.MustChangePassword = val
+}
+
+// SetUserID sets the value of UserID.
+func (s *AuthSessionResponse) SetUserID(val OptString) {
+	s.UserID = val
+}
+
+// SetPermissions sets the value of Permissions.
+func (s *AuthSessionResponse) SetPermissions(val []string) {
+	s.Permissions = val
 }
 
 // SetUser sets the value of User.
@@ -812,43 +975,6 @@ func (s *AuthSessionUser) SetEmail(val string) {
 // SetFullName sets the value of FullName.
 func (s *AuthSessionUser) SetFullName(val string) {
 	s.FullName = val
-}
-
-// Ref: #/components/schemas/AuthTokenResponse
-type AuthTokenResponse struct {
-	Token       string   `json:"token"`
-	UserID      string   `json:"user_id"`
-	Permissions []string `json:"permissions"`
-}
-
-// GetToken returns the value of Token.
-func (s *AuthTokenResponse) GetToken() string {
-	return s.Token
-}
-
-// GetUserID returns the value of UserID.
-func (s *AuthTokenResponse) GetUserID() string {
-	return s.UserID
-}
-
-// GetPermissions returns the value of Permissions.
-func (s *AuthTokenResponse) GetPermissions() []string {
-	return s.Permissions
-}
-
-// SetToken sets the value of Token.
-func (s *AuthTokenResponse) SetToken(val string) {
-	s.Token = val
-}
-
-// SetUserID sets the value of UserID.
-func (s *AuthTokenResponse) SetUserID(val string) {
-	s.UserID = val
-}
-
-// SetPermissions sets the value of Permissions.
-func (s *AuthTokenResponse) SetPermissions(val []string) {
-	s.Permissions = val
 }
 
 // Ref: #/components/schemas/CreateAnnotationRequest
@@ -997,13 +1123,26 @@ func (s *CreateProjectRequest) SetName(val string) {
 
 // Ref: #/components/schemas/CurrentUserResponse
 type CurrentUserResponse struct {
-	UserID      string   `json:"user_id"`
-	Permissions []string `json:"permissions"`
+	User               AuthSessionUser `json:"user"`
+	UserID             OptString       `json:"user_id"`
+	SystemRoles        []string        `json:"system_roles"`
+	Permissions        []string        `json:"permissions"`
+	MustChangePassword bool            `json:"must_change_password"`
+}
+
+// GetUser returns the value of User.
+func (s *CurrentUserResponse) GetUser() AuthSessionUser {
+	return s.User
 }
 
 // GetUserID returns the value of UserID.
-func (s *CurrentUserResponse) GetUserID() string {
+func (s *CurrentUserResponse) GetUserID() OptString {
 	return s.UserID
+}
+
+// GetSystemRoles returns the value of SystemRoles.
+func (s *CurrentUserResponse) GetSystemRoles() []string {
+	return s.SystemRoles
 }
 
 // GetPermissions returns the value of Permissions.
@@ -1011,14 +1150,34 @@ func (s *CurrentUserResponse) GetPermissions() []string {
 	return s.Permissions
 }
 
+// GetMustChangePassword returns the value of MustChangePassword.
+func (s *CurrentUserResponse) GetMustChangePassword() bool {
+	return s.MustChangePassword
+}
+
+// SetUser sets the value of User.
+func (s *CurrentUserResponse) SetUser(val AuthSessionUser) {
+	s.User = val
+}
+
 // SetUserID sets the value of UserID.
-func (s *CurrentUserResponse) SetUserID(val string) {
+func (s *CurrentUserResponse) SetUserID(val OptString) {
 	s.UserID = val
+}
+
+// SetSystemRoles sets the value of SystemRoles.
+func (s *CurrentUserResponse) SetSystemRoles(val []string) {
+	s.SystemRoles = val
 }
 
 // SetPermissions sets the value of Permissions.
 func (s *CurrentUserResponse) SetPermissions(val []string) {
 	s.Permissions = val
+}
+
+// SetMustChangePassword sets the value of MustChangePassword.
+func (s *CurrentUserResponse) SetMustChangePassword(val bool) {
+	s.MustChangePassword = val
 }
 
 // Ref: #/components/schemas/Dataset
@@ -2111,20 +2270,8 @@ type ListProjectDatasetsOKApplicationJSON []string
 
 func (*ListProjectDatasetsOKApplicationJSON) listProjectDatasetsRes() {}
 
-// Ref: #/components/schemas/LoginRequest
-type LoginRequest struct {
-	UserID string `json:"user_id"`
-}
-
-// GetUserID returns the value of UserID.
-func (s *LoginRequest) GetUserID() string {
-	return s.UserID
-}
-
-// SetUserID sets the value of UserID.
-func (s *LoginRequest) SetUserID(val string) {
-	s.UserID = val
-}
+// LogoutAuthSessionNoContent is response for LogoutAuthSession operation.
+type LogoutAuthSessionNoContent struct{}
 
 // NewOptBool returns new OptBool with value set to v.
 func NewOptBool(v bool) OptBool {

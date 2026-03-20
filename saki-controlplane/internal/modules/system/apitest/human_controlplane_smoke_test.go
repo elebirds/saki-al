@@ -84,11 +84,11 @@ func TestHumanControlPlaneSystemSmoke(t *testing.T) {
 		httpServer.Client(),
 		http.MethodPost,
 		httpServer.URL+"/auth/login",
-		`{"user_id":"admin@example.com"}`,
+		`{"identifier":"admin@example.com"}`,
 		"",
 	)
-	if passwordlessLogin.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("expected legacy login to reject identity user, got %d body=%s", passwordlessLogin.StatusCode, readBodyString(t, passwordlessLogin))
+	if passwordlessLogin.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected passwordless login payload to be rejected, got %d body=%s", passwordlessLogin.StatusCode, readBodyString(t, passwordlessLogin))
 	}
 
 	secondSetup := doJSONRequest(

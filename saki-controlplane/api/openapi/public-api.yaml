@@ -560,14 +560,54 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/LoginRequest"
+              $ref: "#/components/schemas/AuthLoginRequest"
       responses:
         "200":
           description: login result
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AuthTokenResponse"
+                $ref: "#/components/schemas/AuthSessionResponse"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /auth/refresh:
+    post:
+      operationId: refreshAuthSession
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthRefreshRequest"
+      responses:
+        "200":
+          description: rotated auth session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSessionResponse"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /auth/logout:
+    post:
+      operationId: logoutAuthSession
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthLogoutRequest"
+      responses:
+        "204":
+          description: current refresh session revoked
         default:
           description: unexpected error
           content:
@@ -675,6 +715,50 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CurrentUserResponse"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /auth/register:
+    post:
+      operationId: registerAuthUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthRegisterRequest"
+      responses:
+        "200":
+          description: self-registered auth session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSessionResponse"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /auth/change-password:
+    post:
+      operationId: changePassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthChangePasswordRequest"
+      responses:
+        "200":
+          description: rotated auth session after password change
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSessionResponse"
         default:
           description: unexpected error
           content:
@@ -1284,40 +1368,75 @@ components:
           type: array
           items:
             type: string
-    LoginRequest:
+    AuthLoginRequest:
       type: object
-      required:
-        - user_id
       properties:
         user_id:
           type: string
-    AuthTokenResponse:
+        identifier:
+          type: string
+        password:
+          type: string
+    AuthRefreshRequest:
       type: object
       required:
-        - token
-        - user_id
-        - permissions
+        - refresh_token
       properties:
-        token:
+        refresh_token:
           type: string
-        user_id:
+    AuthLogoutRequest:
+      type: object
+      required:
+        - refresh_token
+      properties:
+        refresh_token:
           type: string
-        permissions:
-          type: array
-          items:
-            type: string
+    AuthRegisterRequest:
+      type: object
+      required:
+        - email
+        - password
+        - full_name
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+        full_name:
+          type: string
+    AuthChangePasswordRequest:
+      type: object
+      required:
+        - old_password
+        - new_password
+      properties:
+        old_password:
+          type: string
+        new_password:
+          type: string
     CurrentUserResponse:
       type: object
       required:
-        - user_id
+        - user
+        - system_roles
         - permissions
+        - must_change_password
       properties:
+        user:
+          $ref: "#/components/schemas/AuthSessionUser"
         user_id:
           type: string
+        system_roles:
+          type: array
+          items:
+            type: string
         permissions:
           type: array
           items:
             type: string
+        must_change_password:
+          type: boolean
     SystemStatusResponse:
       type: object
       required:
@@ -1416,6 +1535,8 @@ components:
         - must_change_password
         - user
       properties:
+        token:
+          type: string
         access_token:
           type: string
         refresh_token:
@@ -1425,6 +1546,12 @@ components:
           format: int64
         must_change_password:
           type: boolean
+        user_id:
+          type: string
+        permissions:
+          type: array
+          items:
+            type: string
         user:
           $ref: "#/components/schemas/AuthSessionUser"
     SystemSettingValue:

@@ -1,6 +1,7 @@
 package apihttp
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -65,6 +66,34 @@ func TestServerReturnsStructuredErrorResponse(t *testing.T) {
 	}
 	if body["message"] == "" {
 		t.Fatalf("expected error message, got %v", body)
+	}
+}
+
+func TestServerRejectsMixedLegacyAndHumanLoginPayload(t *testing.T) {
+	handler, err := newTestHTTPHandler()
+	if err != nil {
+		t.Fatalf("new http handler: %v", err)
+	}
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/auth/login",
+		bytes.NewBufferString(`{"user_id":"legacy-user","identifier":"user@example.com","password":"secret-pass"}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("unexpected status: %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body["code"] != "bad_request" {
+		t.Fatalf("unexpected error code: %v", body)
 	}
 }
 

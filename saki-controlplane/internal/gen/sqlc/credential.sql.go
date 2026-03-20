@@ -9,12 +9,13 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createIamPasswordCredential = `-- name: CreateIamPasswordCredential :one
 insert into iam_password_credential (principal_id, scheme, password_hash)
 values ($1, $2, $3)
-returning id, principal_id, scheme, password_hash, created_at, updated_at
+returning id, principal_id, scheme, password_hash, must_change_password, password_changed_at, created_at, updated_at
 `
 
 type CreateIamPasswordCredentialParams struct {
@@ -31,6 +32,8 @@ func (q *Queries) CreateIamPasswordCredential(ctx context.Context, arg CreateIam
 		&i.PrincipalID,
 		&i.Scheme,
 		&i.PasswordHash,
+		&i.MustChangePassword,
+		&i.PasswordChangedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -53,8 +56,24 @@ func (q *Queries) DeleteIamPasswordCredential(ctx context.Context, arg DeleteIam
 	return err
 }
 
+const deleteIamPasswordCredentialsByPrincipalExcludingScheme = `-- name: DeleteIamPasswordCredentialsByPrincipalExcludingScheme :exec
+delete from iam_password_credential
+where principal_id = $1
+  and scheme <> $2
+`
+
+type DeleteIamPasswordCredentialsByPrincipalExcludingSchemeParams struct {
+	PrincipalID uuid.UUID `json:"principal_id"`
+	Scheme      string    `json:"scheme"`
+}
+
+func (q *Queries) DeleteIamPasswordCredentialsByPrincipalExcludingScheme(ctx context.Context, arg DeleteIamPasswordCredentialsByPrincipalExcludingSchemeParams) error {
+	_, err := q.db.Exec(ctx, deleteIamPasswordCredentialsByPrincipalExcludingScheme, arg.PrincipalID, arg.Scheme)
+	return err
+}
+
 const getIamPasswordCredentialByPrincipal = `-- name: GetIamPasswordCredentialByPrincipal :many
-select id, principal_id, scheme, password_hash, created_at, updated_at
+select id, principal_id, scheme, password_hash, must_change_password, password_changed_at, created_at, updated_at
 from iam_password_credential
 where principal_id = $1
 order by created_at desc
@@ -74,6 +93,8 @@ func (q *Queries) GetIamPasswordCredentialByPrincipal(ctx context.Context, princ
 			&i.PrincipalID,
 			&i.Scheme,
 			&i.PasswordHash,
+			&i.MustChangePassword,
+			&i.PasswordChangedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -85,4 +106,52 @@ func (q *Queries) GetIamPasswordCredentialByPrincipal(ctx context.Context, princ
 		return nil, err
 	}
 	return items, nil
+}
+
+const upsertIamPasswordCredential = `-- name: UpsertIamPasswordCredential :one
+insert into iam_password_credential (principal_id, scheme, password_hash, must_change_password, password_changed_at)
+values (
+    $1,
+    $2,
+    $3,
+    $4,
+    $5
+)
+on conflict (principal_id, scheme) do update
+set
+    password_hash = excluded.password_hash,
+    must_change_password = excluded.must_change_password,
+    password_changed_at = excluded.password_changed_at,
+    updated_at = now()
+returning id, principal_id, scheme, password_hash, must_change_password, password_changed_at, created_at, updated_at
+`
+
+type UpsertIamPasswordCredentialParams struct {
+	PrincipalID        uuid.UUID          `json:"principal_id"`
+	Scheme             string             `json:"scheme"`
+	PasswordHash       string             `json:"password_hash"`
+	MustChangePassword bool               `json:"must_change_password"`
+	PasswordChangedAt  pgtype.Timestamptz `json:"password_changed_at"`
+}
+
+func (q *Queries) UpsertIamPasswordCredential(ctx context.Context, arg UpsertIamPasswordCredentialParams) (IamPasswordCredential, error) {
+	row := q.db.QueryRow(ctx, upsertIamPasswordCredential,
+		arg.PrincipalID,
+		arg.Scheme,
+		arg.PasswordHash,
+		arg.MustChangePassword,
+		arg.PasswordChangedAt,
+	)
+	var i IamPasswordCredential
+	err := row.Scan(
+		&i.ID,
+		&i.PrincipalID,
+		&i.Scheme,
+		&i.PasswordHash,
+		&i.MustChangePassword,
+		&i.PasswordChangedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

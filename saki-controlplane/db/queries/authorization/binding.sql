@@ -4,6 +4,13 @@ from authz_system_binding
 where principal_id = sqlc.arg(principal_id)
 order by created_at desc;
 
+-- name: ListAuthzSystemRoleNamesByPrincipal :many
+select r.name
+from authz_system_binding b
+join authz_role r on r.id = b.role_id
+where b.principal_id = sqlc.arg(principal_id)
+order by r.name;
+
 -- name: UpsertAuthzSystemBinding :one
 insert into authz_system_binding (principal_id, role_id, system_name)
 values (sqlc.arg(principal_id), sqlc.arg(role_id), sqlc.arg(system_name))

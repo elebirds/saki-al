@@ -16,35 +16,6 @@ func NewHandlers(authenticator *accessapp.Authenticator) *Handlers {
 	return &Handlers{authenticator: authenticator}
 }
 
-func (h *Handlers) Login(ctx context.Context, req *openapi.LoginRequest) (*openapi.AuthTokenResponse, error) {
-	token, err := h.authenticator.IssueBootstrapTokenContext(ctx, req.GetUserID())
-	if err != nil {
-		return nil, err
-	}
-	claims, err := h.authenticator.ParseToken(token)
-	if err != nil {
-		return nil, err
-	}
-
-	return &openapi.AuthTokenResponse{
-		Token:       token,
-		UserID:      claims.UserID,
-		Permissions: claims.Permissions,
-	}, nil
-}
-
-func (h *Handlers) GetCurrentUser(ctx context.Context) (*openapi.CurrentUserResponse, error) {
-	claims, ok := authctx.ClaimsFromContext(ctx)
-	if !ok {
-		return nil, accessapp.ErrUnauthorized
-	}
-
-	return &openapi.CurrentUserResponse{
-		UserID:      claims.UserID,
-		Permissions: claims.Permissions,
-	}, nil
-}
-
 func (h *Handlers) RequirePermission(ctx context.Context, params openapi.RequirePermissionParams) error {
 	claims, ok := authctx.ClaimsFromContext(ctx)
 	if !ok {

@@ -39,6 +39,10 @@ type Invoker interface {
 	//
 	// POST /runtime/tasks/{task_id}/cancel
 	CancelRuntimeTask(ctx context.Context, params CancelRuntimeTaskParams) (*RuntimeCommandResponse, error)
+	// ChangePassword invokes changePassword operation.
+	//
+	// POST /auth/change-password
+	ChangePassword(ctx context.Context, request *AuthChangePasswordRequest) (*AuthSessionResponse, error)
 	// CompleteAssetUpload invokes completeAssetUpload operation.
 	//
 	// POST /assets/{asset_id}:complete
@@ -158,7 +162,11 @@ type Invoker interface {
 	// Login invokes login operation.
 	//
 	// POST /auth/login
-	Login(ctx context.Context, request *LoginRequest) (*AuthTokenResponse, error)
+	Login(ctx context.Context, request *AuthLoginRequest) (*AuthSessionResponse, error)
+	// LogoutAuthSession invokes logoutAuthSession operation.
+	//
+	// POST /auth/logout
+	LogoutAuthSession(ctx context.Context, request *AuthLogoutRequest) error
 	// PatchSystemSettings invokes patchSystemSettings operation.
 	//
 	// PATCH /system/settings
@@ -167,6 +175,14 @@ type Invoker interface {
 	//
 	// POST /projects/{project_id}/datasets/{dataset_id}/imports/annotations:prepare
 	PrepareProjectAnnotationImport(ctx context.Context, request *PrepareProjectAnnotationImportRequest, params PrepareProjectAnnotationImportParams) (*PrepareProjectAnnotationImportResponse, error)
+	// RefreshAuthSession invokes refreshAuthSession operation.
+	//
+	// POST /auth/refresh
+	RefreshAuthSession(ctx context.Context, request *AuthRefreshRequest) (*AuthSessionResponse, error)
+	// RegisterAuthUser invokes registerAuthUser operation.
+	//
+	// POST /auth/register
+	RegisterAuthUser(ctx context.Context, request *AuthRegisterRequest) (*AuthSessionResponse, error)
 	// RequirePermission invokes requirePermission operation.
 	//
 	// GET /auth/permissions/{permission}
@@ -498,6 +514,81 @@ func (c *Client) sendCancelRuntimeTask(ctx context.Context, params CancelRuntime
 
 	stage = "DecodeResponse"
 	result, err := decodeCancelRuntimeTaskResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// ChangePassword invokes changePassword operation.
+//
+// POST /auth/change-password
+func (c *Client) ChangePassword(ctx context.Context, request *AuthChangePasswordRequest) (*AuthSessionResponse, error) {
+	res, err := c.sendChangePassword(ctx, request)
+	return res, err
+}
+
+func (c *Client) sendChangePassword(ctx context.Context, request *AuthChangePasswordRequest) (res *AuthSessionResponse, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("changePassword"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/auth/change-password"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, ChangePasswordOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/auth/change-password"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeChangePasswordRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeChangePasswordResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -3051,12 +3142,12 @@ func (c *Client) sendListSampleAnnotations(ctx context.Context, params ListSampl
 // Login invokes login operation.
 //
 // POST /auth/login
-func (c *Client) Login(ctx context.Context, request *LoginRequest) (*AuthTokenResponse, error) {
+func (c *Client) Login(ctx context.Context, request *AuthLoginRequest) (*AuthSessionResponse, error) {
 	res, err := c.sendLogin(ctx, request)
 	return res, err
 }
 
-func (c *Client) sendLogin(ctx context.Context, request *LoginRequest) (res *AuthTokenResponse, err error) {
+func (c *Client) sendLogin(ctx context.Context, request *AuthLoginRequest) (res *AuthSessionResponse, err error) {
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("login"),
 		semconv.HTTPRequestMethodKey.String("POST"),
@@ -3116,6 +3207,81 @@ func (c *Client) sendLogin(ctx context.Context, request *LoginRequest) (res *Aut
 
 	stage = "DecodeResponse"
 	result, err := decodeLoginResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// LogoutAuthSession invokes logoutAuthSession operation.
+//
+// POST /auth/logout
+func (c *Client) LogoutAuthSession(ctx context.Context, request *AuthLogoutRequest) error {
+	_, err := c.sendLogoutAuthSession(ctx, request)
+	return err
+}
+
+func (c *Client) sendLogoutAuthSession(ctx context.Context, request *AuthLogoutRequest) (res *LogoutAuthSessionNoContent, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("logoutAuthSession"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/auth/logout"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, LogoutAuthSessionOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/auth/logout"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeLogoutAuthSessionRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeLogoutAuthSessionResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -3304,6 +3470,156 @@ func (c *Client) sendPrepareProjectAnnotationImport(ctx context.Context, request
 
 	stage = "DecodeResponse"
 	result, err := decodePrepareProjectAnnotationImportResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// RefreshAuthSession invokes refreshAuthSession operation.
+//
+// POST /auth/refresh
+func (c *Client) RefreshAuthSession(ctx context.Context, request *AuthRefreshRequest) (*AuthSessionResponse, error) {
+	res, err := c.sendRefreshAuthSession(ctx, request)
+	return res, err
+}
+
+func (c *Client) sendRefreshAuthSession(ctx context.Context, request *AuthRefreshRequest) (res *AuthSessionResponse, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("refreshAuthSession"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/auth/refresh"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, RefreshAuthSessionOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/auth/refresh"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeRefreshAuthSessionRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeRefreshAuthSessionResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// RegisterAuthUser invokes registerAuthUser operation.
+//
+// POST /auth/register
+func (c *Client) RegisterAuthUser(ctx context.Context, request *AuthRegisterRequest) (*AuthSessionResponse, error) {
+	res, err := c.sendRegisterAuthUser(ctx, request)
+	return res, err
+}
+
+func (c *Client) sendRegisterAuthUser(ctx context.Context, request *AuthRegisterRequest) (res *AuthSessionResponse, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("registerAuthUser"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/auth/register"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, RegisterAuthUserOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/auth/register"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeRegisterAuthUserRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeRegisterAuthUserResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}

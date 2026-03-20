@@ -13,11 +13,13 @@ const (
 )
 
 type PasswordCredential struct {
-	ID           uuid.UUID
-	PrincipalID  uuid.UUID
-	Provider     string
-	Scheme       string
-	PasswordHash string
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ID                 uuid.UUID
+	PrincipalID        uuid.UUID
+	Provider           string
+	Scheme             string
+	PasswordHash       string
+	MustChangePassword bool
+	PasswordChangedAt  *time.Time
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 }

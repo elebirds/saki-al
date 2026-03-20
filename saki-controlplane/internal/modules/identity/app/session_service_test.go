@@ -13,7 +13,7 @@ import (
 	"github.com/google/uuid"
 )
 
-func TestSessionServiceRotatesRefreshSession(t *testing.T) {
+func TestSessionServiceRotatesRefreshSessionWithinSameFamily(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2026, 3, 20, 10, 0, 0, 0, time.UTC)
 	principalID := uuid.MustParse("00000000-0000-0000-0000-000000000123")
@@ -58,24 +58,72 @@ func TestSessionServiceRotatesRefreshSession(t *testing.T) {
 	if rotated.Session.IPAddress == nil || *rotated.Session.IPAddress != ip {
 		t.Fatalf("unexpected ip address: %+v", rotated.Session.IPAddress)
 	}
-
-	if store.deleted[issued.Session.ID] != 1 {
-		t.Fatalf("expected old session to be deleted once, got %+v", store.deleted)
+	if rotated.Session.FamilyID != issued.Session.FamilyID {
+		t.Fatalf("expected rotated session to stay in family %s, got %s", issued.Session.FamilyID, rotated.Session.FamilyID)
 	}
-	if _, ok := store.byHash[issued.Session.TokenHash]; ok {
-		t.Fatal("expected old token hash to be removed after rotation")
+	if rotated.Session.RotatedFrom == nil || *rotated.Session.RotatedFrom != issued.Session.ID {
+		t.Fatalf("expected rotated_from=%s, got %+v", issued.Session.ID, rotated.Session.RotatedFrom)
 	}
 
-	_, err = service.Rotate(ctx, issued.RefreshToken, "browser-c", &ip)
-	if !errors.Is(err, ErrInvalidRefreshSession) {
-		t.Fatalf("expected old refresh token to become invalid, got %v", err)
+	current := store.byHash[issued.Session.TokenHash]
+	if current == nil {
+		t.Fatal("expected old session row to remain for replay detection")
+	}
+	if current.ReplacedBy == nil || *current.ReplacedBy != rotated.Session.ID {
+		t.Fatalf("expected old session to point at replacement %s, got %+v", rotated.Session.ID, current.ReplacedBy)
+	}
+	if current.RevokedAt == nil || !current.RevokedAt.Equal(now) {
+		t.Fatalf("expected old session revoked at %s, got %+v", now, current.RevokedAt)
+	}
+}
+
+func TestSessionServiceRotateRevokesFamilyOnReplay(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 3, 20, 11, 0, 0, 0, time.UTC)
+	principalID := uuid.MustParse("00000000-0000-0000-0000-000000000124")
+
+	store := newFakeSessionStore()
+	issuer := NewTokenIssuer()
+	issuer.now = func() time.Time { return now }
+	issuer.rand = bytes.NewReader(sequentialBytes(128))
+
+	service := NewSessionService(store, issuer)
+	service.now = func() time.Time { return now }
+
+	issued, err := service.Issue(ctx, principalID, "browser-a", nil)
+	if err != nil {
+		t.Fatalf("issue refresh session: %v", err)
+	}
+	rotated, err := service.Rotate(ctx, issued.RefreshToken, "browser-b", nil)
+	if err != nil {
+		t.Fatalf("rotate refresh session: %v", err)
+	}
+
+	_, err = service.Rotate(ctx, issued.RefreshToken, "browser-c", nil)
+	if !errors.Is(err, ErrRefreshSessionReplayDetected) {
+		t.Fatalf("expected replay to revoke family, got %v", err)
+	}
+
+	current := store.byHash[issued.Session.TokenHash]
+	next := store.byHash[rotated.Session.TokenHash]
+	if current == nil || next == nil {
+		t.Fatalf("expected replay test family rows to stay queryable, current=%+v next=%+v", current, next)
+	}
+	if current.ReplayDetectedAt == nil || !current.ReplayDetectedAt.Equal(now) {
+		t.Fatalf("expected old session replay_detected_at=%s, got %+v", now, current.ReplayDetectedAt)
+	}
+	if next.ReplayDetectedAt == nil || !next.ReplayDetectedAt.Equal(now) {
+		t.Fatalf("expected rotated session replay_detected_at=%s, got %+v", now, next.ReplayDetectedAt)
+	}
+	if next.RevokedAt == nil || !next.RevokedAt.Equal(now) {
+		t.Fatalf("expected rotated session to be revoked on family replay, got %+v", next.RevokedAt)
 	}
 }
 
 func TestSessionServiceRotatePreservesCurrentSessionOnIssueFailure(t *testing.T) {
 	ctx := context.Background()
-	now := time.Date(2026, 3, 20, 11, 0, 0, 0, time.UTC)
-	principalID := uuid.MustParse("00000000-0000-0000-0000-000000000124")
+	now := time.Date(2026, 3, 20, 12, 0, 0, 0, time.UTC)
+	principalID := uuid.MustParse("00000000-0000-0000-0000-000000000125")
 
 	store := newFakeSessionStore()
 	issuer := NewTokenIssuer()
@@ -97,23 +145,24 @@ func TestSessionServiceRotatePreservesCurrentSessionOnIssueFailure(t *testing.T)
 		t.Fatalf("expected rotate to surface create failure, got %v", err)
 	}
 
-	if _, ok := store.byHash[issued.Session.TokenHash]; !ok {
+	current := store.byHash[issued.Session.TokenHash]
+	if current == nil {
 		t.Fatal("expected old refresh session to remain after failed rotation")
 	}
-	if store.deleted[issued.Session.ID] != 0 {
-		t.Fatalf("expected old session not to be deleted on failed rotation, got %+v", store.deleted)
+	if current.ReplacedBy != nil || current.RevokedAt != nil {
+		t.Fatalf("expected failed rotation not to mutate current session, got %+v", current)
 	}
 }
 
-func TestSessionServiceRotateRejectsConsumedRefreshSession(t *testing.T) {
+func TestSessionServiceRevokeRevokesCurrentSession(t *testing.T) {
 	ctx := context.Background()
-	now := time.Date(2026, 3, 20, 12, 0, 0, 0, time.UTC)
-	principalID := uuid.MustParse("00000000-0000-0000-0000-000000000125")
+	now := time.Date(2026, 3, 20, 13, 0, 0, 0, time.UTC)
+	principalID := uuid.MustParse("00000000-0000-0000-0000-000000000126")
 
 	store := newFakeSessionStore()
 	issuer := NewTokenIssuer()
 	issuer.now = func() time.Time { return now }
-	issuer.rand = bytes.NewReader(sequentialBytes(96))
+	issuer.rand = bytes.NewReader(sequentialBytes(64))
 
 	service := NewSessionService(store, issuer)
 	service.now = func() time.Time { return now }
@@ -123,30 +172,32 @@ func TestSessionServiceRotateRejectsConsumedRefreshSession(t *testing.T) {
 		t.Fatalf("issue refresh session: %v", err)
 	}
 
-	store.rotateErr = ErrRefreshSessionNotConsumed
+	if err := service.Revoke(ctx, issued.RefreshToken); err != nil {
+		t.Fatalf("revoke refresh session: %v", err)
+	}
+
+	current := store.byHash[issued.Session.TokenHash]
+	if current == nil || current.RevokedAt == nil || !current.RevokedAt.Equal(now) {
+		t.Fatalf("expected session revoked at %s, got %+v", now, current)
+	}
 
 	_, err = service.Rotate(ctx, issued.RefreshToken, "browser-b", nil)
 	if !errors.Is(err, ErrInvalidRefreshSession) {
-		t.Fatalf("expected consumed refresh session to map to invalid, got %v", err)
-	}
-
-	if _, ok := store.byHash[issued.Session.TokenHash]; !ok {
-		t.Fatal("expected current session to remain when rotate reports not consumed")
+		t.Fatalf("expected revoked session to become invalid, got %v", err)
 	}
 }
 
 type fakeSessionStore struct {
-	byHash    map[string]*identitydomain.RefreshSession
-	deleted   map[uuid.UUID]int
-	createErr error
-	deleteErr error
-	rotateErr error
+	byHash         map[string]*identitydomain.RefreshSession
+	createErr      error
+	rotateErr      error
+	revokeErr      error
+	revokeFamilyErr error
 }
 
 func newFakeSessionStore() *fakeSessionStore {
 	return &fakeSessionStore{
-		byHash:  map[string]*identitydomain.RefreshSession{},
-		deleted: map[uuid.UUID]int{},
+		byHash: map[string]*identitydomain.RefreshSession{},
 	}
 }
 
@@ -154,9 +205,14 @@ func (s *fakeSessionStore) CreateRefreshSession(_ context.Context, params Create
 	if s.createErr != nil {
 		return nil, s.createErr
 	}
+	familyID := params.FamilyID
+	if familyID == uuid.Nil {
+		familyID = uuid.New()
+	}
 	session := &identitydomain.RefreshSession{
 		ID:          uuid.New(),
 		PrincipalID: params.PrincipalID,
+		FamilyID:    familyID,
 		TokenHash:   params.TokenHash,
 		UserAgent:   params.UserAgent,
 		IPAddress:   params.IPAddress,
@@ -165,27 +221,16 @@ func (s *fakeSessionStore) CreateRefreshSession(_ context.Context, params Create
 		CreatedAt:   params.LastSeenAt,
 		UpdatedAt:   params.LastSeenAt,
 	}
-	s.byHash[session.TokenHash] = session
+	if params.RotatedFrom != nil {
+		copyID := *params.RotatedFrom
+		session.RotatedFrom = &copyID
+	}
+	s.byHash[session.TokenHash] = cloneRefreshSession(session)
 	return cloneRefreshSession(session), nil
 }
 
 func (s *fakeSessionStore) GetRefreshSessionByTokenHash(_ context.Context, tokenHash string) (*identitydomain.RefreshSession, error) {
-	session := s.byHash[tokenHash]
-	return cloneRefreshSession(session), nil
-}
-
-func (s *fakeSessionStore) DeleteRefreshSession(_ context.Context, id uuid.UUID) error {
-	if s.deleteErr != nil {
-		return s.deleteErr
-	}
-	s.deleted[id]++
-	for hash, session := range s.byHash {
-		if session.ID == id {
-			delete(s.byHash, hash)
-			break
-		}
-	}
-	return nil
+	return cloneRefreshSession(s.byHash[tokenHash]), nil
 }
 
 func (s *fakeSessionStore) RotateRefreshSession(_ context.Context, params RotateRefreshSessionParams) (*identitydomain.RefreshSession, error) {
@@ -196,16 +241,30 @@ func (s *fakeSessionStore) RotateRefreshSession(_ context.Context, params Rotate
 	if !ok || current.IsExpired(params.Now) {
 		return nil, ErrRefreshSessionNotConsumed
 	}
+	if current.ReplacedBy != nil {
+		for _, session := range s.byHash {
+			if session.FamilyID != current.FamilyID {
+				continue
+			}
+			session.ReplayDetectedAt = timePtr(params.Now)
+			if session.RevokedAt == nil {
+				session.RevokedAt = timePtr(params.Now)
+			}
+			session.UpdatedAt = params.Now
+		}
+		return nil, ErrRefreshSessionReplayDetected
+	}
+	if current.RevokedAt != nil {
+		return nil, ErrRefreshSessionNotConsumed
+	}
 	if s.createErr != nil {
 		return nil, s.createErr
 	}
-	if s.deleteErr != nil {
-		return nil, s.deleteErr
-	}
 
-	session := &identitydomain.RefreshSession{
+	newSession := &identitydomain.RefreshSession{
 		ID:          uuid.New(),
 		PrincipalID: current.PrincipalID,
+		FamilyID:    current.FamilyID,
 		TokenHash:   params.NewTokenHash,
 		UserAgent:   params.UserAgent,
 		IPAddress:   params.IPAddress,
@@ -213,12 +272,50 @@ func (s *fakeSessionStore) RotateRefreshSession(_ context.Context, params Rotate
 		ExpiresAt:   params.ExpiresAt,
 		CreatedAt:   params.Now,
 		UpdatedAt:   params.Now,
+		RotatedFrom: uuidPtr(current.ID),
 	}
 
-	delete(s.byHash, params.CurrentTokenHash)
-	s.deleted[current.ID]++
-	s.byHash[session.TokenHash] = cloneRefreshSession(session)
-	return cloneRefreshSession(session), nil
+	current.ReplacedBy = uuidPtr(newSession.ID)
+	current.RevokedAt = timePtr(params.Now)
+	current.LastSeenAt = params.Now
+	current.UpdatedAt = params.Now
+	s.byHash[current.TokenHash] = cloneRefreshSession(current)
+	s.byHash[newSession.TokenHash] = cloneRefreshSession(newSession)
+	return cloneRefreshSession(newSession), nil
+}
+
+func (s *fakeSessionStore) RevokeRefreshSessionByTokenHash(_ context.Context, tokenHash string, now time.Time) error {
+	if s.revokeErr != nil {
+		return s.revokeErr
+	}
+	current, ok := s.byHash[tokenHash]
+	if !ok || current.IsExpired(now) {
+		return ErrRefreshSessionNotConsumed
+	}
+	if current.RevokedAt != nil {
+		return ErrRefreshSessionNotConsumed
+	}
+	current.RevokedAt = timePtr(now)
+	current.UpdatedAt = now
+	s.byHash[tokenHash] = cloneRefreshSession(current)
+	return nil
+}
+
+func (s *fakeSessionStore) RevokeRefreshSessionFamily(_ context.Context, familyID uuid.UUID, now time.Time) error {
+	if s.revokeFamilyErr != nil {
+		return s.revokeFamilyErr
+	}
+	for _, session := range s.byHash {
+		if session.FamilyID != familyID {
+			continue
+		}
+		session.ReplayDetectedAt = timePtr(now)
+		if session.RevokedAt == nil {
+			session.RevokedAt = timePtr(now)
+		}
+		session.UpdatedAt = now
+	}
+	return nil
 }
 
 func cloneRefreshSession(session *identitydomain.RefreshSession) *identitydomain.RefreshSession {
@@ -230,6 +327,32 @@ func cloneRefreshSession(session *identitydomain.RefreshSession) *identitydomain
 		ip := *session.IPAddress
 		copy.IPAddress = &ip
 	}
+	if session.RotatedFrom != nil {
+		id := *session.RotatedFrom
+		copy.RotatedFrom = &id
+	}
+	if session.ReplacedBy != nil {
+		id := *session.ReplacedBy
+		copy.ReplacedBy = &id
+	}
+	if session.RevokedAt != nil {
+		ts := *session.RevokedAt
+		copy.RevokedAt = &ts
+	}
+	if session.ReplayDetectedAt != nil {
+		ts := *session.ReplayDetectedAt
+		copy.ReplayDetectedAt = &ts
+	}
+	return &copy
+}
+
+func timePtr(value time.Time) *time.Time {
+	copy := value
+	return &copy
+}
+
+func uuidPtr(value uuid.UUID) *uuid.UUID {
+	copy := value
 	return &copy
 }
 

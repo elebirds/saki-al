@@ -10,6 +10,20 @@ import (
 	ht "github.com/ogen-go/ogen/http"
 )
 
+func encodeChangePasswordRequest(
+	req *AuthChangePasswordRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
 func encodeCompleteAssetUploadRequest(
 	req *AssetCompleteRequest,
 	r *http.Request,
@@ -137,7 +151,21 @@ func encodeLinkProjectDatasetsRequest(
 }
 
 func encodeLoginRequest(
-	req *LoginRequest,
+	req *AuthLoginRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodeLogoutAuthSessionRequest(
+	req *AuthLogoutRequest,
 	r *http.Request,
 ) error {
 	const contentType = "application/json"
@@ -166,6 +194,34 @@ func encodePatchSystemSettingsRequest(
 
 func encodePrepareProjectAnnotationImportRequest(
 	req *PrepareProjectAnnotationImportRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodeRefreshAuthSessionRequest(
+	req *AuthRefreshRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodeRegisterAuthUserRequest(
+	req *AuthRegisterRequest,
 	r *http.Request,
 ) error {
 	const contentType = "application/json"

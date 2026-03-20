@@ -55,6 +55,34 @@ func (q *Queries) ListAuthzSystemBindingsByPrincipal(ctx context.Context, princi
 	return items, nil
 }
 
+const listAuthzSystemRoleNamesByPrincipal = `-- name: ListAuthzSystemRoleNamesByPrincipal :many
+select r.name
+from authz_system_binding b
+join authz_role r on r.id = b.role_id
+where b.principal_id = $1
+order by r.name
+`
+
+func (q *Queries) ListAuthzSystemRoleNamesByPrincipal(ctx context.Context, principalID uuid.UUID) ([]string, error) {
+	rows, err := q.db.Query(ctx, listAuthzSystemRoleNamesByPrincipal, principalID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		items = append(items, name)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const upsertAuthzSystemBinding = `-- name: UpsertAuthzSystemBinding :one
 insert into authz_system_binding (principal_id, role_id, system_name)
 values ($1, $2, $3)

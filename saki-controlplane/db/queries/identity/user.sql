@@ -6,7 +6,15 @@ where principal_id = sqlc.arg(principal_id);
 -- name: GetIamUserByEmail :one
 select principal_id, email, username, full_name, avatar_asset_id, state, created_at, updated_at
 from iam_user
-where email = sqlc.arg(email);
+where lower(email) = lower(sqlc.arg(email));
+
+-- name: GetIamUserByIdentifier :one
+select principal_id, email, username, full_name, avatar_asset_id, state, created_at, updated_at
+from iam_user
+where lower(email) = lower(sqlc.arg(identifier))
+   or username = sqlc.arg(identifier)
+order by case when lower(email) = lower(sqlc.arg(identifier)) then 0 else 1 end
+limit 1;
 
 -- name: CreateIamUser :one
 insert into iam_user (principal_id, email, username, full_name, avatar_asset_id)

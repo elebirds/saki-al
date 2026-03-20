@@ -20,6 +20,10 @@ type Handler interface {
 	//
 	// POST /runtime/tasks/{task_id}/cancel
 	CancelRuntimeTask(ctx context.Context, params CancelRuntimeTaskParams) (*RuntimeCommandResponse, error)
+	// ChangePassword implements changePassword operation.
+	//
+	// POST /auth/change-password
+	ChangePassword(ctx context.Context, req *AuthChangePasswordRequest) (*AuthSessionResponse, error)
 	// CompleteAssetUpload implements completeAssetUpload operation.
 	//
 	// POST /assets/{asset_id}:complete
@@ -139,7 +143,11 @@ type Handler interface {
 	// Login implements login operation.
 	//
 	// POST /auth/login
-	Login(ctx context.Context, req *LoginRequest) (*AuthTokenResponse, error)
+	Login(ctx context.Context, req *AuthLoginRequest) (*AuthSessionResponse, error)
+	// LogoutAuthSession implements logoutAuthSession operation.
+	//
+	// POST /auth/logout
+	LogoutAuthSession(ctx context.Context, req *AuthLogoutRequest) error
 	// PatchSystemSettings implements patchSystemSettings operation.
 	//
 	// PATCH /system/settings
@@ -148,6 +156,14 @@ type Handler interface {
 	//
 	// POST /projects/{project_id}/datasets/{dataset_id}/imports/annotations:prepare
 	PrepareProjectAnnotationImport(ctx context.Context, req *PrepareProjectAnnotationImportRequest, params PrepareProjectAnnotationImportParams) (*PrepareProjectAnnotationImportResponse, error)
+	// RefreshAuthSession implements refreshAuthSession operation.
+	//
+	// POST /auth/refresh
+	RefreshAuthSession(ctx context.Context, req *AuthRefreshRequest) (*AuthSessionResponse, error)
+	// RegisterAuthUser implements registerAuthUser operation.
+	//
+	// POST /auth/register
+	RegisterAuthUser(ctx context.Context, req *AuthRegisterRequest) (*AuthSessionResponse, error)
 	// RequirePermission implements requirePermission operation.
 	//
 	// GET /auth/permissions/{permission}

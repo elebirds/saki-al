@@ -1041,12 +1041,14 @@ type Dataset struct {
 }
 
 type IamPasswordCredential struct {
-	ID           uuid.UUID          `json:"id"`
-	PrincipalID  uuid.UUID          `json:"principal_id"`
-	Scheme       string             `json:"scheme"`
-	PasswordHash string             `json:"password_hash"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+	ID                 uuid.UUID          `json:"id"`
+	PrincipalID        uuid.UUID          `json:"principal_id"`
+	Scheme             string             `json:"scheme"`
+	PasswordHash       string             `json:"password_hash"`
+	MustChangePassword bool               `json:"must_change_password"`
+	PasswordChangedAt  pgtype.Timestamptz `json:"password_changed_at"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
 }
 
 type IamPrincipal struct {
@@ -1059,15 +1061,20 @@ type IamPrincipal struct {
 }
 
 type IamRefreshSession struct {
-	ID          uuid.UUID          `json:"id"`
-	PrincipalID uuid.UUID          `json:"principal_id"`
-	TokenHash   string             `json:"token_hash"`
-	UserAgent   pgtype.Text        `json:"user_agent"`
-	IpAddress   *netip.Addr        `json:"ip_address"`
-	LastSeenAt  pgtype.Timestamptz `json:"last_seen_at"`
-	ExpiresAt   pgtype.Timestamptz `json:"expires_at"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	ID               uuid.UUID          `json:"id"`
+	PrincipalID      uuid.UUID          `json:"principal_id"`
+	FamilyID         uuid.UUID          `json:"family_id"`
+	RotatedFrom      pgtype.UUID        `json:"rotated_from"`
+	ReplacedBy       pgtype.UUID        `json:"replaced_by"`
+	TokenHash        string             `json:"token_hash"`
+	UserAgent        pgtype.Text        `json:"user_agent"`
+	IpAddress        *netip.Addr        `json:"ip_address"`
+	LastSeenAt       pgtype.Timestamptz `json:"last_seen_at"`
+	RevokedAt        pgtype.Timestamptz `json:"revoked_at"`
+	ReplayDetectedAt pgtype.Timestamptz `json:"replay_detected_at"`
+	ExpiresAt        pgtype.Timestamptz `json:"expires_at"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
 }
 
 type IamUser struct {

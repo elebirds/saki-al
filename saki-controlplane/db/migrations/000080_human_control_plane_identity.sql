@@ -33,6 +33,8 @@ create table iam_password_credential (
     -- 保留 scheme 以便未来可以并存多个认证协议或哈希方案而不破坏已有凭据。
     scheme text not null,
     password_hash text not null,
+    must_change_password boolean not null default false,
+    password_changed_at timestamptz,
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now(),
     constraint iam_password_credential_principal_scheme_unique unique (principal_id, scheme)
@@ -43,21 +45,32 @@ create index idx_iam_password_credential_principal on iam_password_credential (p
 create table iam_refresh_session (
     id uuid primary key default gen_random_uuid(),
     principal_id uuid not null references iam_principal(id) on delete cascade,
+    -- family_id 用来表达“这一串 refresh token rotation 属于同一个会话家族”。
+    -- 只有把 lineage 留在数据库里，controlplane 才能在发现 replay 时一次性撤销整个 family。
+    family_id uuid not null,
+    rotated_from uuid references iam_refresh_session(id) on delete set null,
+    replaced_by uuid references iam_refresh_session(id) on delete set null,
     -- 刷新会话只保存 token 的哈希，避免数据库泄露时原始 token 被直接滥用。
     token_hash text not null unique,
     user_agent text,
     ip_address inet,
     last_seen_at timestamptz,
-    expires_at timestamptz,
+    revoked_at timestamptz,
+    replay_detected_at timestamptz,
+    expires_at timestamptz not null,
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now()
 );
 
 create index idx_iam_refresh_session_principal on iam_refresh_session (principal_id);
+create index idx_iam_refresh_session_family on iam_refresh_session (family_id);
+create index idx_iam_refresh_session_rotated_from on iam_refresh_session (rotated_from);
 create index idx_iam_refresh_session_expires_at on iam_refresh_session (expires_at);
 
 -- +goose Down
 drop index if exists idx_iam_refresh_session_expires_at;
+drop index if exists idx_iam_refresh_session_rotated_from;
+drop index if exists idx_iam_refresh_session_family;
 drop index if exists idx_iam_refresh_session_principal;
 drop table if exists iam_refresh_session;
 drop index if exists idx_iam_password_credential_principal;

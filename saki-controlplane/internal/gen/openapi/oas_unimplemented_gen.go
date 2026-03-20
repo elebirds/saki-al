@@ -34,6 +34,13 @@ func (UnimplementedHandler) CancelRuntimeTask(ctx context.Context, params Cancel
 	return r, ht.ErrNotImplemented
 }
 
+// ChangePassword implements changePassword operation.
+//
+// POST /auth/change-password
+func (UnimplementedHandler) ChangePassword(ctx context.Context, req *AuthChangePasswordRequest) (r *AuthSessionResponse, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // CompleteAssetUpload implements completeAssetUpload operation.
 //
 // POST /assets/{asset_id}:complete
@@ -240,8 +247,15 @@ func (UnimplementedHandler) ListSampleAnnotations(ctx context.Context, params Li
 // Login implements login operation.
 //
 // POST /auth/login
-func (UnimplementedHandler) Login(ctx context.Context, req *LoginRequest) (r *AuthTokenResponse, _ error) {
+func (UnimplementedHandler) Login(ctx context.Context, req *AuthLoginRequest) (r *AuthSessionResponse, _ error) {
 	return r, ht.ErrNotImplemented
+}
+
+// LogoutAuthSession implements logoutAuthSession operation.
+//
+// POST /auth/logout
+func (UnimplementedHandler) LogoutAuthSession(ctx context.Context, req *AuthLogoutRequest) error {
+	return ht.ErrNotImplemented
 }
 
 // PatchSystemSettings implements patchSystemSettings operation.
@@ -255,6 +269,20 @@ func (UnimplementedHandler) PatchSystemSettings(ctx context.Context, req *System
 //
 // POST /projects/{project_id}/datasets/{dataset_id}/imports/annotations:prepare
 func (UnimplementedHandler) PrepareProjectAnnotationImport(ctx context.Context, req *PrepareProjectAnnotationImportRequest, params PrepareProjectAnnotationImportParams) (r *PrepareProjectAnnotationImportResponse, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// RefreshAuthSession implements refreshAuthSession operation.
+//
+// POST /auth/refresh
+func (UnimplementedHandler) RefreshAuthSession(ctx context.Context, req *AuthRefreshRequest) (r *AuthSessionResponse, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// RegisterAuthUser implements registerAuthUser operation.
+//
+// POST /auth/register
+func (UnimplementedHandler) RegisterAuthUser(ctx context.Context, req *AuthRegisterRequest) (r *AuthSessionResponse, _ error) {
 	return r, ht.ErrNotImplemented
 }
 

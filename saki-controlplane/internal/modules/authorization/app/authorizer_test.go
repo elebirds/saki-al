@@ -90,7 +90,7 @@ func TestAuthorizerResolvesMigrationPermissionSnapshot(t *testing.T) {
 	}
 }
 
-func TestAuthorizerCanonicalizesLegacyPermissionAliases(t *testing.T) {
+func TestAuthorizerDropsLegacyPermissionAliases(t *testing.T) {
 	principalID := uuid.MustParse("00000000-0000-0000-0000-000000000783")
 	systemRoleID := uuid.MustParse("00000000-0000-0000-0000-000000000784")
 
@@ -109,7 +109,7 @@ func TestAuthorizerCanonicalizesLegacyPermissionAliases(t *testing.T) {
 		t.Fatalf("resolve permission snapshot: %v", err)
 	}
 
-	expected := []string{"system:read", "system:write"}
+	var expected []string
 	if !slices.Equal(permissions, expected) {
 		t.Fatalf("permissions got %v want %v", permissions, expected)
 	}

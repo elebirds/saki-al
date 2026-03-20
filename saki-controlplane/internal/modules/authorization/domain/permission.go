@@ -41,90 +41,12 @@ var permissionCatalogIndex = func() map[string]PermissionDefinition {
 	return index
 }()
 
-var permissionAliases = map[string]string{
-	"system_setting:read":   "system:read",
-	"system_setting:update": "system:write",
-}
-
-var permissionTransportAliases = map[string][]string{
-	"users:read": {
-		"user:read:all",
-		"user:list:all",
-		"user:role_read:all",
-	},
-	"users:write": {
-		"user:create:all",
-		"user:update:all",
-		"user:delete:all",
-		"user:manage:all",
-	},
-	"roles:read": {
-		"role:read:all",
-	},
-	"roles:write": {
-		"role:create:all",
-		"role:update:all",
-		"role:delete:all",
-		"role:assign:all",
-		"role:revoke:all",
-	},
-	"system:read": {
-		"system_setting:read:all",
-	},
-	"system:write": {
-		"system_setting:update:all",
-		"system:manage:all",
-	},
-	"projects:read": {
-		"project:read:all",
-		"project:read:assigned",
-	},
-	"projects:members:write": {
-		"project:assign:all",
-		"project:assign:assigned",
-	},
-	"projects:write": {
-		"project:create:all",
-		"project:update:all",
-		"project:archive:all",
-		"project:delete:all",
-		"project:export:all",
-		"project:update:assigned",
-		"project:archive:assigned",
-		"project:delete:assigned",
-		"project:export:assigned",
-	},
-	"datasets:read": {
-		"dataset:read:all",
-		"dataset:read:assigned",
-	},
-	"datasets:members:write": {
-		"dataset:assign:all",
-		"dataset:assign:assigned",
-	},
-	"datasets:write": {
-		"dataset:create:all",
-		"dataset:update:all",
-		"dataset:delete:all",
-		"dataset:link_project:all",
-		"dataset:export:all",
-		"dataset:import:all",
-		"dataset:update:assigned",
-		"dataset:link_project:assigned",
-		"dataset:export:assigned",
-		"dataset:import:assigned",
-	},
-}
-
 func CanonicalPermission(permission string) string {
-	if canonical, ok := permissionAliases[permission]; ok {
-		return canonical
-	}
 	return permission
 }
 
 func IsKnownPermission(permission string) bool {
-	_, ok := permissionCatalogIndex[CanonicalPermission(permission)]
+	_, ok := permissionCatalogIndex[permission]
 	return ok
 }
 
@@ -148,18 +70,16 @@ func PermissionsForRoleScope(scope RoleScopeKind) []string {
 	return permissions
 }
 
-func ExpandedPermissionsForTransport(permissions []string) []string {
-	expanded := make(map[string]struct{}, len(permissions))
+// 关键设计：public API 只暴露并持有一套 canonical permission。
+// 这里保留该函数只是为了集中完成去重与排序，不再承担旧权限别名归一化职责。
+func CanonicalPermissions(permissions []string) []string {
+	normalized := make(map[string]struct{}, len(permissions))
 	for _, permission := range permissions {
-		canonical := CanonicalPermission(permission)
-		expanded[canonical] = struct{}{}
-		for _, alias := range permissionTransportAliases[canonical] {
-			expanded[alias] = struct{}{}
-		}
+		normalized[permission] = struct{}{}
 	}
 
-	result := make([]string, 0, len(expanded))
-	for permission := range expanded {
+	result := make([]string, 0, len(normalized))
+	for permission := range normalized {
 		result = append(result, permission)
 	}
 	slices.Sort(result)

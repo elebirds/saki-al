@@ -10,7 +10,6 @@ import (
 	"time"
 
 	accessapp "github.com/elebirds/saki/saki-controlplane/internal/modules/access/app"
-	accessdomain "github.com/elebirds/saki/saki-controlplane/internal/modules/access/domain"
 	annotationrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/repo"
 	datasetapp "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/app"
 	datasetrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/repo"
@@ -69,7 +68,7 @@ func TestServerReturnsStructuredErrorResponse(t *testing.T) {
 	}
 }
 
-func TestServerRejectsMixedLegacyAndHumanLoginPayload(t *testing.T) {
+func TestServerRejectsLegacyBootstrapLoginPayload(t *testing.T) {
 	handler, err := newTestHTTPHandler()
 	if err != nil {
 		t.Fatalf("new http handler: %v", err)
@@ -78,7 +77,7 @@ func TestServerRejectsMixedLegacyAndHumanLoginPayload(t *testing.T) {
 	req := httptest.NewRequest(
 		http.MethodPost,
 		"/auth/login",
-		bytes.NewBufferString(`{"user_id":"legacy-user","identifier":"user@example.com","password":"secret-pass"}`),
+		bytes.NewBufferString(`{"user_id":"legacy-user"}`),
 	)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -146,9 +145,5 @@ func (fakeAccessStore) LoadClaimsByUserID(context.Context, string) (*accessapp.C
 }
 
 func (fakeAccessStore) LoadClaimsByPrincipalID(context.Context, uuid.UUID) (*accessapp.ClaimsSnapshot, error) {
-	return nil, nil
-}
-
-func (fakeAccessStore) UpsertBootstrapPrincipal(context.Context, accessapp.BootstrapPrincipalSpec) (*accessdomain.Principal, error) {
 	return nil, nil
 }

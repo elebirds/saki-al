@@ -99,8 +99,6 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 	}
 
 	taskRepo := runtimerepo.NewTaskRepo(pool)
-	accessPrincipalRepo := accessrepo.NewPrincipalRepo(pool)
-	bootstrapStore := accessrepo.NewBootstrapStore(accessPrincipalRepo)
 	authorizationRoleRepo := authorizationrepo.NewRoleRepo(pool)
 	authorizationBindingRepo := authorizationrepo.NewBindingRepo(pool)
 	authorizationMembershipRepo := authorizationrepo.NewMembershipRepo(pool)
@@ -113,26 +111,12 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 	identityUserRepo := identityrepo.NewUserRepo(pool)
 	identityAdminStore := identityrepo.NewAdminStore(pool)
 	claimsStore := accessrepo.NewClaimsStore(accessrepo.ClaimsStoreDeps{
-		LegacyPrincipals:   accessPrincipalRepo,
 		IdentityPrincipals: identityrepo.NewPrincipalRepo(pool),
 		IdentityUsers:      identityUserRepo,
 		Authorizer:         authorizer,
 	})
-	bootstrapPrincipals := make([]accessapp.BootstrapPrincipalSpec, 0, len(cfg.AuthBootstrapPrincipals))
-	for _, principal := range cfg.AuthBootstrapPrincipals {
-		bootstrapPrincipals = append(bootstrapPrincipals, accessapp.BootstrapPrincipalSpec{
-			UserID:      principal.UserID,
-			DisplayName: principal.DisplayName,
-			Permissions: append([]string(nil), principal.Permissions...),
-		})
-	}
-	// 关键设计：AUTH_BOOTSTRAP_PRINCIPALS 仍然只服务迁移期的 legacy bootstrap principal，
-	// 它们用于旧 smoke/旧免密入口兼容，不属于新的 human identity catalog，
-	// 因此这里不会写入 iam_user/authz_system_binding，也不会出现在 /users 管理面列表里。
-	if err := accessapp.NewBootstrapSeedUseCase(bootstrapStore).Execute(ctx, bootstrapPrincipals); err != nil {
-		pool.Close()
-		return nil, nil, err
-	}
+	// 关键设计：public API 已切到最新无兼容语义后，启动期不再读取 legacy bootstrap principal 配置。
+	// 后续数据库迁移若需要接入旧 access_principal 数据，会走显式 migration，而不是继续在运行时偷偷灌兼容主体。
 	var objectProvider storage.Provider
 	if hasObjectStorageConfig(cfg) {
 		objectProvider, err = objectProviderFactory(storage.Config{

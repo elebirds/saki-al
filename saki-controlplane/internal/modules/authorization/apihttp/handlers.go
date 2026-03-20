@@ -126,7 +126,7 @@ func (h *Handlers) ListRoles(ctx context.Context, params openapi.ListRolesParams
 	if h == nil || h.listRoles == nil {
 		return nil, ogenhttp.ErrNotImplemented
 	}
-	if _, err := requireAnyPermission(ctx, "roles:read", "role:read", "role:read:all"); err != nil {
+	if _, err := requireAnyPermission(ctx, "roles:read"); err != nil {
 		return nil, err
 	}
 
@@ -157,7 +157,7 @@ func (h *Handlers) ListRoles(ctx context.Context, params openapi.ListRolesParams
 	}, nil
 }
 
-func (h *Handlers) GetRolePermissionCatalog(ctx context.Context) (*openapi.PermissionCatalogResponse, error) {
+func (h *Handlers) GetPermissionCatalog(ctx context.Context) (*openapi.PermissionCatalogResponse, error) {
 	return h.getPermissionCatalog(ctx)
 }
 
@@ -165,7 +165,7 @@ func (h *Handlers) CreateRole(ctx context.Context, req *openapi.RoleCreateReques
 	if h == nil || h.createRole == nil {
 		return nil, ogenhttp.ErrNotImplemented
 	}
-	if _, err := requireAnyPermission(ctx, "roles:write", "role:create:all"); err != nil {
+	if _, err := requireAnyPermission(ctx, "roles:write"); err != nil {
 		return nil, err
 	}
 	if req.GetName() == "" || req.GetDisplayName() == "" {
@@ -192,7 +192,7 @@ func (h *Handlers) GetRole(ctx context.Context, params openapi.GetRoleParams) (*
 	if h == nil || h.getRole == nil {
 		return nil, ogenhttp.ErrNotImplemented
 	}
-	if _, err := requireAnyPermission(ctx, "roles:read", "role:read:all"); err != nil {
+	if _, err := requireAnyPermission(ctx, "roles:read"); err != nil {
 		return nil, err
 	}
 
@@ -212,7 +212,7 @@ func (h *Handlers) UpdateRole(ctx context.Context, req *openapi.RoleUpdateReques
 	if h == nil || h.updateRole == nil {
 		return nil, ogenhttp.ErrNotImplemented
 	}
-	if _, err := requireAnyPermission(ctx, "roles:write", "role:update:all"); err != nil {
+	if _, err := requireAnyPermission(ctx, "roles:write"); err != nil {
 		return nil, err
 	}
 
@@ -245,7 +245,7 @@ func (h *Handlers) DeleteRole(ctx context.Context, params openapi.DeleteRolePara
 	if h == nil || h.deleteRole == nil {
 		return ogenhttp.ErrNotImplemented
 	}
-	if _, err := requireAnyPermission(ctx, "roles:write", "role:delete:all"); err != nil {
+	if _, err := requireAnyPermission(ctx, "roles:write"); err != nil {
 		return err
 	}
 
@@ -288,16 +288,12 @@ func (h *Handlers) GetSystemPermissions(ctx context.Context) (*openapi.SystemPer
 	return &openapi.SystemPermissionsResponse{
 		UserID:       claims.UserID,
 		SystemRoles:  roles,
-		Permissions:  authorizationdomain.ExpandedPermissionsForTransport(claims.Permissions),
+		Permissions:  authorizationdomain.CanonicalPermissions(claims.Permissions),
 		IsSuperAdmin: isSuperAdmin,
 	}, nil
 }
 
 func (h *Handlers) ListUserSystemRoles(ctx context.Context, params openapi.ListUserSystemRolesParams) ([]openapi.UserSystemRoleBinding, error) {
-	return h.listUserSystemRoles(ctx, params.UserID)
-}
-
-func (h *Handlers) ListUserSystemRolesLegacy(ctx context.Context, params openapi.ListUserSystemRolesLegacyParams) ([]openapi.UserSystemRoleBinding, error) {
 	return h.listUserSystemRoles(ctx, params.UserID)
 }
 
@@ -346,7 +342,7 @@ func (h *Handlers) GetResourcePermissions(ctx context.Context, params openapi.Ge
 	}
 
 	response := &openapi.ResourcePermissionsResponse{
-		Permissions: authorizationdomain.ExpandedPermissionsForTransport(result.Permissions),
+		Permissions: authorizationdomain.CanonicalPermissions(result.Permissions),
 		IsOwner:     result.IsOwner,
 	}
 	if result.ResourceRole != nil {
@@ -399,7 +395,7 @@ func (h *Handlers) getPermissionCatalog(ctx context.Context) (*openapi.Permissio
 	if h == nil || h.permissionCatalog == nil {
 		return nil, ogenhttp.ErrNotImplemented
 	}
-	if _, err := requireAnyPermission(ctx, "roles:read", "role:read", "role:read:all"); err != nil {
+	if _, err := requireAnyPermission(ctx, "roles:read"); err != nil {
 		return nil, err
 	}
 
@@ -408,9 +404,9 @@ func (h *Handlers) getPermissionCatalog(ctx context.Context) (*openapi.Permissio
 		return nil, err
 	}
 	return &openapi.PermissionCatalogResponse{
-		AllPermissions:      authorizationdomain.ExpandedPermissionsForTransport(catalog.AllPermissions),
-		SystemPermissions:   authorizationdomain.ExpandedPermissionsForTransport(catalog.SystemPermissions),
-		ResourcePermissions: authorizationdomain.ExpandedPermissionsForTransport(catalog.ResourcePermissions),
+		AllPermissions:      authorizationdomain.CanonicalPermissions(catalog.AllPermissions),
+		SystemPermissions:   authorizationdomain.CanonicalPermissions(catalog.SystemPermissions),
+		ResourcePermissions: authorizationdomain.CanonicalPermissions(catalog.ResourcePermissions),
 	}, nil
 }
 
@@ -418,9 +414,9 @@ func (h *Handlers) listUserSystemRoles(ctx context.Context, rawUserID string) ([
 	if h == nil || h.userSystemRoles == nil {
 		return nil, ogenhttp.ErrNotImplemented
 	}
-	// 关键设计：这里同时接受新旧权限别名，是因为“查看用户系统角色绑定”仍处于迁移窗口。
-	// 服务端先兼容门槛，后续再统一到新的 plural 语义，避免前后端切换被权限命名差异卡住。
-	if _, err := requireAnyPermission(ctx, "roles:read", "users:read", "role:read", "role:read:all", "user:role_read", "user:role_read:all"); err != nil {
+	// 关键设计：查看用户系统角色既可以视为“读用户”，也可以视为“读角色”，
+	// 因此这里只接受两种 canonical permission，而不再接纳任何历史别名。
+	if _, err := requireAnyPermission(ctx, "roles:read", "users:read"); err != nil {
 		return nil, err
 	}
 

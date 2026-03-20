@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"slices"
 	"testing"
 	"time"
 
@@ -175,6 +174,41 @@ func TestHumanControlPlaneSystemSettingsGetContract(t *testing.T) {
 	}
 }
 
+func TestHumanControlPlaneSystemSettingsRejectsLegacyPermissionAlias(t *testing.T) {
+	settings := &fakeSettingsManager{
+		bundle: &systemapp.SettingsBundle{
+			Schema: []systemapp.SettingDefinition{
+				{
+					Key:         systemapp.SettingKeyAuthAllowSelfRegister,
+					Group:       "auth",
+					Title:       "Allow self register",
+					Description: "desc",
+					Type:        "boolean",
+					Default:     json.RawMessage(`false`),
+					Editable:    true,
+				},
+			},
+			Values: map[string]json.RawMessage{
+				systemapp.SettingKeyAuthAllowSelfRegister: json.RawMessage(`true`),
+			},
+		},
+	}
+	handler := newSystemHTTPHandler(t, contractDeps{
+		settings:    settings,
+		permissions: []string{"system_setting:read"},
+	})
+	token := issueSystemTokenWithPermissions(t, "admin@example.com", []string{"system_setting:read"})
+
+	req := httptest.NewRequest(http.MethodGet, "/system/settings", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestHumanControlPlaneSystemSettingsPatchContract(t *testing.T) {
 	settings := &fakeSettingsManager{
 		bundle: &systemapp.SettingsBundle{
@@ -247,35 +281,22 @@ func TestHumanControlPlaneSystemSettingsPatchRejectsKindMismatch(t *testing.T) {
 	}
 }
 
-func TestHumanControlPlaneLegacyBootstrapLoginExpandsPermissionAliases(t *testing.T) {
-	handler := newLegacyBootstrapHTTPHandler(t, "seed-user", []string{"projects:read", "users:read"})
+func TestHumanControlPlaneLoginRejectsLegacyBootstrapPayload(t *testing.T) {
+	handler := newSystemHTTPHandler(t, contractDeps{})
 
 	req := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewBufferString(`{"user_id":"seed-user"}`))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
+	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("unexpected status code: %d body=%s", rec.Code, rec.Body.String())
-	}
-
-	var body map[string]any
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatalf("decode legacy login body: %v", err)
-	}
-	permissions, ok := body["permissions"].([]any)
-	if !ok {
-		t.Fatalf("expected permissions array, got %+v", body)
-	}
-	for _, permission := range []string{"projects:read", "project:read:all", "project:read:assigned", "users:read", "user:read:all"} {
-		if !slices.Contains(permissions, any(permission)) {
-			t.Fatalf("expected legacy login permissions to contain %q, got %+v", permission, permissions)
-		}
 	}
 }
 
-func TestHumanControlPlaneLegacyBootstrapCurrentUserExpandsPermissionAliases(t *testing.T) {
-	handler, token := newLegacyBootstrapHTTPHandlerWithToken(t, "seed-user", []string{"projects:read", "users:read"})
+func TestHumanControlPlaneAuthMeReturnsCanonicalPermissions(t *testing.T) {
+	handler := newSystemHTTPHandler(t, contractDeps{})
+	token := issueSystemToken(t, handler, "admin@example.com")
 
 	req := httptest.NewRequest(http.MethodGet, "/auth/me", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -288,38 +309,52 @@ func TestHumanControlPlaneLegacyBootstrapCurrentUserExpandsPermissionAliases(t *
 
 	var body map[string]any
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatalf("decode legacy current user body: %v", err)
+		t.Fatalf("decode auth me body: %v", err)
+	}
+	if _, ok := body["user_id"]; ok {
+		t.Fatalf("latest auth me should not expose legacy user_id field, got %+v", body)
 	}
 	permissions, ok := body["permissions"].([]any)
 	if !ok {
 		t.Fatalf("expected permissions array, got %+v", body)
 	}
-	for _, permission := range []string{"projects:read", "project:read:all", "project:read:assigned", "users:read", "user:read:all"} {
-		if !slices.Contains(permissions, any(permission)) {
-			t.Fatalf("expected legacy current user permissions to contain %q, got %+v", permission, permissions)
+	for _, permission := range []string{"system:read", "system:write", "users:read", "roles:read"} {
+		if !containsAnyValue(permissions, permission) {
+			t.Fatalf("expected auth me permissions to contain %q, got %+v", permission, permissions)
+		}
+	}
+	for _, removedAlias := range []string{"user:read:all", "system_setting:read:all", "role:read:all"} {
+		if containsAnyValue(permissions, removedAlias) {
+			t.Fatalf("expected auth me permissions not to contain removed alias %q, got %+v", removedAlias, permissions)
 		}
 	}
 }
 
 type contractDeps struct {
-	status   *fakeStatusExecutor
-	setup    *fakeSetupExecutor
-	settings *fakeSettingsManager
-	users    *fakeListUsersExecutor
-	roles    *fakeListRolesExecutor
-	catalog  *fakePermissionCatalogExecutor
-	bindings *fakeUserSystemRolesExecutor
+	status      *fakeStatusExecutor
+	setup       *fakeSetupExecutor
+	settings    *fakeSettingsManager
+	users       *fakeListUsersExecutor
+	roles       *fakeListRolesExecutor
+	catalog     *fakePermissionCatalogExecutor
+	bindings    *fakeUserSystemRolesExecutor
+	permissions []string
 }
 
 func newSystemHTTPHandler(t *testing.T, deps contractDeps) http.Handler {
 	t.Helper()
+
+	permissions := deps.permissions
+	if len(permissions) == 0 {
+		permissions = defaultContractPermissions()
+	}
 
 	claimsStore := &fakeClaimsStore{
 		byUserID: map[string]*accessapp.ClaimsSnapshot{
 			"admin@example.com": {
 				PrincipalID: uuid.MustParse("00000000-0000-0000-0000-000000001499"),
 				UserID:      "admin@example.com",
-				Permissions: []string{"system:read", "system:write", "users:read", "roles:read"},
+				Permissions: append([]string(nil), permissions...),
 			},
 		},
 		byPrincipalID: map[uuid.UUID]*accessapp.ClaimsSnapshot{},
@@ -378,55 +413,13 @@ func newSystemHTTPHandler(t *testing.T, deps contractDeps) http.Handler {
 	return handler
 }
 
-func newLegacyBootstrapHTTPHandler(t *testing.T, userID string, permissions []string) http.Handler {
-	t.Helper()
-
-	handler, _ := newLegacyBootstrapHTTPHandlerWithToken(t, userID, permissions)
-	return handler
-}
-
-func newLegacyBootstrapHTTPHandlerWithToken(t *testing.T, userID string, permissions []string) (http.Handler, string) {
-	t.Helper()
-
-	claimsStore := &fakeClaimsStore{
-		byUserID: map[string]*accessapp.ClaimsSnapshot{
-			userID: {
-				PrincipalID: uuid.MustParse("00000000-0000-0000-0000-000000001799"),
-				UserID:      userID,
-				Permissions: append([]string(nil), permissions...),
-			},
-		},
-		byPrincipalID: map[uuid.UUID]*accessapp.ClaimsSnapshot{},
-	}
-	for _, snapshot := range claimsStore.byUserID {
-		copy := *snapshot
-		claimsStore.byPrincipalID[copy.PrincipalID] = &copy
-	}
-
-	authenticator := accessapp.NewAuthenticator("test-secret", time.Hour).WithStore(claimsStore)
-	handler, err := systemapi.NewHTTPHandler(systemapi.Dependencies{
-		Authenticator:       authenticator,
-		ClaimsStore:         claimsStore,
-		DatasetStore:        datasetapp.NewMemoryStore(),
-		ProjectStore:        projectapp.NewMemoryStore(),
-		RuntimeStore:        runtimequeries.NewMemoryAdminStore(),
-		RuntimeTaskCanceler: fakeRuntimeTaskCanceler{},
-		AnnotationSamples:   fakeAnnotationSampleStore{},
-		AnnotationDatasets:  fakeAnnotationDatasetStore{},
-		AnnotationStore:     fakeAnnotationStore{},
-	})
-	if err != nil {
-		t.Fatalf("new legacy bootstrap http handler: %v", err)
-	}
-
-	token, err := authenticator.IssueBootstrapTokenContext(context.Background(), userID)
-	if err != nil {
-		t.Fatalf("issue bootstrap token: %v", err)
-	}
-	return handler, token
-}
-
 func issueSystemToken(t *testing.T, _ http.Handler, userID string) string {
+	t.Helper()
+
+	return issueSystemTokenWithPermissions(t, userID, defaultContractPermissions())
+}
+
+func issueSystemTokenWithPermissions(t *testing.T, userID string, permissions []string) string {
 	t.Helper()
 
 	store := &fakeClaimsStore{
@@ -434,7 +427,7 @@ func issueSystemToken(t *testing.T, _ http.Handler, userID string) string {
 			userID: {
 				PrincipalID: uuid.MustParse("00000000-0000-0000-0000-000000001499"),
 				UserID:      userID,
-				Permissions: []string{"system:read", "system:write", "users:read", "roles:read"},
+				Permissions: append([]string(nil), permissions...),
 			},
 		},
 		byPrincipalID: map[uuid.UUID]*accessapp.ClaimsSnapshot{},
@@ -449,6 +442,10 @@ func issueSystemToken(t *testing.T, _ http.Handler, userID string) string {
 		t.Fatalf("issue token: %v", err)
 	}
 	return token
+}
+
+func defaultContractPermissions() []string {
+	return []string{"system:read", "system:write", "users:read", "roles:read"}
 }
 
 type fakeClaimsStore struct {
@@ -482,8 +479,13 @@ func (f *fakeClaimsStore) LoadClaimsByPrincipalID(_ context.Context, principalID
 	return &copy, nil
 }
 
-func (f *fakeClaimsStore) LoadBootstrapClaimsByUserID(ctx context.Context, userID string) (*accessapp.ClaimsSnapshot, error) {
-	return f.LoadClaimsByUserID(ctx, userID)
+func containsAnyValue(items []any, target string) bool {
+	for _, item := range items {
+		if item == target {
+			return true
+		}
+	}
+	return false
 }
 
 type fakeCurrentUserExecutor struct{}

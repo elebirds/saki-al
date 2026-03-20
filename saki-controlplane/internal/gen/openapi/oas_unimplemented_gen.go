@@ -195,6 +195,13 @@ func (UnimplementedHandler) GetImportUploadSession(ctx context.Context, params G
 	return r, ht.ErrNotImplemented
 }
 
+// GetPermissionCatalog implements getPermissionCatalog operation.
+//
+// GET /permissions/catalog
+func (UnimplementedHandler) GetPermissionCatalog(ctx context.Context) (r *PermissionCatalogResponse, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // GetProject implements getProject operation.
 //
 // GET /projects/{project_id}
@@ -213,13 +220,6 @@ func (UnimplementedHandler) GetResourcePermissions(ctx context.Context, params G
 //
 // GET /roles/{role_id}
 func (UnimplementedHandler) GetRole(ctx context.Context, params GetRoleParams) (r *RoleListItem, _ error) {
-	return r, ht.ErrNotImplemented
-}
-
-// GetRolePermissionCatalog implements getRolePermissionCatalog operation.
-//
-// GET /roles/permission-catalog
-func (UnimplementedHandler) GetRolePermissionCatalog(ctx context.Context) (r *PermissionCatalogResponse, _ error) {
 	return r, ht.ErrNotImplemented
 }
 
@@ -374,13 +374,6 @@ func (UnimplementedHandler) ListSampleAnnotations(ctx context.Context, params Li
 //
 // GET /users/{user_id}/system-roles
 func (UnimplementedHandler) ListUserSystemRoles(ctx context.Context, params ListUserSystemRolesParams) (r []UserSystemRoleBinding, _ error) {
-	return r, ht.ErrNotImplemented
-}
-
-// ListUserSystemRolesLegacy implements listUserSystemRolesLegacy operation.
-//
-// GET /roles/users/{user_id}/roles
-func (UnimplementedHandler) ListUserSystemRolesLegacy(ctx context.Context, params ListUserSystemRolesLegacyParams) (r []UserSystemRoleBinding, _ error) {
 	return r, ht.ErrNotImplemented
 }
 

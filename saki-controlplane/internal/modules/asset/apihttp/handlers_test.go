@@ -492,9 +492,9 @@ func newAssetHTTPHandlerWithSubjectKey(t *testing.T, subjectKey string, module *
 		provider = &fakeProvider{bucket: "assets"}
 	}
 
-		handler, err := systemapi.NewHTTPHandler(systemapi.Dependencies{
-			Authenticator:       authenticator,
-			ClaimsStore:         accessStore,
+	handler, err := systemapi.NewHTTPHandler(systemapi.Dependencies{
+		Authenticator:       authenticator,
+		ClaimsStore:         accessStore,
 		DatasetStore:        datasetapp.NewMemoryStore(),
 		ProjectStore:        projectapp.NewMemoryStore(),
 		RuntimeStore:        runtimequeries.NewMemoryAdminStore(),
@@ -713,10 +713,6 @@ func (s *fakeAccessStore) LoadClaimsByPrincipalID(_ context.Context, principalID
 		}, nil
 	}
 	return nil, nil
-}
-
-func (s *fakeAccessStore) UpsertBootstrapPrincipal(context.Context, accessapp.BootstrapPrincipalSpec) (*accessdomain.Principal, error) {
-	return nil, errors.New("not implemented")
 }
 
 type fakeRuntimeTaskCanceler struct{}

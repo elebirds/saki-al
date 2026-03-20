@@ -20,7 +20,6 @@ import (
 	appdb "github.com/elebirds/saki/saki-controlplane/internal/app/db"
 	openapi "github.com/elebirds/saki/saki-controlplane/internal/gen/openapi"
 	accessapp "github.com/elebirds/saki/saki-controlplane/internal/modules/access/app"
-	accessdomain "github.com/elebirds/saki/saki-controlplane/internal/modules/access/domain"
 	annotationrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/repo"
 	assetrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/asset/repo"
 	datasetapi "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/apihttp"
@@ -1053,10 +1052,6 @@ func (fakeAccessStore) LoadClaimsByUserID(context.Context, string) (*accessapp.C
 }
 
 func (fakeAccessStore) LoadClaimsByPrincipalID(context.Context, uuid.UUID) (*accessapp.ClaimsSnapshot, error) {
-	return nil, nil
-}
-
-func (fakeAccessStore) UpsertBootstrapPrincipal(context.Context, accessapp.BootstrapPrincipalSpec) (*accessdomain.Principal, error) {
 	return nil, nil
 }
 

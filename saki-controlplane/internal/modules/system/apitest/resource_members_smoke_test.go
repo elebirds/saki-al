@@ -245,7 +245,7 @@ func TestHumanControlPlaneResourceMembersSmoke(t *testing.T) {
 		t.Fatalf("unexpected dataset resource permissions body: %+v", datasetPermissionsBody)
 	}
 	permissions, ok := datasetPermissionsBody["permissions"].([]any)
-	if !ok || !slices.Contains(permissions, any("dataset:update:assigned")) {
+	if !ok || !slices.Contains(permissions, any("datasets:write")) {
 		t.Fatalf("expected dataset contributor permissions, got %+v", datasetPermissionsBody)
 	}
 	if datasetPermissionsBody["is_owner"] != false {
@@ -303,7 +303,7 @@ func TestHumanControlPlaneResourceMembersSmoke(t *testing.T) {
 		t.Fatalf("unexpected project resource permissions body: %+v", projectPermissionsBody)
 	}
 	projectPermissions, ok := projectPermissionsBody["permissions"].([]any)
-	if !ok || !slices.Contains(projectPermissions, any("project:assign:assigned")) {
+	if !ok || !slices.Contains(projectPermissions, any("projects:members:write")) {
 		t.Fatalf("expected project manager permissions, got %+v", projectPermissionsBody)
 	}
 	forbiddenProjectMembersResp := doJSONRequest(
@@ -337,7 +337,7 @@ func TestHumanControlPlaneResourceMembersSmoke(t *testing.T) {
 		memberAccessToken,
 	))
 	updatedPermissions, ok := updatedDatasetPermissionsBody["permissions"].([]any)
-	if !ok || slices.Contains(updatedPermissions, any("dataset:update:assigned")) || !slices.Contains(updatedPermissions, any("dataset:read:assigned")) {
+	if !ok || slices.Contains(updatedPermissions, any("datasets:write")) || !slices.Contains(updatedPermissions, any("datasets:read")) {
 		t.Fatalf("expected dataset viewer permissions after update, got %+v", updatedDatasetPermissionsBody)
 	}
 	rejectOwnerAssignResp := doJSONRequest(

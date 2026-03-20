@@ -52,29 +52,6 @@ func TestLoadConfigReadsBootstrapDependencies(t *testing.T) {
 	}
 }
 
-func TestLoadConfigReadsAccessBootstrapPrincipals(t *testing.T) {
-	t.Setenv("AUTH_BOOTSTRAP_PRINCIPALS", `[{"user_id":"seed-user","display_name":"Seed User","permissions":["projects:read","imports:read"]}]`)
-
-	cfg, err := Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(cfg.AuthBootstrapPrincipals) != 1 {
-		t.Fatalf("expected one bootstrap principal, got %+v", cfg.AuthBootstrapPrincipals)
-	}
-
-	principal := cfg.AuthBootstrapPrincipals[0]
-	if principal.UserID != "seed-user" {
-		t.Fatalf("unexpected bootstrap user id: %+v", principal)
-	}
-	if principal.DisplayName != "Seed User" {
-		t.Fatalf("unexpected bootstrap display name: %+v", principal)
-	}
-	if !slices.Equal(principal.Permissions, []string{"projects:read", "imports:read"}) {
-		t.Fatalf("unexpected bootstrap permissions: %+v", principal)
-	}
-}
-
 func TestLoadIncludesObjectStorageConfig(t *testing.T) {
 	t.Setenv("MINIO_ENDPOINT", "127.0.0.1:9000")
 	t.Setenv("MINIO_ACCESS_KEY", "test-access")

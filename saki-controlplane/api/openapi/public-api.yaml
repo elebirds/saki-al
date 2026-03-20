@@ -1276,40 +1276,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-  /roles/permission-catalog:
+  /permissions/catalog:
     get:
-      operationId: getRolePermissionCatalog
+      operationId: getPermissionCatalog
       responses:
         "200":
-          description: permission catalog alias for migration
+          description: permission catalog
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/PermissionCatalogResponse"
-        default:
-          description: unexpected error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-  /roles/users/{user_id}/roles:
-    get:
-      operationId: listUserSystemRolesLegacy
-      parameters:
-        - name: user_id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: legacy alias for user system role bindings
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/UserSystemRoleBinding"
         default:
           description: unexpected error
           content:
@@ -2010,8 +1986,6 @@ components:
     AuthLoginRequest:
       type: object
       properties:
-        user_id:
-          type: string
         identifier:
           type: string
         password:
@@ -2098,8 +2072,6 @@ components:
       properties:
         user:
           $ref: "#/components/schemas/AuthSessionUser"
-        user_id:
-          type: string
         system_roles:
           type: array
           items:
@@ -2564,8 +2536,6 @@ components:
         - must_change_password
         - user
       properties:
-        token:
-          type: string
         access_token:
           type: string
         refresh_token:
@@ -2575,12 +2545,6 @@ components:
           format: int64
         must_change_password:
           type: boolean
-        user_id:
-          type: string
-        permissions:
-          type: array
-          items:
-            type: string
         user:
           $ref: "#/components/schemas/AuthSessionUser"
     SystemSettingValue:

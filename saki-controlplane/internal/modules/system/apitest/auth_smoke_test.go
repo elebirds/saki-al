@@ -83,9 +83,8 @@ func TestHumanControlPlaneAuthSmoke(t *testing.T) {
 	if !ok || loginUser["email"] != "admin@example.com" {
 		t.Fatalf("unexpected login user payload: %+v", loginBody)
 	}
-	loginPermissions, ok := loginBody["permissions"].([]any)
-	if !ok || !slices.Contains(loginPermissions, any("system:write")) {
-		t.Fatalf("expected login to expose permission snapshot, got %+v", loginBody)
+	if _, ok := loginBody["permissions"]; ok {
+		t.Fatalf("latest auth session should not expose permissions snapshot, got %+v", loginBody)
 	}
 
 	meBody := decodeJSONResponse(t, doJSONRequest(
@@ -105,8 +104,11 @@ func TestHumanControlPlaneAuthSmoke(t *testing.T) {
 		t.Fatalf("expected me to expose super_admin binding, got %+v", meBody)
 	}
 	mePermissions, ok := meBody["permissions"].([]any)
-	if !ok || !slices.Contains(mePermissions, any("system:write")) {
+	if !ok {
 		t.Fatalf("expected me to expose permission snapshot, got %+v", meBody)
+	}
+	if !containsAny(mePermissions, "system:write") {
+		t.Fatalf("expected me to expose canonical permission snapshot, got %+v", meBody)
 	}
 
 	refreshResp := doJSONRequest(
@@ -125,9 +127,8 @@ func TestHumanControlPlaneAuthSmoke(t *testing.T) {
 	if rotatedRefreshToken == "" || rotatedRefreshToken == loginRefreshToken {
 		t.Fatalf("expected refresh to rotate refresh token, got %+v", refreshBody)
 	}
-	refreshPermissions, ok := refreshBody["permissions"].([]any)
-	if !ok || !slices.Contains(refreshPermissions, any("system:write")) {
-		t.Fatalf("expected refresh to preserve permission snapshot, got %+v", refreshBody)
+	if _, ok := refreshBody["permissions"]; ok {
+		t.Fatalf("latest auth session should not expose permissions snapshot, got %+v", refreshBody)
 	}
 
 	var rotatedChildCount int
@@ -215,8 +216,8 @@ func TestHumanControlPlaneAuthSmoke(t *testing.T) {
 	if !ok || registerUser["email"] != "user@example.com" {
 		t.Fatalf("unexpected register response: %+v", registerBody)
 	}
-	if _, ok := registerBody["permissions"].([]any); !ok {
-		t.Fatalf("expected register to expose permissions field, got %+v", registerBody)
+	if _, ok := registerBody["permissions"]; ok {
+		t.Fatalf("latest auth session should not expose permissions field, got %+v", registerBody)
 	}
 
 	changePasswordResp := doJSONRequest(
@@ -235,8 +236,8 @@ func TestHumanControlPlaneAuthSmoke(t *testing.T) {
 	if changedRefreshToken == "" || changedRefreshToken == userRefreshToken {
 		t.Fatalf("expected change-password to issue a new refresh token, got %+v", changePasswordBody)
 	}
-	if _, ok := changePasswordBody["permissions"].([]any); !ok {
-		t.Fatalf("expected change-password to expose permissions field, got %+v", changePasswordBody)
+	if _, ok := changePasswordBody["permissions"]; ok {
+		t.Fatalf("latest auth session should not expose permissions field, got %+v", changePasswordBody)
 	}
 
 	oldRefreshResp := doJSONRequest(
@@ -300,4 +301,13 @@ func TestHumanControlPlaneAuthSmoke(t *testing.T) {
 	if logoutRefreshResp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("expected logged out refresh token rejected, got %d body=%s", logoutRefreshResp.StatusCode, readBodyString(t, logoutRefreshResp))
 	}
+}
+
+func containsAny(items []any, target string) bool {
+	for _, item := range items {
+		if item == target {
+			return true
+		}
+	}
+	return false
 }

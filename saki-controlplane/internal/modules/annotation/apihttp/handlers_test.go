@@ -14,7 +14,6 @@ import (
 
 	appdb "github.com/elebirds/saki/saki-controlplane/internal/app/db"
 	accessapp "github.com/elebirds/saki/saki-controlplane/internal/modules/access/app"
-	accessdomain "github.com/elebirds/saki/saki-controlplane/internal/modules/access/domain"
 	annotationrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/repo"
 	datasetapp "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/app"
 	datasetrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/repo"
@@ -69,9 +68,9 @@ func TestCreateAndListSampleAnnotationsEndpoints(t *testing.T) {
 		t.Fatalf("create sample: %v", err)
 	}
 
-		handler, err := systemapi.NewHTTPHandler(systemapi.Dependencies{
-			Authenticator:       accessapp.NewAuthenticator("test-secret", time.Hour),
-			ClaimsStore:         fakeAccessStore{},
+	handler, err := systemapi.NewHTTPHandler(systemapi.Dependencies{
+		Authenticator:       accessapp.NewAuthenticator("test-secret", time.Hour),
+		ClaimsStore:         fakeAccessStore{},
 		DatasetStore:        datasetapp.NewRepoStore(datasetRepo),
 		ProjectStore:        projectapp.NewRepoStore(projectRepo),
 		RuntimeStore:        runtimequeries.NewMemoryAdminStore(),
@@ -133,10 +132,6 @@ func (fakeAccessStore) LoadClaimsByUserID(context.Context, string) (*accessapp.C
 }
 
 func (fakeAccessStore) LoadClaimsByPrincipalID(context.Context, uuid.UUID) (*accessapp.ClaimsSnapshot, error) {
-	return nil, nil
-}
-
-func (fakeAccessStore) UpsertBootstrapPrincipal(context.Context, accessapp.BootstrapPrincipalSpec) (*accessdomain.Principal, error) {
 	return nil, nil
 }
 

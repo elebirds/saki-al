@@ -183,10 +183,9 @@ func (h *Handlers) GetCurrentUser(ctx context.Context) (*openapi.CurrentUserResp
 			FullName:    currentUser.User.FullName,
 		},
 		SystemRoles:        append([]string(nil), currentUser.SystemRoles...),
-		Permissions:        authorizationdomain.ExpandedPermissionsForTransport(currentUser.Permissions),
+		Permissions:        authorizationdomain.CanonicalPermissions(currentUser.Permissions),
 		MustChangePassword: currentUser.MustChangePassword,
 	}
-	response.UserID.SetTo(currentUser.User.Email)
 	return response, nil
 }
 
@@ -194,7 +193,7 @@ func (h *Handlers) ListUsers(ctx context.Context, params openapi.ListUsersParams
 	if h == nil || h.listUsers == nil {
 		return nil, ogenhttp.ErrNotImplemented
 	}
-	if _, err := requireAnyPermission(ctx, "users:read", "user:read", "user:read:all"); err != nil {
+	if _, err := requireAnyPermission(ctx, "users:read"); err != nil {
 		return nil, err
 	}
 
@@ -227,7 +226,7 @@ func (h *Handlers) CreateUser(ctx context.Context, req *openapi.UserCreateReques
 	if h == nil || h.createUser == nil {
 		return nil, ogenhttp.ErrNotImplemented
 	}
-	if _, err := requireAnyPermission(ctx, "users:write", "user:create:all", "user:manage:all"); err != nil {
+	if _, err := requireAnyPermission(ctx, "users:write"); err != nil {
 		return nil, err
 	}
 	if req.GetEmail() == "" || req.GetPassword() == "" {
@@ -257,7 +256,7 @@ func (h *Handlers) GetUser(ctx context.Context, params openapi.GetUserParams) (*
 	if h == nil || h.getUser == nil {
 		return nil, ogenhttp.ErrNotImplemented
 	}
-	if _, err := requireAnyPermission(ctx, "users:read", "user:read:all"); err != nil {
+	if _, err := requireAnyPermission(ctx, "users:read"); err != nil {
 		return nil, err
 	}
 
@@ -277,7 +276,7 @@ func (h *Handlers) UpdateUser(ctx context.Context, req *openapi.UserUpdateReques
 	if h == nil || h.updateUser == nil {
 		return nil, ogenhttp.ErrNotImplemented
 	}
-	if _, err := requireAnyPermission(ctx, "users:write", "user:update:all", "user:manage:all"); err != nil {
+	if _, err := requireAnyPermission(ctx, "users:write"); err != nil {
 		return nil, err
 	}
 
@@ -316,7 +315,7 @@ func (h *Handlers) DeleteUser(ctx context.Context, params openapi.DeleteUserPara
 	if h == nil || h.deleteUser == nil {
 		return ogenhttp.ErrNotImplemented
 	}
-	if _, err := requireAnyPermission(ctx, "users:write", "user:delete:all", "user:manage:all"); err != nil {
+	if _, err := requireAnyPermission(ctx, "users:write"); err != nil {
 		return err
 	}
 
@@ -335,23 +334,17 @@ func (h *Handlers) DeleteUser(ctx context.Context, params openapi.DeleteUserPara
 }
 
 func mapAuthSession(session *identityapp.AuthSession) *openapi.AuthSessionResponse {
-	response := &openapi.AuthSessionResponse{
+	return &openapi.AuthSessionResponse{
 		AccessToken:        session.AccessToken,
 		RefreshToken:       session.RefreshToken,
 		ExpiresIn:          session.ExpiresIn,
 		MustChangePassword: session.MustChangePassword,
-		Permissions:        authorizationdomain.ExpandedPermissionsForTransport(session.Permissions),
 		User: openapi.AuthSessionUser{
 			PrincipalID: session.User.PrincipalID.String(),
 			Email:       session.User.Email,
 			FullName:    session.User.FullName,
 		},
 	}
-	// 关键设计：新 identity 响应保留 access_token 作为主语义，同时补 token/user_id 别名，
-	// 这样迁移期旧前端和旧 smoke 不必立刻一起切换，但不会重新引入旧的免密登录语义。
-	response.Token.SetTo(session.AccessToken)
-	response.UserID.SetTo(session.User.Email)
-	return response
 }
 
 func mapUser(item identityapp.UserAdminView) openapi.UserListItem {

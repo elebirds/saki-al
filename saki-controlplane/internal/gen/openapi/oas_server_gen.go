@@ -112,6 +112,10 @@ type Handler interface {
 	//
 	// GET /imports/uploads/{session_id}
 	GetImportUploadSession(ctx context.Context, params GetImportUploadSessionParams) (*ImportUploadSession, error)
+	// GetPermissionCatalog implements getPermissionCatalog operation.
+	//
+	// GET /permissions/catalog
+	GetPermissionCatalog(ctx context.Context) (*PermissionCatalogResponse, error)
 	// GetProject implements getProject operation.
 	//
 	// GET /projects/{project_id}
@@ -124,10 +128,6 @@ type Handler interface {
 	//
 	// GET /roles/{role_id}
 	GetRole(ctx context.Context, params GetRoleParams) (*RoleListItem, error)
-	// GetRolePermissionCatalog implements getRolePermissionCatalog operation.
-	//
-	// GET /roles/permission-catalog
-	GetRolePermissionCatalog(ctx context.Context) (*PermissionCatalogResponse, error)
 	// GetRuntimeSummary implements getRuntimeSummary operation.
 	//
 	// GET /runtime/summary
@@ -216,10 +216,6 @@ type Handler interface {
 	//
 	// GET /users/{user_id}/system-roles
 	ListUserSystemRoles(ctx context.Context, params ListUserSystemRolesParams) ([]UserSystemRoleBinding, error)
-	// ListUserSystemRolesLegacy implements listUserSystemRolesLegacy operation.
-	//
-	// GET /roles/users/{user_id}/roles
-	ListUserSystemRolesLegacy(ctx context.Context, params ListUserSystemRolesLegacyParams) ([]UserSystemRoleBinding, error)
 	// ListUsers implements listUsers operation.
 	//
 	// GET /users

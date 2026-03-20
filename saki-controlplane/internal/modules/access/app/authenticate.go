@@ -13,8 +13,9 @@ import (
 )
 
 var (
-	ErrUnauthorized = errors.New("unauthorized")
-	ErrForbidden    = errors.New("forbidden")
+	ErrUnauthorized       = errors.New("unauthorized")
+	ErrForbidden          = errors.New("forbidden")
+	ErrMissingAccessStore = errors.New("access claims store is required")
 )
 
 type Claims struct {
@@ -64,25 +65,6 @@ func (a *Authenticator) IssueTokenContext(ctx context.Context, userID string) (s
 
 	// access 这里只保留迁移期 HTTP auth 外壳职责，claims 快照统一从 identity/authorization 聚合装载。
 	snapshot, err := a.store.LoadClaimsByUserID(ctx, userID)
-	if err != nil {
-		return "", err
-	}
-	return a.issueTokenFromSnapshot(snapshot)
-}
-
-func (a *Authenticator) IssueBootstrapTokenContext(ctx context.Context, userID string) (string, error) {
-	if a.store == nil {
-		return "", ErrMissingAccessStore
-	}
-
-	bootstrapStore, ok := a.store.(BootstrapClaimsStore)
-	if !ok {
-		return "", ErrUnauthorized
-	}
-
-	// 关键设计：legacy /auth/login 只允许迁移期 bootstrap principal 继续使用。
-	// 新的人类控制面 identity 用户必须走后续真正带密码校验的 /auth/login，而不能借旧壳接口无密码拿 token。
-	snapshot, err := bootstrapStore.LoadBootstrapClaimsByUserID(ctx, userID)
 	if err != nil {
 		return "", err
 	}

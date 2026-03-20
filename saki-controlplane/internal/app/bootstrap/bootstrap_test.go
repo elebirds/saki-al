@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -12,7 +11,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -26,7 +24,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-func TestNewPublicAPISeedsAccessBeforeHandler(t *testing.T) {
+func TestNewPublicAPIRejectsLegacyBootstrapLoginEvenWhenConfigured(t *testing.T) {
 	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
 
 	ctx := context.Background()
@@ -74,28 +72,12 @@ func TestNewPublicAPISeedsAccessBeforeHandler(t *testing.T) {
 	rec := httptest.NewRecorder()
 	server.Handler.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
+	// 关键设计：即使进程环境里残留 AUTH_BOOTSTRAP_PRINCIPALS，也不能恢复 public API 的旧登录兼容入口。
+	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("unexpected login status: %d body=%s", rec.Code, rec.Body.String())
 	}
-
-	var body struct {
-		Token       string   `json:"token"`
-		UserID      string   `json:"user_id"`
-		Permissions []string `json:"permissions"`
-	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatalf("decode login response: %v", err)
-	}
-	if body.Token == "" || body.UserID != "seed-user" {
-		t.Fatalf("unexpected login response: %+v", body)
-	}
-	for _, permission := range []string{"imports:read", "projects:read", "project:read:all", "project:read:assigned"} {
-		if !slices.Contains(body.Permissions, permission) {
-			t.Fatalf("expected login permissions to contain %q, got %+v", permission, body)
-		}
-	}
-	if len(body.Permissions) != 4 {
-		t.Fatalf("unexpected login permissions: %+v", body)
+	if !strings.Contains(rec.Body.String(), "identifier and password are required") {
+		t.Fatalf("unexpected login response body: %s", rec.Body.String())
 	}
 }
 

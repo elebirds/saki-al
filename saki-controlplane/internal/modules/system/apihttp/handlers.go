@@ -118,7 +118,7 @@ func (h *Handlers) GetSystemSettings(ctx context.Context) (*openapi.SystemSettin
 	if h == nil || h.settings == nil {
 		return nil, ogenhttp.ErrNotImplemented
 	}
-	if _, err := requireAnyPermission(ctx, "system:read", "system_setting:read"); err != nil {
+	if _, err := requireAnyPermission(ctx, "system:read"); err != nil {
 		return nil, err
 	}
 
@@ -133,7 +133,7 @@ func (h *Handlers) PatchSystemSettings(ctx context.Context, req *openapi.SystemS
 	if h == nil || h.settings == nil {
 		return nil, ogenhttp.ErrNotImplemented
 	}
-	if _, err := requireAnyPermission(ctx, "system:write", "system_setting:update"); err != nil {
+	if _, err := requireAnyPermission(ctx, "system:write"); err != nil {
 		return nil, err
 	}
 
@@ -365,8 +365,8 @@ func requireAnyPermission(ctx context.Context, permissions ...string) (*accessap
 		return nil, accessapp.ErrUnauthorized
 	}
 
-	// 关键设计：迁移期 settings 接口同时接受旧 `system_setting:*` 与新 `system:*` 权限名，
-	// 避免 role preset、前端和 legacy bootstrap principal 尚未同时切换时把新 API 卡死。
+	// 关键设计：运行时权限校验只接受 canonical permission。
+	// 旧权限别名的适配通过离线数据库迁移完成，而不是继续保留在服务端分支判断里。
 	for _, permission := range permissions {
 		if claims.HasPermission(permission) {
 			return claims, nil

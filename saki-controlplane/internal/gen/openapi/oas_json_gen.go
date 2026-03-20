@@ -1750,12 +1750,6 @@ func (s *AuthLoginRequest) Encode(e *jx.Encoder) {
 // encodeFields encodes fields.
 func (s *AuthLoginRequest) encodeFields(e *jx.Encoder) {
 	{
-		if s.UserID.Set {
-			e.FieldStart("user_id")
-			s.UserID.Encode(e)
-		}
-	}
-	{
 		if s.Identifier.Set {
 			e.FieldStart("identifier")
 			s.Identifier.Encode(e)
@@ -1769,10 +1763,9 @@ func (s *AuthLoginRequest) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfAuthLoginRequest = [3]string{
-	0: "user_id",
-	1: "identifier",
-	2: "password",
+var jsonFieldsNameOfAuthLoginRequest = [2]string{
+	0: "identifier",
+	1: "password",
 }
 
 // Decode decodes AuthLoginRequest from json.
@@ -1783,16 +1776,6 @@ func (s *AuthLoginRequest) Decode(d *jx.Decoder) error {
 
 	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
 		switch string(k) {
-		case "user_id":
-			if err := func() error {
-				s.UserID.Reset()
-				if err := s.UserID.Decode(d); err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"user_id\"")
-			}
 		case "identifier":
 			if err := func() error {
 				s.Identifier.Reset()
@@ -2169,12 +2152,6 @@ func (s *AuthSessionResponse) Encode(e *jx.Encoder) {
 // encodeFields encodes fields.
 func (s *AuthSessionResponse) encodeFields(e *jx.Encoder) {
 	{
-		if s.Token.Set {
-			e.FieldStart("token")
-			s.Token.Encode(e)
-		}
-	}
-	{
 		e.FieldStart("access_token")
 		e.Str(s.AccessToken)
 	}
@@ -2191,36 +2168,17 @@ func (s *AuthSessionResponse) encodeFields(e *jx.Encoder) {
 		e.Bool(s.MustChangePassword)
 	}
 	{
-		if s.UserID.Set {
-			e.FieldStart("user_id")
-			s.UserID.Encode(e)
-		}
-	}
-	{
-		if s.Permissions != nil {
-			e.FieldStart("permissions")
-			e.ArrStart()
-			for _, elem := range s.Permissions {
-				e.Str(elem)
-			}
-			e.ArrEnd()
-		}
-	}
-	{
 		e.FieldStart("user")
 		s.User.Encode(e)
 	}
 }
 
-var jsonFieldsNameOfAuthSessionResponse = [8]string{
-	0: "token",
-	1: "access_token",
-	2: "refresh_token",
-	3: "expires_in",
-	4: "must_change_password",
-	5: "user_id",
-	6: "permissions",
-	7: "user",
+var jsonFieldsNameOfAuthSessionResponse = [5]string{
+	0: "access_token",
+	1: "refresh_token",
+	2: "expires_in",
+	3: "must_change_password",
+	4: "user",
 }
 
 // Decode decodes AuthSessionResponse from json.
@@ -2232,18 +2190,8 @@ func (s *AuthSessionResponse) Decode(d *jx.Decoder) error {
 
 	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
 		switch string(k) {
-		case "token":
-			if err := func() error {
-				s.Token.Reset()
-				if err := s.Token.Decode(d); err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"token\"")
-			}
 		case "access_token":
-			requiredBitSet[0] |= 1 << 1
+			requiredBitSet[0] |= 1 << 0
 			if err := func() error {
 				v, err := d.Str()
 				s.AccessToken = string(v)
@@ -2255,7 +2203,7 @@ func (s *AuthSessionResponse) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"access_token\"")
 			}
 		case "refresh_token":
-			requiredBitSet[0] |= 1 << 2
+			requiredBitSet[0] |= 1 << 1
 			if err := func() error {
 				v, err := d.Str()
 				s.RefreshToken = string(v)
@@ -2267,7 +2215,7 @@ func (s *AuthSessionResponse) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"refresh_token\"")
 			}
 		case "expires_in":
-			requiredBitSet[0] |= 1 << 3
+			requiredBitSet[0] |= 1 << 2
 			if err := func() error {
 				v, err := d.Int64()
 				s.ExpiresIn = int64(v)
@@ -2279,7 +2227,7 @@ func (s *AuthSessionResponse) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"expires_in\"")
 			}
 		case "must_change_password":
-			requiredBitSet[0] |= 1 << 4
+			requiredBitSet[0] |= 1 << 3
 			if err := func() error {
 				v, err := d.Bool()
 				s.MustChangePassword = bool(v)
@@ -2290,37 +2238,8 @@ func (s *AuthSessionResponse) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"must_change_password\"")
 			}
-		case "user_id":
-			if err := func() error {
-				s.UserID.Reset()
-				if err := s.UserID.Decode(d); err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"user_id\"")
-			}
-		case "permissions":
-			if err := func() error {
-				s.Permissions = make([]string, 0)
-				if err := d.Arr(func(d *jx.Decoder) error {
-					var elem string
-					v, err := d.Str()
-					elem = string(v)
-					if err != nil {
-						return err
-					}
-					s.Permissions = append(s.Permissions, elem)
-					return nil
-				}); err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"permissions\"")
-			}
 		case "user":
-			requiredBitSet[0] |= 1 << 7
+			requiredBitSet[0] |= 1 << 4
 			if err := func() error {
 				if err := s.User.Decode(d); err != nil {
 					return err
@@ -2339,7 +2258,7 @@ func (s *AuthSessionResponse) Decode(d *jx.Decoder) error {
 	// Validate required fields.
 	var failures []validate.FieldError
 	for i, mask := range [1]uint8{
-		0b10011110,
+		0b00011111,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.
@@ -3050,12 +2969,6 @@ func (s *CurrentUserResponse) encodeFields(e *jx.Encoder) {
 		s.User.Encode(e)
 	}
 	{
-		if s.UserID.Set {
-			e.FieldStart("user_id")
-			s.UserID.Encode(e)
-		}
-	}
-	{
 		e.FieldStart("system_roles")
 		e.ArrStart()
 		for _, elem := range s.SystemRoles {
@@ -3077,12 +2990,11 @@ func (s *CurrentUserResponse) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfCurrentUserResponse = [5]string{
+var jsonFieldsNameOfCurrentUserResponse = [4]string{
 	0: "user",
-	1: "user_id",
-	2: "system_roles",
-	3: "permissions",
-	4: "must_change_password",
+	1: "system_roles",
+	2: "permissions",
+	3: "must_change_password",
 }
 
 // Decode decodes CurrentUserResponse from json.
@@ -3104,18 +3016,8 @@ func (s *CurrentUserResponse) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"user\"")
 			}
-		case "user_id":
-			if err := func() error {
-				s.UserID.Reset()
-				if err := s.UserID.Decode(d); err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"user_id\"")
-			}
 		case "system_roles":
-			requiredBitSet[0] |= 1 << 2
+			requiredBitSet[0] |= 1 << 1
 			if err := func() error {
 				s.SystemRoles = make([]string, 0)
 				if err := d.Arr(func(d *jx.Decoder) error {
@@ -3135,7 +3037,7 @@ func (s *CurrentUserResponse) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"system_roles\"")
 			}
 		case "permissions":
-			requiredBitSet[0] |= 1 << 3
+			requiredBitSet[0] |= 1 << 2
 			if err := func() error {
 				s.Permissions = make([]string, 0)
 				if err := d.Arr(func(d *jx.Decoder) error {
@@ -3155,7 +3057,7 @@ func (s *CurrentUserResponse) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"permissions\"")
 			}
 		case "must_change_password":
-			requiredBitSet[0] |= 1 << 4
+			requiredBitSet[0] |= 1 << 3
 			if err := func() error {
 				v, err := d.Bool()
 				s.MustChangePassword = bool(v)
@@ -3176,7 +3078,7 @@ func (s *CurrentUserResponse) Decode(d *jx.Decoder) error {
 	// Validate required fields.
 	var failures []validate.FieldError
 	for i, mask := range [1]uint8{
-		0b00011101,
+		0b00001111,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.

@@ -138,7 +138,7 @@ func TestHumanControlPlaneManagementSmoke(t *testing.T) {
 		t,
 		httpServer.Client(),
 		http.MethodGet,
-		httpServer.URL+"/roles/permission-catalog",
+		httpServer.URL+"/permissions/catalog",
 		"",
 		adminAccessToken,
 	)
@@ -170,7 +170,19 @@ func TestHumanControlPlaneManagementSmoke(t *testing.T) {
 		t.Fatalf("expected super_admin system role binding, got %+v", userRolesBody)
 	}
 
-	legacyUserRolesResp := doJSONRequest(
+	removedCatalogResp := doJSONRequest(
+		t,
+		httpServer.Client(),
+		http.MethodGet,
+		httpServer.URL+"/roles/permission-catalog",
+		"",
+		adminAccessToken,
+	)
+	if removedCatalogResp.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected removed permission catalog alias to return 404, got %d body=%s", removedCatalogResp.StatusCode, readBodyString(t, removedCatalogResp))
+	}
+
+	removedUserRolesResp := doJSONRequest(
 		t,
 		httpServer.Client(),
 		http.MethodGet,
@@ -178,12 +190,8 @@ func TestHumanControlPlaneManagementSmoke(t *testing.T) {
 		"",
 		adminAccessToken,
 	)
-	if legacyUserRolesResp.StatusCode != http.StatusOK {
-		t.Fatalf("unexpected legacy user system roles status: %d body=%s", legacyUserRolesResp.StatusCode, readBodyString(t, legacyUserRolesResp))
-	}
-	legacyUserRolesBody := decodeJSONArrayResponse(t, legacyUserRolesResp)
-	if len(legacyUserRolesBody) == 0 || legacyUserRolesBody[0]["role_name"] != "super_admin" {
-		t.Fatalf("expected legacy alias to expose same system role binding, got %+v", legacyUserRolesBody)
+	if removedUserRolesResp.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected removed user system roles alias to return 404, got %d body=%s", removedUserRolesResp.StatusCode, readBodyString(t, removedUserRolesResp))
 	}
 }
 

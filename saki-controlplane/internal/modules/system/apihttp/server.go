@@ -2,11 +2,8 @@ package apihttp
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"net/http"
-	"time"
 
 	authctx "github.com/elebirds/saki/saki-controlplane/internal/app/auth"
 	openapi "github.com/elebirds/saki/saki-controlplane/internal/gen/openapi"
@@ -16,11 +13,9 @@ import (
 	annotationapp "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/app"
 	assetapi "github.com/elebirds/saki/saki-controlplane/internal/modules/asset/apihttp"
 	authorizationapi "github.com/elebirds/saki/saki-controlplane/internal/modules/authorization/apihttp"
-	authorizationdomain "github.com/elebirds/saki/saki-controlplane/internal/modules/authorization/domain"
 	datasetapi "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/apihttp"
 	datasetapp "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/app"
 	identityapi "github.com/elebirds/saki/saki-controlplane/internal/modules/identity/apihttp"
-	identityapp "github.com/elebirds/saki/saki-controlplane/internal/modules/identity/app"
 	importingapi "github.com/elebirds/saki/saki-controlplane/internal/modules/importing/apihttp"
 	projectapi "github.com/elebirds/saki/saki-controlplane/internal/modules/project/apihttp"
 	projectapp "github.com/elebirds/saki/saki-controlplane/internal/modules/project/app"
@@ -143,8 +138,21 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 			server.ServeHTTP(w, r)
 		})
 	}
+	baseHandler = withRemovedLegacyRoutes(baseHandler)
 
 	return authctx.Middleware(deps.Authenticator)(baseHandler), nil
+}
+
+func withRemovedLegacyRoutes(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 关键设计：旧 alias 一旦退役，就要在 transport 层显式返回 404，
+		// 不能让它们因为动态路由碰巧落到其他 handler（例如 /roles/{role_id}）而表现成 400/501。
+		if r.Method == http.MethodGet && r.URL.Path == "/roles/permission-catalog" {
+			http.NotFound(w, r)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) Healthz(context.Context) (*openapi.HealthResponse, error) {
@@ -165,15 +173,6 @@ func (s *Server) ChangePassword(ctx context.Context, req *openapi.AuthChangePass
 }
 
 func (s *Server) Login(ctx context.Context, req *openapi.AuthLoginRequest) (*openapi.AuthSessionResponse, error) {
-	// 关键设计：/auth/login 在迁移期同时承载“新的人类身份登录”和“旧 bootstrap principal 免密登录”。
-	// 这里必须显式分流并禁止协议混用，避免把迁移兼容层扩散成长期双主协议。
-	if legacyUserID, ok := req.GetUserID().Get(); ok {
-		if req.GetIdentifier().IsSet() || req.GetPassword().IsSet() {
-			return nil, newBadRequest("user_id login cannot be mixed with identifier/password")
-		}
-		return s.loginLegacyBootstrap(ctx, legacyUserID)
-	}
-
 	identifier, hasIdentifier := req.GetIdentifier().Get()
 	password, hasPassword := req.GetPassword().Get()
 	if !hasIdentifier || !hasPassword {
@@ -289,23 +288,17 @@ func (s *Server) CompleteAssetUpload(ctx context.Context, req *openapi.AssetComp
 }
 
 func (s *Server) GetCurrentUser(ctx context.Context) (*openapi.CurrentUserResponse, error) {
-	if s.identity != nil {
-		response, err := s.identity.GetCurrentUser(ctx)
-		if err == nil {
-			return response, nil
-		}
-		if !errors.Is(err, identityapp.ErrInvalidCredentials) {
-			return nil, err
-		}
+	if s.identity == nil {
+		return nil, ogenhttp.ErrNotImplemented
 	}
-	return s.currentLegacyBootstrapUser(ctx)
+	return s.identity.GetCurrentUser(ctx)
 }
 
-func (s *Server) GetRolePermissionCatalog(ctx context.Context) (*openapi.PermissionCatalogResponse, error) {
+func (s *Server) GetPermissionCatalog(ctx context.Context) (*openapi.PermissionCatalogResponse, error) {
 	if s.authorization == nil {
 		return nil, ogenhttp.ErrNotImplemented
 	}
-	return s.authorization.GetRolePermissionCatalog(ctx)
+	return s.authorization.GetPermissionCatalog(ctx)
 }
 
 func (s *Server) CreateRole(ctx context.Context, req *openapi.RoleCreateRequest) (*openapi.RoleListItem, error) {
@@ -365,16 +358,6 @@ func (s *Server) ListUserSystemRoles(ctx context.Context, params openapi.ListUse
 		return nil, newBadRequest("invalid user_id")
 	}
 	return s.authorization.ListUserSystemRoles(ctx, params)
-}
-
-func (s *Server) ListUserSystemRolesLegacy(ctx context.Context, params openapi.ListUserSystemRolesLegacyParams) ([]openapi.UserSystemRoleBinding, error) {
-	if s.authorization == nil {
-		return nil, ogenhttp.ErrNotImplemented
-	}
-	if _, err := uuid.Parse(params.UserID); err != nil {
-		return nil, newBadRequest("invalid user_id")
-	}
-	return s.authorization.ListUserSystemRolesLegacy(ctx, params)
 }
 
 func (s *Server) ReplaceUserSystemRoles(ctx context.Context, req *openapi.ReplaceUserSystemRolesRequest, params openapi.ReplaceUserSystemRolesParams) ([]openapi.UserSystemRoleBinding, error) {
@@ -671,72 +654,4 @@ func (s *Server) RegisterAuthUser(ctx context.Context, req *openapi.AuthRegister
 		return nil, ogenhttp.ErrNotImplemented
 	}
 	return s.identity.RegisterAuthUser(ctx, req)
-}
-
-func (s *Server) loginLegacyBootstrap(ctx context.Context, userID string) (*openapi.AuthSessionResponse, error) {
-	if s.authenticator == nil {
-		return nil, ogenhttp.ErrNotImplemented
-	}
-
-	token, err := s.authenticator.IssueBootstrapTokenContext(ctx, userID)
-	if err != nil {
-		return nil, err
-	}
-	claims, err := s.authenticator.ParseToken(token)
-	if err != nil {
-		return nil, err
-	}
-
-	expiresIn := int64(time.Until(claims.ExpiresAt).Seconds())
-	if expiresIn < 0 {
-		expiresIn = 0
-	}
-
-	response := &openapi.AuthSessionResponse{
-		AccessToken:        token,
-		RefreshToken:       "",
-		ExpiresIn:          expiresIn,
-		MustChangePassword: false,
-		// 关键设计：legacy bootstrap 与新 identity 会话必须共用同一套传输层权限展开，
-		// 否则迁移期同一前端对不同登录路径会看到不同 permission 形状，导致权限初始化逻辑分叉。
-		Permissions: authorizationdomain.ExpandedPermissionsForTransport(claims.Permissions),
-		User: openapi.AuthSessionUser{
-			PrincipalID: claims.PrincipalID.String(),
-			Email:       legacyBootstrapEmailAlias(claims.UserID),
-			FullName:    "",
-		},
-	}
-	// 关键设计：legacy bootstrap 登录只保留短期 access token，不再补造 refresh session。
-	// 为兼容旧前端和 smoke，仍额外回填 token/user_id/permissions 这些历史字段别名。
-	response.Token.SetTo(token)
-	response.UserID.SetTo(claims.UserID)
-	return response, nil
-}
-
-func (s *Server) currentLegacyBootstrapUser(ctx context.Context) (*openapi.CurrentUserResponse, error) {
-	claims, ok := authctx.ClaimsFromContext(ctx)
-	if !ok {
-		return nil, accessapp.ErrUnauthorized
-	}
-
-	response := &openapi.CurrentUserResponse{
-		User: openapi.AuthSessionUser{
-			PrincipalID: claims.PrincipalID.String(),
-			Email:       legacyBootstrapEmailAlias(claims.UserID),
-			FullName:    "",
-		},
-		SystemRoles:        []string{},
-		Permissions:        authorizationdomain.ExpandedPermissionsForTransport(claims.Permissions),
-		MustChangePassword: false,
-	}
-	response.UserID.SetTo(claims.UserID)
-	return response, nil
-}
-
-func legacyBootstrapEmailAlias(userID string) string {
-	sum := sha256.Sum256([]byte(userID))
-	// 关键设计：当前 OpenAPI 仍要求 user.email 满足 email 格式。
-	// 对 legacy bootstrap principal，这里生成一个不可投递的稳定别名，避免把 user_id 伪装成真实邮箱；
-	// 迁移期客户端应读取顶层 user_id，而不是把这个兼容别名当成业务身份字段。
-	return "bootstrap-" + hex.EncodeToString(sum[:8]) + "@legacy.saki.invalid"
 }

@@ -9,7 +9,6 @@ import (
 	"time"
 
 	accessapp "github.com/elebirds/saki/saki-controlplane/internal/modules/access/app"
-	accessdomain "github.com/elebirds/saki/saki-controlplane/internal/modules/access/domain"
 	annotationrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/annotation/repo"
 	datasetapp "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/app"
 	datasetrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/repo"
@@ -171,11 +170,11 @@ func (fakeAnnotationStore) ListByProjectSample(context.Context, uuid.UUID, uuid.
 }
 
 type fakeAccessStore struct {
-	claimsByUserID      map[string]*accessapp.ClaimsSnapshot
-	claimsByPrincipalID map[uuid.UUID]*accessapp.ClaimsSnapshot
-	loadByUserIDErr     map[string]error
-	loadByPrincipalErr  map[uuid.UUID]error
-	loadByUserIDCalls   int
+	claimsByUserID         map[string]*accessapp.ClaimsSnapshot
+	claimsByPrincipalID    map[uuid.UUID]*accessapp.ClaimsSnapshot
+	loadByUserIDErr        map[string]error
+	loadByPrincipalErr     map[uuid.UUID]error
+	loadByUserIDCalls      int
 	loadByPrincipalIDCalls int
 }
 
@@ -234,14 +233,6 @@ func (s *fakeAccessStore) LoadClaimsByPrincipalID(_ context.Context, principalID
 		return nil, err
 	}
 	return cloneAccessClaims(s.claimsByPrincipalID[principalID]), nil
-}
-
-func (s *fakeAccessStore) LoadBootstrapClaimsByUserID(_ context.Context, userID string) (*accessapp.ClaimsSnapshot, error) {
-	return cloneAccessClaims(s.claimsByUserID[userID]), nil
-}
-
-func (s *fakeAccessStore) UpsertBootstrapPrincipal(context.Context, accessapp.BootstrapPrincipalSpec) (*accessdomain.Principal, error) {
-	return nil, nil
 }
 
 func cloneAccessClaims(claims *accessapp.ClaimsSnapshot) *accessapp.ClaimsSnapshot {

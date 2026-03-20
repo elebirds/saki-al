@@ -55,6 +55,17 @@ func (r *UserRepo) GetByPrincipalID(ctx context.Context, principalID uuid.UUID) 
 	return mapUser(row), nil
 }
 
+func (r *UserRepo) GetByEmail(ctx context.Context, email string) (*identitydomain.User, error) {
+	row, err := r.q.GetIamUserByEmail(ctx, email)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return mapUser(row), nil
+}
+
 func (r *UserRepo) UpdateProfile(ctx context.Context, params UpdateUserProfileParams) error {
 	return r.q.UpdateIamUserProfile(ctx, sqlcdb.UpdateIamUserProfileParams{
 		PrincipalID:   params.PrincipalID,

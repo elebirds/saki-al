@@ -22,14 +22,8 @@ func TestIssueTokenRejectsUnknownPrincipal(t *testing.T) {
 
 func TestIssueTokenRejectsDisabledPrincipal(t *testing.T) {
 	authenticator := NewAuthenticator("test-secret", time.Hour).WithStore(&fakeStore{
-		byUserID: map[string]*accessdomain.Principal{
-			"disabled-user": {
-				ID:          uuid.MustParse("00000000-0000-0000-0000-000000000111"),
-				SubjectType: accessdomain.SubjectTypeUser,
-				SubjectKey:  "disabled-user",
-				DisplayName: "Disabled User",
-				Status:      accessdomain.PrincipalStatusDisabled,
-			},
+		loadByUserIDErr: map[string]error{
+			"disabled-user": ErrUnauthorized,
 		},
 	})
 
@@ -39,22 +33,18 @@ func TestIssueTokenRejectsDisabledPrincipal(t *testing.T) {
 	}
 }
 
-func TestIssueTokenUsesRepoBackedPermissions(t *testing.T) {
+func TestIssueTokenUsesAggregateClaimsLoader(t *testing.T) {
 	principalID := uuid.MustParse("00000000-0000-0000-0000-000000000222")
-	authenticator := NewAuthenticator("test-secret", time.Hour).WithStore(&fakeStore{
-		byUserID: map[string]*accessdomain.Principal{
+	store := &fakeStore{
+		claimsByUserID: map[string]*ClaimsSnapshot{
 			"user-1": {
-				ID:          principalID,
-				SubjectType: accessdomain.SubjectTypeUser,
-				SubjectKey:  "user-1",
-				DisplayName: "User One",
-				Status:      accessdomain.PrincipalStatusActive,
+				PrincipalID: principalID,
+				UserID:      "user-1",
+				Permissions: []string{"imports:read", "projects:read"},
 			},
 		},
-		permissionsByID: map[uuid.UUID][]string{
-			principalID: {"imports:read", "projects:read"},
-		},
-	})
+	}
+	authenticator := NewAuthenticator("test-secret", time.Hour).WithStore(store)
 
 	token, err := authenticator.IssueToken("user-1", []string{"caller:write"})
 	if err != nil {
@@ -74,15 +64,21 @@ func TestIssueTokenUsesRepoBackedPermissions(t *testing.T) {
 	}
 	expected := []string{"imports:read", "projects:read"}
 	if !slices.Equal(claims.Permissions, expected) {
-		t.Fatalf("expected repo-backed permissions %v, got %+v", expected, claims)
+		t.Fatalf("expected aggregate-loaded permissions %v, got %+v", expected, claims)
+	}
+	if store.loadByUserIDCalls != 1 {
+		t.Fatalf("expected one aggregate user lookup, got %d", store.loadByUserIDCalls)
+	}
+	if store.loadByPrincipalCalls != 0 {
+		t.Fatalf("expected no principal reload during issue, got %d", store.loadByPrincipalCalls)
 	}
 }
 
 func TestBootstrapSeedUpsertsConfiguredPrincipals(t *testing.T) {
 	store := fakeStore{
-		byUserID:         map[string]*accessdomain.Principal{},
-		permissionsByID:  map[uuid.UUID][]string{},
-		upsertedSubjects: map[string]BootstrapPrincipalSpec{},
+		claimsByUserID:      map[string]*ClaimsSnapshot{},
+		claimsByPrincipalID: map[uuid.UUID]*ClaimsSnapshot{},
+		upsertedSubjects:    map[string]BootstrapPrincipalSpec{},
 	}
 	useCase := NewBootstrapSeedUseCase(&store)
 
@@ -110,31 +106,41 @@ func TestBootstrapSeedUpsertsConfiguredPrincipals(t *testing.T) {
 }
 
 type fakeStore struct {
-	byUserID         map[string]*accessdomain.Principal
-	byID             map[uuid.UUID]*accessdomain.Principal
-	permissionsByID  map[uuid.UUID][]string
-	upsertedSubjects map[string]BootstrapPrincipalSpec
+	claimsByUserID       map[string]*ClaimsSnapshot
+	claimsByPrincipalID  map[uuid.UUID]*ClaimsSnapshot
+	loadByUserIDErr      map[string]error
+	loadByPrincipalErr   map[uuid.UUID]error
+	upsertedSubjects     map[string]BootstrapPrincipalSpec
+	loadByUserIDCalls    int
+	loadByPrincipalCalls int
 }
 
-func (s fakeStore) GetPrincipalByUserID(_ context.Context, userID string) (*accessdomain.Principal, error) {
-	if s.byUserID == nil {
+func (s *fakeStore) LoadClaimsByUserID(_ context.Context, userID string) (*ClaimsSnapshot, error) {
+	s.loadByUserIDCalls++
+	if s.loadByUserIDErr != nil {
+		if err := s.loadByUserIDErr[userID]; err != nil {
+			return nil, err
+		}
+	}
+	if s.claimsByUserID == nil {
 		return nil, nil
 	}
-	return s.byUserID[userID], nil
+	claims := s.claimsByUserID[userID]
+	return cloneClaims(claims), nil
 }
 
-func (s fakeStore) GetPrincipalByID(_ context.Context, principalID uuid.UUID) (*accessdomain.Principal, error) {
-	if s.byID == nil {
+func (s *fakeStore) LoadClaimsByPrincipalID(_ context.Context, principalID uuid.UUID) (*ClaimsSnapshot, error) {
+	s.loadByPrincipalCalls++
+	if s.loadByPrincipalErr != nil {
+		if err := s.loadByPrincipalErr[principalID]; err != nil {
+			return nil, err
+		}
+	}
+	if s.claimsByPrincipalID == nil {
 		return nil, nil
 	}
-	return s.byID[principalID], nil
-}
-
-func (s fakeStore) ListPermissions(_ context.Context, principalID uuid.UUID) ([]string, error) {
-	if s.permissionsByID == nil {
-		return nil, nil
-	}
-	return append([]string(nil), s.permissionsByID[principalID]...), nil
+	claims := s.claimsByPrincipalID[principalID]
+	return cloneClaims(claims), nil
 }
 
 func (s *fakeStore) UpsertBootstrapPrincipal(_ context.Context, spec BootstrapPrincipalSpec) (*accessdomain.Principal, error) {
@@ -150,13 +156,27 @@ func (s *fakeStore) UpsertBootstrapPrincipal(_ context.Context, spec BootstrapPr
 		DisplayName: spec.DisplayName,
 		Status:      accessdomain.PrincipalStatusActive,
 	}
-	if s.byUserID == nil {
-		s.byUserID = map[string]*accessdomain.Principal{}
+	if s.claimsByUserID == nil {
+		s.claimsByUserID = map[string]*ClaimsSnapshot{}
 	}
-	s.byUserID[spec.UserID] = principal
-	if s.permissionsByID == nil {
-		s.permissionsByID = map[uuid.UUID][]string{}
+	claims := &ClaimsSnapshot{
+		PrincipalID: principal.ID,
+		UserID:      spec.UserID,
+		Permissions: append([]string(nil), spec.Permissions...),
 	}
-	s.permissionsByID[principal.ID] = append([]string(nil), spec.Permissions...)
+	s.claimsByUserID[spec.UserID] = claims
+	if s.claimsByPrincipalID == nil {
+		s.claimsByPrincipalID = map[uuid.UUID]*ClaimsSnapshot{}
+	}
+	s.claimsByPrincipalID[principal.ID] = cloneClaims(claims)
 	return principal, nil
+}
+
+func cloneClaims(claims *ClaimsSnapshot) *ClaimsSnapshot {
+	if claims == nil {
+		return nil
+	}
+	cloned := *claims
+	cloned.Permissions = append([]string(nil), claims.Permissions...)
+	return &cloned
 }

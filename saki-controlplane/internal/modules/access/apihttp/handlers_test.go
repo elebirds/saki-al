@@ -23,7 +23,8 @@ import (
 )
 
 func TestLoginReturnsRepoBackedPermissions(t *testing.T) {
-	handler, err := newTestHTTPHandler()
+	store := newFakeAccessStore()
+	handler, err := newTestHTTPHandlerWithStore(store)
 	if err != nil {
 		t.Fatalf("new http handler: %v", err)
 	}
@@ -49,7 +50,10 @@ func TestLoginReturnsRepoBackedPermissions(t *testing.T) {
 		t.Fatalf("unexpected login body: %v", body)
 	}
 	if !slices.Equal(body.Permissions, []string{"projects:read"}) {
-		t.Fatalf("expected repo-backed permissions, got %+v", body)
+		t.Fatalf("expected authorizer-backed permissions, got %+v", body)
+	}
+	if store.loadByUserIDCalls != 1 {
+		t.Fatalf("expected one aggregate user lookup, got %d", store.loadByUserIDCalls)
 	}
 }
 
@@ -110,7 +114,7 @@ func TestCurrentUserUsesBearerToken(t *testing.T) {
 	}
 }
 
-func TestMiddlewareUsesCurrentRepoPermissions(t *testing.T) {
+func TestMiddlewareReloadsClaimsThroughAggregateLoader(t *testing.T) {
 	store := newFakeAccessStore()
 	handler, err := newTestHTTPHandlerWithStore(store)
 	if err != nil {
@@ -118,7 +122,12 @@ func TestMiddlewareUsesCurrentRepoPermissions(t *testing.T) {
 	}
 
 	token := loginAndExtractToken(t, handler, "user-2")
-	store.permissionsByID[store.byUserID["user-2"].ID] = []string{"projects:write"}
+	principalID := store.claimsByUserID["user-2"].PrincipalID
+	store.claimsByPrincipalID[principalID] = &accessapp.ClaimsSnapshot{
+		PrincipalID: principalID,
+		UserID:      "user-2",
+		Permissions: []string{"projects:write"},
+	}
 
 	req := httptest.NewRequest(http.MethodGet, "/auth/me", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -140,7 +149,10 @@ func TestMiddlewareUsesCurrentRepoPermissions(t *testing.T) {
 		t.Fatalf("unexpected current user body: %+v", body)
 	}
 	if !slices.Equal(body.Permissions, []string{"projects:write"}) {
-		t.Fatalf("expected repo-current permissions, got %+v", body)
+		t.Fatalf("expected reloaded aggregate permissions, got %+v", body)
+	}
+	if store.loadByPrincipalIDCalls == 0 {
+		t.Fatal("expected middleware to reload claims by principal id")
 	}
 }
 
@@ -152,7 +164,8 @@ func TestMiddlewareRejectsDisabledPrincipal(t *testing.T) {
 	}
 
 	token := loginAndExtractToken(t, handler, "user-2")
-	store.byUserID["user-2"].Status = accessdomain.PrincipalStatusDisabled
+	principalID := store.claimsByUserID["user-2"].PrincipalID
+	store.loadByPrincipalErr[principalID] = accessapp.ErrUnauthorized
 
 	req := httptest.NewRequest(http.MethodGet, "/auth/me", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -228,7 +241,7 @@ func newTestHTTPHandler() (http.Handler, error) {
 func newTestHTTPHandlerWithStore(store *fakeAccessStore) (http.Handler, error) {
 	return systemapi.NewHTTPHandler(systemapi.Dependencies{
 		Authenticator:       accessapp.NewAuthenticator("test-secret", time.Hour).WithStore(store),
-		AccessStore:         store,
+		ClaimsStore:         store,
 		DatasetStore:        datasetapp.NewMemoryStore(),
 		ProjectStore:        projectapp.NewMemoryStore(),
 		RuntimeStore:        runtimequeries.NewMemoryAdminStore(),
@@ -268,68 +281,82 @@ func (fakeAnnotationStore) ListByProjectSample(context.Context, uuid.UUID, uuid.
 }
 
 type fakeAccessStore struct {
-	byUserID        map[string]*accessdomain.Principal
-	permissionsByID map[uuid.UUID][]string
+	claimsByUserID         map[string]*accessapp.ClaimsSnapshot
+	claimsByPrincipalID    map[uuid.UUID]*accessapp.ClaimsSnapshot
+	loadByUserIDErr        map[string]error
+	loadByPrincipalErr     map[uuid.UUID]error
+	loadByUserIDCalls      int
+	loadByPrincipalIDCalls int
 }
 
 func newFakeAccessStore() *fakeAccessStore {
 	return &fakeAccessStore{
-		byUserID: map[string]*accessdomain.Principal{
+		claimsByUserID: map[string]*accessapp.ClaimsSnapshot{
 			"user-1": {
-				ID:          uuid.MustParse("00000000-0000-0000-0000-000000000101"),
-				SubjectType: accessdomain.SubjectTypeUser,
-				SubjectKey:  "user-1",
-				DisplayName: "User One",
-				Status:      accessdomain.PrincipalStatusActive,
+				PrincipalID: uuid.MustParse("00000000-0000-0000-0000-000000000101"),
+				UserID:      "user-1",
+				Permissions: []string{"projects:read"},
 			},
 			"user-2": {
-				ID:          uuid.MustParse("00000000-0000-0000-0000-000000000102"),
-				SubjectType: accessdomain.SubjectTypeUser,
-				SubjectKey:  "user-2",
-				DisplayName: "User Two",
-				Status:      accessdomain.PrincipalStatusActive,
+				PrincipalID: uuid.MustParse("00000000-0000-0000-0000-000000000102"),
+				UserID:      "user-2",
+				Permissions: []string{"projects:read"},
 			},
 			"user-3": {
-				ID:          uuid.MustParse("00000000-0000-0000-0000-000000000103"),
-				SubjectType: accessdomain.SubjectTypeUser,
-				SubjectKey:  "user-3",
-				DisplayName: "User Three",
-				Status:      accessdomain.PrincipalStatusActive,
-			},
-			"disabled-user": {
-				ID:          uuid.MustParse("00000000-0000-0000-0000-000000000104"),
-				SubjectType: accessdomain.SubjectTypeUser,
-				SubjectKey:  "disabled-user",
-				DisplayName: "Disabled User",
-				Status:      accessdomain.PrincipalStatusDisabled,
+				PrincipalID: uuid.MustParse("00000000-0000-0000-0000-000000000103"),
+				UserID:      "user-3",
+				Permissions: []string{"projects:read"},
 			},
 		},
-		permissionsByID: map[uuid.UUID][]string{
-			uuid.MustParse("00000000-0000-0000-0000-000000000101"): {"projects:read"},
-			uuid.MustParse("00000000-0000-0000-0000-000000000102"): {"projects:read"},
-			uuid.MustParse("00000000-0000-0000-0000-000000000103"): {"projects:read"},
-			uuid.MustParse("00000000-0000-0000-0000-000000000104"): {"projects:read"},
+		claimsByPrincipalID: map[uuid.UUID]*accessapp.ClaimsSnapshot{
+			uuid.MustParse("00000000-0000-0000-0000-000000000101"): {
+				PrincipalID: uuid.MustParse("00000000-0000-0000-0000-000000000101"),
+				UserID:      "user-1",
+				Permissions: []string{"projects:read"},
+			},
+			uuid.MustParse("00000000-0000-0000-0000-000000000102"): {
+				PrincipalID: uuid.MustParse("00000000-0000-0000-0000-000000000102"),
+				UserID:      "user-2",
+				Permissions: []string{"projects:read"},
+			},
+			uuid.MustParse("00000000-0000-0000-0000-000000000103"): {
+				PrincipalID: uuid.MustParse("00000000-0000-0000-0000-000000000103"),
+				UserID:      "user-3",
+				Permissions: []string{"projects:read"},
+			},
 		},
+		loadByUserIDErr: map[string]error{
+			"disabled-user": accessapp.ErrUnauthorized,
+		},
+		loadByPrincipalErr: map[uuid.UUID]error{},
 	}
 }
 
-func (s *fakeAccessStore) GetPrincipalByUserID(_ context.Context, userID string) (*accessdomain.Principal, error) {
-	return s.byUserID[userID], nil
-}
-
-func (s *fakeAccessStore) GetPrincipalByID(_ context.Context, principalID uuid.UUID) (*accessdomain.Principal, error) {
-	for _, principal := range s.byUserID {
-		if principal.ID == principalID {
-			return principal, nil
-		}
+func (s *fakeAccessStore) LoadClaimsByUserID(_ context.Context, userID string) (*accessapp.ClaimsSnapshot, error) {
+	s.loadByUserIDCalls++
+	if err := s.loadByUserIDErr[userID]; err != nil {
+		return nil, err
 	}
-	return nil, nil
+	return cloneAccessClaims(s.claimsByUserID[userID]), nil
 }
 
-func (s *fakeAccessStore) ListPermissions(_ context.Context, principalID uuid.UUID) ([]string, error) {
-	return append([]string(nil), s.permissionsByID[principalID]...), nil
+func (s *fakeAccessStore) LoadClaimsByPrincipalID(_ context.Context, principalID uuid.UUID) (*accessapp.ClaimsSnapshot, error) {
+	s.loadByPrincipalIDCalls++
+	if err := s.loadByPrincipalErr[principalID]; err != nil {
+		return nil, err
+	}
+	return cloneAccessClaims(s.claimsByPrincipalID[principalID]), nil
 }
 
 func (s *fakeAccessStore) UpsertBootstrapPrincipal(context.Context, accessapp.BootstrapPrincipalSpec) (*accessdomain.Principal, error) {
 	return nil, nil
+}
+
+func cloneAccessClaims(claims *accessapp.ClaimsSnapshot) *accessapp.ClaimsSnapshot {
+	if claims == nil {
+		return nil
+	}
+	cloned := *claims
+	cloned.Permissions = append([]string(nil), claims.Permissions...)
+	return &cloned
 }

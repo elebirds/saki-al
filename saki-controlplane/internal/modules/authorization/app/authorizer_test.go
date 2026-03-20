@@ -47,6 +47,49 @@ func TestAuthorizerResolvesSystemBindingsAndResourceMemberships(t *testing.T) {
 	}
 }
 
+func TestAuthorizerResolvesMigrationPermissionSnapshot(t *testing.T) {
+	principalID := uuid.MustParse("00000000-0000-0000-0000-000000000777")
+	systemRoleID := uuid.MustParse("00000000-0000-0000-0000-000000000778")
+	projectRoleID := uuid.MustParse("00000000-0000-0000-0000-000000000779")
+	datasetRoleID := uuid.MustParse("00000000-0000-0000-0000-000000000780")
+
+	store := &fakeAuthorizerStore{
+		systemBindings: []authorizationdomain.SystemBinding{
+			{PrincipalID: principalID, RoleID: systemRoleID, SystemName: authorizationdomain.SystemNameControlplane},
+		},
+		memberships: []authorizationdomain.ResourceMembership{
+			{
+				PrincipalID:  principalID,
+				RoleID:       projectRoleID,
+				ResourceType: authorizationdomain.ResourceTypeProject,
+				ResourceID:   uuid.MustParse("00000000-0000-0000-0000-000000000781"),
+			},
+			{
+				PrincipalID:  principalID,
+				RoleID:       datasetRoleID,
+				ResourceType: authorizationdomain.ResourceTypeDataset,
+				ResourceID:   uuid.MustParse("00000000-0000-0000-0000-000000000782"),
+			},
+		},
+		rolePermissions: map[uuid.UUID][]string{
+			systemRoleID:  {"system:write", "projects:write"},
+			projectRoleID: {"projects:read", "projects:write"},
+			datasetRoleID: {"datasets:read"},
+		},
+	}
+
+	authorizer := NewAuthorizer(store)
+	permissions, err := authorizer.ResolvePermissionSnapshot(context.Background(), principalID)
+	if err != nil {
+		t.Fatalf("resolve permission snapshot: %v", err)
+	}
+
+	expected := []string{"datasets:read", "projects:read", "projects:write", "system:write"}
+	if !slices.Equal(permissions, expected) {
+		t.Fatalf("permissions got %v want %v", permissions, expected)
+	}
+}
+
 type fakeAuthorizerStore struct {
 	systemBindings  []authorizationdomain.SystemBinding
 	memberships     []authorizationdomain.ResourceMembership

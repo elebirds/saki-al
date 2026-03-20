@@ -23,7 +23,7 @@ func ClaimsFromContext(ctx context.Context) (*accessapp.Claims, bool) {
 	return claims, ok && claims != nil
 }
 
-func Middleware(authenticator *accessapp.Authenticator, store accessapp.Store) func(http.Handler) http.Handler {
+func Middleware(authenticator *accessapp.Authenticator) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			header := r.Header.Get("Authorization")
@@ -38,13 +38,7 @@ func Middleware(authenticator *accessapp.Authenticator, store accessapp.Store) f
 				return
 			}
 
-			claims, err := authenticator.ParseToken(token)
-			if err != nil {
-				writeUnauthorized(w)
-				return
-			}
-
-			resolvedClaims, err := resolveClaims(r.Context(), store, claims)
+			resolvedClaims, err := authenticator.AuthenticateContext(r.Context(), token)
 			switch {
 			case errors.Is(err, accessapp.ErrUnauthorized):
 				writeUnauthorized(w)
@@ -57,31 +51,6 @@ func Middleware(authenticator *accessapp.Authenticator, store accessapp.Store) f
 			next.ServeHTTP(w, r.WithContext(WithClaims(r.Context(), resolvedClaims)))
 		})
 	}
-}
-
-func resolveClaims(ctx context.Context, store accessapp.Store, claims *accessapp.Claims) (*accessapp.Claims, error) {
-	principal, err := store.GetPrincipalByID(ctx, claims.PrincipalID)
-	if err != nil {
-		return nil, err
-	}
-	if principal == nil || principal.IsDisabled() {
-		return nil, accessapp.ErrUnauthorized
-	}
-	if principal.SubjectKey != claims.UserID {
-		return nil, accessapp.ErrUnauthorized
-	}
-
-	permissions, err := store.ListPermissions(ctx, principal.ID)
-	if err != nil {
-		return nil, err
-	}
-
-	return &accessapp.Claims{
-		PrincipalID: principal.ID,
-		UserID:      principal.SubjectKey,
-		Permissions: permissions,
-		ExpiresAt:   claims.ExpiresAt,
-	}, nil
 }
 
 func writeUnauthorized(w http.ResponseWriter) {

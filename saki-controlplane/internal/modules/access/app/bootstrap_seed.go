@@ -8,10 +8,10 @@ import (
 var ErrMissingAccessStore = errors.New("access store is required")
 
 type BootstrapSeedUseCase struct {
-	store Store
+	store BootstrapStore
 }
 
-func NewBootstrapSeedUseCase(store Store) *BootstrapSeedUseCase {
+func NewBootstrapSeedUseCase(store BootstrapStore) *BootstrapSeedUseCase {
 	return &BootstrapSeedUseCase{store: store}
 }
 

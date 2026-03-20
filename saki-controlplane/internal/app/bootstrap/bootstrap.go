@@ -18,8 +18,11 @@ import (
 	assetapi "github.com/elebirds/saki/saki-controlplane/internal/modules/asset/apihttp"
 	assetapp "github.com/elebirds/saki/saki-controlplane/internal/modules/asset/app"
 	assetrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/asset/repo"
+	authorizationapp "github.com/elebirds/saki/saki-controlplane/internal/modules/authorization/app"
+	authorizationrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/authorization/repo"
 	datasetapp "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/app"
 	datasetrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/dataset/repo"
+	identityrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/identity/repo"
 	importapi "github.com/elebirds/saki/saki-controlplane/internal/modules/importing/apihttp"
 	importapp "github.com/elebirds/saki/saki-controlplane/internal/modules/importing/app"
 	importrepo "github.com/elebirds/saki/saki-controlplane/internal/modules/importing/repo"
@@ -91,7 +94,18 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 	}
 
 	taskRepo := runtimerepo.NewTaskRepo(pool)
-	accessStore := accessrepo.NewAppStore(accessrepo.NewPrincipalRepo(pool))
+	accessPrincipalRepo := accessrepo.NewPrincipalRepo(pool)
+	bootstrapStore := accessrepo.NewBootstrapStore(accessPrincipalRepo)
+	claimsStore := accessrepo.NewClaimsStore(accessrepo.ClaimsStoreDeps{
+		LegacyPrincipals:   accessPrincipalRepo,
+		IdentityPrincipals: identityrepo.NewPrincipalRepo(pool),
+		IdentityUsers:      identityrepo.NewUserRepo(pool),
+		Authorizer: authorizationapp.NewAuthorizer(authorizationrepo.NewAppStore(
+			authorizationrepo.NewRoleRepo(pool),
+			authorizationrepo.NewBindingRepo(pool),
+			authorizationrepo.NewMembershipRepo(pool),
+		)),
+	})
 	bootstrapPrincipals := make([]accessapp.BootstrapPrincipalSpec, 0, len(cfg.AuthBootstrapPrincipals))
 	for _, principal := range cfg.AuthBootstrapPrincipals {
 		bootstrapPrincipals = append(bootstrapPrincipals, accessapp.BootstrapPrincipalSpec{
@@ -100,7 +114,7 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 			Permissions: append([]string(nil), principal.Permissions...),
 		})
 	}
-	if err := accessapp.NewBootstrapSeedUseCase(accessStore).Execute(ctx, bootstrapPrincipals); err != nil {
+	if err := accessapp.NewBootstrapSeedUseCase(bootstrapStore).Execute(ctx, bootstrapPrincipals); err != nil {
 		pool.Close()
 		return nil, nil, err
 	}
@@ -174,8 +188,8 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 	}
 
 	handler, err := systemapi.NewHTTPHandler(systemapi.Dependencies{
-		Authenticator:       accessapp.NewAuthenticator(cfg.AuthTokenSecret, tokenTTL).WithStore(accessStore),
-		AccessStore:         accessStore,
+		Authenticator:       accessapp.NewAuthenticator(cfg.AuthTokenSecret, tokenTTL).WithStore(claimsStore),
+		ClaimsStore:         claimsStore,
 		DatasetStore:        datasetStore,
 		DatasetDelete:       datasetDelete,
 		DatasetDeleteSample: sampleDelete,

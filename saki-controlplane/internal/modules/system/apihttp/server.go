@@ -24,7 +24,7 @@ import (
 
 type Dependencies struct {
 	Authenticator       *accessapp.Authenticator
-	AccessStore         accessapp.Store
+	ClaimsStore         accessapp.ClaimsStore
 	DatasetStore        datasetapp.Store
 	DatasetDelete       *datasetapp.DeleteDatasetUseCase
 	DatasetDeleteSample *datasetapp.DeleteSampleUseCase
@@ -101,8 +101,8 @@ func NewHandler(deps Dependencies) (*Server, error) {
 }
 
 func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
-	if deps.AccessStore == nil {
-		return nil, errors.New("access store is required")
+	if deps.ClaimsStore == nil {
+		return nil, errors.New("access claims store is required")
 	}
 
 	handler, err := NewHandler(deps)
@@ -125,7 +125,7 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 		})
 	}
 
-	return authctx.Middleware(deps.Authenticator, deps.AccessStore)(baseHandler), nil
+	return authctx.Middleware(deps.Authenticator)(baseHandler), nil
 }
 
 func (s *Server) Healthz(context.Context) (*openapi.HealthResponse, error) {

@@ -36,7 +36,7 @@ func (r *InitializeStore) InitializeSystem(ctx context.Context, params systemapp
 		switch {
 		case err != nil:
 			return err
-		case installState == sqlcdb.SystemInstallationStateReady:
+		case installState == sqlcdb.SystemInitializationStateInitialized:
 			return systemapp.ErrAlreadyInitialized
 		}
 
@@ -80,10 +80,10 @@ func (r *InitializeStore) InitializeSystem(ctx context.Context, params systemapp
 		}
 
 		installation, err := q.UpsertSystemInstallation(ctx, sqlcdb.UpsertSystemInstallationParams{
-			InstallState:       sqlcdb.SystemInstallationStateReady,
-			Metadata:           []byte(`{}`),
-			SetupAt:            timeValue(params.InitializedAt),
-			SetupByPrincipalID: uuidValue(principal.ID),
+			InitializationState:      sqlcdb.SystemInitializationStateInitialized,
+			Metadata:                 []byte(`{}`),
+			InitializedAt:            timeValue(params.InitializedAt),
+			InitializedByPrincipalID: uuidValue(principal.ID),
 		})
 		if err != nil {
 			return err
@@ -126,20 +126,20 @@ func (r *InitializeStore) InitializeSystem(ctx context.Context, params systemapp
 	return result, nil
 }
 
-func lockInstallationSlot(ctx context.Context, tx pgx.Tx) (sqlcdb.SystemInstallationState, error) {
+func lockInstallationSlot(ctx context.Context, tx pgx.Tx) (sqlcdb.SystemInitializationState, error) {
 	// 关键设计：初始化必须先抢到 installation singleton 的事务锁，再创建首个用户与会话。
 	// 否则两个并发首装请求都可能先看到“未初始化”，随后各自创建出不同的管理员主体。
 	if _, err := tx.Exec(ctx, `
-insert into system_installation (installation_key, install_state, metadata)
+insert into system_installation (installation_key, initialization_state, metadata)
 values ('primary', 'uninitialized', '{}'::jsonb)
 on conflict (installation_key) do nothing
 `); err != nil {
 		return "", err
 	}
 
-	var installState sqlcdb.SystemInstallationState
+	var installState sqlcdb.SystemInitializationState
 	if err := tx.QueryRow(ctx, `
-select install_state
+select initialization_state
 from system_installation
 where installation_key = 'primary'
 for update

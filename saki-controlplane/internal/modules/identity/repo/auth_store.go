@@ -117,7 +117,7 @@ func (r *AuthStore) Register(ctx context.Context, params identityapp.RegisterPar
 			}
 			return err
 		}
-		if installation.InstallState != sqlcdb.SystemInstallationStateReady {
+		if installation.InitializationState != sqlcdb.SystemInitializationStateInitialized {
 			return systemapp.ErrNotInitialized
 		}
 

@@ -277,6 +277,19 @@ func TestHumanControlPlaneRemovedUserSystemRolesAliasReturns404(t *testing.T) {
 	}
 }
 
+func TestHumanControlPlaneRemovedUserSystemRolesAliasReturns404WithInvalidBearer(t *testing.T) {
+	handler := newSystemHTTPHandler(t, contractDeps{})
+
+	req := httptest.NewRequest(http.MethodGet, "/roles/users/00000000-0000-0000-0000-000000001499/roles", nil)
+	req.Header.Set("Authorization", "Bearer definitely-invalid")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestHumanControlPlaneUserSystemRolesContracts(t *testing.T) {
 	handler := newSystemHTTPHandler(t, contractDeps{})
 	token := issueSystemToken(t, handler, "admin@example.com")

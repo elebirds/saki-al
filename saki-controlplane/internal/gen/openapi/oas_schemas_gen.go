@@ -1077,6 +1077,43 @@ func (s *CreateProjectRequest) SetName(val string) {
 	s.Name = val
 }
 
+// Ref: #/components/schemas/CurrentResourcePermissionsResponse
+type CurrentResourcePermissionsResponse struct {
+	ResourceRole OptResourceRoleInfo `json:"resource_role"`
+	Permissions  []string            `json:"permissions"`
+	IsOwner      bool                `json:"is_owner"`
+}
+
+// GetResourceRole returns the value of ResourceRole.
+func (s *CurrentResourcePermissionsResponse) GetResourceRole() OptResourceRoleInfo {
+	return s.ResourceRole
+}
+
+// GetPermissions returns the value of Permissions.
+func (s *CurrentResourcePermissionsResponse) GetPermissions() []string {
+	return s.Permissions
+}
+
+// GetIsOwner returns the value of IsOwner.
+func (s *CurrentResourcePermissionsResponse) GetIsOwner() bool {
+	return s.IsOwner
+}
+
+// SetResourceRole sets the value of ResourceRole.
+func (s *CurrentResourcePermissionsResponse) SetResourceRole(val OptResourceRoleInfo) {
+	s.ResourceRole = val
+}
+
+// SetPermissions sets the value of Permissions.
+func (s *CurrentResourcePermissionsResponse) SetPermissions(val []string) {
+	s.Permissions = val
+}
+
+// SetIsOwner sets the value of IsOwner.
+func (s *CurrentResourcePermissionsResponse) SetIsOwner(val bool) {
+	s.IsOwner = val
+}
+
 // Ref: #/components/schemas/CurrentUserResponse
 type CurrentUserResponse struct {
 	User               AuthSessionUser `json:"user"`
@@ -1340,35 +1377,27 @@ func (s *ExecuteProjectAnnotationImportRequest) SetPreviewToken(val string) {
 	s.PreviewToken = val
 }
 
-type GetDatasetBadRequest ErrorResponse
-
-func (*GetDatasetBadRequest) getDatasetRes() {}
-
-type GetDatasetNotFound ErrorResponse
-
-func (*GetDatasetNotFound) getDatasetRes() {}
-
-type GetResourcePermissionsResourceType string
+type GetCurrentResourcePermissionsResourceType string
 
 const (
-	GetResourcePermissionsResourceTypeProject GetResourcePermissionsResourceType = "project"
-	GetResourcePermissionsResourceTypeDataset GetResourcePermissionsResourceType = "dataset"
+	GetCurrentResourcePermissionsResourceTypeProject GetCurrentResourcePermissionsResourceType = "project"
+	GetCurrentResourcePermissionsResourceTypeDataset GetCurrentResourcePermissionsResourceType = "dataset"
 )
 
-// AllValues returns all GetResourcePermissionsResourceType values.
-func (GetResourcePermissionsResourceType) AllValues() []GetResourcePermissionsResourceType {
-	return []GetResourcePermissionsResourceType{
-		GetResourcePermissionsResourceTypeProject,
-		GetResourcePermissionsResourceTypeDataset,
+// AllValues returns all GetCurrentResourcePermissionsResourceType values.
+func (GetCurrentResourcePermissionsResourceType) AllValues() []GetCurrentResourcePermissionsResourceType {
+	return []GetCurrentResourcePermissionsResourceType{
+		GetCurrentResourcePermissionsResourceTypeProject,
+		GetCurrentResourcePermissionsResourceTypeDataset,
 	}
 }
 
 // MarshalText implements encoding.TextMarshaler.
-func (s GetResourcePermissionsResourceType) MarshalText() ([]byte, error) {
+func (s GetCurrentResourcePermissionsResourceType) MarshalText() ([]byte, error) {
 	switch s {
-	case GetResourcePermissionsResourceTypeProject:
+	case GetCurrentResourcePermissionsResourceTypeProject:
 		return []byte(s), nil
-	case GetResourcePermissionsResourceTypeDataset:
+	case GetCurrentResourcePermissionsResourceTypeDataset:
 		return []byte(s), nil
 	default:
 		return nil, errors.Errorf("invalid value: %q", s)
@@ -1376,18 +1405,26 @@ func (s GetResourcePermissionsResourceType) MarshalText() ([]byte, error) {
 }
 
 // UnmarshalText implements encoding.TextUnmarshaler.
-func (s *GetResourcePermissionsResourceType) UnmarshalText(data []byte) error {
-	switch GetResourcePermissionsResourceType(data) {
-	case GetResourcePermissionsResourceTypeProject:
-		*s = GetResourcePermissionsResourceTypeProject
+func (s *GetCurrentResourcePermissionsResourceType) UnmarshalText(data []byte) error {
+	switch GetCurrentResourcePermissionsResourceType(data) {
+	case GetCurrentResourcePermissionsResourceTypeProject:
+		*s = GetCurrentResourcePermissionsResourceTypeProject
 		return nil
-	case GetResourcePermissionsResourceTypeDataset:
-		*s = GetResourcePermissionsResourceTypeDataset
+	case GetCurrentResourcePermissionsResourceTypeDataset:
+		*s = GetCurrentResourcePermissionsResourceTypeDataset
 		return nil
 	default:
 		return errors.Errorf("invalid value: %q", data)
 	}
 }
+
+type GetDatasetBadRequest ErrorResponse
+
+func (*GetDatasetBadRequest) getDatasetRes() {}
+
+type GetDatasetNotFound ErrorResponse
+
+func (*GetDatasetNotFound) getDatasetRes() {}
 
 // Ref: #/components/schemas/HealthResponse
 type HealthResponse struct {
@@ -3396,41 +3433,174 @@ func (s *ResourceMemberUpdateRequest) SetRoleID(val string) {
 	s.RoleID = val
 }
 
-// Ref: #/components/schemas/ResourcePermissionsResponse
-type ResourcePermissionsResponse struct {
-	ResourceRole OptResourceRoleInfo `json:"resource_role"`
-	Permissions  []string            `json:"permissions"`
-	IsOwner      bool                `json:"is_owner"`
-}
-
-// GetResourceRole returns the value of ResourceRole.
-func (s *ResourcePermissionsResponse) GetResourceRole() OptResourceRoleInfo {
-	return s.ResourceRole
+// Ref: #/components/schemas/ResourcePermissionCatalogResponse
+type ResourcePermissionCatalogResponse struct {
+	Permissions []string                 `json:"permissions"`
+	Roles       []ResourceRoleDefinition `json:"roles"`
 }
 
 // GetPermissions returns the value of Permissions.
-func (s *ResourcePermissionsResponse) GetPermissions() []string {
+func (s *ResourcePermissionCatalogResponse) GetPermissions() []string {
 	return s.Permissions
 }
 
-// GetIsOwner returns the value of IsOwner.
-func (s *ResourcePermissionsResponse) GetIsOwner() bool {
-	return s.IsOwner
-}
-
-// SetResourceRole sets the value of ResourceRole.
-func (s *ResourcePermissionsResponse) SetResourceRole(val OptResourceRoleInfo) {
-	s.ResourceRole = val
+// GetRoles returns the value of Roles.
+func (s *ResourcePermissionCatalogResponse) GetRoles() []ResourceRoleDefinition {
+	return s.Roles
 }
 
 // SetPermissions sets the value of Permissions.
-func (s *ResourcePermissionsResponse) SetPermissions(val []string) {
+func (s *ResourcePermissionCatalogResponse) SetPermissions(val []string) {
 	s.Permissions = val
 }
 
-// SetIsOwner sets the value of IsOwner.
-func (s *ResourcePermissionsResponse) SetIsOwner(val bool) {
-	s.IsOwner = val
+// SetRoles sets the value of Roles.
+func (s *ResourcePermissionCatalogResponse) SetRoles(val []ResourceRoleDefinition) {
+	s.Roles = val
+}
+
+// Ref: #/components/schemas/ResourceRoleDefinition
+type ResourceRoleDefinition struct {
+	ResourceType ResourceRoleDefinitionResourceType `json:"resource_type"`
+	Name         string                             `json:"name"`
+	DisplayName  string                             `json:"display_name"`
+	Description  string                             `json:"description"`
+	Color        string                             `json:"color"`
+	SortOrder    int32                              `json:"sort_order"`
+	IsSupremo    bool                               `json:"is_supremo"`
+	Assignable   bool                               `json:"assignable"`
+	Permissions  []string                           `json:"permissions"`
+}
+
+// GetResourceType returns the value of ResourceType.
+func (s *ResourceRoleDefinition) GetResourceType() ResourceRoleDefinitionResourceType {
+	return s.ResourceType
+}
+
+// GetName returns the value of Name.
+func (s *ResourceRoleDefinition) GetName() string {
+	return s.Name
+}
+
+// GetDisplayName returns the value of DisplayName.
+func (s *ResourceRoleDefinition) GetDisplayName() string {
+	return s.DisplayName
+}
+
+// GetDescription returns the value of Description.
+func (s *ResourceRoleDefinition) GetDescription() string {
+	return s.Description
+}
+
+// GetColor returns the value of Color.
+func (s *ResourceRoleDefinition) GetColor() string {
+	return s.Color
+}
+
+// GetSortOrder returns the value of SortOrder.
+func (s *ResourceRoleDefinition) GetSortOrder() int32 {
+	return s.SortOrder
+}
+
+// GetIsSupremo returns the value of IsSupremo.
+func (s *ResourceRoleDefinition) GetIsSupremo() bool {
+	return s.IsSupremo
+}
+
+// GetAssignable returns the value of Assignable.
+func (s *ResourceRoleDefinition) GetAssignable() bool {
+	return s.Assignable
+}
+
+// GetPermissions returns the value of Permissions.
+func (s *ResourceRoleDefinition) GetPermissions() []string {
+	return s.Permissions
+}
+
+// SetResourceType sets the value of ResourceType.
+func (s *ResourceRoleDefinition) SetResourceType(val ResourceRoleDefinitionResourceType) {
+	s.ResourceType = val
+}
+
+// SetName sets the value of Name.
+func (s *ResourceRoleDefinition) SetName(val string) {
+	s.Name = val
+}
+
+// SetDisplayName sets the value of DisplayName.
+func (s *ResourceRoleDefinition) SetDisplayName(val string) {
+	s.DisplayName = val
+}
+
+// SetDescription sets the value of Description.
+func (s *ResourceRoleDefinition) SetDescription(val string) {
+	s.Description = val
+}
+
+// SetColor sets the value of Color.
+func (s *ResourceRoleDefinition) SetColor(val string) {
+	s.Color = val
+}
+
+// SetSortOrder sets the value of SortOrder.
+func (s *ResourceRoleDefinition) SetSortOrder(val int32) {
+	s.SortOrder = val
+}
+
+// SetIsSupremo sets the value of IsSupremo.
+func (s *ResourceRoleDefinition) SetIsSupremo(val bool) {
+	s.IsSupremo = val
+}
+
+// SetAssignable sets the value of Assignable.
+func (s *ResourceRoleDefinition) SetAssignable(val bool) {
+	s.Assignable = val
+}
+
+// SetPermissions sets the value of Permissions.
+func (s *ResourceRoleDefinition) SetPermissions(val []string) {
+	s.Permissions = val
+}
+
+type ResourceRoleDefinitionResourceType string
+
+const (
+	ResourceRoleDefinitionResourceTypeProject ResourceRoleDefinitionResourceType = "project"
+	ResourceRoleDefinitionResourceTypeDataset ResourceRoleDefinitionResourceType = "dataset"
+)
+
+// AllValues returns all ResourceRoleDefinitionResourceType values.
+func (ResourceRoleDefinitionResourceType) AllValues() []ResourceRoleDefinitionResourceType {
+	return []ResourceRoleDefinitionResourceType{
+		ResourceRoleDefinitionResourceTypeProject,
+		ResourceRoleDefinitionResourceTypeDataset,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s ResourceRoleDefinitionResourceType) MarshalText() ([]byte, error) {
+	switch s {
+	case ResourceRoleDefinitionResourceTypeProject:
+		return []byte(s), nil
+	case ResourceRoleDefinitionResourceTypeDataset:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *ResourceRoleDefinitionResourceType) UnmarshalText(data []byte) error {
+	switch ResourceRoleDefinitionResourceType(data) {
+	case ResourceRoleDefinitionResourceTypeProject:
+		*s = ResourceRoleDefinitionResourceTypeProject
+		return nil
+	case ResourceRoleDefinitionResourceTypeDataset:
+		*s = ResourceRoleDefinitionResourceTypeDataset
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
 }
 
 // Ref: #/components/schemas/ResourceRoleInfo

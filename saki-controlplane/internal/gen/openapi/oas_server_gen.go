@@ -92,6 +92,10 @@ type Handler interface {
 	//
 	// GET /assets/{asset_id}
 	GetAsset(ctx context.Context, params GetAssetParams) (*Asset, error)
+	// GetCurrentResourcePermissions implements getCurrentResourcePermissions operation.
+	//
+	// GET /auth/resource-permissions
+	GetCurrentResourcePermissions(ctx context.Context, params GetCurrentResourcePermissionsParams) (*CurrentResourcePermissionsResponse, error)
 	// GetCurrentUser implements getCurrentUser operation.
 	//
 	// GET /auth/me
@@ -116,10 +120,10 @@ type Handler interface {
 	//
 	// GET /projects/{project_id}
 	GetProject(ctx context.Context, params GetProjectParams) (*Project, error)
-	// GetResourcePermissions implements getResourcePermissions operation.
+	// GetResourcePermissionCatalog implements getResourcePermissionCatalog operation.
 	//
 	// GET /permissions/resource
-	GetResourcePermissions(ctx context.Context, params GetResourcePermissionsParams) (*ResourcePermissionsResponse, error)
+	GetResourcePermissionCatalog(ctx context.Context) (*ResourcePermissionCatalogResponse, error)
 	// GetRole implements getRole operation.
 	//
 	// GET /roles/{role_id}

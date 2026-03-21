@@ -135,6 +135,34 @@ func TestHumanControlPlaneManagementSmoke(t *testing.T) {
 		t.Fatalf("latest /permissions/system should not expose current-user snapshot fields, got %+v", systemPermissionsBody)
 	}
 
+	resourcePermissionsResp := doJSONRequest(
+		t,
+		httpServer.Client(),
+		http.MethodGet,
+		httpServer.URL+"/permissions/resource",
+		"",
+		adminAccessToken,
+	)
+	if resourcePermissionsResp.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected resource permissions status: %d body=%s", resourcePermissionsResp.StatusCode, readBodyString(t, resourcePermissionsResp))
+	}
+	resourcePermissionsBody := decodeJSONResponse(t, resourcePermissionsResp)
+	resourcePermissions, ok := resourcePermissionsBody["permissions"].([]any)
+	if !ok || len(resourcePermissions) == 0 {
+		t.Fatalf("unexpected resource permissions body: %+v", resourcePermissionsBody)
+	}
+	resourceRoles, ok := resourcePermissionsBody["roles"].([]any)
+	if !ok || len(resourceRoles) == 0 {
+		t.Fatalf("expected resource role definitions, got %+v", resourcePermissionsBody)
+	}
+	firstResourceRole, ok := resourceRoles[0].(map[string]any)
+	if !ok || firstResourceRole["resource_type"] == nil || firstResourceRole["name"] == nil || firstResourceRole["assignable"] == nil {
+		t.Fatalf("expected resource role definition metadata, got %+v", resourcePermissionsBody)
+	}
+	if _, ok := resourcePermissionsBody["resource_role"]; ok {
+		t.Fatalf("latest /permissions/resource should expose catalog only, got %+v", resourcePermissionsBody)
+	}
+
 	catalogResp := doJSONRequest(
 		t,
 		httpServer.Client(),

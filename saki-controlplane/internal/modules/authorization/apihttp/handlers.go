@@ -61,7 +61,7 @@ type ListAssignableResourceRolesExecutor interface {
 	Execute(ctx context.Context, resourceType string, resourceID uuid.UUID) ([]authorizationapp.ResourceRoleView, error)
 }
 
-type GetResourcePermissionsExecutor interface {
+type GetCurrentResourcePermissionsExecutor interface {
 	Execute(ctx context.Context, principalID uuid.UUID, resourceType string, resourceID uuid.UUID) (*authorizationapp.ResourcePermissionsView, error)
 }
 
@@ -82,7 +82,7 @@ type HandlersDeps struct {
 	UpsertResourceMember  UpsertResourceMemberExecutor
 	DeleteResourceMember  DeleteResourceMemberExecutor
 	ListAssignableRoles   ListAssignableResourceRolesExecutor
-	GetResourcePermission GetResourcePermissionsExecutor
+	GetCurrentResourcePermissions GetCurrentResourcePermissionsExecutor
 	ResolveResourceAccess ResolveEffectiveResourcePermissionsExecutor
 }
 
@@ -99,7 +99,7 @@ type Handlers struct {
 	upsertResourceMember  UpsertResourceMemberExecutor
 	deleteResourceMember  DeleteResourceMemberExecutor
 	listAssignableRoles   ListAssignableResourceRolesExecutor
-	getResourcePermission GetResourcePermissionsExecutor
+	getCurrentResourcePermissions GetCurrentResourcePermissionsExecutor
 	resolveResourceAccess ResolveEffectiveResourcePermissionsExecutor
 }
 
@@ -117,7 +117,7 @@ func NewHandlers(deps HandlersDeps) *Handlers {
 		upsertResourceMember:  deps.UpsertResourceMember,
 		deleteResourceMember:  deps.DeleteResourceMember,
 		listAssignableRoles:   deps.ListAssignableRoles,
-		getResourcePermission: deps.GetResourcePermission,
+		getCurrentResourcePermissions: deps.GetCurrentResourcePermissions,
 		resolveResourceAccess: deps.ResolveResourceAccess,
 	}
 }
@@ -270,6 +270,30 @@ func (h *Handlers) GetSystemPermissions(ctx context.Context) (*openapi.SystemPer
 	}, nil
 }
 
+func (h *Handlers) GetResourcePermissionCatalog(ctx context.Context) (*openapi.ResourcePermissionCatalogResponse, error) {
+	if h == nil || h.permissionCatalog == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	// 关键设计：/permissions/resource 现在只暴露“资源权限目录 + 内建资源角色定义”，
+	// 这样管理端读取的是稳定真值，而当前登录主体的资源快照统一收敛到 /auth/resource-permissions。
+	if _, err := requireAnyPermission(ctx, "roles:read", "permissions:read"); err != nil {
+		return nil, err
+	}
+	catalog, err := h.permissionCatalog.Execute(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	roles := make([]openapi.ResourceRoleDefinition, 0, len(catalog.ResourceRoles))
+	for _, item := range catalog.ResourceRoles {
+		roles = append(roles, mapResourceRoleDefinition(item))
+	}
+	return &openapi.ResourcePermissionCatalogResponse{
+		Permissions: authorizationdomain.CanonicalPermissions(catalog.ResourcePermissions),
+		Roles:       roles,
+	}, nil
+}
+
 func (h *Handlers) ListUserSystemRoles(ctx context.Context, params openapi.ListUserSystemRolesParams) ([]openapi.UserSystemRoleBinding, error) {
 	return h.listUserSystemRoles(ctx, params.UserID)
 }
@@ -300,8 +324,8 @@ func (h *Handlers) ReplaceUserSystemRoles(ctx context.Context, req *openapi.Repl
 	return mapUserSystemRoleBindings(result), nil
 }
 
-func (h *Handlers) GetResourcePermissions(ctx context.Context, params openapi.GetResourcePermissionsParams) (*openapi.ResourcePermissionsResponse, error) {
-	if h == nil || h.getResourcePermission == nil {
+func (h *Handlers) GetCurrentResourcePermissions(ctx context.Context, params openapi.GetCurrentResourcePermissionsParams) (*openapi.CurrentResourcePermissionsResponse, error) {
+	if h == nil || h.getCurrentResourcePermissions == nil {
 		return nil, ogenhttp.ErrNotImplemented
 	}
 	claims, err := requireAnyPermission(ctx)
@@ -313,12 +337,12 @@ func (h *Handlers) GetResourcePermissions(ctx context.Context, params openapi.Ge
 	if err != nil {
 		return nil, authorizationapp.ErrInvalidResourceInput
 	}
-	result, err := h.getResourcePermission.Execute(ctx, claims.PrincipalID, string(params.ResourceType), resourceID)
+	result, err := h.getCurrentResourcePermissions.Execute(ctx, claims.PrincipalID, string(params.ResourceType), resourceID)
 	if err != nil {
 		return nil, err
 	}
 
-	response := &openapi.ResourcePermissionsResponse{
+	response := &openapi.CurrentResourcePermissionsResponse{
 		Permissions: authorizationdomain.CanonicalPermissions(result.Permissions),
 		IsOwner:     result.IsOwner,
 	}
@@ -529,6 +553,20 @@ func mapResourceRole(item authorizationapp.ResourceRoleView) openapi.ResourceRol
 	return result
 }
 
+func mapResourceRoleDefinition(item authorizationapp.ResourceRoleDefinitionView) openapi.ResourceRoleDefinition {
+	return openapi.ResourceRoleDefinition{
+		ResourceType: mapResourceRoleDefinitionType(item.ResourceType),
+		Name:         item.Name,
+		DisplayName:  item.DisplayName,
+		Description:  item.Description,
+		Color:        item.Color,
+		SortOrder:    int32(item.SortOrder),
+		IsSupremo:    item.IsSupremo,
+		Assignable:   item.Assignable,
+		Permissions:  authorizationdomain.CanonicalPermissions(item.Permissions),
+	}
+}
+
 func mapResourceMember(item authorizationapp.ResourceMemberView) openapi.ResourceMember {
 	result := openapi.ResourceMember{
 		ID:              item.ID,
@@ -624,6 +662,15 @@ func mapResourceType(resourceType string) openapi.ResourceMemberResourceType {
 		return openapi.ResourceMemberResourceTypeProject
 	default:
 		return openapi.ResourceMemberResourceTypeDataset
+	}
+}
+
+func mapResourceRoleDefinitionType(resourceType string) openapi.ResourceRoleDefinitionResourceType {
+	switch resourceType {
+	case authorizationdomain.ResourceTypeProject:
+		return openapi.ResourceRoleDefinitionResourceTypeProject
+	default:
+		return openapi.ResourceRoleDefinitionResourceTypeDataset
 	}
 }
 

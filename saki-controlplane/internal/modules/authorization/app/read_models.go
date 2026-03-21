@@ -6,6 +6,19 @@ type PermissionCatalog struct {
 	AllPermissions      []string
 	SystemPermissions   []string
 	ResourcePermissions []string
+	ResourceRoles       []ResourceRoleDefinitionView
+}
+
+type ResourceRoleDefinitionView struct {
+	ResourceType string
+	Name         string
+	DisplayName  string
+	Description  string
+	Color        string
+	SortOrder    int
+	IsSupremo    bool
+	Assignable   bool
+	Permissions  []string
 }
 
 type RolePermissionView struct {

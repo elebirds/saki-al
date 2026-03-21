@@ -239,7 +239,7 @@ func TestHumanControlPlaneResourceMembersSmoke(t *testing.T) {
 		t,
 		httpServer.Client(),
 		http.MethodGet,
-		httpServer.URL+"/permissions/resource?resource_type=dataset&resource_id="+datasetID,
+		httpServer.URL+"/auth/resource-permissions?resource_type=dataset&resource_id="+datasetID,
 		"",
 		memberAccessToken,
 	))
@@ -258,7 +258,7 @@ func TestHumanControlPlaneResourceMembersSmoke(t *testing.T) {
 		t,
 		httpServer.Client(),
 		http.MethodGet,
-		httpServer.URL+"/permissions/resource?resource_type=dataset&resource_id="+otherDatasetID,
+		httpServer.URL+"/auth/resource-permissions?resource_type=dataset&resource_id="+otherDatasetID,
 		"",
 		memberAccessToken,
 	))
@@ -297,7 +297,7 @@ func TestHumanControlPlaneResourceMembersSmoke(t *testing.T) {
 		t,
 		httpServer.Client(),
 		http.MethodGet,
-		httpServer.URL+"/permissions/resource?resource_type=project&resource_id="+projectID,
+		httpServer.URL+"/auth/resource-permissions?resource_type=project&resource_id="+projectID,
 		"",
 		memberAccessToken,
 	))
@@ -335,7 +335,7 @@ func TestHumanControlPlaneResourceMembersSmoke(t *testing.T) {
 		t,
 		httpServer.Client(),
 		http.MethodGet,
-		httpServer.URL+"/permissions/resource?resource_type=dataset&resource_id="+datasetID,
+		httpServer.URL+"/auth/resource-permissions?resource_type=dataset&resource_id="+datasetID,
 		"",
 		memberAccessToken,
 	))

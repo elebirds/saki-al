@@ -160,6 +160,13 @@ func (UnimplementedHandler) GetAsset(ctx context.Context, params GetAssetParams)
 	return r, ht.ErrNotImplemented
 }
 
+// GetCurrentResourcePermissions implements getCurrentResourcePermissions operation.
+//
+// GET /auth/resource-permissions
+func (UnimplementedHandler) GetCurrentResourcePermissions(ctx context.Context, params GetCurrentResourcePermissionsParams) (r *CurrentResourcePermissionsResponse, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // GetCurrentUser implements getCurrentUser operation.
 //
 // GET /auth/me
@@ -202,10 +209,10 @@ func (UnimplementedHandler) GetProject(ctx context.Context, params GetProjectPar
 	return r, ht.ErrNotImplemented
 }
 
-// GetResourcePermissions implements getResourcePermissions operation.
+// GetResourcePermissionCatalog implements getResourcePermissionCatalog operation.
 //
 // GET /permissions/resource
-func (UnimplementedHandler) GetResourcePermissions(ctx context.Context, params GetResourcePermissionsParams) (r *ResourcePermissionsResponse, _ error) {
+func (UnimplementedHandler) GetResourcePermissionCatalog(ctx context.Context) (r *ResourcePermissionCatalogResponse, _ error) {
 	return r, ht.ErrNotImplemented
 }
 

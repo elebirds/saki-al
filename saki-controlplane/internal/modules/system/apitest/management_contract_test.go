@@ -156,6 +156,51 @@ func TestHumanControlPlaneSystemPermissionsContract(t *testing.T) {
 	}
 }
 
+func TestHumanControlPlaneResourcePermissionsContract(t *testing.T) {
+	handler := newSystemHTTPHandler(t, contractDeps{})
+	token := issueSystemToken(t, handler, "admin@example.com")
+
+	req := httptest.NewRequest(http.MethodGet, "/permissions/resource", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unexpected status code: %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode resource permissions body: %v", err)
+	}
+	if _, ok := body["permissions"].([]any); !ok {
+		t.Fatalf("expected permissions field, got %+v", body)
+	}
+	roles, ok := body["roles"].([]any)
+	if !ok || len(roles) == 0 {
+		t.Fatalf("expected roles field, got %+v", body)
+	}
+	first, ok := roles[0].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected first role definition: %+v", body)
+	}
+	if _, ok := first["resource_type"].(string); !ok {
+		t.Fatalf("expected resource_type field, got %+v", first)
+	}
+	if _, ok := first["name"].(string); !ok {
+		t.Fatalf("expected name field, got %+v", first)
+	}
+	if _, ok := first["permissions"].([]any); !ok {
+		t.Fatalf("expected permissions field in role definition, got %+v", first)
+	}
+	if _, ok := first["assignable"].(bool); !ok {
+		t.Fatalf("expected assignable field in role definition, got %+v", first)
+	}
+	if _, ok := first["resource_role"]; ok {
+		t.Fatalf("latest /permissions/resource should be catalog, not current-user snapshot, got %+v", body)
+	}
+}
+
 func TestHumanControlPlaneRemovedPermissionCatalogEndpointReturns404(t *testing.T) {
 	handler := newSystemHTTPHandler(t, contractDeps{})
 	token := issueSystemToken(t, handler, "admin@example.com")

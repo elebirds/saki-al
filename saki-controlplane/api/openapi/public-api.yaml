@@ -981,6 +981,34 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /auth/resource-permissions:
+    get:
+      operationId: getCurrentResourcePermissions
+      parameters:
+        - name: resource_type
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [project, dataset]
+        - name: resource_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: current user resource permission snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CurrentResourcePermissionsResponse"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /users:
     get:
       operationId: listUsers
@@ -1356,26 +1384,14 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
   /permissions/resource:
     get:
-      operationId: getResourcePermissions
-      parameters:
-        - name: resource_type
-          in: query
-          required: true
-          schema:
-            type: string
-            enum: [project, dataset]
-        - name: resource_id
-          in: query
-          required: true
-          schema:
-            type: string
+      operationId: getResourcePermissionCatalog
       responses:
         "200":
-          description: current user resource permission snapshot
+          description: resource permission catalog
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ResourcePermissionsResponse"
+                $ref: "#/components/schemas/ResourcePermissionCatalogResponse"
         default:
           description: unexpected error
           content:
@@ -2295,7 +2311,56 @@ components:
       properties:
         role_id:
           type: string
-    ResourcePermissionsResponse:
+    ResourceRoleDefinition:
+      type: object
+      required:
+        - resource_type
+        - name
+        - display_name
+        - description
+        - color
+        - sort_order
+        - is_supremo
+        - assignable
+        - permissions
+      properties:
+        resource_type:
+          type: string
+          enum: [project, dataset]
+        name:
+          type: string
+        display_name:
+          type: string
+        description:
+          type: string
+        color:
+          type: string
+        sort_order:
+          type: integer
+          format: int32
+        is_supremo:
+          type: boolean
+        assignable:
+          type: boolean
+        permissions:
+          type: array
+          items:
+            type: string
+    ResourcePermissionCatalogResponse:
+      type: object
+      required:
+        - permissions
+        - roles
+      properties:
+        permissions:
+          type: array
+          items:
+            type: string
+        roles:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResourceRoleDefinition"
+    CurrentResourcePermissionsResponse:
       type: object
       required:
         - permissions

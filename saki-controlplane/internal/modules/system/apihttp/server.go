@@ -329,11 +329,18 @@ func (s *Server) GetSystemPermissions(ctx context.Context) (*openapi.SystemPermi
 	return s.authorization.GetSystemPermissions(ctx)
 }
 
-func (s *Server) GetResourcePermissions(ctx context.Context, params openapi.GetResourcePermissionsParams) (*openapi.ResourcePermissionsResponse, error) {
+func (s *Server) GetCurrentResourcePermissions(ctx context.Context, params openapi.GetCurrentResourcePermissionsParams) (*openapi.CurrentResourcePermissionsResponse, error) {
 	if s.authorization == nil {
 		return nil, ogenhttp.ErrNotImplemented
 	}
-	return s.authorization.GetResourcePermissions(ctx, params)
+	return s.authorization.GetCurrentResourcePermissions(ctx, params)
+}
+
+func (s *Server) GetResourcePermissionCatalog(ctx context.Context) (*openapi.ResourcePermissionCatalogResponse, error) {
+	if s.authorization == nil {
+		return nil, ogenhttp.ErrNotImplemented
+	}
+	return s.authorization.GetResourcePermissionCatalog(ctx)
 }
 
 func (s *Server) ListRoles(ctx context.Context, params openapi.ListRolesParams) (*openapi.RoleListResponse, error) {

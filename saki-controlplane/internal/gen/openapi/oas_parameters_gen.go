@@ -1319,6 +1319,115 @@ func decodeGetAssetParams(args [1]string, argsEscaped bool, r *http.Request) (pa
 	return params, nil
 }
 
+// GetCurrentResourcePermissionsParams is parameters of getCurrentResourcePermissions operation.
+type GetCurrentResourcePermissionsParams struct {
+	ResourceType GetCurrentResourcePermissionsResourceType
+	ResourceID   string
+}
+
+func unpackGetCurrentResourcePermissionsParams(packed middleware.Parameters) (params GetCurrentResourcePermissionsParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "resource_type",
+			In:   "query",
+		}
+		params.ResourceType = packed[key].(GetCurrentResourcePermissionsResourceType)
+	}
+	{
+		key := middleware.ParameterKey{
+			Name: "resource_id",
+			In:   "query",
+		}
+		params.ResourceID = packed[key].(string)
+	}
+	return params
+}
+
+func decodeGetCurrentResourcePermissionsParams(args [0]string, argsEscaped bool, r *http.Request) (params GetCurrentResourcePermissionsParams, _ error) {
+	q := uri.NewQueryDecoder(r.URL.Query())
+	// Decode query: resource_type.
+	if err := func() error {
+		cfg := uri.QueryParameterDecodingConfig{
+			Name:    "resource_type",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.HasParam(cfg); err == nil {
+			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.ResourceType = GetCurrentResourcePermissionsResourceType(c)
+				return nil
+			}); err != nil {
+				return err
+			}
+			if err := func() error {
+				if err := params.ResourceType.Validate(); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "resource_type",
+			In:   "query",
+			Err:  err,
+		}
+	}
+	// Decode query: resource_id.
+	if err := func() error {
+		cfg := uri.QueryParameterDecodingConfig{
+			Name:    "resource_id",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.HasParam(cfg); err == nil {
+			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.ResourceID = c
+				return nil
+			}); err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "resource_id",
+			In:   "query",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
 // GetDatasetParams is parameters of getDataset operation.
 type GetDatasetParams struct {
 	DatasetID string
@@ -1638,115 +1747,6 @@ func decodeGetProjectParams(args [1]string, argsEscaped bool, r *http.Request) (
 		return params, &ogenerrors.DecodeParamError{
 			Name: "project_id",
 			In:   "path",
-			Err:  err,
-		}
-	}
-	return params, nil
-}
-
-// GetResourcePermissionsParams is parameters of getResourcePermissions operation.
-type GetResourcePermissionsParams struct {
-	ResourceType GetResourcePermissionsResourceType
-	ResourceID   string
-}
-
-func unpackGetResourcePermissionsParams(packed middleware.Parameters) (params GetResourcePermissionsParams) {
-	{
-		key := middleware.ParameterKey{
-			Name: "resource_type",
-			In:   "query",
-		}
-		params.ResourceType = packed[key].(GetResourcePermissionsResourceType)
-	}
-	{
-		key := middleware.ParameterKey{
-			Name: "resource_id",
-			In:   "query",
-		}
-		params.ResourceID = packed[key].(string)
-	}
-	return params
-}
-
-func decodeGetResourcePermissionsParams(args [0]string, argsEscaped bool, r *http.Request) (params GetResourcePermissionsParams, _ error) {
-	q := uri.NewQueryDecoder(r.URL.Query())
-	// Decode query: resource_type.
-	if err := func() error {
-		cfg := uri.QueryParameterDecodingConfig{
-			Name:    "resource_type",
-			Style:   uri.QueryStyleForm,
-			Explode: true,
-		}
-
-		if err := q.HasParam(cfg); err == nil {
-			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
-				val, err := d.DecodeValue()
-				if err != nil {
-					return err
-				}
-
-				c, err := conv.ToString(val)
-				if err != nil {
-					return err
-				}
-
-				params.ResourceType = GetResourcePermissionsResourceType(c)
-				return nil
-			}); err != nil {
-				return err
-			}
-			if err := func() error {
-				if err := params.ResourceType.Validate(); err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return err
-			}
-		} else {
-			return err
-		}
-		return nil
-	}(); err != nil {
-		return params, &ogenerrors.DecodeParamError{
-			Name: "resource_type",
-			In:   "query",
-			Err:  err,
-		}
-	}
-	// Decode query: resource_id.
-	if err := func() error {
-		cfg := uri.QueryParameterDecodingConfig{
-			Name:    "resource_id",
-			Style:   uri.QueryStyleForm,
-			Explode: true,
-		}
-
-		if err := q.HasParam(cfg); err == nil {
-			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
-				val, err := d.DecodeValue()
-				if err != nil {
-					return err
-				}
-
-				c, err := conv.ToString(val)
-				if err != nil {
-					return err
-				}
-
-				params.ResourceID = c
-				return nil
-			}); err != nil {
-				return err
-			}
-		} else {
-			return err
-		}
-		return nil
-	}(); err != nil {
-		return params, &ogenerrors.DecodeParamError{
-			Name: "resource_id",
-			In:   "query",
 			Err:  err,
 		}
 	}

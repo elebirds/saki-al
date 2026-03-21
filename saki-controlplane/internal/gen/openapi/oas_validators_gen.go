@@ -236,6 +236,29 @@ func (s *AuthSessionUser) Validate() error {
 	return nil
 }
 
+func (s *CurrentResourcePermissionsResponse) Validate() error {
+	if s == nil {
+		return validate.ErrNilPointer
+	}
+
+	var failures []validate.FieldError
+	if err := func() error {
+		if s.Permissions == nil {
+			return errors.New("nil is invalid value")
+		}
+		return nil
+	}(); err != nil {
+		failures = append(failures, validate.FieldError{
+			Name:  "permissions",
+			Error: err,
+		})
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+	return nil
+}
+
 func (s *CurrentUserResponse) Validate() error {
 	if s == nil {
 		return validate.ErrNilPointer
@@ -304,7 +327,7 @@ func (s *DatasetListResponse) Validate() error {
 	return nil
 }
 
-func (s GetResourcePermissionsResourceType) Validate() error {
+func (s GetCurrentResourcePermissionsResourceType) Validate() error {
 	switch s {
 	case "project":
 		return nil
@@ -646,7 +669,7 @@ func (s ResourceMemberResourceType) Validate() error {
 	}
 }
 
-func (s *ResourcePermissionsResponse) Validate() error {
+func (s *ResourcePermissionCatalogResponse) Validate() error {
 	if s == nil {
 		return validate.ErrNilPointer
 	}
@@ -663,10 +686,83 @@ func (s *ResourcePermissionsResponse) Validate() error {
 			Error: err,
 		})
 	}
+	if err := func() error {
+		if s.Roles == nil {
+			return errors.New("nil is invalid value")
+		}
+		var failures []validate.FieldError
+		for i, elem := range s.Roles {
+			if err := func() error {
+				if err := elem.Validate(); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				failures = append(failures, validate.FieldError{
+					Name:  fmt.Sprintf("[%d]", i),
+					Error: err,
+				})
+			}
+		}
+		if len(failures) > 0 {
+			return &validate.Error{Fields: failures}
+		}
+		return nil
+	}(); err != nil {
+		failures = append(failures, validate.FieldError{
+			Name:  "roles",
+			Error: err,
+		})
+	}
 	if len(failures) > 0 {
 		return &validate.Error{Fields: failures}
 	}
 	return nil
+}
+
+func (s *ResourceRoleDefinition) Validate() error {
+	if s == nil {
+		return validate.ErrNilPointer
+	}
+
+	var failures []validate.FieldError
+	if err := func() error {
+		if err := s.ResourceType.Validate(); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		failures = append(failures, validate.FieldError{
+			Name:  "resource_type",
+			Error: err,
+		})
+	}
+	if err := func() error {
+		if s.Permissions == nil {
+			return errors.New("nil is invalid value")
+		}
+		return nil
+	}(); err != nil {
+		failures = append(failures, validate.FieldError{
+			Name:  "permissions",
+			Error: err,
+		})
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+	return nil
+}
+
+func (s ResourceRoleDefinitionResourceType) Validate() error {
+	switch s {
+	case "project":
+		return nil
+	case "dataset":
+		return nil
+	default:
+		return errors.Errorf("invalid value: %v", s)
+	}
 }
 
 func (s *RoleCreateRequest) Validate() error {

@@ -590,6 +590,19 @@ func (f *fakePermissionCatalogExecutor) Execute(context.Context) (*authorization
 			AllPermissions:      []string{"roles:read", "system:write", "users:read"},
 			SystemPermissions:   []string{"roles:read", "system:write", "users:read"},
 			ResourcePermissions: []string{"projects:read", "projects:write"},
+			ResourceRoles: []authorizationapp.ResourceRoleDefinitionView{
+				{
+					ResourceType: "project",
+					Name:         "project_manager",
+					DisplayName:  "Project Manager",
+					Description:  "Can manage project workflows and membership.",
+					Color:        "cyan",
+					SortOrder:    10,
+					IsSupremo:    false,
+					Assignable:   true,
+					Permissions:  []string{"projects:read", "projects:write"},
+				},
+			},
 		}, nil
 	}
 	copy := *f.result

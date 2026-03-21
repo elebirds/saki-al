@@ -111,6 +111,10 @@ type Invoker interface {
 	//
 	// GET /assets/{asset_id}
 	GetAsset(ctx context.Context, params GetAssetParams) (*Asset, error)
+	// GetCurrentResourcePermissions invokes getCurrentResourcePermissions operation.
+	//
+	// GET /auth/resource-permissions
+	GetCurrentResourcePermissions(ctx context.Context, params GetCurrentResourcePermissionsParams) (*CurrentResourcePermissionsResponse, error)
 	// GetCurrentUser invokes getCurrentUser operation.
 	//
 	// GET /auth/me
@@ -135,10 +139,10 @@ type Invoker interface {
 	//
 	// GET /projects/{project_id}
 	GetProject(ctx context.Context, params GetProjectParams) (*Project, error)
-	// GetResourcePermissions invokes getResourcePermissions operation.
+	// GetResourcePermissionCatalog invokes getResourcePermissionCatalog operation.
 	//
 	// GET /permissions/resource
-	GetResourcePermissions(ctx context.Context, params GetResourcePermissionsParams) (*ResourcePermissionsResponse, error)
+	GetResourcePermissionCatalog(ctx context.Context) (*ResourcePermissionCatalogResponse, error)
 	// GetRole invokes getRole operation.
 	//
 	// GET /roles/{role_id}
@@ -2281,6 +2285,110 @@ func (c *Client) sendGetAsset(ctx context.Context, params GetAssetParams) (res *
 	return result, nil
 }
 
+// GetCurrentResourcePermissions invokes getCurrentResourcePermissions operation.
+//
+// GET /auth/resource-permissions
+func (c *Client) GetCurrentResourcePermissions(ctx context.Context, params GetCurrentResourcePermissionsParams) (*CurrentResourcePermissionsResponse, error) {
+	res, err := c.sendGetCurrentResourcePermissions(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendGetCurrentResourcePermissions(ctx context.Context, params GetCurrentResourcePermissionsParams) (res *CurrentResourcePermissionsResponse, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("getCurrentResourcePermissions"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/auth/resource-permissions"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, GetCurrentResourcePermissionsOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/auth/resource-permissions"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeQueryParams"
+	q := uri.NewQueryEncoder()
+	{
+		// Encode "resource_type" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "resource_type",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			return e.EncodeValue(conv.StringToString(string(params.ResourceType)))
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	{
+		// Encode "resource_id" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "resource_id",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			return e.EncodeValue(conv.StringToString(params.ResourceID))
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	u.RawQuery = q.Values().Encode()
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeGetCurrentResourcePermissionsResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // GetCurrentUser invokes getCurrentUser operation.
 //
 // GET /auth/me
@@ -2804,17 +2912,17 @@ func (c *Client) sendGetProject(ctx context.Context, params GetProjectParams) (r
 	return result, nil
 }
 
-// GetResourcePermissions invokes getResourcePermissions operation.
+// GetResourcePermissionCatalog invokes getResourcePermissionCatalog operation.
 //
 // GET /permissions/resource
-func (c *Client) GetResourcePermissions(ctx context.Context, params GetResourcePermissionsParams) (*ResourcePermissionsResponse, error) {
-	res, err := c.sendGetResourcePermissions(ctx, params)
+func (c *Client) GetResourcePermissionCatalog(ctx context.Context) (*ResourcePermissionCatalogResponse, error) {
+	res, err := c.sendGetResourcePermissionCatalog(ctx)
 	return res, err
 }
 
-func (c *Client) sendGetResourcePermissions(ctx context.Context, params GetResourcePermissionsParams) (res *ResourcePermissionsResponse, err error) {
+func (c *Client) sendGetResourcePermissionCatalog(ctx context.Context) (res *ResourcePermissionCatalogResponse, err error) {
 	otelAttrs := []attribute.KeyValue{
-		otelogen.OperationID("getResourcePermissions"),
+		otelogen.OperationID("getResourcePermissionCatalog"),
 		semconv.HTTPRequestMethodKey.String("GET"),
 		semconv.URLTemplateKey.String("/permissions/resource"),
 	}
@@ -2832,7 +2940,7 @@ func (c *Client) sendGetResourcePermissions(ctx context.Context, params GetResou
 	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
 
 	// Start a span for this request.
-	ctx, span := c.cfg.Tracer.Start(ctx, GetResourcePermissionsOperation,
+	ctx, span := c.cfg.Tracer.Start(ctx, GetResourcePermissionCatalogOperation,
 		trace.WithAttributes(otelAttrs...),
 		clientSpanKind,
 	)
@@ -2853,38 +2961,6 @@ func (c *Client) sendGetResourcePermissions(ctx context.Context, params GetResou
 	pathParts[0] = "/permissions/resource"
 	uri.AddPathParts(u, pathParts[:]...)
 
-	stage = "EncodeQueryParams"
-	q := uri.NewQueryEncoder()
-	{
-		// Encode "resource_type" parameter.
-		cfg := uri.QueryParameterEncodingConfig{
-			Name:    "resource_type",
-			Style:   uri.QueryStyleForm,
-			Explode: true,
-		}
-
-		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
-			return e.EncodeValue(conv.StringToString(string(params.ResourceType)))
-		}); err != nil {
-			return res, errors.Wrap(err, "encode query")
-		}
-	}
-	{
-		// Encode "resource_id" parameter.
-		cfg := uri.QueryParameterEncodingConfig{
-			Name:    "resource_id",
-			Style:   uri.QueryStyleForm,
-			Explode: true,
-		}
-
-		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
-			return e.EncodeValue(conv.StringToString(params.ResourceID))
-		}); err != nil {
-			return res, errors.Wrap(err, "encode query")
-		}
-	}
-	u.RawQuery = q.Values().Encode()
-
 	stage = "EncodeRequest"
 	r, err := ht.NewRequest(ctx, "GET", u)
 	if err != nil {
@@ -2900,7 +2976,7 @@ func (c *Client) sendGetResourcePermissions(ctx context.Context, params GetResou
 	defer body.Close()
 
 	stage = "DecodeResponse"
-	result, err := decodeGetResourcePermissionsResponse(resp)
+	result, err := decodeGetResourcePermissionCatalogResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}

@@ -1776,6 +1776,98 @@ func decodeGetAssetResponse(resp *http.Response) (res *Asset, _ error) {
 	return res, errors.Wrap(defRes, "error")
 }
 
+func decodeGetCurrentResourcePermissionsResponse(resp *http.Response) (res *CurrentResourcePermissionsResponse, _ error) {
+	switch resp.StatusCode {
+	case 200:
+		// Code 200.
+		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		if err != nil {
+			return res, errors.Wrap(err, "parse media type")
+		}
+		switch {
+		case ct == "application/json":
+			buf, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return res, err
+			}
+			d := jx.DecodeBytes(buf)
+
+			var response CurrentResourcePermissionsResponse
+			if err := func() error {
+				if err := response.Decode(d); err != nil {
+					return err
+				}
+				if err := d.Skip(); err != io.EOF {
+					return errors.New("unexpected trailing data")
+				}
+				return nil
+			}(); err != nil {
+				err = &ogenerrors.DecodeBodyError{
+					ContentType: ct,
+					Body:        buf,
+					Err:         err,
+				}
+				return res, err
+			}
+			// Validate response.
+			if err := func() error {
+				if err := response.Validate(); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return res, errors.Wrap(err, "validate")
+			}
+			return &response, nil
+		default:
+			return res, validate.InvalidContentType(ct)
+		}
+	}
+	// Convenient error response.
+	defRes, err := func() (res *ErrorResponseStatusCode, err error) {
+		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		if err != nil {
+			return res, errors.Wrap(err, "parse media type")
+		}
+		switch {
+		case ct == "application/json":
+			buf, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return res, err
+			}
+			d := jx.DecodeBytes(buf)
+
+			var response ErrorResponse
+			if err := func() error {
+				if err := response.Decode(d); err != nil {
+					return err
+				}
+				if err := d.Skip(); err != io.EOF {
+					return errors.New("unexpected trailing data")
+				}
+				return nil
+			}(); err != nil {
+				err = &ogenerrors.DecodeBodyError{
+					ContentType: ct,
+					Body:        buf,
+					Err:         err,
+				}
+				return res, err
+			}
+			return &ErrorResponseStatusCode{
+				StatusCode: resp.StatusCode,
+				Response:   response,
+			}, nil
+		default:
+			return res, validate.InvalidContentType(ct)
+		}
+	}()
+	if err != nil {
+		return res, errors.Wrapf(err, "default (code %d)", resp.StatusCode)
+	}
+	return res, errors.Wrap(defRes, "error")
+}
+
 func decodeGetCurrentUserResponse(resp *http.Response) (res *CurrentUserResponse, _ error) {
 	switch resp.StatusCode {
 	case 200:
@@ -2353,7 +2445,7 @@ func decodeGetProjectResponse(resp *http.Response) (res *Project, _ error) {
 	return res, errors.Wrap(defRes, "error")
 }
 
-func decodeGetResourcePermissionsResponse(resp *http.Response) (res *ResourcePermissionsResponse, _ error) {
+func decodeGetResourcePermissionCatalogResponse(resp *http.Response) (res *ResourcePermissionCatalogResponse, _ error) {
 	switch resp.StatusCode {
 	case 200:
 		// Code 200.
@@ -2369,7 +2461,7 @@ func decodeGetResourcePermissionsResponse(resp *http.Response) (res *ResourcePer
 			}
 			d := jx.DecodeBytes(buf)
 
-			var response ResourcePermissionsResponse
+			var response ResourcePermissionCatalogResponse
 			if err := func() error {
 				if err := response.Decode(d); err != nil {
 					return err

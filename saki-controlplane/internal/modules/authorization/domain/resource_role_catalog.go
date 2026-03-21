@@ -117,6 +117,13 @@ var resourceRoleCatalog = map[string][]ResourceRoleDefinition{
 	},
 }
 
+func KnownResourceTypes() []string {
+	return []string{
+		ResourceTypeDataset,
+		ResourceTypeProject,
+	}
+}
+
 func IsKnownResourceType(resourceType string) bool {
 	_, ok := resourceRoleCatalog[resourceType]
 	return ok

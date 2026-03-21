@@ -130,19 +130,19 @@ func (u *ListAssignableResourceRolesUseCase) Execute(ctx context.Context, resour
 	return u.store.ListAssignableResourceRoles(ctx, ref)
 }
 
-type GetResourcePermissionsUseCase struct {
+type GetCurrentResourcePermissionsUseCase struct {
 	store    ResourceMembershipStore
 	resolver EffectiveResourcePermissionResolver
 }
 
-func NewGetResourcePermissionsUseCase(store ResourceMembershipStore, resolver EffectiveResourcePermissionResolver) *GetResourcePermissionsUseCase {
-	return &GetResourcePermissionsUseCase{
+func NewGetCurrentResourcePermissionsUseCase(store ResourceMembershipStore, resolver EffectiveResourcePermissionResolver) *GetCurrentResourcePermissionsUseCase {
+	return &GetCurrentResourcePermissionsUseCase{
 		store:    store,
 		resolver: resolver,
 	}
 }
 
-func (u *GetResourcePermissionsUseCase) Execute(ctx context.Context, principalID uuid.UUID, resourceType string, resourceID uuid.UUID) (*ResourcePermissionsView, error) {
+func (u *GetCurrentResourcePermissionsUseCase) Execute(ctx context.Context, principalID uuid.UUID, resourceType string, resourceID uuid.UUID) (*ResourcePermissionsView, error) {
 	if principalID == uuid.Nil {
 		return nil, ErrInvalidResourceInput
 	}
@@ -155,7 +155,7 @@ func (u *GetResourcePermissionsUseCase) Execute(ctx context.Context, principalID
 	if err != nil {
 		return nil, err
 	}
-	// 关键设计：/permissions/resource 是“当前主体对该资源的能力快照”，不是资源存在性探针。
+	// 关键设计：/auth/resource-permissions 是“当前主体对该资源的能力快照”，不是资源存在性探针。
 	// 因此当调用者对目标资源没有任何有效权限时，直接返回空快照而不是继续探测资源是否存在，
 	// 这样普通登录用户不会因为 404/200 差异而枚举出资源是否存在。
 	if len(permissions) == 0 {

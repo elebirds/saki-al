@@ -207,7 +207,7 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 		UpsertResourceMember:  authorizationapp.NewUpsertResourceMemberUseCase(authorizationMembershipAdminStore),
 		DeleteResourceMember:  authorizationapp.NewDeleteResourceMemberUseCase(authorizationMembershipAdminStore),
 		ListAssignableRoles:   authorizationapp.NewListAssignableResourceRolesUseCase(authorizationMembershipAdminStore),
-		GetResourcePermission: authorizationapp.NewGetResourcePermissionsUseCase(authorizationMembershipAdminStore, authorizer),
+		GetCurrentResourcePermissions: authorizationapp.NewGetCurrentResourcePermissionsUseCase(authorizationMembershipAdminStore, authorizer),
 		ResolveResourceAccess: authorizationapp.NewResolveEffectiveResourcePermissionsUseCase(authorizer),
 	})
 	handler, err := systemapi.NewHTTPHandler(systemapi.Dependencies{

@@ -2,12 +2,10 @@ package apihttp
 
 import (
 	"context"
-	"slices"
 
 	authctx "github.com/elebirds/saki/saki-controlplane/internal/app/auth"
 	openapi "github.com/elebirds/saki/saki-controlplane/internal/gen/openapi"
 	accessapp "github.com/elebirds/saki/saki-controlplane/internal/modules/access/app"
-	authorizationdomain "github.com/elebirds/saki/saki-controlplane/internal/modules/authorization/domain"
 	identityapp "github.com/elebirds/saki/saki-controlplane/internal/modules/identity/app"
 	"github.com/google/uuid"
 	ogenhttp "github.com/ogen-go/ogen/http"
@@ -176,17 +174,7 @@ func (h *Handlers) GetCurrentUser(ctx context.Context) (*openapi.CurrentUserResp
 	if err != nil {
 		return nil, err
 	}
-	response := &openapi.CurrentUserResponse{
-		User: openapi.AuthSessionUser{
-			PrincipalID: currentUser.User.PrincipalID.String(),
-			Email:       currentUser.User.Email,
-			FullName:    currentUser.User.FullName,
-		},
-		SystemRoles:        append([]string(nil), currentUser.SystemRoles...),
-		Permissions:        authorizationdomain.CanonicalPermissions(currentUser.Permissions),
-		MustChangePassword: currentUser.MustChangePassword,
-	}
-	return response, nil
+	return mapCurrentUser(currentUser), nil
 }
 
 func (h *Handlers) ListUsers(ctx context.Context, params openapi.ListUsersParams) (*openapi.UserListResponse, error) {
@@ -262,9 +250,9 @@ func (h *Handlers) GetUser(ctx context.Context, params openapi.GetUserParams) (*
 
 	// 关键设计：/users 资源仍表示“用户”，但路径上的标识已经统一成 principal_id，
 	// 避免 transport 层继续把“用户资源”与“主体标识”混写成模糊的 user_id 语义。
-	principalID, err := uuid.Parse(params.PrincipalID)
+	principalID, err := parsePrincipalID(params.PrincipalID)
 	if err != nil {
-		return nil, identityapp.ErrInvalidUserInput
+		return nil, err
 	}
 	item, err := h.getUser.Execute(ctx, principalID)
 	if err != nil {
@@ -282,9 +270,9 @@ func (h *Handlers) UpdateUser(ctx context.Context, req *openapi.UserUpdateReques
 		return nil, err
 	}
 
-	principalID, err := uuid.Parse(params.PrincipalID)
+	principalID, err := parsePrincipalID(params.PrincipalID)
 	if err != nil {
-		return nil, identityapp.ErrInvalidUserInput
+		return nil, err
 	}
 	fullName, hasFullName := req.GetFullName().Get()
 	isActive, hasIsActive := req.GetIsActive().Get()
@@ -321,9 +309,9 @@ func (h *Handlers) DeleteUser(ctx context.Context, params openapi.DeleteUserPara
 		return err
 	}
 
-	principalID, err := uuid.Parse(params.PrincipalID)
+	principalID, err := parsePrincipalID(params.PrincipalID)
 	if err != nil {
-		return identityapp.ErrInvalidUserInput
+		return err
 	}
 	claims, ok := authctx.ClaimsFromContext(ctx)
 	if !ok {
@@ -333,72 +321,4 @@ func (h *Handlers) DeleteUser(ctx context.Context, params openapi.DeleteUserPara
 		return accessapp.ErrForbidden
 	}
 	return h.deleteUser.Execute(ctx, principalID)
-}
-
-func mapAuthSession(session *identityapp.AuthSession) *openapi.AuthSessionResponse {
-	return &openapi.AuthSessionResponse{
-		AccessToken:        session.AccessToken,
-		RefreshToken:       session.RefreshToken,
-		ExpiresIn:          session.ExpiresIn,
-		MustChangePassword: session.MustChangePassword,
-		User: openapi.AuthSessionUser{
-			PrincipalID: session.User.PrincipalID.String(),
-			Email:       session.User.Email,
-			FullName:    session.User.FullName,
-		},
-	}
-}
-
-func mapUser(item identityapp.UserAdminView) openapi.UserListItem {
-	response := openapi.UserListItem{
-		ID:                 item.ID,
-		Email:              item.Email,
-		IsActive:           item.IsActive,
-		MustChangePassword: item.MustChangePassword,
-		CreatedAt:          item.CreatedAt,
-		UpdatedAt:          item.UpdatedAt,
-		Roles:              make([]openapi.UserRoleInfo, 0, len(item.Roles)),
-	}
-	if item.FullName != "" {
-		response.FullName.SetTo(item.FullName)
-	}
-	for _, role := range item.Roles {
-		response.Roles = append(response.Roles, openapi.UserRoleInfo{
-			ID:          role.ID,
-			Name:        role.Name,
-			DisplayName: role.DisplayName,
-			Color:       role.Color,
-			IsSupremo:   role.IsSupremo,
-		})
-	}
-	return response
-}
-
-func optStringPtr(value string, ok bool) *string {
-	if !ok {
-		return nil
-	}
-	copy := value
-	return &copy
-}
-
-func optBoolPtr(value bool, ok bool) *bool {
-	if !ok {
-		return nil
-	}
-	copy := value
-	return &copy
-}
-
-func requireAnyPermission(ctx context.Context, permissions ...string) (*accessapp.Claims, error) {
-	claims, ok := authctx.ClaimsFromContext(ctx)
-	if !ok {
-		return nil, accessapp.ErrUnauthorized
-	}
-	for _, permission := range permissions {
-		if slices.Contains(claims.Permissions, permission) {
-			return claims, nil
-		}
-	}
-	return nil, accessapp.ErrForbidden
 }

@@ -338,6 +338,7 @@ type contractDeps struct {
 	roles       *fakeListRolesExecutor
 	catalog     *fakePermissionCatalogExecutor
 	bindings    *fakeUserSystemRolesExecutor
+	replaceRoles *fakeReplaceUserSystemRolesExecutor
 	permissions []string
 }
 
@@ -376,6 +377,9 @@ func newSystemHTTPHandler(t *testing.T, deps contractDeps) http.Handler {
 	if deps.bindings == nil {
 		deps.bindings = &fakeUserSystemRolesExecutor{}
 	}
+	if deps.replaceRoles == nil {
+		deps.replaceRoles = &fakeReplaceUserSystemRolesExecutor{}
+	}
 
 	identityHandlers := identityapi.NewHandlers(identityapi.HandlersDeps{
 		CurrentUser: &fakeCurrentUserExecutor{},
@@ -385,6 +389,7 @@ func newSystemHTTPHandler(t *testing.T, deps contractDeps) http.Handler {
 		ListRoles:         deps.roles,
 		PermissionCatalog: deps.catalog,
 		UserSystemRoles:   deps.bindings,
+		ReplaceUserRoles:  deps.replaceRoles,
 	})
 	systemHandlers := systemapi.NewHandlers(systemapi.HandlersDeps{
 		Status:   deps.status,
@@ -619,6 +624,26 @@ func (f *fakeUserSystemRolesExecutor) Execute(context.Context, uuid.UUID) ([]aut
 			{
 				ID:              "00000000-0000-0000-0000-000000001601",
 				UserID:          "00000000-0000-0000-0000-000000001499",
+				RoleID:          "00000000-0000-0000-0000-000000001501",
+				RoleName:        "super_admin",
+				RoleDisplayName: "Super Admin",
+				AssignedAt:      time.Date(2026, 3, 20, 1, 2, 3, 0, time.UTC),
+			},
+		}, nil
+	}
+	return append([]authorizationapp.UserSystemRoleBindingView(nil), f.result...), nil
+}
+
+type fakeReplaceUserSystemRolesExecutor struct {
+	result []authorizationapp.UserSystemRoleBindingView
+}
+
+func (f *fakeReplaceUserSystemRolesExecutor) Execute(context.Context, authorizationapp.ReplaceUserSystemRolesCommand) ([]authorizationapp.UserSystemRoleBindingView, error) {
+	if f == nil || f.result == nil {
+		return []authorizationapp.UserSystemRoleBindingView{
+			{
+				ID:              "00000000-0000-0000-0000-000000001701",
+				UserID:          "00000000-0000-0000-0000-000000001500",
 				RoleID:          "00000000-0000-0000-0000-000000001501",
 				RoleName:        "super_admin",
 				RoleDisplayName: "Super Admin",

@@ -1,6 +1,7 @@
 package apitest
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -117,6 +118,25 @@ func TestHumanControlPlaneRolesListRejectsLegacyPermissionAlias(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/roles?page=1&limit=20&type=system", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHumanControlPlaneReplaceUserSystemRolesRejectsLegacyPermissionAlias(t *testing.T) {
+	handler := newSystemHTTPHandler(t, contractDeps{permissions: []string{"role:assign:all", "role:revoke:all"}})
+	token := issueSystemTokenWithPermissions(t, "admin@example.com", []string{"role:assign:all", "role:revoke:all"})
+
+	req := httptest.NewRequest(
+		http.MethodPut,
+		"/users/00000000-0000-0000-0000-000000001500/system-roles",
+		bytes.NewBufferString(`{"role_ids":["00000000-0000-0000-0000-000000001501"]}`),
+	)
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 

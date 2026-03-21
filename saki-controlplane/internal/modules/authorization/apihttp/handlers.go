@@ -597,18 +597,9 @@ func optStringPtr(value string, ok bool) *string {
 }
 
 func requireRoleReplacementPermission(ctx context.Context) (*accessapp.Claims, error) {
-	claims, err := requireAnyPermission(ctx, "roles:write")
-	if err == nil {
-		return claims, nil
-	}
-	claims, ok := authctx.ClaimsFromContext(ctx)
-	if !ok {
-		return nil, accessapp.ErrUnauthorized
-	}
-	if slices.Contains(claims.Permissions, "role:assign:all") && slices.Contains(claims.Permissions, "role:revoke:all") {
-		return claims, nil
-	}
-	return nil, accessapp.ErrForbidden
+	// 关键设计：system role 绑定写权限已经收敛到 canonical permission `roles:write`，
+	// 不再接受历史拆分别名 `role:assign:all` / `role:revoke:all`，避免同一动作存在隐式旁路。
+	return requireAnyPermission(ctx, "roles:write")
 }
 
 func (h *Handlers) requireResourcePermission(ctx context.Context, resourceType string, rawResourceID string, permissions ...string) (uuid.UUID, error) {

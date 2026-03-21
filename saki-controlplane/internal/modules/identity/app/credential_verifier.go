@@ -23,8 +23,8 @@ func NewCredentialVerifier(hasher *PasswordHasher) *CredentialVerifier {
 }
 
 func (v *CredentialVerifier) Verify(credential identitydomain.PasswordCredential, rawPassword string) (bool, error) {
-	// 关键设计：当前 controlplane 只落地 local_password，
-	// 这样可以先把密码协议、旧哈希兼容与测试边界固定住，而不提前引入外部 provider 框架的伪抽象。
+	// 关键设计：controlplane 当前只接受 local_password + argon2id 这一条 canonical 密码协议。
+	// 旧前端预哈希方案已经退役；未来若接 OIDC 等外部 provider，应新增独立 provider 语义而不是复活历史密码别名。
 	if credential.Provider != identitydomain.CredentialProviderLocalPassword {
 		return false, ErrUnsupportedCredentialProvider
 	}
@@ -32,8 +32,6 @@ func (v *CredentialVerifier) Verify(credential identitydomain.PasswordCredential
 	switch credential.Scheme {
 	case identitydomain.PasswordSchemeArgon2id:
 		return v.hasher.Verify(rawPassword, credential.PasswordHash)
-	case identitydomain.PasswordSchemeLegacyFrontendSHA256Argon2:
-		return v.hasher.Verify(legacyFrontendPasswordDigest(rawPassword), credential.PasswordHash)
 	default:
 		return false, ErrUnsupportedCredentialScheme
 	}

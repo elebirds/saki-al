@@ -14,7 +14,6 @@ var ErrInvalidCredentials = errors.New("invalid credentials")
 
 type LoginAccountStore interface {
 	FindAccountByIdentifier(ctx context.Context, identifier string) (*AuthAccount, error)
-	UpgradePasswordCredential(ctx context.Context, params UpgradePasswordCredentialParams) error
 }
 
 type RefreshSessionIssuer interface {
@@ -26,9 +25,7 @@ type LoginUseCase struct {
 	accessTokens    AccessTokenIssuer
 	refreshSessions RefreshSessionIssuer
 	verifier        *CredentialVerifier
-	passwords       *PasswordHasher
 	accessTokenTTL  time.Duration
-	now             func() time.Time
 }
 
 func NewLoginUseCase(store LoginAccountStore, accessTokens AccessTokenIssuer, refreshSessions RefreshSessionIssuer, verifier *CredentialVerifier, accessTokenTTL time.Duration) *LoginUseCase {
@@ -40,9 +37,7 @@ func NewLoginUseCase(store LoginAccountStore, accessTokens AccessTokenIssuer, re
 		accessTokens:    accessTokens,
 		refreshSessions: refreshSessions,
 		verifier:        verifier,
-		passwords:       NewPasswordHasher(),
 		accessTokenTTL:  normalizeAccessTokenTTL(accessTokenTTL),
-		now:             time.Now,
 	}
 }
 
@@ -61,25 +56,6 @@ func (u *LoginUseCase) Execute(ctx context.Context, cmd LoginCommand) (*AuthSess
 	}
 	if credential == nil {
 		return nil, ErrInvalidCredentials
-	}
-
-	if credential.Scheme == identitydomain.PasswordSchemeLegacyFrontendSHA256Argon2 {
-		passwordHash, err := u.passwords.Hash(cmd.Password)
-		if err != nil {
-			return nil, err
-		}
-		if err := u.store.UpgradePasswordCredential(ctx, UpgradePasswordCredentialParams{
-			PrincipalID:        account.Principal.ID,
-			OldScheme:          credential.Scheme,
-			NewScheme:          identitydomain.PasswordSchemeArgon2id,
-			NewPasswordHash:    passwordHash,
-			MustChangePassword: credential.MustChangePassword,
-			PasswordChangedAt:  u.now().UTC(),
-		}); err != nil {
-			return nil, err
-		}
-		credential.Scheme = identitydomain.PasswordSchemeArgon2id
-		credential.PasswordHash = passwordHash
 	}
 
 	refresh, err := u.refreshSessions.Issue(ctx, account.Principal.ID, cmd.UserAgent, cloneAddr(cmd.IPAddress))

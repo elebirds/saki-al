@@ -7,9 +7,8 @@ import (
 )
 
 const (
-	CredentialProviderLocalPassword          = "local_password"
-	PasswordSchemeArgon2id                   = "password_argon2id"
-	PasswordSchemeLegacyFrontendSHA256Argon2 = "legacy_frontend_sha256_argon2"
+	CredentialProviderLocalPassword = "local_password"
+	PasswordSchemeArgon2id          = "password_argon2id"
 )
 
 type PasswordCredential struct {

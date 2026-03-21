@@ -2,10 +2,8 @@ package app
 
 import (
 	"crypto/rand"
-	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -65,11 +63,6 @@ func (h *PasswordHasher) Verify(password string, encoded string) (bool, error) {
 
 	actual := argon2.IDKey([]byte(password), salt, params.iterations, params.memory, params.parallelism, uint32(len(expected)))
 	return subtle.ConstantTimeCompare(actual, expected) == 1, nil
-}
-
-func legacyFrontendPasswordDigest(password string) string {
-	sum := sha256.Sum256([]byte(password))
-	return hex.EncodeToString(sum[:])
 }
 
 type parsedArgon2Params struct {

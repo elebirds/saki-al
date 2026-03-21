@@ -4,7 +4,6 @@ import (
 	"context"
 
 	sqlcdb "github.com/elebirds/saki/saki-controlplane/internal/gen/sqlc"
-	identityapp "github.com/elebirds/saki/saki-controlplane/internal/modules/identity/app"
 	identitydomain "github.com/elebirds/saki/saki-controlplane/internal/modules/identity/domain"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -48,20 +47,6 @@ func (r *CredentialRepo) DeletePasswordCredential(ctx context.Context, principal
 		PrincipalID: principalID,
 		Scheme:      scheme,
 	})
-}
-
-func (r *CredentialRepo) UpsertPasswordCredential(ctx context.Context, params identityapp.UpgradePasswordCredentialParams) (*identitydomain.PasswordCredential, error) {
-	row, err := r.q.UpsertIamPasswordCredential(ctx, sqlcdb.UpsertIamPasswordCredentialParams{
-		PrincipalID:        params.PrincipalID,
-		Scheme:             params.NewScheme,
-		PasswordHash:       params.NewPasswordHash,
-		MustChangePassword: params.MustChangePassword,
-		PasswordChangedAt:  timeValue(params.PasswordChangedAt),
-	})
-	if err != nil {
-		return nil, err
-	}
-	return mapCredential(row), nil
 }
 
 func (r *CredentialRepo) DeletePasswordCredentialsByPrincipalExcludingScheme(ctx context.Context, principalID uuid.UUID, scheme string) error {

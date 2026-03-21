@@ -59,7 +59,6 @@ func (a *AuthAccount) ActivePasswordCredential() *identitydomain.PasswordCredent
 		return nil
 	}
 
-	var legacy *identitydomain.PasswordCredential
 	for i := range a.Credentials {
 		credential := &a.Credentials[i]
 		if credential.Provider != identitydomain.CredentialProviderLocalPassword {
@@ -68,11 +67,8 @@ func (a *AuthAccount) ActivePasswordCredential() *identitydomain.PasswordCredent
 		if credential.Scheme == identitydomain.PasswordSchemeArgon2id {
 			return credential
 		}
-		if credential.Scheme == identitydomain.PasswordSchemeLegacyFrontendSHA256Argon2 && legacy == nil {
-			legacy = credential
-		}
 	}
-	return legacy
+	return nil
 }
 
 type LoginCommand struct {
@@ -86,15 +82,6 @@ type RefreshCommand struct {
 	RefreshToken string
 	UserAgent    string
 	IPAddress    *netip.Addr
-}
-
-type UpgradePasswordCredentialParams struct {
-	PrincipalID        uuid.UUID
-	OldScheme          string
-	NewScheme          string
-	NewPasswordHash    string
-	MustChangePassword bool
-	PasswordChangedAt  time.Time
 }
 
 type ChangePasswordCommand struct {

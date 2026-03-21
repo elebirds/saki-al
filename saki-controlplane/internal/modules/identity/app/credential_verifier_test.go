@@ -8,7 +8,7 @@ import (
 	identitydomain "github.com/elebirds/saki/saki-controlplane/internal/modules/identity/domain"
 )
 
-func TestCredentialVerifierSupportsArgon2idAndLegacyScheme(t *testing.T) {
+func TestCredentialVerifierSupportsArgon2idOnly(t *testing.T) {
 	hasher := NewPasswordHasher()
 	verifier := NewCredentialVerifier(hasher)
 
@@ -17,12 +17,6 @@ func TestCredentialVerifierSupportsArgon2idAndLegacyScheme(t *testing.T) {
 	currentHash, err := hasher.Hash(rawPassword)
 	if err != nil {
 		t.Fatalf("hash current password: %v", err)
-	}
-
-	legacyDigest := sha256.Sum256([]byte(rawPassword))
-	legacyHash, err := hasher.Hash(hex.EncodeToString(legacyDigest[:]))
-	if err != nil {
-		t.Fatalf("hash legacy password: %v", err)
 	}
 
 	ok, err := verifier.Verify(identitydomain.PasswordCredential{
@@ -36,18 +30,6 @@ func TestCredentialVerifierSupportsArgon2idAndLegacyScheme(t *testing.T) {
 	if !ok {
 		t.Fatal("expected current password scheme to verify")
 	}
-
-	ok, err = verifier.Verify(identitydomain.PasswordCredential{
-		Provider:     identitydomain.CredentialProviderLocalPassword,
-		Scheme:       identitydomain.PasswordSchemeLegacyFrontendSHA256Argon2,
-		PasswordHash: legacyHash,
-	}, rawPassword)
-	if err != nil {
-		t.Fatalf("verify legacy scheme: %v", err)
-	}
-	if !ok {
-		t.Fatal("expected legacy password scheme to verify with raw password input")
-	}
 }
 
 func TestCredentialVerifierRejectsUnsupportedProvider(t *testing.T) {
@@ -60,5 +42,25 @@ func TestCredentialVerifierRejectsUnsupportedProvider(t *testing.T) {
 	}, "secret")
 	if err == nil {
 		t.Fatal("expected unsupported provider to fail")
+	}
+}
+
+func TestCredentialVerifierRejectsLegacyFrontendPasswordScheme(t *testing.T) {
+	hasher := NewPasswordHasher()
+	verifier := NewCredentialVerifier(hasher)
+
+	legacyDigest := sha256.Sum256([]byte("secret"))
+	legacyHash, err := hasher.Hash(hex.EncodeToString(legacyDigest[:]))
+	if err != nil {
+		t.Fatalf("hash legacy password: %v", err)
+	}
+
+	ok, err := verifier.Verify(identitydomain.PasswordCredential{
+		Provider:     identitydomain.CredentialProviderLocalPassword,
+		Scheme:       "legacy_frontend_sha256_argon2",
+		PasswordHash: legacyHash,
+	}, "secret")
+	if err == nil || ok {
+		t.Fatalf("expected legacy frontend password scheme to be rejected, ok=%v err=%v", ok, err)
 	}
 }

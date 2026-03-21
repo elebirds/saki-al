@@ -7,9 +7,9 @@ import (
 
 	appdb "github.com/elebirds/saki/saki-controlplane/internal/app/db"
 	sqlcdb "github.com/elebirds/saki/saki-controlplane/internal/gen/sqlc"
+	authorizationdomain "github.com/elebirds/saki/saki-controlplane/internal/modules/authorization/domain"
 	identityapp "github.com/elebirds/saki/saki-controlplane/internal/modules/identity/app"
 	identitydomain "github.com/elebirds/saki/saki-controlplane/internal/modules/identity/domain"
-	authorizationdomain "github.com/elebirds/saki/saki-controlplane/internal/modules/authorization/domain"
 	systemapp "github.com/elebirds/saki/saki-controlplane/internal/modules/system/app"
 	systemdomain "github.com/elebirds/saki/saki-controlplane/internal/modules/system/domain"
 	"github.com/google/uuid"
@@ -49,25 +49,6 @@ func (r *AuthStore) FindAccountByIdentifier(ctx context.Context, identifier stri
 
 func (r *AuthStore) FindAccountByPrincipalID(ctx context.Context, principalID uuid.UUID) (*identityapp.AuthAccount, error) {
 	return r.loadAccountByPrincipalID(ctx, principalID)
-}
-
-func (r *AuthStore) UpgradePasswordCredential(ctx context.Context, params identityapp.UpgradePasswordCredentialParams) error {
-	return r.tx.InTx(ctx, func(tx pgx.Tx) error {
-		q := sqlcdb.New(tx)
-		if _, err := q.UpsertIamPasswordCredential(ctx, sqlcdb.UpsertIamPasswordCredentialParams{
-			PrincipalID:        params.PrincipalID,
-			Scheme:             params.NewScheme,
-			PasswordHash:       params.NewPasswordHash,
-			MustChangePassword: params.MustChangePassword,
-			PasswordChangedAt:  timeValue(params.PasswordChangedAt),
-		}); err != nil {
-			return err
-		}
-		return q.DeleteIamPasswordCredentialsByPrincipalExcludingScheme(ctx, sqlcdb.DeleteIamPasswordCredentialsByPrincipalExcludingSchemeParams{
-			PrincipalID: params.PrincipalID,
-			Scheme:      params.NewScheme,
-		})
-	})
 }
 
 func (r *AuthStore) ChangePassword(ctx context.Context, params identityapp.ChangePasswordParams) (*identityapp.PasswordMutationResult, error) {

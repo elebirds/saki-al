@@ -51,6 +51,11 @@ func (h *Handlers) requireResourcePermission(ctx context.Context, resourceType s
 	if err != nil {
 		return uuid.Nil, err
 	}
+	// 关键设计：空权限集合表示“只校验资源参数合法，并允许读取当前主体的能力快照”。
+	// `/auth/resource-permissions` 需要在无权限时返回空快照，而不是提前在 transport 层拦成 403。
+	if len(permissions) == 0 {
+		return resourceID, nil
+	}
 	for _, permission := range permissions {
 		if slices.Contains(effective, permission) {
 			return resourceID, nil

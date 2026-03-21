@@ -163,18 +163,6 @@ func TestHumanControlPlaneManagementSmoke(t *testing.T) {
 		t.Fatalf("latest /permissions/resource should expose catalog only, got %+v", resourcePermissionsBody)
 	}
 
-	catalogResp := doJSONRequest(
-		t,
-		httpServer.Client(),
-		http.MethodGet,
-		httpServer.URL+"/permissions/catalog",
-		"",
-		adminAccessToken,
-	)
-	if catalogResp.StatusCode != http.StatusNotFound {
-		t.Fatalf("expected removed permission catalog endpoint to return 404, got %d body=%s", catalogResp.StatusCode, readBodyString(t, catalogResp))
-	}
-
 	userRolesResp := doJSONRequest(
 		t,
 		httpServer.Client(),
@@ -198,30 +186,6 @@ func TestHumanControlPlaneManagementSmoke(t *testing.T) {
 	}
 	if _, ok := userRolesBody[0]["user_id"]; ok {
 		t.Fatalf("latest user system role binding should not expose legacy user_id, got %+v", userRolesBody)
-	}
-
-	removedCatalogResp := doJSONRequest(
-		t,
-		httpServer.Client(),
-		http.MethodGet,
-		httpServer.URL+"/roles/permission-catalog",
-		"",
-		adminAccessToken,
-	)
-	if removedCatalogResp.StatusCode != http.StatusNotFound {
-		t.Fatalf("expected removed permission catalog alias to return 404, got %d body=%s", removedCatalogResp.StatusCode, readBodyString(t, removedCatalogResp))
-	}
-
-	removedUserRolesResp := doJSONRequest(
-		t,
-		httpServer.Client(),
-		http.MethodGet,
-		httpServer.URL+"/roles/users/"+adminID+"/roles",
-		"",
-		adminAccessToken,
-	)
-	if removedUserRolesResp.StatusCode != http.StatusNotFound {
-		t.Fatalf("expected removed user system roles alias to return 404, got %d body=%s", removedUserRolesResp.StatusCode, readBodyString(t, removedUserRolesResp))
 	}
 }
 

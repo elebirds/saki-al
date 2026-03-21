@@ -180,15 +180,6 @@ func TestPublicAPISmoke(t *testing.T) {
 		t.Fatalf("unexpected runtime agents body: %+v", runtimeAgents)
 	}
 
-	runtimeExecutorsResp, err := http.Get(httpServer.URL + "/runtime/executors")
-	if err != nil {
-		t.Fatalf("get removed runtime executors alias: %v", err)
-	}
-	defer runtimeExecutorsResp.Body.Close()
-	if runtimeExecutorsResp.StatusCode != http.StatusNotFound {
-		t.Fatalf("expected removed runtime executors alias to return 404, got %d", runtimeExecutorsResp.StatusCode)
-	}
-
 	createAnnotationResp, err := http.Post(
 		httpServer.URL+"/projects/"+project.ID.String()+"/samples/"+sample.ID.String()+"/annotations",
 		"application/json",

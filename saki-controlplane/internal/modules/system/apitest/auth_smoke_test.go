@@ -45,18 +45,18 @@ func TestHumanControlPlaneAuthSmoke(t *testing.T) {
 	httpServer := httptest.NewServer(server.Handler)
 	defer httpServer.Close()
 
-	setupBody := decodeJSONResponse(t, doJSONRequest(
+	initBody := decodeJSONResponse(t, doJSONRequest(
 		t,
 		httpServer.Client(),
 		http.MethodPost,
-		httpServer.URL+"/system/setup",
+		httpServer.URL+"/system/init",
 		`{"email":"admin@example.com","password":"secret-pass","full_name":"Initial Admin"}`,
 		"",
 	))
-	adminAccessToken, _ := setupBody["access_token"].(string)
-	adminRefreshToken, _ := setupBody["refresh_token"].(string)
+	adminAccessToken, _ := initBody["access_token"].(string)
+	adminRefreshToken, _ := initBody["refresh_token"].(string)
 	if adminAccessToken == "" || adminRefreshToken == "" {
-		t.Fatalf("expected setup to return initial session, got %+v", setupBody)
+		t.Fatalf("expected init to return initial session, got %+v", initBody)
 	}
 
 	loginResp := doJSONRequest(

@@ -17,18 +17,18 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type SetupStore struct {
+type InitializeStore struct {
 	tx *appdb.TxRunner
 }
 
-var _ systemapp.SetupStore = (*SetupStore)(nil)
+var _ systemapp.InitializeSystemStore = (*InitializeStore)(nil)
 
-func NewSetupStore(pool *pgxpool.Pool) *SetupStore {
-	return &SetupStore{tx: appdb.NewTxRunner(pool)}
+func NewInitializeStore(pool *pgxpool.Pool) *InitializeStore {
+	return &InitializeStore{tx: appdb.NewTxRunner(pool)}
 }
 
-func (r *SetupStore) ExecuteInitialSetup(ctx context.Context, params systemapp.ExecuteInitialSetupParams) (*systemapp.SetupResult, error) {
-	var result *systemapp.SetupResult
+func (r *InitializeStore) InitializeSystem(ctx context.Context, params systemapp.InitializeSystemParams) (*systemapp.InitializeSystemResult, error) {
+	var result *systemapp.InitializeSystemResult
 	err := r.tx.InTx(ctx, func(tx pgx.Tx) error {
 		q := sqlcdb.New(tx)
 
@@ -82,14 +82,14 @@ func (r *SetupStore) ExecuteInitialSetup(ctx context.Context, params systemapp.E
 		installation, err := q.UpsertSystemInstallation(ctx, sqlcdb.UpsertSystemInstallationParams{
 			InstallState:       sqlcdb.SystemInstallationStateReady,
 			Metadata:           []byte(`{}`),
-			SetupAt:            timeValue(params.SetupAt),
+			SetupAt:            timeValue(params.InitializedAt),
 			SetupByPrincipalID: uuidValue(principal.ID),
 		})
 		if err != nil {
 			return err
 		}
 
-		// 关键设计：setup 结束时必须把 system setting 默认值显式落库，
+		// 关键设计：初始化结束时必须把 system setting 默认值显式落库，
 		// 后续 status/settings/import 等读路径才能统一基于 installation + setting 真值，而不是回退到多套散落默认值。
 		for _, definition := range systemapp.ListSettingDefinitions() {
 			if _, err := q.UpsertSystemSetting(ctx, sqlcdb.UpsertSystemSettingParams{
@@ -107,13 +107,13 @@ func (r *SetupStore) ExecuteInitialSetup(ctx context.Context, params systemapp.E
 			TokenHash:   params.RefreshTokenHash,
 			UserAgent:   textValue(params.UserAgent),
 			IpAddress:   cloneAddr(params.IPAddress),
-			LastSeenAt:  timeValue(params.SetupAt),
+			LastSeenAt:  timeValue(params.InitializedAt),
 			ExpiresAt:   timeValue(params.RefreshExpiresAt),
 		}); err != nil {
 			return err
 		}
 
-		result = &systemapp.SetupResult{
+		result = &systemapp.InitializeSystemResult{
 			PrincipalID: principal.ID,
 			Email:       user.Email,
 			FullName:    user.FullName.String,
@@ -127,7 +127,7 @@ func (r *SetupStore) ExecuteInitialSetup(ctx context.Context, params systemapp.E
 }
 
 func lockInstallationSlot(ctx context.Context, tx pgx.Tx) (sqlcdb.SystemInstallationState, error) {
-	// 关键设计：setup 必须先抢到 installation singleton 的事务锁，再创建首个用户与会话。
+	// 关键设计：初始化必须先抢到 installation singleton 的事务锁，再创建首个用户与会话。
 	// 否则两个并发首装请求都可能先看到“未初始化”，随后各自创建出不同的管理员主体。
 	if _, err := tx.Exec(ctx, `
 insert into system_installation (installation_key, install_state, metadata)
@@ -158,7 +158,7 @@ func ensureSuperAdminRole(ctx context.Context, q *sqlcdb.Queries) (uuid.UUID, er
 			ScopeKind:   string(authorizationdomain.RoleScopeSystem),
 			Name:        systemapp.BuiltinRoleSuperAdmin,
 			DisplayName: "Super Admin",
-			Description: textValue("Builtin bootstrap role with full control over the human control plane."),
+			Description: textValue("Builtin super admin role with full control over the human control plane."),
 			BuiltIn:     true,
 			Mutable:     false,
 			Color:       "red",
@@ -175,7 +175,7 @@ func ensureSuperAdminRole(ctx context.Context, q *sqlcdb.Queries) (uuid.UUID, er
 		ID:          role.ID,
 		ScopeKind:   string(authorizationdomain.RoleScopeSystem),
 		DisplayName: "Super Admin",
-		Description: textValue("Builtin bootstrap role with full control over the human control plane."),
+		Description: textValue("Builtin super admin role with full control over the human control plane."),
 		BuiltIn:     true,
 		Mutable:     false,
 		Color:       "red",

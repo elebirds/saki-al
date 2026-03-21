@@ -133,7 +133,7 @@ func mapError(err error) *openapi.ErrorResponseStatusCode {
 			StatusCode: http.StatusConflict,
 			Response: openapi.ErrorResponse{
 				Code:    "not_initialized",
-				Message: "system setup is required",
+				Message: "system initialization is required",
 			},
 		}
 	case errors.Is(err, systemapp.ErrInvalidSettingValue):

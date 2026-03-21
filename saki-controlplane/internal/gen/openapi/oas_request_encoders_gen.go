@@ -192,6 +192,20 @@ func encodeInitImportUploadSessionRequest(
 	return nil
 }
 
+func encodeInitializeSystemRequest(
+	req *SystemInitRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
 func encodeLinkProjectDatasetsRequest(
 	req *ProjectDatasetLinkRequest,
 	r *http.Request,
@@ -292,20 +306,6 @@ func encodeRegisterAuthUserRequest(
 
 func encodeReplaceUserSystemRolesRequest(
 	req *ReplaceUserSystemRolesRequest,
-	r *http.Request,
-) error {
-	const contentType = "application/json"
-	e := new(jx.Encoder)
-	{
-		req.Encode(e)
-	}
-	encoded := e.Bytes()
-	ht.SetBody(r, bytes.NewReader(encoded), contentType)
-	return nil
-}
-
-func encodeSetupSystemRequest(
-	req *SystemSetupRequest,
 	r *http.Request,
 ) error {
 	const contentType = "application/json"

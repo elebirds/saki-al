@@ -4112,6 +4112,43 @@ func (s *RuntimeSummaryResponse) SetLeaderEpoch(val int64) {
 	s.LeaderEpoch = val
 }
 
+// Ref: #/components/schemas/SystemInitRequest
+type SystemInitRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+	FullName string `json:"full_name"`
+}
+
+// GetEmail returns the value of Email.
+func (s *SystemInitRequest) GetEmail() string {
+	return s.Email
+}
+
+// GetPassword returns the value of Password.
+func (s *SystemInitRequest) GetPassword() string {
+	return s.Password
+}
+
+// GetFullName returns the value of FullName.
+func (s *SystemInitRequest) GetFullName() string {
+	return s.FullName
+}
+
+// SetEmail sets the value of Email.
+func (s *SystemInitRequest) SetEmail(val string) {
+	s.Email = val
+}
+
+// SetPassword sets the value of Password.
+func (s *SystemInitRequest) SetPassword(val string) {
+	s.Password = val
+}
+
+// SetFullName sets the value of FullName.
+func (s *SystemInitRequest) SetFullName(val string) {
+	s.FullName = val
+}
+
 // Ref: #/components/schemas/SystemPermissionsResponse
 type SystemPermissionsResponse struct {
 	Permissions []string `json:"permissions"`
@@ -4538,43 +4575,6 @@ func (s *SystemSettingsResponseValues) init() SystemSettingsResponseValues {
 		*s = m
 	}
 	return m
-}
-
-// Ref: #/components/schemas/SystemSetupRequest
-type SystemSetupRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-	FullName string `json:"full_name"`
-}
-
-// GetEmail returns the value of Email.
-func (s *SystemSetupRequest) GetEmail() string {
-	return s.Email
-}
-
-// GetPassword returns the value of Password.
-func (s *SystemSetupRequest) GetPassword() string {
-	return s.Password
-}
-
-// GetFullName returns the value of FullName.
-func (s *SystemSetupRequest) GetFullName() string {
-	return s.FullName
-}
-
-// SetEmail sets the value of Email.
-func (s *SystemSetupRequest) SetEmail(val string) {
-	s.Email = val
-}
-
-// SetPassword sets the value of Password.
-func (s *SystemSetupRequest) SetPassword(val string) {
-	s.Password = val
-}
-
-// SetFullName sets the value of FullName.
-func (s *SystemSetupRequest) SetFullName(val string) {
-	s.FullName = val
 }
 
 // Ref: #/components/schemas/SystemStatusResponse

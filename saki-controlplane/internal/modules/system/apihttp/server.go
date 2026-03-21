@@ -138,9 +138,11 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 			server.ServeHTTP(w, r)
 		})
 	}
-	baseHandler = withRemovedLegacyRoutes(baseHandler)
+	baseHandler = authctx.Middleware(deps.Authenticator)(baseHandler)
 
-	return authctx.Middleware(deps.Authenticator)(baseHandler), nil
+	// 关键设计：已退役路由的 404 必须先于鉴权发生。
+	// 否则旧客户端一旦带了过期/错误 token，会先收到 401，导致“路由已删除”与“鉴权失败”语义混淆。
+	return withRemovedLegacyRoutes(baseHandler), nil
 }
 
 func withRemovedLegacyRoutes(next http.Handler) http.Handler {
@@ -148,6 +150,10 @@ func withRemovedLegacyRoutes(next http.Handler) http.Handler {
 		// 关键设计：旧 alias 一旦退役，就要在 transport 层显式返回 404，
 		// 不能让它们因为动态路由碰巧落到其他 handler（例如 /roles/{role_id}）而表现成 400/501。
 		if r.Method == http.MethodGet && (r.URL.Path == "/roles/permission-catalog" || r.URL.Path == "/permissions/catalog") {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Method == http.MethodPost && r.URL.Path == "/system/setup" {
 			http.NotFound(w, r)
 			return
 		}
@@ -554,11 +560,11 @@ func (s *Server) PatchSystemSettings(ctx context.Context, req *openapi.SystemSet
 	return s.system.PatchSystemSettings(ctx, req)
 }
 
-func (s *Server) SetupSystem(ctx context.Context, req *openapi.SystemSetupRequest) (*openapi.AuthSessionResponse, error) {
+func (s *Server) InitializeSystem(ctx context.Context, req *openapi.SystemInitRequest) (*openapi.AuthSessionResponse, error) {
 	if s.system == nil {
 		return nil, ogenhttp.ErrNotImplemented
 	}
-	return s.system.SetupSystem(ctx, req)
+	return s.system.InitializeSystem(ctx, req)
 }
 
 func (s *Server) GetAsset(ctx context.Context, params openapi.GetAssetParams) (*openapi.Asset, error) {

@@ -195,20 +195,20 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 	authorizationAdminStore := authorizationrepo.NewAdminStore(pool)
 	authorizationMembershipAdminStore := authorizationrepo.NewMembershipAdminStore(pool)
 	authorizationHandlers := authorizationapi.NewHandlers(authorizationapi.HandlersDeps{
-		ListRoles:             authorizationapp.NewListRolesUseCase(authorizationRoleRepo),
-		PermissionCatalog:     authorizationapp.NewPermissionCatalogUseCase(),
-		UserSystemRoles:       authorizationapp.NewListUserSystemRolesUseCase(authorizationBindingRepo, authorizationRoleRepo),
-		CreateRole:            authorizationapp.NewCreateRoleUseCase(authorizationAdminStore),
-		GetRole:               authorizationapp.NewGetRoleUseCase(authorizationAdminStore),
-		UpdateRole:            authorizationapp.NewUpdateRoleUseCase(authorizationAdminStore),
-		DeleteRole:            authorizationapp.NewDeleteRoleUseCase(authorizationAdminStore),
-		ReplaceUserRoles:      authorizationapp.NewReplaceUserSystemRolesUseCase(authorizationAdminStore),
-		ListResourceMembers:   authorizationapp.NewListResourceMembersUseCase(authorizationMembershipAdminStore),
-		UpsertResourceMember:  authorizationapp.NewUpsertResourceMemberUseCase(authorizationMembershipAdminStore),
-		DeleteResourceMember:  authorizationapp.NewDeleteResourceMemberUseCase(authorizationMembershipAdminStore),
-		ListAssignableRoles:   authorizationapp.NewListAssignableResourceRolesUseCase(authorizationMembershipAdminStore),
+		ListRoles:                     authorizationapp.NewListRolesUseCase(authorizationRoleRepo),
+		PermissionCatalog:             authorizationapp.NewPermissionCatalogUseCase(),
+		UserSystemRoles:               authorizationapp.NewListUserSystemRolesUseCase(authorizationBindingRepo, authorizationRoleRepo),
+		CreateRole:                    authorizationapp.NewCreateRoleUseCase(authorizationAdminStore),
+		GetRole:                       authorizationapp.NewGetRoleUseCase(authorizationAdminStore),
+		UpdateRole:                    authorizationapp.NewUpdateRoleUseCase(authorizationAdminStore),
+		DeleteRole:                    authorizationapp.NewDeleteRoleUseCase(authorizationAdminStore),
+		ReplaceUserRoles:              authorizationapp.NewReplaceUserSystemRolesUseCase(authorizationAdminStore),
+		ListResourceMembers:           authorizationapp.NewListResourceMembersUseCase(authorizationMembershipAdminStore),
+		UpsertResourceMember:          authorizationapp.NewUpsertResourceMemberUseCase(authorizationMembershipAdminStore),
+		DeleteResourceMember:          authorizationapp.NewDeleteResourceMemberUseCase(authorizationMembershipAdminStore),
+		ListAssignableRoles:           authorizationapp.NewListAssignableResourceRolesUseCase(authorizationMembershipAdminStore),
 		GetCurrentResourcePermissions: authorizationapp.NewGetCurrentResourcePermissionsUseCase(authorizationMembershipAdminStore, authorizer),
-		ResolveResourceAccess: authorizationapp.NewResolveEffectiveResourcePermissionsUseCase(authorizer),
+		ResolveResourceAccess:         authorizationapp.NewResolveEffectiveResourcePermissionsUseCase(authorizer),
 	})
 	handler, err := systemapi.NewHTTPHandler(systemapi.Dependencies{
 		Authenticator:       authenticator,
@@ -267,10 +267,10 @@ func NewPublicAPI(ctx context.Context) (*http.Server, *slog.Logger, error) {
 		}),
 		Authorization: authorizationHandlers,
 		System: systemapi.NewHandlers(systemapi.HandlersDeps{
-			Status:   systemapp.NewStatusUseCase(systemapp.NewInstallationService(installationRepo), systemapp.NewSettingsService(settingRepo), cfg.BuildVersion),
-			Types:    systemapp.NewTypesUseCase(),
-			Setup:    systemapp.NewSetupUseCase(systemrepo.NewSetupStore(pool), authenticator, nil, tokenTTL),
-			Settings: systemapp.NewSettingsUseCase(systemapp.NewInstallationService(installationRepo), settingRepo),
+			Status:     systemapp.NewStatusUseCase(systemapp.NewInstallationService(installationRepo), systemapp.NewSettingsService(settingRepo), cfg.BuildVersion),
+			Types:      systemapp.NewTypesUseCase(),
+			Initialize: systemapp.NewInitializeSystemUseCase(systemrepo.NewInitializeStore(pool), authenticator, nil, tokenTTL),
+			Settings:   systemapp.NewSettingsUseCase(systemapp.NewInstallationService(installationRepo), settingRepo),
 		}),
 	})
 	if err != nil {

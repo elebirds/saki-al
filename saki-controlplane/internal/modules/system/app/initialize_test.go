@@ -9,11 +9,11 @@ import (
 	"github.com/google/uuid"
 )
 
-func TestSetupUseCaseCreatesInitialAdminSession(t *testing.T) {
+func TestInitializeSystemUseCaseCreatesInitialAdminSession(t *testing.T) {
 	now := time.Date(2026, 3, 20, 13, 30, 0, 0, time.UTC)
 	principalID := uuid.MustParse("00000000-0000-0000-0000-000000001301")
-	store := &fakeSetupStore{
-		result: &SetupResult{
+	store := &fakeInitializeSystemStore{
+		result: &InitializeSystemResult{
 			PrincipalID: principalID,
 			Email:       "admin@example.com",
 			FullName:    "Initial Admin",
@@ -24,11 +24,11 @@ func TestSetupUseCaseCreatesInitialAdminSession(t *testing.T) {
 		token: "refresh-token",
 		hash:  "refresh-hash",
 	}
-	useCase := NewSetupUseCase(store, accessTokens, refreshTokens, time.Hour)
+	useCase := NewInitializeSystemUseCase(store, accessTokens, refreshTokens, time.Hour)
 	useCase.now = func() time.Time { return now }
 
 	ip := netip.MustParseAddr("127.0.0.1")
-	session, err := useCase.Execute(t.Context(), SetupCommand{
+	session, err := useCase.Execute(t.Context(), InitializeSystemCommand{
 		Email:     "ADMIN@example.com",
 		Password:  "super-secret",
 		FullName:  "Initial Admin",
@@ -36,7 +36,7 @@ func TestSetupUseCaseCreatesInitialAdminSession(t *testing.T) {
 		IPAddress: &ip,
 	})
 	if err != nil {
-		t.Fatalf("execute setup: %v", err)
+		t.Fatalf("execute initialize system: %v", err)
 	}
 
 	if session.AccessToken != "access-token" || session.RefreshToken != "refresh-token" {
@@ -46,7 +46,7 @@ func TestSetupUseCaseCreatesInitialAdminSession(t *testing.T) {
 		t.Fatalf("unexpected access token ttl: %+v", session)
 	}
 	if session.User.PrincipalID != principalID || session.User.Email != "admin@example.com" {
-		t.Fatalf("unexpected setup user: %+v", session.User)
+		t.Fatalf("unexpected initialized user: %+v", session.User)
 	}
 	if len(accessTokens.calls) != 1 || accessTokens.calls[0] != "admin@example.com" {
 		t.Fatalf("expected access token to use persisted email, got %+v", accessTokens.calls)
@@ -69,15 +69,15 @@ func TestSetupUseCaseCreatesInitialAdminSession(t *testing.T) {
 	}
 }
 
-func TestSetupUseCasePropagatesAlreadyInitialized(t *testing.T) {
-	useCase := NewSetupUseCase(
-		&fakeSetupStore{err: ErrAlreadyInitialized},
+func TestInitializeSystemUseCasePropagatesAlreadyInitialized(t *testing.T) {
+	useCase := NewInitializeSystemUseCase(
+		&fakeInitializeSystemStore{err: ErrAlreadyInitialized},
 		&fakeAccessTokenIssuer{token: "unused"},
 		&fakeOpaqueTokenIssuer{token: "unused", hash: "unused"},
 		30*time.Minute,
 	)
 
-	_, err := useCase.Execute(t.Context(), SetupCommand{
+	_, err := useCase.Execute(t.Context(), InitializeSystemCommand{
 		Email:    "admin@example.com",
 		Password: "secret",
 		FullName: "Admin",
@@ -87,10 +87,10 @@ func TestSetupUseCasePropagatesAlreadyInitialized(t *testing.T) {
 	}
 }
 
-func TestSetupUseCaseDefaultsAccessTokenTTLToTenMinutes(t *testing.T) {
-	useCase := NewSetupUseCase(
-		&fakeSetupStore{
-			result: &SetupResult{
+func TestInitializeSystemUseCaseDefaultsAccessTokenTTLToTenMinutes(t *testing.T) {
+	useCase := NewInitializeSystemUseCase(
+		&fakeInitializeSystemStore{
+			result: &InitializeSystemResult{
 				PrincipalID: uuid.MustParse("00000000-0000-0000-0000-000000001302"),
 				Email:       "admin@example.com",
 				FullName:    "Initial Admin",
@@ -101,26 +101,26 @@ func TestSetupUseCaseDefaultsAccessTokenTTLToTenMinutes(t *testing.T) {
 		0,
 	)
 
-	session, err := useCase.Execute(t.Context(), SetupCommand{
+	session, err := useCase.Execute(t.Context(), InitializeSystemCommand{
 		Email:    "admin@example.com",
 		Password: "secret",
 		FullName: "Initial Admin",
 	})
 	if err != nil {
-		t.Fatalf("execute setup: %v", err)
+		t.Fatalf("execute initialize system: %v", err)
 	}
 	if session.ExpiresIn != int64((10 * time.Minute).Seconds()) {
 		t.Fatalf("unexpected default access ttl: %+v", session)
 	}
 }
 
-type fakeSetupStore struct {
-	result *SetupResult
+type fakeInitializeSystemStore struct {
+	result *InitializeSystemResult
 	err    error
-	calls  []ExecuteInitialSetupParams
+	calls  []InitializeSystemParams
 }
 
-func (f *fakeSetupStore) ExecuteInitialSetup(_ context.Context, params ExecuteInitialSetupParams) (*SetupResult, error) {
+func (f *fakeInitializeSystemStore) InitializeSystem(_ context.Context, params InitializeSystemParams) (*InitializeSystemResult, error) {
 	f.calls = append(f.calls, params)
 	if f.err != nil {
 		return nil, f.err

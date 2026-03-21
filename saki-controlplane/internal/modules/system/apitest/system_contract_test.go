@@ -57,9 +57,9 @@ func TestHumanControlPlaneSystemStatusContract(t *testing.T) {
 	}
 }
 
-func TestHumanControlPlaneSystemSetupContract(t *testing.T) {
+func TestHumanControlPlaneSystemInitContract(t *testing.T) {
 	handler := newSystemHTTPHandler(t, contractDeps{
-		setup: &fakeSetupExecutor{
+		initialize: &fakeInitializeSystemExecutor{
 			session: &systemapp.AuthSession{
 				AccessToken:        "access-token",
 				RefreshToken:       "refresh-token",
@@ -74,7 +74,7 @@ func TestHumanControlPlaneSystemSetupContract(t *testing.T) {
 		},
 	})
 
-	req := httptest.NewRequest(http.MethodPost, "/system/setup", bytes.NewBufferString(`{"email":"admin@example.com","password":"secret","full_name":"Initial Admin"}`))
+	req := httptest.NewRequest(http.MethodPost, "/system/init", bytes.NewBufferString(`{"email":"admin@example.com","password":"secret","full_name":"Initial Admin"}`))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -85,10 +85,37 @@ func TestHumanControlPlaneSystemSetupContract(t *testing.T) {
 
 	var body map[string]any
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatalf("decode setup body: %v", err)
+		t.Fatalf("decode init body: %v", err)
 	}
 	if body["access_token"] != "access-token" || body["refresh_token"] != "refresh-token" {
-		t.Fatalf("unexpected setup tokens: %+v", body)
+		t.Fatalf("unexpected init tokens: %+v", body)
+	}
+}
+
+func TestHumanControlPlaneRemovedSystemSetupEndpointReturns404(t *testing.T) {
+	handler := newSystemHTTPHandler(t, contractDeps{})
+
+	req := httptest.NewRequest(http.MethodPost, "/system/setup", bytes.NewBufferString(`{"email":"admin@example.com","password":"secret","full_name":"Initial Admin"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHumanControlPlaneRemovedSystemSetupEndpointReturns404WithInvalidBearer(t *testing.T) {
+	handler := newSystemHTTPHandler(t, contractDeps{})
+
+	req := httptest.NewRequest(http.MethodPost, "/system/setup", bytes.NewBufferString(`{"email":"admin@example.com","password":"secret","full_name":"Initial Admin"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer definitely-invalid")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d body=%s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -331,15 +358,15 @@ func TestHumanControlPlaneAuthMeReturnsCanonicalPermissions(t *testing.T) {
 }
 
 type contractDeps struct {
-	status      *fakeStatusExecutor
-	setup       *fakeSetupExecutor
-	settings    *fakeSettingsManager
-	users       *fakeListUsersExecutor
-	roles       *fakeListRolesExecutor
-	catalog     *fakePermissionCatalogExecutor
-	bindings    *fakeUserSystemRolesExecutor
+	status       *fakeStatusExecutor
+	initialize   *fakeInitializeSystemExecutor
+	settings     *fakeSettingsManager
+	users        *fakeListUsersExecutor
+	roles        *fakeListRolesExecutor
+	catalog      *fakePermissionCatalogExecutor
+	bindings     *fakeUserSystemRolesExecutor
 	replaceRoles *fakeReplaceUserSystemRolesExecutor
-	permissions []string
+	permissions  []string
 }
 
 func newSystemHTTPHandler(t *testing.T, deps contractDeps) http.Handler {
@@ -392,10 +419,10 @@ func newSystemHTTPHandler(t *testing.T, deps contractDeps) http.Handler {
 		ReplaceUserRoles:  deps.replaceRoles,
 	})
 	systemHandlers := systemapi.NewHandlers(systemapi.HandlersDeps{
-		Status:   deps.status,
-		Types:    &fakeTypesExecutor{},
-		Setup:    deps.setup,
-		Settings: deps.settings,
+		Status:     deps.status,
+		Types:      &fakeTypesExecutor{},
+		Initialize: deps.initialize,
+		Settings:   deps.settings,
 	})
 
 	handler, err := systemapi.NewHTTPHandler(systemapi.Dependencies{
@@ -675,11 +702,11 @@ func (fakeTypesExecutor) Execute(context.Context) (*systemapp.TypesCatalog, erro
 	}, nil
 }
 
-type fakeSetupExecutor struct {
+type fakeInitializeSystemExecutor struct {
 	session *systemapp.AuthSession
 }
 
-func (f *fakeSetupExecutor) Execute(context.Context, systemapp.SetupCommand) (*systemapp.AuthSession, error) {
+func (f *fakeInitializeSystemExecutor) Execute(context.Context, systemapp.InitializeSystemCommand) (*systemapp.AuthSession, error) {
 	if f == nil || f.session == nil {
 		return nil, nil
 	}

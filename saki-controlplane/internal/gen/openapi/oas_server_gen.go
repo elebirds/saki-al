@@ -164,6 +164,10 @@ type Handler interface {
 	//
 	// POST /imports/uploads:init
 	InitImportUploadSession(ctx context.Context, req *ImportUploadInitRequest) (*ImportUploadInitResponse, error)
+	// InitializeSystem implements initializeSystem operation.
+	//
+	// POST /system/init
+	InitializeSystem(ctx context.Context, req *SystemInitRequest) (*AuthSessionResponse, error)
 	// LinkProjectDatasets implements linkProjectDatasets operation.
 	//
 	// POST /projects/{project_id}/datasets
@@ -252,10 +256,6 @@ type Handler interface {
 	//
 	// GET /auth/permissions/{permission}
 	RequirePermission(ctx context.Context, params RequirePermissionParams) error
-	// SetupSystem implements setupSystem operation.
-	//
-	// POST /system/setup
-	SetupSystem(ctx context.Context, req *SystemSetupRequest) (*AuthSessionResponse, error)
 	// SignAssetDownload implements signAssetDownload operation.
 	//
 	// POST /assets/{asset_id}:sign-download

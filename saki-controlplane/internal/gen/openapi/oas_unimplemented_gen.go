@@ -286,6 +286,13 @@ func (UnimplementedHandler) InitImportUploadSession(ctx context.Context, req *Im
 	return r, ht.ErrNotImplemented
 }
 
+// InitializeSystem implements initializeSystem operation.
+//
+// POST /system/init
+func (UnimplementedHandler) InitializeSystem(ctx context.Context, req *SystemInitRequest) (r *AuthSessionResponse, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // LinkProjectDatasets implements linkProjectDatasets operation.
 //
 // POST /projects/{project_id}/datasets
@@ -438,13 +445,6 @@ func (UnimplementedHandler) ReplaceUserSystemRoles(ctx context.Context, req *Rep
 // GET /auth/permissions/{permission}
 func (UnimplementedHandler) RequirePermission(ctx context.Context, params RequirePermissionParams) error {
 	return ht.ErrNotImplemented
-}
-
-// SetupSystem implements setupSystem operation.
-//
-// POST /system/setup
-func (UnimplementedHandler) SetupSystem(ctx context.Context, req *SystemSetupRequest) (r *AuthSessionResponse, _ error) {
-	return r, ht.ErrNotImplemented
 }
 
 // SignAssetDownload implements signAssetDownload operation.

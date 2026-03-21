@@ -906,15 +906,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-  /system/setup:
+  /system/init:
     post:
-      operationId: setupSystem
+      operationId: initializeSystem
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/SystemSetupRequest"
+              $ref: "#/components/schemas/SystemInitRequest"
       responses:
         "200":
           description: initial admin session
@@ -2518,7 +2518,7 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/SystemTypeInfo"
-    SystemSetupRequest:
+    SystemInitRequest:
       type: object
       required:
         - email

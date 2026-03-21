@@ -46,19 +46,19 @@ func TestHumanControlPlaneManagementSmoke(t *testing.T) {
 	httpServer := httptest.NewServer(server.Handler)
 	defer httpServer.Close()
 
-	setupBody := decodeJSONResponse(t, doJSONRequest(
+	initBody := decodeJSONResponse(t, doJSONRequest(
 		t,
 		httpServer.Client(),
 		http.MethodPost,
-		httpServer.URL+"/system/setup",
+		httpServer.URL+"/system/init",
 		`{"email":"admin@example.com","password":"secret-pass","full_name":"Initial Admin"}`,
 		"",
 	))
-	adminAccessToken, _ := setupBody["access_token"].(string)
-	adminUser, _ := setupBody["user"].(map[string]any)
+	adminAccessToken, _ := initBody["access_token"].(string)
+	adminUser, _ := initBody["user"].(map[string]any)
 	adminID, _ := adminUser["principal_id"].(string)
 	if adminAccessToken == "" || adminID == "" {
-		t.Fatalf("expected setup to return admin session and principal id, got %+v", setupBody)
+		t.Fatalf("expected init to return admin session and principal id, got %+v", initBody)
 	}
 
 	usersResp := doJSONRequest(
@@ -251,17 +251,17 @@ func TestHumanControlPlaneManagementWriteSmoke(t *testing.T) {
 	httpServer := httptest.NewServer(server.Handler)
 	defer httpServer.Close()
 
-	setupBody := decodeJSONResponse(t, doJSONRequest(
+	initBody := decodeJSONResponse(t, doJSONRequest(
 		t,
 		httpServer.Client(),
 		http.MethodPost,
-		httpServer.URL+"/system/setup",
+		httpServer.URL+"/system/init",
 		`{"email":"admin@example.com","password":"secret-pass","full_name":"Initial Admin"}`,
 		"",
 	))
-	adminAccessToken, _ := setupBody["access_token"].(string)
+	adminAccessToken, _ := initBody["access_token"].(string)
 	if adminAccessToken == "" {
-		t.Fatalf("expected setup to return admin session, got %+v", setupBody)
+		t.Fatalf("expected init to return admin session, got %+v", initBody)
 	}
 
 	createRoleResp := doJSONRequest(

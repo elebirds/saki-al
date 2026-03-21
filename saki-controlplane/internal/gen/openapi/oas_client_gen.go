@@ -183,6 +183,10 @@ type Invoker interface {
 	//
 	// POST /imports/uploads:init
 	InitImportUploadSession(ctx context.Context, request *ImportUploadInitRequest) (*ImportUploadInitResponse, error)
+	// InitializeSystem invokes initializeSystem operation.
+	//
+	// POST /system/init
+	InitializeSystem(ctx context.Context, request *SystemInitRequest) (*AuthSessionResponse, error)
 	// LinkProjectDatasets invokes linkProjectDatasets operation.
 	//
 	// POST /projects/{project_id}/datasets
@@ -271,10 +275,6 @@ type Invoker interface {
 	//
 	// GET /auth/permissions/{permission}
 	RequirePermission(ctx context.Context, params RequirePermissionParams) error
-	// SetupSystem invokes setupSystem operation.
-	//
-	// POST /system/setup
-	SetupSystem(ctx context.Context, request *SystemSetupRequest) (*AuthSessionResponse, error)
 	// SignAssetDownload invokes signAssetDownload operation.
 	//
 	// POST /assets/{asset_id}:sign-download
@@ -3746,6 +3746,81 @@ func (c *Client) sendInitImportUploadSession(ctx context.Context, request *Impor
 	return result, nil
 }
 
+// InitializeSystem invokes initializeSystem operation.
+//
+// POST /system/init
+func (c *Client) InitializeSystem(ctx context.Context, request *SystemInitRequest) (*AuthSessionResponse, error) {
+	res, err := c.sendInitializeSystem(ctx, request)
+	return res, err
+}
+
+func (c *Client) sendInitializeSystem(ctx context.Context, request *SystemInitRequest) (res *AuthSessionResponse, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("initializeSystem"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/system/init"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, InitializeSystemOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/system/init"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeInitializeSystemRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeInitializeSystemResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // LinkProjectDatasets invokes linkProjectDatasets operation.
 //
 // POST /projects/{project_id}/datasets
@@ -5760,81 +5835,6 @@ func (c *Client) sendRequirePermission(ctx context.Context, params RequirePermis
 
 	stage = "DecodeResponse"
 	result, err := decodeRequirePermissionResponse(resp)
-	if err != nil {
-		return res, errors.Wrap(err, "decode response")
-	}
-
-	return result, nil
-}
-
-// SetupSystem invokes setupSystem operation.
-//
-// POST /system/setup
-func (c *Client) SetupSystem(ctx context.Context, request *SystemSetupRequest) (*AuthSessionResponse, error) {
-	res, err := c.sendSetupSystem(ctx, request)
-	return res, err
-}
-
-func (c *Client) sendSetupSystem(ctx context.Context, request *SystemSetupRequest) (res *AuthSessionResponse, err error) {
-	otelAttrs := []attribute.KeyValue{
-		otelogen.OperationID("setupSystem"),
-		semconv.HTTPRequestMethodKey.String("POST"),
-		semconv.URLTemplateKey.String("/system/setup"),
-	}
-	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
-
-	// Run stopwatch.
-	startTime := time.Now()
-	defer func() {
-		// Use floating point division here for higher precision (instead of Millisecond method).
-		elapsedDuration := time.Since(startTime)
-		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
-	}()
-
-	// Increment request counter.
-	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
-
-	// Start a span for this request.
-	ctx, span := c.cfg.Tracer.Start(ctx, SetupSystemOperation,
-		trace.WithAttributes(otelAttrs...),
-		clientSpanKind,
-	)
-	// Track stage for error reporting.
-	var stage string
-	defer func() {
-		if err != nil {
-			span.RecordError(err)
-			span.SetStatus(codes.Error, stage)
-			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
-		}
-		span.End()
-	}()
-
-	stage = "BuildURL"
-	u := uri.Clone(c.requestURL(ctx))
-	var pathParts [1]string
-	pathParts[0] = "/system/setup"
-	uri.AddPathParts(u, pathParts[:]...)
-
-	stage = "EncodeRequest"
-	r, err := ht.NewRequest(ctx, "POST", u)
-	if err != nil {
-		return res, errors.Wrap(err, "create request")
-	}
-	if err := encodeSetupSystemRequest(request, r); err != nil {
-		return res, errors.Wrap(err, "encode request")
-	}
-
-	stage = "SendRequest"
-	resp, err := c.cfg.Client.Do(r)
-	if err != nil {
-		return res, errors.Wrap(err, "do request")
-	}
-	body := resp.Body
-	defer body.Close()
-
-	stage = "DecodeResponse"
-	result, err := decodeSetupSystemResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}

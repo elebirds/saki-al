@@ -58,25 +58,25 @@ func TestHumanControlPlaneSystemSmoke(t *testing.T) {
 		t.Fatalf("unexpected initial status: %+v", statusBody)
 	}
 
-	setupResp := doJSONRequest(
+	initResp := doJSONRequest(
 		t,
 		httpServer.Client(),
 		http.MethodPost,
-		httpServer.URL+"/system/setup",
+		httpServer.URL+"/system/init",
 		`{"email":"admin@example.com","password":"secret-pass","full_name":"Initial Admin"}`,
 		"",
 	)
-	if setupResp.StatusCode != http.StatusOK {
-		t.Fatalf("unexpected setup status: %d body=%s", setupResp.StatusCode, readBodyString(t, setupResp))
+	if initResp.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected init status: %d body=%s", initResp.StatusCode, readBodyString(t, initResp))
 	}
-	setupBody := decodeJSONResponse(t, setupResp)
-	accessToken, _ := setupBody["access_token"].(string)
-	refreshToken, _ := setupBody["refresh_token"].(string)
+	initBody := decodeJSONResponse(t, initResp)
+	accessToken, _ := initBody["access_token"].(string)
+	refreshToken, _ := initBody["refresh_token"].(string)
 	if accessToken == "" || refreshToken == "" {
-		t.Fatalf("expected setup to return initial session: %+v", setupBody)
+		t.Fatalf("expected init to return initial session: %+v", initBody)
 	}
-	if setupBody["expires_in"] != float64(600) {
-		t.Fatalf("expected default access ttl to be 600s, got %+v", setupBody)
+	if initBody["expires_in"] != float64(600) {
+		t.Fatalf("expected default access ttl to be 600s, got %+v", initBody)
 	}
 
 	passwordlessLogin := doJSONRequest(
@@ -91,16 +91,16 @@ func TestHumanControlPlaneSystemSmoke(t *testing.T) {
 		t.Fatalf("expected passwordless login payload to be rejected, got %d body=%s", passwordlessLogin.StatusCode, readBodyString(t, passwordlessLogin))
 	}
 
-	secondSetup := doJSONRequest(
+	secondInit := doJSONRequest(
 		t,
 		httpServer.Client(),
 		http.MethodPost,
-		httpServer.URL+"/system/setup",
+		httpServer.URL+"/system/init",
 		`{"email":"admin@example.com","password":"secret-pass","full_name":"Initial Admin"}`,
 		"",
 	)
-	if secondSetup.StatusCode != http.StatusConflict {
-		t.Fatalf("expected repeated setup to conflict, got %d body=%s", secondSetup.StatusCode, readBodyString(t, secondSetup))
+	if secondInit.StatusCode != http.StatusConflict {
+		t.Fatalf("expected repeated init to conflict, got %d body=%s", secondInit.StatusCode, readBodyString(t, secondInit))
 	}
 
 	settingsBody := decodeJSONResponse(t, doJSONRequest(t, httpServer.Client(), http.MethodGet, httpServer.URL+"/system/settings", "", accessToken))
@@ -199,7 +199,7 @@ func TestHumanControlPlaneSetupAllowsSingleWinnerUnderConcurrency(t *testing.T) 
 			defer wg.Done()
 			<-start
 
-			resp, err := httpServer.Client().Post(httpServer.URL+"/system/setup", "application/json", bytes.NewBufferString(payload))
+			resp, err := httpServer.Client().Post(httpServer.URL+"/system/init", "application/json", bytes.NewBufferString(payload))
 			if err != nil {
 				results[idx].err = err
 				return
@@ -220,13 +220,13 @@ func TestHumanControlPlaneSetupAllowsSingleWinnerUnderConcurrency(t *testing.T) 
 	statuses := make([]int, 0, len(results))
 	for _, each := range results {
 		if each.err != nil {
-			t.Fatalf("concurrent setup request failed: %v", each.err)
+			t.Fatalf("concurrent init request failed: %v", each.err)
 		}
 		statuses = append(statuses, each.status)
 	}
 	slices.Sort(statuses)
 	if !slices.Equal(statuses, []int{http.StatusOK, http.StatusConflict}) {
-		t.Fatalf("unexpected concurrent setup statuses: %+v results=%+v", statuses, results)
+		t.Fatalf("unexpected concurrent init statuses: %+v results=%+v", statuses, results)
 	}
 
 	var userCount int

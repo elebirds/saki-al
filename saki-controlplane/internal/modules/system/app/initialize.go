@@ -24,7 +24,7 @@ type OpaqueTokenIssuer interface {
 	IssueOpaqueToken() (token string, tokenHash string, err error)
 }
 
-type SetupCommand struct {
+type InitializeSystemCommand struct {
 	Email     string
 	Password  string
 	FullName  string
@@ -32,18 +32,18 @@ type SetupCommand struct {
 	IPAddress *netip.Addr
 }
 
-type ExecuteInitialSetupParams struct {
+type InitializeSystemParams struct {
 	Email            string
 	FullName         string
 	PasswordHash     string
 	RefreshTokenHash string
 	UserAgent        string
 	IPAddress        *netip.Addr
-	SetupAt          time.Time
+	InitializedAt    time.Time
 	RefreshExpiresAt time.Time
 }
 
-type SetupResult struct {
+type InitializeSystemResult struct {
 	PrincipalID uuid.UUID
 	Email       string
 	FullName    string
@@ -63,12 +63,12 @@ type AuthSession struct {
 	User               SessionUser
 }
 
-type SetupStore interface {
-	ExecuteInitialSetup(ctx context.Context, params ExecuteInitialSetupParams) (*SetupResult, error)
+type InitializeSystemStore interface {
+	InitializeSystem(ctx context.Context, params InitializeSystemParams) (*InitializeSystemResult, error)
 }
 
-type SetupUseCase struct {
-	store             SetupStore
+type InitializeSystemUseCase struct {
+	store             InitializeSystemStore
 	accessTokens      AccessTokenIssuer
 	refreshTokens     OpaqueTokenIssuer
 	passwords         *identityapp.PasswordHasher
@@ -77,14 +77,14 @@ type SetupUseCase struct {
 	refreshSessionTTL time.Duration
 }
 
-func NewSetupUseCase(store SetupStore, accessTokens AccessTokenIssuer, refreshTokens OpaqueTokenIssuer, accessTokenTTL time.Duration) *SetupUseCase {
+func NewInitializeSystemUseCase(store InitializeSystemStore, accessTokens AccessTokenIssuer, refreshTokens OpaqueTokenIssuer, accessTokenTTL time.Duration) *InitializeSystemUseCase {
 	if refreshTokens == nil {
 		refreshTokens = identityapp.NewTokenIssuer()
 	}
 	if accessTokenTTL <= 0 {
 		accessTokenTTL = 10 * time.Minute
 	}
-	return &SetupUseCase{
+	return &InitializeSystemUseCase{
 		store:             store,
 		accessTokens:      accessTokens,
 		refreshTokens:     refreshTokens,
@@ -95,10 +95,10 @@ func NewSetupUseCase(store SetupStore, accessTokens AccessTokenIssuer, refreshTo
 	}
 }
 
-// 关键设计：setup 的持久化事务只负责把“系统已安装”这件事一次性写实：
+// 关键设计：初始化事务只负责把“系统已安装”这件事一次性写实：
 // 角色、首个主体、密码凭据、默认设置与首个 refresh session 一起提交。
 // access token 是可重建的短效签名结果，因此放在事务提交后签发，避免把纯派生值混入事务写路径。
-func (u *SetupUseCase) Execute(ctx context.Context, cmd SetupCommand) (*AuthSession, error) {
+func (u *InitializeSystemUseCase) Execute(ctx context.Context, cmd InitializeSystemCommand) (*AuthSession, error) {
 	passwordHash, err := u.passwords.Hash(cmd.Password)
 	if err != nil {
 		return nil, err
@@ -109,14 +109,14 @@ func (u *SetupUseCase) Execute(ctx context.Context, cmd SetupCommand) (*AuthSess
 	}
 
 	now := u.now().UTC()
-	result, err := u.store.ExecuteInitialSetup(ctx, ExecuteInitialSetupParams{
+	result, err := u.store.InitializeSystem(ctx, InitializeSystemParams{
 		Email:            cmd.Email,
 		FullName:         cmd.FullName,
 		PasswordHash:     passwordHash,
 		RefreshTokenHash: refreshTokenHash,
 		UserAgent:        cmd.UserAgent,
 		IPAddress:        cloneAddr(cmd.IPAddress),
-		SetupAt:          now,
+		InitializedAt:    now,
 		RefreshExpiresAt: now.Add(u.refreshSessionTTL),
 	})
 	if err != nil {

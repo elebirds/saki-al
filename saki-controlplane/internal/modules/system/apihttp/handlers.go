@@ -20,8 +20,8 @@ type TypesExecutor interface {
 	Execute(ctx context.Context) (*systemapp.TypesCatalog, error)
 }
 
-type SetupExecutor interface {
-	Execute(ctx context.Context, cmd systemapp.SetupCommand) (*systemapp.AuthSession, error)
+type InitializeSystemExecutor interface {
+	Execute(ctx context.Context, cmd systemapp.InitializeSystemCommand) (*systemapp.AuthSession, error)
 }
 
 type SettingsManager interface {
@@ -30,25 +30,25 @@ type SettingsManager interface {
 }
 
 type HandlersDeps struct {
-	Status   StatusExecutor
-	Types    TypesExecutor
-	Setup    SetupExecutor
-	Settings SettingsManager
+	Status     StatusExecutor
+	Types      TypesExecutor
+	Initialize InitializeSystemExecutor
+	Settings   SettingsManager
 }
 
 type Handlers struct {
-	status   StatusExecutor
-	types    TypesExecutor
-	setup    SetupExecutor
-	settings SettingsManager
+	status     StatusExecutor
+	types      TypesExecutor
+	initialize InitializeSystemExecutor
+	settings   SettingsManager
 }
 
 func NewHandlers(deps HandlersDeps) *Handlers {
 	return &Handlers{
-		status:   deps.Status,
-		types:    deps.Types,
-		setup:    deps.Setup,
-		settings: deps.Settings,
+		status:     deps.Status,
+		types:      deps.Types,
+		initialize: deps.Initialize,
+		settings:   deps.Settings,
 	}
 }
 
@@ -89,11 +89,11 @@ func (h *Handlers) GetSystemTypes(ctx context.Context) (*openapi.SystemTypesResp
 	return response, nil
 }
 
-func (h *Handlers) SetupSystem(ctx context.Context, req *openapi.SystemSetupRequest) (*openapi.AuthSessionResponse, error) {
-	if h == nil || h.setup == nil {
+func (h *Handlers) InitializeSystem(ctx context.Context, req *openapi.SystemInitRequest) (*openapi.AuthSessionResponse, error) {
+	if h == nil || h.initialize == nil {
 		return nil, ogenhttp.ErrNotImplemented
 	}
-	session, err := h.setup.Execute(ctx, systemapp.SetupCommand{
+	session, err := h.initialize.Execute(ctx, systemapp.InitializeSystemCommand{
 		Email:    req.GetEmail(),
 		Password: req.GetPassword(),
 		FullName: req.GetFullName(),

@@ -45,25 +45,25 @@ func TestHumanControlPlaneResourceMembersSmoke(t *testing.T) {
 	httpServer := httptest.NewServer(server.Handler)
 	defer httpServer.Close()
 
-	setupBody := decodeJSONResponse(t, doJSONRequest(
+	initBody := decodeJSONResponse(t, doJSONRequest(
 		t,
 		httpServer.Client(),
 		http.MethodPost,
-		httpServer.URL+"/system/setup",
+		httpServer.URL+"/system/init",
 		`{"email":"admin@example.com","password":"secret-pass","full_name":"Initial Admin"}`,
 		"",
 	))
-	adminAccessToken, _ := setupBody["access_token"].(string)
+	adminAccessToken, _ := initBody["access_token"].(string)
 	if adminAccessToken == "" {
-		t.Fatalf("expected setup to return admin session, got %+v", setupBody)
+		t.Fatalf("expected init to return admin session, got %+v", initBody)
 	}
-	adminUser, ok := setupBody["user"].(map[string]any)
+	adminUser, ok := initBody["user"].(map[string]any)
 	if !ok {
-		t.Fatalf("expected setup user payload, got %+v", setupBody)
+		t.Fatalf("expected init user payload, got %+v", initBody)
 	}
 	adminPrincipalID, _ := adminUser["principal_id"].(string)
 	if adminPrincipalID == "" {
-		t.Fatalf("expected admin principal id, got %+v", setupBody)
+		t.Fatalf("expected admin principal id, got %+v", initBody)
 	}
 
 	createUserBody := decodeJSONResponse(t, doJSONRequest(

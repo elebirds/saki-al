@@ -15,10 +15,10 @@ type InstallationStore interface {
 }
 
 type UpsertInstallationParams struct {
-	InstallState       systemdomain.InstallationState
-	Metadata           json.RawMessage
-	SetupAt            *time.Time
-	SetupByPrincipalID *uuid.UUID
+	InitializationState      systemdomain.InitializationState
+	Metadata                 json.RawMessage
+	InitializedAt            *time.Time
+	InitializedByPrincipalID *uuid.UUID
 }
 
 type InstallationService struct {
@@ -35,8 +35,8 @@ func (s *InstallationService) Get(ctx context.Context) (*systemdomain.Installati
 
 func (s *InstallationService) Upsert(ctx context.Context, params UpsertInstallationParams) (*systemdomain.Installation, error) {
 	params.Metadata = normalizeInstallationMetadata(params.Metadata)
-	params.SetupAt = cloneTimePtr(params.SetupAt)
-	params.SetupByPrincipalID = cloneUUIDPtr(params.SetupByPrincipalID)
+	params.InitializedAt = cloneTimePtr(params.InitializedAt)
+	params.InitializedByPrincipalID = cloneUUIDPtr(params.InitializedByPrincipalID)
 	return s.store.UpsertInstallation(ctx, params)
 }
 

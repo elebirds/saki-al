@@ -11,7 +11,6 @@ import (
 	identityapp "github.com/elebirds/saki/saki-controlplane/internal/modules/identity/app"
 	identitydomain "github.com/elebirds/saki/saki-controlplane/internal/modules/identity/domain"
 	systemapp "github.com/elebirds/saki/saki-controlplane/internal/modules/system/app"
-	systemdomain "github.com/elebirds/saki/saki-controlplane/internal/modules/system/domain"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -118,7 +117,7 @@ func (r *AuthStore) Register(ctx context.Context, params identityapp.RegisterPar
 			}
 			return err
 		}
-		if systemdomain.InstallationState(installation.InstallState) != systemdomain.InstallationStateReady {
+		if installation.InstallState != sqlcdb.SystemInstallationStateReady {
 			return systemapp.ErrNotInitialized
 		}
 

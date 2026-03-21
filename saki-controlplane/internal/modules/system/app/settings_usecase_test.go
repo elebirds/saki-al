@@ -23,8 +23,8 @@ func TestSettingsUseCaseGetBundleMergesSchemaDefaultsAndStoredValues(t *testing.
 	useCase := NewSettingsUseCase(
 		fakeSettingsInstallationGetter{
 			current: &systemdomain.Installation{
-				ID:           installationID,
-				InstallState: systemdomain.InstallationStateReady,
+				ID:                  installationID,
+				InitializationState: systemdomain.InitializationStateInitialized,
 			},
 		},
 		store,
@@ -52,8 +52,8 @@ func TestSettingsUseCasePatchValidatesAndPersistsNormalizedValues(t *testing.T) 
 	useCase := NewSettingsUseCase(
 		fakeSettingsInstallationGetter{
 			current: &systemdomain.Installation{
-				ID:           installationID,
-				InstallState: systemdomain.InstallationStateReady,
+				ID:                  installationID,
+				InitializationState: systemdomain.InitializationStateInitialized,
 			},
 		},
 		store,
@@ -84,8 +84,8 @@ func TestSettingsUseCasePatchRejectsUnknownKey(t *testing.T) {
 	useCase := NewSettingsUseCase(
 		fakeSettingsInstallationGetter{
 			current: &systemdomain.Installation{
-				ID:           installationID,
-				InstallState: systemdomain.InstallationStateReady,
+				ID:                  installationID,
+				InitializationState: systemdomain.InitializationStateInitialized,
 			},
 		},
 		store,
@@ -116,8 +116,8 @@ func TestSettingsUseCaseGetBundleIgnoresUnknownStoredKeys(t *testing.T) {
 	useCase := NewSettingsUseCase(
 		fakeSettingsInstallationGetter{
 			current: &systemdomain.Installation{
-				ID:           installationID,
-				InstallState: systemdomain.InstallationStateReady,
+				ID:                  installationID,
+				InitializationState: systemdomain.InitializationStateInitialized,
 			},
 		},
 		store,

@@ -80,7 +80,7 @@ func (u *SettingsUseCase) Patch(ctx context.Context, values map[string]json.RawM
 	if err != nil {
 		return nil, err
 	}
-	if installation == nil || installation.InstallState != systemdomain.InstallationStateReady {
+	if installation == nil || installation.InitializationState != systemdomain.InitializationStateInitialized {
 		return nil, ErrNotInitialized
 	}
 

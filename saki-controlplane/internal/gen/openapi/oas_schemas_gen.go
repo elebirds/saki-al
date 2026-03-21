@@ -4579,14 +4579,14 @@ func (s *SystemSettingsResponseValues) init() SystemSettingsResponseValues {
 
 // Ref: #/components/schemas/SystemStatusResponse
 type SystemStatusResponse struct {
-	InstallState      string `json:"install_state"`
-	AllowSelfRegister bool   `json:"allow_self_register"`
-	Version           string `json:"version"`
+	InitializationState SystemStatusResponseInitializationState `json:"initialization_state"`
+	AllowSelfRegister   bool                                    `json:"allow_self_register"`
+	Version             string                                  `json:"version"`
 }
 
-// GetInstallState returns the value of InstallState.
-func (s *SystemStatusResponse) GetInstallState() string {
-	return s.InstallState
+// GetInitializationState returns the value of InitializationState.
+func (s *SystemStatusResponse) GetInitializationState() SystemStatusResponseInitializationState {
+	return s.InitializationState
 }
 
 // GetAllowSelfRegister returns the value of AllowSelfRegister.
@@ -4599,9 +4599,9 @@ func (s *SystemStatusResponse) GetVersion() string {
 	return s.Version
 }
 
-// SetInstallState sets the value of InstallState.
-func (s *SystemStatusResponse) SetInstallState(val string) {
-	s.InstallState = val
+// SetInitializationState sets the value of InitializationState.
+func (s *SystemStatusResponse) SetInitializationState(val SystemStatusResponseInitializationState) {
+	s.InitializationState = val
 }
 
 // SetAllowSelfRegister sets the value of AllowSelfRegister.
@@ -4612,6 +4612,47 @@ func (s *SystemStatusResponse) SetAllowSelfRegister(val bool) {
 // SetVersion sets the value of Version.
 func (s *SystemStatusResponse) SetVersion(val string) {
 	s.Version = val
+}
+
+type SystemStatusResponseInitializationState string
+
+const (
+	SystemStatusResponseInitializationStateUninitialized SystemStatusResponseInitializationState = "uninitialized"
+	SystemStatusResponseInitializationStateInitialized   SystemStatusResponseInitializationState = "initialized"
+)
+
+// AllValues returns all SystemStatusResponseInitializationState values.
+func (SystemStatusResponseInitializationState) AllValues() []SystemStatusResponseInitializationState {
+	return []SystemStatusResponseInitializationState{
+		SystemStatusResponseInitializationStateUninitialized,
+		SystemStatusResponseInitializationStateInitialized,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s SystemStatusResponseInitializationState) MarshalText() ([]byte, error) {
+	switch s {
+	case SystemStatusResponseInitializationStateUninitialized:
+		return []byte(s), nil
+	case SystemStatusResponseInitializationStateInitialized:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *SystemStatusResponseInitializationState) UnmarshalText(data []byte) error {
+	switch SystemStatusResponseInitializationState(data) {
+	case SystemStatusResponseInitializationStateUninitialized:
+		*s = SystemStatusResponseInitializationStateUninitialized
+		return nil
+	case SystemStatusResponseInitializationStateInitialized:
+		*s = SystemStatusResponseInitializationStateInitialized
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
 }
 
 // Ref: #/components/schemas/SystemTypeInfo

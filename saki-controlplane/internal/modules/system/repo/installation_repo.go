@@ -42,10 +42,10 @@ func (r *InstallationRepo) UpsertInstallation(ctx context.Context, params system
 		metadata = json.RawMessage(`{}`)
 	}
 	row, err := r.q.UpsertSystemInstallation(ctx, sqlcdb.UpsertSystemInstallationParams{
-		InstallState:       sqlcdb.SystemInstallationState(params.InstallState),
+		InstallState:       mapDomainInitializationStateToRepo(params.InitializationState),
 		Metadata:           append([]byte(nil), metadata...),
-		SetupAt:            toRepoTime(params.SetupAt),
-		SetupByPrincipalID: toRepoUUID(params.SetupByPrincipalID),
+		SetupAt:            toRepoTime(params.InitializedAt),
+		SetupByPrincipalID: toRepoUUID(params.InitializedByPrincipalID),
 	})
 	if err != nil {
 		return nil, err
@@ -55,14 +55,34 @@ func (r *InstallationRepo) UpsertInstallation(ctx context.Context, params system
 
 func mapInstallation(row sqlcdb.SystemInstallation) *systemdomain.Installation {
 	return &systemdomain.Installation{
-		ID:                 row.ID,
-		InstallationKey:    row.InstallationKey,
-		InstallState:       systemdomain.InstallationState(row.InstallState),
-		Metadata:           append(json.RawMessage(nil), row.Metadata...),
-		SetupAt:            fromRepoTime(row.SetupAt),
-		SetupByPrincipalID: fromRepoUUID(row.SetupByPrincipalID),
-		CreatedAt:          row.CreatedAt.Time,
-		UpdatedAt:          row.UpdatedAt.Time,
+		ID:                       row.ID,
+		InstallationKey:          row.InstallationKey,
+		InitializationState:      mapRepoInitializationStateToDomain(row.InstallState),
+		Metadata:                 append(json.RawMessage(nil), row.Metadata...),
+		InitializedAt:            fromRepoTime(row.SetupAt),
+		InitializedByPrincipalID: fromRepoUUID(row.SetupByPrincipalID),
+		CreatedAt:                row.CreatedAt.Time,
+		UpdatedAt:                row.UpdatedAt.Time,
+	}
+}
+
+func mapDomainInitializationStateToRepo(value systemdomain.InitializationState) sqlcdb.SystemInstallationState {
+	switch value {
+	case systemdomain.InitializationStateInitialized:
+		return sqlcdb.SystemInstallationStateReady
+	default:
+		return sqlcdb.SystemInstallationStateUninitialized
+	}
+}
+
+func mapRepoInitializationStateToDomain(value sqlcdb.SystemInstallationState) systemdomain.InitializationState {
+	// 关键设计：公开与应用层已经切到 initialization 语义，
+	// 但数据库迁移尚未进行，所以这里继续把旧库值 `ready` 映射成新的 `initialized`。
+	switch value {
+	case sqlcdb.SystemInstallationStateReady:
+		return systemdomain.InitializationStateInitialized
+	default:
+		return systemdomain.InitializationStateUninitialized
 	}
 }
 

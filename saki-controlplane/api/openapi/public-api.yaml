@@ -2460,12 +2460,15 @@ components:
     SystemStatusResponse:
       type: object
       required:
-        - install_state
+        - initialization_state
         - allow_self_register
         - version
       properties:
-        install_state:
+        initialization_state:
           type: string
+          enum:
+            - uninitialized
+            - initialized
         allow_self_register:
           type: boolean
         version:

@@ -12178,8 +12178,8 @@ func (s *SystemStatusResponse) Encode(e *jx.Encoder) {
 // encodeFields encodes fields.
 func (s *SystemStatusResponse) encodeFields(e *jx.Encoder) {
 	{
-		e.FieldStart("install_state")
-		e.Str(s.InstallState)
+		e.FieldStart("initialization_state")
+		s.InitializationState.Encode(e)
 	}
 	{
 		e.FieldStart("allow_self_register")
@@ -12192,7 +12192,7 @@ func (s *SystemStatusResponse) encodeFields(e *jx.Encoder) {
 }
 
 var jsonFieldsNameOfSystemStatusResponse = [3]string{
-	0: "install_state",
+	0: "initialization_state",
 	1: "allow_self_register",
 	2: "version",
 }
@@ -12206,17 +12206,15 @@ func (s *SystemStatusResponse) Decode(d *jx.Decoder) error {
 
 	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
 		switch string(k) {
-		case "install_state":
+		case "initialization_state":
 			requiredBitSet[0] |= 1 << 0
 			if err := func() error {
-				v, err := d.Str()
-				s.InstallState = string(v)
-				if err != nil {
+				if err := s.InitializationState.Decode(d); err != nil {
 					return err
 				}
 				return nil
 			}(); err != nil {
-				return errors.Wrap(err, "decode field \"install_state\"")
+				return errors.Wrap(err, "decode field \"initialization_state\"")
 			}
 		case "allow_self_register":
 			requiredBitSet[0] |= 1 << 1
@@ -12294,6 +12292,46 @@ func (s *SystemStatusResponse) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
 func (s *SystemStatusResponse) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes SystemStatusResponseInitializationState as json.
+func (s SystemStatusResponseInitializationState) Encode(e *jx.Encoder) {
+	e.Str(string(s))
+}
+
+// Decode decodes SystemStatusResponseInitializationState from json.
+func (s *SystemStatusResponseInitializationState) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode SystemStatusResponseInitializationState to nil")
+	}
+	v, err := d.StrBytes()
+	if err != nil {
+		return err
+	}
+	// Try to use constant string.
+	switch SystemStatusResponseInitializationState(v) {
+	case SystemStatusResponseInitializationStateUninitialized:
+		*s = SystemStatusResponseInitializationStateUninitialized
+	case SystemStatusResponseInitializationStateInitialized:
+		*s = SystemStatusResponseInitializationStateInitialized
+	default:
+		*s = SystemStatusResponseInitializationState(v)
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s SystemStatusResponseInitializationState) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *SystemStatusResponseInitializationState) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }

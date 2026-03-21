@@ -1175,6 +1175,40 @@ func (s SystemSettingsResponseValues) Validate() error {
 	return nil
 }
 
+func (s *SystemStatusResponse) Validate() error {
+	if s == nil {
+		return validate.ErrNilPointer
+	}
+
+	var failures []validate.FieldError
+	if err := func() error {
+		if err := s.InitializationState.Validate(); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		failures = append(failures, validate.FieldError{
+			Name:  "initialization_state",
+			Error: err,
+		})
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+	return nil
+}
+
+func (s SystemStatusResponseInitializationState) Validate() error {
+	switch s {
+	case "uninitialized":
+		return nil
+	case "initialized":
+		return nil
+	default:
+		return errors.Errorf("invalid value: %v", s)
+	}
+}
+
 func (s *SystemTypeInfo) Validate() error {
 	if s == nil {
 		return validate.ErrNilPointer

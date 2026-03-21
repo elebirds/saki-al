@@ -54,8 +54,11 @@ func TestHumanControlPlaneSystemSmoke(t *testing.T) {
 	defer httpServer.Close()
 
 	statusBody := decodeJSONResponse(t, doJSONRequest(t, httpServer.Client(), http.MethodGet, httpServer.URL+"/system/status", "", ""))
-	if statusBody["install_state"] != "uninitialized" || statusBody["allow_self_register"] != false || statusBody["version"] != "smoke-build" {
+	if statusBody["initialization_state"] != "uninitialized" || statusBody["allow_self_register"] != false || statusBody["version"] != "smoke-build" {
 		t.Fatalf("unexpected initial status: %+v", statusBody)
+	}
+	if _, ok := statusBody["install_state"]; ok {
+		t.Fatalf("latest status response should not expose legacy install_state, got %+v", statusBody)
 	}
 
 	initResp := doJSONRequest(
@@ -135,8 +138,11 @@ func TestHumanControlPlaneSystemSmoke(t *testing.T) {
 	}
 
 	finalStatus := decodeJSONResponse(t, doJSONRequest(t, httpServer.Client(), http.MethodGet, httpServer.URL+"/system/status", "", ""))
-	if finalStatus["install_state"] != "ready" || finalStatus["allow_self_register"] != true {
+	if finalStatus["initialization_state"] != "initialized" || finalStatus["allow_self_register"] != true {
 		t.Fatalf("unexpected final status: %+v", finalStatus)
+	}
+	if _, ok := finalStatus["install_state"]; ok {
+		t.Fatalf("latest status response should not expose legacy install_state, got %+v", finalStatus)
 	}
 
 	typesBody := decodeJSONResponse(t, doJSONRequest(t, httpServer.Client(), http.MethodGet, httpServer.URL+"/system/types", "", ""))

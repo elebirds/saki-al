@@ -21,8 +21,8 @@ func TestStatusUseCaseDefaultsToUninitializedWhenInstallationMissing(t *testing.
 		t.Fatalf("execute status: %v", err)
 	}
 
-	if status.InstallState != systemdomain.InstallationStateUninitialized {
-		t.Fatalf("unexpected install state: %+v", status)
+	if status.InitializationState != systemdomain.InitializationStateUninitialized {
+		t.Fatalf("unexpected initialization state: %+v", status)
 	}
 	if status.AllowSelfRegister {
 		t.Fatalf("expected self register disabled by default: %+v", status)
@@ -37,9 +37,9 @@ func TestStatusUseCaseReadsAllowSelfRegisterFromSettings(t *testing.T) {
 	useCase := NewStatusUseCase(
 		fakeStatusInstallationGetter{
 			current: &systemdomain.Installation{
-				ID:           installationID,
-				InstallState: systemdomain.InstallationStateReady,
-				Metadata:     json.RawMessage(`{}`),
+				ID:                  installationID,
+				InitializationState: systemdomain.InitializationStateInitialized,
+				Metadata:            json.RawMessage(`{}`),
 			},
 		},
 		&fakeStatusSettingReader{
@@ -55,8 +55,8 @@ func TestStatusUseCaseReadsAllowSelfRegisterFromSettings(t *testing.T) {
 		t.Fatalf("execute status: %v", err)
 	}
 
-	if status.InstallState != systemdomain.InstallationStateReady {
-		t.Fatalf("unexpected install state: %+v", status)
+	if status.InitializationState != systemdomain.InitializationStateInitialized {
+		t.Fatalf("unexpected initialization state: %+v", status)
 	}
 	if !status.AllowSelfRegister {
 		t.Fatalf("expected self register to be loaded from settings: %+v", status)

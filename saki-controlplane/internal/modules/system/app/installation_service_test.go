@@ -17,13 +17,13 @@ func TestInstallationServiceGetsCurrentInstallation(t *testing.T) {
 	setupBy := uuid.MustParse("00000000-0000-0000-0000-000000000702")
 	store := &fakeInstallationStore{
 		current: &systemdomain.Installation{
-			ID:                 installationID,
-			InstallState:       systemdomain.InstallationStateReady,
-			Metadata:           json.RawMessage(`{"source":"test"}`),
-			SetupAt:            &now,
-			SetupByPrincipalID: &setupBy,
-			CreatedAt:          now,
-			UpdatedAt:          now,
+			ID:                       installationID,
+			InitializationState:      systemdomain.InitializationStateInitialized,
+			Metadata:                 json.RawMessage(`{"source":"test"}`),
+			InitializedAt:            &now,
+			InitializedByPrincipalID: &setupBy,
+			CreatedAt:                now,
+			UpdatedAt:                now,
 		},
 	}
 
@@ -36,14 +36,14 @@ func TestInstallationServiceGetsCurrentInstallation(t *testing.T) {
 	if got == nil {
 		t.Fatal("expected installation")
 	}
-	if got.InstallState != systemdomain.InstallationStateReady {
-		t.Fatalf("unexpected install state: %+v", got)
+	if got.InitializationState != systemdomain.InitializationStateInitialized {
+		t.Fatalf("unexpected initialization state: %+v", got)
 	}
-	if got.SetupAt == nil || !got.SetupAt.Equal(now) {
-		t.Fatalf("unexpected setup time: %+v", got)
+	if got.InitializedAt == nil || !got.InitializedAt.Equal(now) {
+		t.Fatalf("unexpected initialized time: %+v", got)
 	}
-	if got.SetupByPrincipalID == nil || *got.SetupByPrincipalID != setupBy {
-		t.Fatalf("unexpected setup principal: %+v", got)
+	if got.InitializedByPrincipalID == nil || *got.InitializedByPrincipalID != setupBy {
+		t.Fatalf("unexpected initialized principal: %+v", got)
 	}
 	if string(got.Metadata) != `{"source":"test"}` {
 		t.Fatalf("unexpected metadata: %s", got.Metadata)
@@ -57,10 +57,10 @@ func TestInstallationServiceUpsertsInstallation(t *testing.T) {
 	service := NewInstallationService(store)
 
 	updated, err := service.Upsert(context.Background(), UpsertInstallationParams{
-		InstallState:       systemdomain.InstallationStateReady,
-		Metadata:           json.RawMessage(`{"allow_self_register":true}`),
-		SetupAt:            &now,
-		SetupByPrincipalID: &setupBy,
+		InitializationState:      systemdomain.InitializationStateInitialized,
+		Metadata:                 json.RawMessage(`{"allow_self_register":true}`),
+		InitializedAt:            &now,
+		InitializedByPrincipalID: &setupBy,
 	})
 	if err != nil {
 		t.Fatalf("upsert installation: %v", err)
@@ -70,14 +70,14 @@ func TestInstallationServiceUpsertsInstallation(t *testing.T) {
 		t.Fatalf("expected one upsert, got %d", len(store.upserts))
 	}
 	recorded := store.upserts[0]
-	if recorded.InstallState != systemdomain.InstallationStateReady {
-		t.Fatalf("unexpected recorded install state: %+v", recorded)
+	if recorded.InitializationState != systemdomain.InitializationStateInitialized {
+		t.Fatalf("unexpected recorded initialization state: %+v", recorded)
 	}
-	if recorded.SetupAt == nil || !recorded.SetupAt.Equal(now) {
-		t.Fatalf("unexpected recorded setup time: %+v", recorded)
+	if recorded.InitializedAt == nil || !recorded.InitializedAt.Equal(now) {
+		t.Fatalf("unexpected recorded initialized time: %+v", recorded)
 	}
-	if recorded.SetupByPrincipalID == nil || *recorded.SetupByPrincipalID != setupBy {
-		t.Fatalf("unexpected recorded setup principal: %+v", recorded)
+	if recorded.InitializedByPrincipalID == nil || *recorded.InitializedByPrincipalID != setupBy {
+		t.Fatalf("unexpected recorded initialized principal: %+v", recorded)
 	}
 	if string(recorded.Metadata) != `{"allow_self_register":true}` {
 		t.Fatalf("unexpected recorded metadata: %s", recorded.Metadata)
@@ -96,7 +96,7 @@ func TestInstallationServiceDefaultsNilMetadataToEmptyObject(t *testing.T) {
 	service := NewInstallationService(store)
 
 	updated, err := service.Upsert(context.Background(), UpsertInstallationParams{
-		InstallState: systemdomain.InstallationStateUninitialized,
+		InitializationState: systemdomain.InitializationStateUninitialized,
 	})
 	if err != nil {
 		t.Fatalf("upsert installation with nil metadata: %v", err)
@@ -120,10 +120,10 @@ func TestInstallationServiceClonesPointerInputs(t *testing.T) {
 	service := NewInstallationService(store)
 
 	params := UpsertInstallationParams{
-		InstallState:       systemdomain.InstallationStateReady,
-		Metadata:           json.RawMessage(`{"mode":"safe"}`),
-		SetupAt:            &now,
-		SetupByPrincipalID: &setupBy,
+		InitializationState:      systemdomain.InitializationStateInitialized,
+		Metadata:                 json.RawMessage(`{"mode":"safe"}`),
+		InitializedAt:            &now,
+		InitializedByPrincipalID: &setupBy,
 	}
 
 	updated, err := service.Upsert(context.Background(), params)
@@ -135,17 +135,17 @@ func TestInstallationServiceClonesPointerInputs(t *testing.T) {
 	setupBy = uuid.MustParse("00000000-0000-0000-0000-000000000706")
 
 	recorded := store.upserts[0]
-	if recorded.SetupAt == nil || recorded.SetupAt.Hour() != 16 {
-		t.Fatalf("expected stored setup time to stay isolated, got %+v", recorded.SetupAt)
+	if recorded.InitializedAt == nil || recorded.InitializedAt.Hour() != 16 {
+		t.Fatalf("expected stored initialized time to stay isolated, got %+v", recorded.InitializedAt)
 	}
-	if recorded.SetupByPrincipalID == nil || *recorded.SetupByPrincipalID == setupBy {
-		t.Fatalf("expected stored setup principal to stay isolated, got %+v", recorded.SetupByPrincipalID)
+	if recorded.InitializedByPrincipalID == nil || *recorded.InitializedByPrincipalID == setupBy {
+		t.Fatalf("expected stored initialized principal to stay isolated, got %+v", recorded.InitializedByPrincipalID)
 	}
-	if updated == nil || updated.SetupAt == nil || updated.SetupAt.Hour() != 16 {
-		t.Fatalf("expected returned setup time to stay isolated, got %+v", updated)
+	if updated == nil || updated.InitializedAt == nil || updated.InitializedAt.Hour() != 16 {
+		t.Fatalf("expected returned initialized time to stay isolated, got %+v", updated)
 	}
-	if updated.SetupByPrincipalID == nil || *updated.SetupByPrincipalID == setupBy {
-		t.Fatalf("expected returned setup principal to stay isolated, got %+v", updated.SetupByPrincipalID)
+	if updated.InitializedByPrincipalID == nil || *updated.InitializedByPrincipalID == setupBy {
+		t.Fatalf("expected returned initialized principal to stay isolated, got %+v", updated.InitializedByPrincipalID)
 	}
 }
 
@@ -163,13 +163,13 @@ func (s *fakeInstallationStore) UpsertInstallation(_ context.Context, params Ups
 
 	now := time.Date(2026, 3, 20, 15, 0, 0, 0, time.UTC)
 	s.current = &systemdomain.Installation{
-		ID:                 uuid.MustParse("00000000-0000-0000-0000-000000000704"),
-		InstallState:       params.InstallState,
-		Metadata:           append(json.RawMessage(nil), params.Metadata...),
-		SetupAt:            cloneTime(params.SetupAt),
-		SetupByPrincipalID: cloneUUID(params.SetupByPrincipalID),
-		CreatedAt:          now,
-		UpdatedAt:          now,
+		ID:                       uuid.MustParse("00000000-0000-0000-0000-000000000704"),
+		InitializationState:      params.InitializationState,
+		Metadata:                 append(json.RawMessage(nil), params.Metadata...),
+		InitializedAt:            cloneTime(params.InitializedAt),
+		InitializedByPrincipalID: cloneUUID(params.InitializedByPrincipalID),
+		CreatedAt:                now,
+		UpdatedAt:                now,
 	}
 	return cloneInstallation(s.current), nil
 }
@@ -180,15 +180,15 @@ func cloneInstallation(value *systemdomain.Installation) *systemdomain.Installat
 	}
 	copy := *value
 	copy.Metadata = append(json.RawMessage(nil), value.Metadata...)
-	copy.SetupAt = cloneTime(value.SetupAt)
-	copy.SetupByPrincipalID = cloneUUID(value.SetupByPrincipalID)
+	copy.InitializedAt = cloneTime(value.InitializedAt)
+	copy.InitializedByPrincipalID = cloneUUID(value.InitializedByPrincipalID)
 	return &copy
 }
 
 func cloneUpsertInstallationParams(value UpsertInstallationParams) UpsertInstallationParams {
 	value.Metadata = append(json.RawMessage(nil), value.Metadata...)
-	value.SetupAt = cloneTime(value.SetupAt)
-	value.SetupByPrincipalID = cloneUUID(value.SetupByPrincipalID)
+	value.InitializedAt = cloneTime(value.InitializedAt)
+	value.InitializedByPrincipalID = cloneUUID(value.InitializedByPrincipalID)
 	return value
 }
 

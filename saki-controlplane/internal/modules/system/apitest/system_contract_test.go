@@ -33,9 +33,9 @@ func TestHumanControlPlaneSystemStatusContract(t *testing.T) {
 	handler := newSystemHTTPHandler(t, contractDeps{
 		status: &fakeStatusExecutor{
 			status: &systemapp.Status{
-				InstallState:      systemdomain.InstallationStateUninitialized,
-				AllowSelfRegister: false,
-				Version:           "test-build",
+				InitializationState: systemdomain.InitializationStateUninitialized,
+				AllowSelfRegister:   false,
+				Version:             "test-build",
 			},
 		},
 	})
@@ -52,8 +52,11 @@ func TestHumanControlPlaneSystemStatusContract(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode status body: %v", err)
 	}
-	if body["install_state"] != "uninitialized" || body["allow_self_register"] != false || body["version"] != "test-build" {
+	if body["initialization_state"] != "uninitialized" || body["allow_self_register"] != false || body["version"] != "test-build" {
 		t.Fatalf("unexpected status body: %+v", body)
+	}
+	if _, ok := body["install_state"]; ok {
+		t.Fatalf("latest status response should not expose legacy install_state, got %+v", body)
 	}
 }
 

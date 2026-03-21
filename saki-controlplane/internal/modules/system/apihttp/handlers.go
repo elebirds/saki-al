@@ -9,6 +9,7 @@ import (
 	openapi "github.com/elebirds/saki/saki-controlplane/internal/gen/openapi"
 	accessapp "github.com/elebirds/saki/saki-controlplane/internal/modules/access/app"
 	systemapp "github.com/elebirds/saki/saki-controlplane/internal/modules/system/app"
+	systemdomain "github.com/elebirds/saki/saki-controlplane/internal/modules/system/domain"
 	ogenhttp "github.com/ogen-go/ogen/http"
 )
 
@@ -61,10 +62,21 @@ func (h *Handlers) GetSystemStatus(ctx context.Context) (*openapi.SystemStatusRe
 		return nil, err
 	}
 	return &openapi.SystemStatusResponse{
-		InstallState:      string(status.InstallState),
-		AllowSelfRegister: status.AllowSelfRegister,
-		Version:           status.Version,
+		InitializationState: mapInitializationState(status.InitializationState),
+		AllowSelfRegister:   status.AllowSelfRegister,
+		Version:             status.Version,
 	}, nil
+}
+
+func mapInitializationState(value systemdomain.InitializationState) openapi.SystemStatusResponseInitializationState {
+	// 关键设计：公开 API 只暴露 initialization 语义，
+	// 这样 `/system/status` 与 `/system/init` 使用同一套词汇，不再把旧 install/setup 词汇继续外泄给客户端。
+	switch value {
+	case systemdomain.InitializationStateInitialized:
+		return openapi.SystemStatusResponseInitializationStateInitialized
+	default:
+		return openapi.SystemStatusResponseInitializationStateUninitialized
+	}
 }
 
 func (h *Handlers) GetSystemTypes(ctx context.Context) (*openapi.SystemTypesResponse, error) {

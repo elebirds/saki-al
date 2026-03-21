@@ -18,9 +18,9 @@ type SettingBoolReader interface {
 }
 
 type Status struct {
-	InstallState      systemdomain.InstallationState
-	AllowSelfRegister bool
-	Version           string
+	InitializationState systemdomain.InitializationState
+	AllowSelfRegister   bool
+	Version             string
 }
 
 type StatusUseCase struct {
@@ -44,16 +44,16 @@ func (u *StatusUseCase) Execute(ctx context.Context) (*Status, error) {
 	}
 
 	status := &Status{
-		InstallState: systemdomain.InstallationStateUninitialized,
-		Version:      u.version,
+		InitializationState: systemdomain.InitializationStateUninitialized,
+		Version:             u.version,
 	}
 	if installation == nil {
 		return status, nil
 	}
 
-	status.InstallState = installation.InstallState
-	if status.InstallState == "" {
-		status.InstallState = systemdomain.InstallationStateUninitialized
+	status.InitializationState = installation.InitializationState
+	if status.InitializationState == "" {
+		status.InitializationState = systemdomain.InitializationStateUninitialized
 	}
 	status.AllowSelfRegister, err = u.settings.GetBool(ctx, installation.ID, SettingKeyAuthAllowSelfRegister, false)
 	if err != nil {

@@ -1,8 +1,6 @@
 package apihttp
 
 import (
-	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 
@@ -177,11 +175,4 @@ func mapError(err error) *openapi.ErrorResponseStatusCode {
 			},
 		}
 	}
-}
-
-func writeMappedError(_ context.Context, w http.ResponseWriter, _ *http.Request, err error) {
-	mapped := mapError(err)
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(mapped.StatusCode)
-	_ = json.NewEncoder(w).Encode(mapped.Response)
 }

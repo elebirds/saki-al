@@ -81,7 +81,7 @@ func (h *Handlers) InitImportUploadSession(ctx context.Context, req *openapi.Imp
 	if err := h.requireEnabled(); err != nil {
 		return nil, err
 	}
-	userID, err := currentUserID(ctx)
+	principalID, err := currentPrincipalID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +94,7 @@ func (h *Handlers) InitImportUploadSession(ctx context.Context, req *openapi.Imp
 
 	objectKey := buildUploadObjectKey(req.GetFilename())
 	session, err := h.uploads.Init(ctx, importrepo.InitUploadSessionParams{
-		UserID:      userID,
+		UserID:      principalID,
 		Mode:        req.GetMode(),
 		FileName:    req.GetFilename(),
 		ObjectKey:   objectKey,
@@ -280,7 +280,7 @@ func (h *Handlers) ExecuteProjectAnnotationImport(ctx context.Context, req *open
 	if err != nil {
 		return nil, badRequest("invalid dataset_id")
 	}
-	userID, err := currentUserID(ctx)
+	principalID, err := currentPrincipalID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -289,7 +289,7 @@ func (h *Handlers) ExecuteProjectAnnotationImport(ctx context.Context, req *open
 		ProjectID:    projectID,
 		DatasetID:    datasetID,
 		PreviewToken: req.GetPreviewToken(),
-		UserID:       userID,
+		UserID:       principalID,
 	})
 	if err != nil {
 		if err == importapp.ErrBlockingPreviewManifest {
@@ -351,7 +351,7 @@ func (h *Handlers) loadOwnedUploadSession(ctx context.Context, rawSessionID stri
 	if err != nil {
 		return nil, badRequest("invalid session_id")
 	}
-	userID, err := currentUserID(ctx)
+	principalID, err := currentPrincipalID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -362,7 +362,7 @@ func (h *Handlers) loadOwnedUploadSession(ctx context.Context, rawSessionID stri
 	if session == nil {
 		return nil, notFound("upload session not found")
 	}
-	if session.UserID != userID {
+	if session.UserID != principalID {
 		return nil, forbidden("upload session does not belong to current user")
 	}
 	return session, nil
@@ -373,7 +373,7 @@ func (h *Handlers) loadOwnedTask(ctx context.Context, rawTaskID string) (*import
 	if err != nil {
 		return nil, badRequest("invalid task_id")
 	}
-	userID, err := currentUserID(ctx)
+	principalID, err := currentPrincipalID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -384,22 +384,23 @@ func (h *Handlers) loadOwnedTask(ctx context.Context, rawTaskID string) (*import
 	if task == nil {
 		return nil, notFound("import task not found")
 	}
-	if task.UserID != userID {
+	if task.UserID != principalID {
 		return nil, forbidden("import task does not belong to current user")
 	}
 	return task, nil
 }
 
-func currentUserID(ctx context.Context) (uuid.UUID, error) {
+func currentPrincipalID(ctx context.Context) (uuid.UUID, error) {
 	claims, ok := authctx.ClaimsFromContext(ctx)
 	if !ok {
 		return uuid.Nil, unauthorized("authentication required")
 	}
-	userID, err := uuid.Parse(claims.UserID)
-	if err != nil {
-		return uuid.Nil, badRequest("import endpoints require UUID user id")
+	if claims.PrincipalID == uuid.Nil {
+		// 关键设计：导入上传/任务归属统一绑定到主体 UUID，
+		// 不再依赖 claims 里“可能是 email、也可能是旧 user_id”的字符串标识。
+		return uuid.Nil, unauthorized("missing principal identity")
 	}
-	return userID, nil
+	return claims.PrincipalID, nil
 }
 
 func toOpenAPIIssues(issues []importapp.PrepareIssue) []openapi.ImportIssue {

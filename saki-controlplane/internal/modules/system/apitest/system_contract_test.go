@@ -354,17 +354,17 @@ func newSystemHTTPHandler(t *testing.T, deps contractDeps) http.Handler {
 	}
 
 	claimsStore := &fakeClaimsStore{
-		byUserID: map[string]*accessapp.ClaimsSnapshot{
+		byIdentifier: map[string]*accessapp.ClaimsSnapshot{
 			"admin@example.com": {
 				PrincipalID: uuid.MustParse("00000000-0000-0000-0000-000000001499"),
-				UserID:      "admin@example.com",
+				Identifier:  "admin@example.com",
 				Permissions: append([]string(nil), permissions...),
 			},
 		},
 		byPrincipalID: map[uuid.UUID]*accessapp.ClaimsSnapshot{},
 	}
 	authenticator := accessapp.NewAuthenticator("test-secret", time.Hour).WithStore(claimsStore)
-	for _, snapshot := range claimsStore.byUserID {
+	for _, snapshot := range claimsStore.byIdentifier {
 		copy := *snapshot
 		claimsStore.byPrincipalID[copy.PrincipalID] = &copy
 	}
@@ -431,16 +431,16 @@ func issueSystemTokenWithPermissions(t *testing.T, userID string, permissions []
 	t.Helper()
 
 	store := &fakeClaimsStore{
-		byUserID: map[string]*accessapp.ClaimsSnapshot{
+		byIdentifier: map[string]*accessapp.ClaimsSnapshot{
 			userID: {
 				PrincipalID: uuid.MustParse("00000000-0000-0000-0000-000000001499"),
-				UserID:      userID,
+				Identifier:  userID,
 				Permissions: append([]string(nil), permissions...),
 			},
 		},
 		byPrincipalID: map[uuid.UUID]*accessapp.ClaimsSnapshot{},
 	}
-	for _, snapshot := range store.byUserID {
+	for _, snapshot := range store.byIdentifier {
 		copy := *snapshot
 		store.byPrincipalID[copy.PrincipalID] = &copy
 	}
@@ -457,15 +457,15 @@ func defaultContractPermissions() []string {
 }
 
 type fakeClaimsStore struct {
-	byUserID      map[string]*accessapp.ClaimsSnapshot
+	byIdentifier  map[string]*accessapp.ClaimsSnapshot
 	byPrincipalID map[uuid.UUID]*accessapp.ClaimsSnapshot
 }
 
-func (f *fakeClaimsStore) LoadClaimsByUserID(_ context.Context, userID string) (*accessapp.ClaimsSnapshot, error) {
+func (f *fakeClaimsStore) LoadClaimsByIdentifier(_ context.Context, identifier string) (*accessapp.ClaimsSnapshot, error) {
 	if f.byPrincipalID == nil {
 		f.byPrincipalID = map[uuid.UUID]*accessapp.ClaimsSnapshot{}
 	}
-	snapshot := f.byUserID[userID]
+	snapshot := f.byIdentifier[identifier]
 	if snapshot == nil {
 		return nil, nil
 	}

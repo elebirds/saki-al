@@ -454,7 +454,7 @@ func (fakeAnnotationStore) ListByProjectSample(context.Context, uuid.UUID, uuid.
 
 type fakeAccessStore struct{}
 
-func (fakeAccessStore) LoadClaimsByUserID(context.Context, string) (*accessapp.ClaimsSnapshot, error) {
+func (fakeAccessStore) LoadClaimsByIdentifier(context.Context, string) (*accessapp.ClaimsSnapshot, error) {
 	return nil, nil
 }
 

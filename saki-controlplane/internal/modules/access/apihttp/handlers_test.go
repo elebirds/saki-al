@@ -45,10 +45,10 @@ func TestMiddlewareReloadsClaimsThroughAggregateLoader(t *testing.T) {
 	}
 
 	token := issueAccessToken(t, authenticator, "user-2")
-	principalID := store.claimsByUserID["user-2"].PrincipalID
+	principalID := store.claimsByIdentifier["user-2"].PrincipalID
 	store.claimsByPrincipalID[principalID] = &accessapp.ClaimsSnapshot{
 		PrincipalID: principalID,
-		UserID:      "user-2",
+		Identifier:  "user-2",
 		Permissions: []string{"projects:write"},
 	}
 
@@ -73,7 +73,7 @@ func TestMiddlewareRejectsDisabledPrincipal(t *testing.T) {
 	}
 
 	token := issueAccessToken(t, authenticator, "user-2")
-	principalID := store.claimsByUserID["user-2"].PrincipalID
+	principalID := store.claimsByIdentifier["user-2"].PrincipalID
 	store.loadByPrincipalErr[principalID] = accessapp.ErrUnauthorized
 
 	req := httptest.NewRequest(http.MethodGet, "/auth/permissions/projects:read", nil)
@@ -112,10 +112,10 @@ func TestPermissionDeniedReturnsForbidden(t *testing.T) {
 	}
 }
 
-func issueAccessToken(t *testing.T, authenticator *accessapp.Authenticator, userID string) string {
+func issueAccessToken(t *testing.T, authenticator *accessapp.Authenticator, identifier string) string {
 	t.Helper()
 
-	token, err := authenticator.IssueTokenContext(context.Background(), userID)
+	token, err := authenticator.IssueTokenContext(context.Background(), identifier)
 	if err != nil {
 		t.Fatalf("issue token: %v", err)
 	}
@@ -170,61 +170,61 @@ func (fakeAnnotationStore) ListByProjectSample(context.Context, uuid.UUID, uuid.
 }
 
 type fakeAccessStore struct {
-	claimsByUserID         map[string]*accessapp.ClaimsSnapshot
+	claimsByIdentifier     map[string]*accessapp.ClaimsSnapshot
 	claimsByPrincipalID    map[uuid.UUID]*accessapp.ClaimsSnapshot
-	loadByUserIDErr        map[string]error
+	loadByIdentifierErr    map[string]error
 	loadByPrincipalErr     map[uuid.UUID]error
-	loadByUserIDCalls      int
+	loadByIdentifierCalls  int
 	loadByPrincipalIDCalls int
 }
 
 func newFakeAccessStore() *fakeAccessStore {
 	return &fakeAccessStore{
-		claimsByUserID: map[string]*accessapp.ClaimsSnapshot{
+		claimsByIdentifier: map[string]*accessapp.ClaimsSnapshot{
 			"user-1": {
 				PrincipalID: uuid.MustParse("00000000-0000-0000-0000-000000000101"),
-				UserID:      "user-1",
+				Identifier:  "user-1",
 				Permissions: []string{"projects:read"},
 			},
 			"user-2": {
 				PrincipalID: uuid.MustParse("00000000-0000-0000-0000-000000000102"),
-				UserID:      "user-2",
+				Identifier:  "user-2",
 				Permissions: []string{"projects:read"},
 			},
 			"user-3": {
 				PrincipalID: uuid.MustParse("00000000-0000-0000-0000-000000000103"),
-				UserID:      "user-3",
+				Identifier:  "user-3",
 				Permissions: []string{"projects:read"},
 			},
 		},
 		claimsByPrincipalID: map[uuid.UUID]*accessapp.ClaimsSnapshot{
 			uuid.MustParse("00000000-0000-0000-0000-000000000101"): {
 				PrincipalID: uuid.MustParse("00000000-0000-0000-0000-000000000101"),
-				UserID:      "user-1",
+				Identifier:  "user-1",
 				Permissions: []string{"projects:read"},
 			},
 			uuid.MustParse("00000000-0000-0000-0000-000000000102"): {
 				PrincipalID: uuid.MustParse("00000000-0000-0000-0000-000000000102"),
-				UserID:      "user-2",
+				Identifier:  "user-2",
 				Permissions: []string{"projects:read"},
 			},
 			uuid.MustParse("00000000-0000-0000-0000-000000000103"): {
 				PrincipalID: uuid.MustParse("00000000-0000-0000-0000-000000000103"),
-				UserID:      "user-3",
+				Identifier:  "user-3",
 				Permissions: []string{"projects:read"},
 			},
 		},
-		loadByUserIDErr:    map[string]error{},
+		loadByIdentifierErr: map[string]error{},
 		loadByPrincipalErr: map[uuid.UUID]error{},
 	}
 }
 
-func (s *fakeAccessStore) LoadClaimsByUserID(_ context.Context, userID string) (*accessapp.ClaimsSnapshot, error) {
-	s.loadByUserIDCalls++
-	if err := s.loadByUserIDErr[userID]; err != nil {
+func (s *fakeAccessStore) LoadClaimsByIdentifier(_ context.Context, identifier string) (*accessapp.ClaimsSnapshot, error) {
+	s.loadByIdentifierCalls++
+	if err := s.loadByIdentifierErr[identifier]; err != nil {
 		return nil, err
 	}
-	return cloneAccessClaims(s.claimsByUserID[userID]), nil
+	return cloneAccessClaims(s.claimsByIdentifier[identifier]), nil
 }
 
 func (s *fakeAccessStore) LoadClaimsByPrincipalID(_ context.Context, principalID uuid.UUID) (*accessapp.ClaimsSnapshot, error) {

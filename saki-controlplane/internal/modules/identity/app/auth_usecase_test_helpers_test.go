@@ -16,8 +16,8 @@ type fakeIdentityAccessTokenIssuer struct {
 	permissions []string
 }
 
-func (f *fakeIdentityAccessTokenIssuer) IssueTokenContext(_ context.Context, userID string) (string, error) {
-	f.calls = append(f.calls, userID)
+func (f *fakeIdentityAccessTokenIssuer) IssueTokenContext(_ context.Context, identifier string) (string, error) {
+	f.calls = append(f.calls, identifier)
 	if f.err != nil {
 		return "", f.err
 	}
@@ -29,7 +29,7 @@ func (f *fakeIdentityAccessTokenIssuer) ParseToken(token string) (*accessapp.Cla
 		return nil, f.err
 	}
 	return &accessapp.Claims{
-		UserID:      token,
+		Identifier:  token,
 		Permissions: append([]string(nil), f.permissions...),
 	}, nil
 }

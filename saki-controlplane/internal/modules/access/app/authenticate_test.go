@@ -21,7 +21,7 @@ func TestIssueTokenRejectsUnknownPrincipal(t *testing.T) {
 
 func TestIssueTokenRejectsDisabledPrincipal(t *testing.T) {
 	authenticator := NewAuthenticator("test-secret", time.Hour).WithStore(&fakeStore{
-		loadByUserIDErr: map[string]error{
+		loadByIdentifierErr: map[string]error{
 			"disabled-user": ErrUnauthorized,
 		},
 	})
@@ -35,10 +35,10 @@ func TestIssueTokenRejectsDisabledPrincipal(t *testing.T) {
 func TestIssueTokenUsesAggregateClaimsLoader(t *testing.T) {
 	principalID := uuid.MustParse("00000000-0000-0000-0000-000000000222")
 	store := &fakeStore{
-		claimsByUserID: map[string]*ClaimsSnapshot{
+		claimsByIdentifier: map[string]*ClaimsSnapshot{
 			"user-1": {
 				PrincipalID: principalID,
-				UserID:      "user-1",
+				Identifier:  "user-1",
 				Permissions: []string{"imports:read", "projects:read"},
 			},
 		},
@@ -58,15 +58,15 @@ func TestIssueTokenUsesAggregateClaimsLoader(t *testing.T) {
 	if claims.PrincipalID != principalID {
 		t.Fatalf("expected principal id %s, got %+v", principalID, claims)
 	}
-	if claims.UserID != "user-1" {
+	if claims.Identifier != "user-1" {
 		t.Fatalf("expected user-1 claims, got %+v", claims)
 	}
 	expected := []string{"imports:read", "projects:read"}
 	if !slices.Equal(claims.Permissions, expected) {
 		t.Fatalf("expected aggregate-loaded permissions %v, got %+v", expected, claims)
 	}
-	if store.loadByUserIDCalls != 1 {
-		t.Fatalf("expected one aggregate user lookup, got %d", store.loadByUserIDCalls)
+	if store.loadByIdentifierCalls != 1 {
+		t.Fatalf("expected one aggregate identifier lookup, got %d", store.loadByIdentifierCalls)
 	}
 	if store.loadByPrincipalCalls != 0 {
 		t.Fatalf("expected no principal reload during issue, got %d", store.loadByPrincipalCalls)
@@ -74,25 +74,25 @@ func TestIssueTokenUsesAggregateClaimsLoader(t *testing.T) {
 }
 
 type fakeStore struct {
-	claimsByUserID       map[string]*ClaimsSnapshot
+	claimsByIdentifier   map[string]*ClaimsSnapshot
 	claimsByPrincipalID  map[uuid.UUID]*ClaimsSnapshot
-	loadByUserIDErr      map[string]error
+	loadByIdentifierErr  map[string]error
 	loadByPrincipalErr   map[uuid.UUID]error
-	loadByUserIDCalls    int
+	loadByIdentifierCalls int
 	loadByPrincipalCalls int
 }
 
-func (s *fakeStore) LoadClaimsByUserID(_ context.Context, userID string) (*ClaimsSnapshot, error) {
-	s.loadByUserIDCalls++
-	if s.loadByUserIDErr != nil {
-		if err := s.loadByUserIDErr[userID]; err != nil {
+func (s *fakeStore) LoadClaimsByIdentifier(_ context.Context, identifier string) (*ClaimsSnapshot, error) {
+	s.loadByIdentifierCalls++
+	if s.loadByIdentifierErr != nil {
+		if err := s.loadByIdentifierErr[identifier]; err != nil {
 			return nil, err
 		}
 	}
-	if s.claimsByUserID == nil {
+	if s.claimsByIdentifier == nil {
 		return nil, nil
 	}
-	claims := s.claimsByUserID[userID]
+	claims := s.claimsByIdentifier[identifier]
 	return cloneClaims(claims), nil
 }
 

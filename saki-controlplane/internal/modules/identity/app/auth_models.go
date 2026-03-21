@@ -11,7 +11,7 @@ import (
 )
 
 type AccessTokenIssuer interface {
-	IssueTokenContext(ctx context.Context, userID string) (string, error)
+	IssueTokenContext(ctx context.Context, identifier string) (string, error)
 	ParseToken(token string) (*accessapp.Claims, error)
 }
 

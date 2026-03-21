@@ -12,7 +12,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -94,16 +93,7 @@ func TestPublicAPISmoke(t *testing.T) {
 		t.Fatalf("create smoke sample match ref: %v", err)
 	}
 
-	importUserID := uuid.MustParse("00000000-0000-0000-0000-000000000200")
-	setSmokeBootstrapPrincipalEnv(t, dsn, importUserID, "Smoke Import User", []string{
-		"assets:read",
-		"assets:write",
-		"datasets:write",
-		"projects:read",
-		"projects:write",
-		"imports:read",
-		"imports:write",
-	})
+	setSmokePublicAPIEnv(t, dsn)
 	objectServer := newSmokeObjectServer(t)
 	defer objectServer.Close()
 	setSmokeObjectStorageEnv(t, objectServer)
@@ -125,26 +115,7 @@ func TestPublicAPISmoke(t *testing.T) {
 		t.Fatalf("unexpected healthz status: %d", resp.StatusCode)
 	}
 
-	loginResp, err := http.Post(
-		httpServer.URL+"/auth/login",
-		"application/json",
-		bytes.NewBufferString(`{"user_id":"`+importUserID.String()+`"}`),
-	)
-	if err != nil {
-		t.Fatalf("post login: %v", err)
-	}
-	defer loginResp.Body.Close()
-	if loginResp.StatusCode != http.StatusOK {
-		t.Fatalf("unexpected login status: %d", loginResp.StatusCode)
-	}
-	var loginBody map[string]any
-	if err := json.NewDecoder(loginResp.Body).Decode(&loginBody); err != nil {
-		t.Fatalf("decode login response: %v", err)
-	}
-	token, _ := loginBody["token"].(string)
-	if token == "" {
-		t.Fatalf("missing auth token: %+v", loginBody)
-	}
+	token := initializeSmokeAdmin(t, httpServer.URL)
 
 	summaryResp, err := http.Get(httpServer.URL + "/runtime/summary")
 	if err != nil {
@@ -681,90 +652,6 @@ func TestPublicAPISmoke(t *testing.T) {
 	}
 }
 
-func TestPublicAPISmoke_AccessLoginAndMe(t *testing.T) {
-	httpServer, _, userID := newSmokeAccessServer(t, []string{"projects:read", "imports:read"})
-
-	token, permissions := loginSmokeUser(t, httpServer.URL, userID)
-	if token == "" {
-		t.Fatal("expected login token")
-	}
-	if !slices.Equal(permissions, []string{"imports:read", "projects:read"}) {
-		t.Fatalf("unexpected login permissions: %+v", permissions)
-	}
-
-	req, err := http.NewRequest(http.MethodGet, httpServer.URL+"/auth/me", nil)
-	if err != nil {
-		t.Fatalf("new me request: %v", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("get auth me: %v", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("unexpected auth me status: %d", resp.StatusCode)
-	}
-
-	var body struct {
-		UserID      string   `json:"user_id"`
-		Permissions []string `json:"permissions"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		t.Fatalf("decode auth me response: %v", err)
-	}
-	if body.UserID != userID {
-		t.Fatalf("unexpected auth me user: %+v", body)
-	}
-	if !slices.Equal(body.Permissions, []string{"imports:read", "projects:read"}) {
-		t.Fatalf("unexpected auth me permissions: %+v", body)
-	}
-}
-
-func TestPublicAPISmoke_AccessPermissionDenied(t *testing.T) {
-	httpServer, sqlDB, userID := newSmokeAccessServer(t, []string{"projects:read"})
-
-	token, permissions := loginSmokeUser(t, httpServer.URL, userID)
-	if !slices.Equal(permissions, []string{"projects:read"}) {
-		t.Fatalf("unexpected login permissions: %+v", permissions)
-	}
-
-	req, err := http.NewRequest(http.MethodGet, httpServer.URL+"/auth/permissions/imports:write", nil)
-	if err != nil {
-		t.Fatalf("new permission request: %v", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("get permission check: %v", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("unexpected permission status: %d", resp.StatusCode)
-	}
-
-	if _, err := sqlDB.Exec(`update access_principal set status = 'disabled' where subject_type = 'user' and subject_key = $1`, userID); err != nil {
-		t.Fatalf("disable bootstrap principal: %v", err)
-	}
-
-	req, err = http.NewRequest(http.MethodGet, httpServer.URL+"/auth/me", nil)
-	if err != nil {
-		t.Fatalf("new auth me request: %v", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-
-	resp, err = http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("get auth me after disable: %v", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("unexpected auth me status after disable: %d", resp.StatusCode)
-	}
-}
-
 func TestPublicAPICancelTaskPersistsStopCommand(t *testing.T) {
 	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
 
@@ -957,46 +844,7 @@ func jsonNumber(value int) string {
 	return strconv.Itoa(value)
 }
 
-func newSmokeAccessServer(t *testing.T, permissions []string) (*httptest.Server, *sql.DB, string) {
-	t.Helper()
-
-	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
-
-	ctx := context.Background()
-	container, dsn := startSmokePostgres(t, ctx)
-	t.Cleanup(func() {
-		_ = testcontainers.TerminateContainer(container)
-	})
-
-	sqlDB, err := sql.Open("pgx", dsn)
-	if err != nil {
-		t.Fatalf("open sql db: %v", err)
-	}
-	t.Cleanup(func() { _ = sqlDB.Close() })
-
-	goose.SetDialect("postgres")
-	if err := goose.Up(sqlDB, smokeMigrationsDir(t)); err != nil {
-		t.Fatalf("run migrations: %v", err)
-	}
-
-	userID := uuid.New()
-	setSmokeBootstrapPrincipalEnv(t, dsn, userID, "Smoke Access User", permissions)
-
-	server, _, err := bootstrap.NewPublicAPI(ctx)
-	if err != nil {
-		t.Fatalf("bootstrap public api: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = server.Shutdown(context.Background())
-	})
-
-	httpServer := httptest.NewServer(server.Handler)
-	t.Cleanup(httpServer.Close)
-
-	return httpServer, sqlDB, userID.String()
-}
-
-func setSmokeBootstrapPrincipalEnv(t *testing.T, dsn string, userID uuid.UUID, displayName string, permissions []string) {
+func setSmokePublicAPIEnv(t *testing.T, dsn string) {
 	t.Helper()
 
 	t.Setenv("DATABASE_DSN", dsn)
@@ -1008,18 +856,6 @@ func setSmokeBootstrapPrincipalEnv(t *testing.T, dsn string, userID uuid.UUID, d
 	t.Setenv("MINIO_SECRET_KEY", "test-secret")
 	t.Setenv("MINIO_BUCKET_NAME", "assets")
 	t.Setenv("MINIO_SECURE", "false")
-
-	raw, err := json.Marshal([]map[string]any{
-		{
-			"user_id":      userID.String(),
-			"display_name": displayName,
-			"permissions":  permissions,
-		},
-	})
-	if err != nil {
-		t.Fatalf("marshal bootstrap principal env: %v", err)
-	}
-	t.Setenv("AUTH_BOOTSTRAP_PRINCIPALS", string(raw))
 }
 
 func setSmokeObjectStorageEnv(t *testing.T, s *smokeObjectServer) {
@@ -1032,30 +868,32 @@ func setSmokeObjectStorageEnv(t *testing.T, s *smokeObjectServer) {
 	t.Setenv("MINIO_SECURE", "false")
 }
 
-func loginSmokeUser(t *testing.T, baseURL string, userID string) (string, []string) {
+func initializeSmokeAdmin(t *testing.T, baseURL string) string {
 	t.Helper()
 
 	resp, err := http.Post(
-		baseURL+"/auth/login",
+		baseURL+"/system/init",
 		"application/json",
-		bytes.NewBufferString(`{"user_id":"`+userID+`"}`),
+		bytes.NewBufferString(`{"email":"smoke-admin@example.com","password":"secret-pass","full_name":"Smoke Admin"}`),
 	)
 	if err != nil {
-		t.Fatalf("post login: %v", err)
+		t.Fatalf("post system init: %v", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("unexpected login status: %d", resp.StatusCode)
+		t.Fatalf("unexpected system init status: %d", resp.StatusCode)
 	}
 
 	var body struct {
-		Token       string   `json:"token"`
-		Permissions []string `json:"permissions"`
+		AccessToken string `json:"access_token"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		t.Fatalf("decode login response: %v", err)
+		t.Fatalf("decode system init response: %v", err)
 	}
-	return body.Token, body.Permissions
+	if body.AccessToken == "" {
+		t.Fatalf("expected system init to return access token, got %+v", body)
+	}
+	return body.AccessToken
 }
 
 func startSmokePostgres(t *testing.T, ctx context.Context) (*postgres.PostgresContainer, string) {

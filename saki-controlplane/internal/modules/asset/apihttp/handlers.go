@@ -76,7 +76,7 @@ func (h *Handlers) InitAssetUpload(ctx context.Context, req *openapi.AssetUpload
 		return nil, ogenhttp.ErrNotImplemented
 	}
 
-	userID, err := currentUserID(ctx)
+	principalID, err := currentPrincipalID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +102,7 @@ func (h *Handlers) InitAssetUpload(ctx context.Context, req *openapi.AssetUpload
 		DeclaredContentType: strings.TrimSpace(req.GetContentType()),
 		Metadata:            metadata,
 		IdempotencyKey:      strings.TrimSpace(req.GetIdempotencyKey()),
-		CreatedBy:           userID,
+		CreatedBy:           principalID,
 	})
 	if err != nil {
 		return nil, mapInitError(err)
@@ -247,16 +247,15 @@ func (h *Handlers) SignAssetDownload(ctx context.Context, req *openapi.AssetDown
 	}, nil
 }
 
-func currentUserID(ctx context.Context) (*uuid.UUID, error) {
+func currentPrincipalID(ctx context.Context) (*uuid.UUID, error) {
 	claims, ok := authctx.ClaimsFromContext(ctx)
 	if !ok {
 		return nil, unauthorized("authentication required")
 	}
-	userID, err := uuid.Parse(claims.UserID)
-	if err != nil {
-		return nil, nil
-	}
-	return &userID, nil
+	// 资产写入链路里的 created_by 记录的是认证主体 principal_id，
+	// 不再回退到历史上“可能是 UUID、也可能是邮箱/用户名”的 user_id 字符串语义。
+	principalID := claims.PrincipalID
+	return &principalID, nil
 }
 
 func parseAssetID(raw string) (uuid.UUID, error) {

@@ -440,7 +440,7 @@ func TestTryServeHTTPStreamsTaskEvents(t *testing.T) {
 
 func contextWithUser(userID uuid.UUID) context.Context {
 	return authctx.WithClaims(context.Background(), &accessapp.Claims{
-		UserID:      userID.String(),
+		PrincipalID: userID,
 		Permissions: []string{"imports:read", "imports:write"},
 		ExpiresAt:   time.Now().Add(time.Hour),
 	})

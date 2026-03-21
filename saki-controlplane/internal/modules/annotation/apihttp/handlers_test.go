@@ -127,7 +127,7 @@ func (fakeRuntimeTaskCanceler) Handle(context.Context, runtimecommands.CancelTas
 
 type fakeAccessStore struct{}
 
-func (fakeAccessStore) LoadClaimsByUserID(context.Context, string) (*accessapp.ClaimsSnapshot, error) {
+func (fakeAccessStore) LoadClaimsByIdentifier(context.Context, string) (*accessapp.ClaimsSnapshot, error) {
 	return nil, nil
 }
 

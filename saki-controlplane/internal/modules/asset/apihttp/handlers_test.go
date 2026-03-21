@@ -125,7 +125,7 @@ func TestInitAssetUploadReturnsPendingAssetAndSignedPutURL(t *testing.T) {
 	}
 }
 
-func TestInitAssetUploadAllowsNonUUIDUserID(t *testing.T) {
+func TestInitAssetUploadUsesPrincipalIDForNonUUIDIdentifier(t *testing.T) {
 	ownerID := uuid.New()
 	module := newFakeAssetModule()
 	module.initUpload.result = &assetapp.InitDurableUploadResult{
@@ -158,8 +158,9 @@ func TestInitAssetUploadAllowsNonUUIDUserID(t *testing.T) {
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("unexpected init status: %d body=%s", rec.Code, rec.Body.String())
 	}
-	if module.initUpload.lastInput.CreatedBy != nil {
-		t.Fatalf("expected created_by to be nil for non-uuid user id, got %+v", module.initUpload.lastInput.CreatedBy)
+	wantPrincipalID := fakePrincipalIDFromSubjectKey("user-plain-text")
+	if got := module.initUpload.lastInput.CreatedBy; got == nil || *got != wantPrincipalID {
+		t.Fatalf("expected created_by to carry principal id %s, got %+v", wantPrincipalID, got)
 	}
 }
 
@@ -683,7 +684,7 @@ type fakeAccessStore struct {
 func newFakeAccessStore(subjectKey string) *fakeAccessStore {
 	return &fakeAccessStore{
 		principal: &accessdomain.Principal{
-			ID:          uuid.New(),
+			ID:          fakePrincipalIDFromSubjectKey(subjectKey),
 			SubjectType: "user",
 			SubjectKey:  subjectKey,
 			DisplayName: subjectKey,
@@ -693,11 +694,11 @@ func newFakeAccessStore(subjectKey string) *fakeAccessStore {
 	}
 }
 
-func (s *fakeAccessStore) LoadClaimsByUserID(_ context.Context, userID string) (*accessapp.ClaimsSnapshot, error) {
-	if s.principal != nil && s.principal.SubjectKey == userID {
+func (s *fakeAccessStore) LoadClaimsByIdentifier(_ context.Context, identifier string) (*accessapp.ClaimsSnapshot, error) {
+	if s.principal != nil && s.principal.SubjectKey == identifier {
 		return &accessapp.ClaimsSnapshot{
 			PrincipalID: s.principal.ID,
-			UserID:      s.principal.SubjectKey,
+			Identifier:  s.principal.SubjectKey,
 			Permissions: append([]string(nil), s.permissions...),
 		}, nil
 	}
@@ -708,11 +709,18 @@ func (s *fakeAccessStore) LoadClaimsByPrincipalID(_ context.Context, principalID
 	if s.principal != nil && s.principal.ID == principalID {
 		return &accessapp.ClaimsSnapshot{
 			PrincipalID: s.principal.ID,
-			UserID:      s.principal.SubjectKey,
+			Identifier:  s.principal.SubjectKey,
 			Permissions: append([]string(nil), s.permissions...),
 		}, nil
 	}
 	return nil, nil
+}
+
+func fakePrincipalIDFromSubjectKey(subjectKey string) uuid.UUID {
+	if parsed, err := uuid.Parse(subjectKey); err == nil {
+		return parsed
+	}
+	return uuid.NewSHA1(uuid.NameSpaceOID, []byte(subjectKey))
 }
 
 type fakeRuntimeTaskCanceler struct{}

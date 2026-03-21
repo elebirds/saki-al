@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,18 +21,13 @@ var (
 
 type Claims struct {
 	PrincipalID uuid.UUID
-	UserID      string
+	Identifier  string
 	Permissions []string
 	ExpiresAt   time.Time
 }
 
 func (c *Claims) HasPermission(permission string) bool {
-	for _, candidate := range c.Permissions {
-		if candidate == permission {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(c.Permissions, permission)
 }
 
 type Authenticator struct {
@@ -54,17 +50,17 @@ func (a *Authenticator) WithStore(store ClaimsStore) *Authenticator {
 	return a
 }
 
-func (a *Authenticator) IssueToken(userID string, _ []string) (string, error) {
-	return a.IssueTokenContext(context.Background(), userID)
+func (a *Authenticator) IssueToken(identifier string, _ []string) (string, error) {
+	return a.IssueTokenContext(context.Background(), identifier)
 }
 
-func (a *Authenticator) IssueTokenContext(ctx context.Context, userID string) (string, error) {
+func (a *Authenticator) IssueTokenContext(ctx context.Context, identifier string) (string, error) {
 	if a.store == nil {
 		return "", ErrMissingAccessStore
 	}
 
 	// access 这里只保留迁移期 HTTP auth 外壳职责，claims 快照统一从 identity/authorization 聚合装载。
-	snapshot, err := a.store.LoadClaimsByUserID(ctx, userID)
+	snapshot, err := a.store.LoadClaimsByIdentifier(ctx, identifier)
 	if err != nil {
 		return "", err
 	}
@@ -88,7 +84,7 @@ func (a *Authenticator) AuthenticateContext(ctx context.Context, token string) (
 	if snapshot == nil {
 		return nil, ErrUnauthorized
 	}
-	if snapshot.PrincipalID != claims.PrincipalID || snapshot.UserID != claims.UserID {
+	if snapshot.PrincipalID != claims.PrincipalID || snapshot.Identifier != claims.Identifier {
 		return nil, ErrUnauthorized
 	}
 
@@ -111,7 +107,7 @@ func (a *Authenticator) ParseToken(token string) (*Claims, error) {
 
 	var decoded struct {
 		PrincipalID uuid.UUID `json:"principal_id"`
-		UserID      string    `json:"user_id"`
+		Identifier  string    `json:"identifier"`
 		Permissions []string  `json:"permissions"`
 		ExpiresAt   int64     `json:"expires_at"`
 	}
@@ -121,7 +117,7 @@ func (a *Authenticator) ParseToken(token string) (*Claims, error) {
 
 	claims := &Claims{
 		PrincipalID: decoded.PrincipalID,
-		UserID:      decoded.UserID,
+		Identifier:  decoded.Identifier,
 		Permissions: decoded.Permissions,
 		ExpiresAt:   time.Unix(decoded.ExpiresAt, 0),
 	}
@@ -146,12 +142,12 @@ func (a *Authenticator) issueTokenFromSnapshot(snapshot *ClaimsSnapshot) (string
 	claims := claimsFromSnapshot(snapshot, a.now().Add(a.ttl))
 	payload, err := json.Marshal(struct {
 		PrincipalID uuid.UUID `json:"principal_id"`
-		UserID      string    `json:"user_id"`
+		Identifier  string    `json:"identifier"`
 		Permissions []string  `json:"permissions"`
 		ExpiresAt   int64     `json:"expires_at"`
 	}{
 		PrincipalID: claims.PrincipalID,
-		UserID:      claims.UserID,
+		Identifier:  claims.Identifier,
 		Permissions: claims.Permissions,
 		ExpiresAt:   claims.ExpiresAt.Unix(),
 	})
@@ -179,7 +175,7 @@ func claimsFromSnapshot(snapshot *ClaimsSnapshot, expiresAt time.Time) *Claims {
 	}
 	return &Claims{
 		PrincipalID: snapshot.PrincipalID,
-		UserID:      snapshot.UserID,
+		Identifier:  snapshot.Identifier,
 		Permissions: append([]string(nil), snapshot.Permissions...),
 		ExpiresAt:   expiresAt,
 	}

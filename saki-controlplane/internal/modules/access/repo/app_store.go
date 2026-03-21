@@ -32,22 +32,22 @@ func NewClaimsStore(deps ClaimsStoreDeps) *ClaimsStore {
 	}
 }
 
-func (s *ClaimsStore) LoadClaimsByUserID(ctx context.Context, userID string) (*accessapp.ClaimsSnapshot, error) {
+func (s *ClaimsStore) LoadClaimsByIdentifier(ctx context.Context, identifier string) (*accessapp.ClaimsSnapshot, error) {
 	// 关键设计：public API 已切到最新无兼容语义后，claims 主路径只认 identity 用户，
 	// 不再回退到 legacy bootstrap principal，避免旧 token 继续穿透到新的人类控制面接口。
-	return s.loadIdentityClaimsByUserID(ctx, userID)
+	return s.loadIdentityClaimsByIdentifier(ctx, identifier)
 }
 
 func (s *ClaimsStore) LoadClaimsByPrincipalID(ctx context.Context, principalID uuid.UUID) (*accessapp.ClaimsSnapshot, error) {
 	return s.loadIdentityClaimsByPrincipalID(ctx, principalID)
 }
 
-func (s *ClaimsStore) loadIdentityClaimsByUserID(ctx context.Context, userID string) (*accessapp.ClaimsSnapshot, error) {
+func (s *ClaimsStore) loadIdentityClaimsByIdentifier(ctx context.Context, identifier string) (*accessapp.ClaimsSnapshot, error) {
 	if s.identityUsers == nil {
 		return nil, nil
 	}
 
-	user, err := s.identityUsers.GetByEmail(ctx, userID)
+	user, err := s.identityUsers.GetByEmail(ctx, identifier)
 	if err != nil || user == nil {
 		return nil, err
 	}
@@ -81,7 +81,7 @@ func (s *ClaimsStore) loadIdentityClaimsByPrincipalID(ctx context.Context, princ
 
 	return &accessapp.ClaimsSnapshot{
 		PrincipalID: principal.ID,
-		UserID:      user.Email,
+		Identifier:  user.Email,
 		Permissions: append([]string(nil), permissions...),
 	}, nil
 }

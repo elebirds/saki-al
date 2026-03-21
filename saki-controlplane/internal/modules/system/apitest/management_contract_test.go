@@ -235,12 +235,38 @@ func TestHumanControlPlaneRemovedPermissionCatalogEndpointReturns404(t *testing.
 	}
 }
 
+func TestHumanControlPlaneRemovedPermissionCatalogEndpointReturns404WithInvalidBearer(t *testing.T) {
+	handler := newSystemHTTPHandler(t, contractDeps{})
+
+	req := httptest.NewRequest(http.MethodGet, "/permissions/catalog", nil)
+	req.Header.Set("Authorization", "Bearer definitely-invalid")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestHumanControlPlaneRemovedPermissionCatalogAliasReturns404(t *testing.T) {
 	handler := newSystemHTTPHandler(t, contractDeps{})
 	token := issueSystemToken(t, handler, "admin@example.com")
 
 	req := httptest.NewRequest(http.MethodGet, "/roles/permission-catalog", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHumanControlPlaneRemovedPermissionCatalogAliasReturns404WithInvalidBearer(t *testing.T) {
+	handler := newSystemHTTPHandler(t, contractDeps{})
+
+	req := httptest.NewRequest(http.MethodGet, "/roles/permission-catalog", nil)
+	req.Header.Set("Authorization", "Bearer definitely-invalid")
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 

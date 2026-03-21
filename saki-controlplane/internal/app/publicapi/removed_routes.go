@@ -13,6 +13,7 @@ type RemovedRoute struct {
 var RemovedLegacyRoutes = []RemovedRoute{
 	{Method: http.MethodGet, PathPattern: "/roles/permission-catalog"},
 	{Method: http.MethodGet, PathPattern: "/permissions/catalog"},
+	{Method: http.MethodGet, PathPattern: "/runtime/executors"},
 	{Method: http.MethodPost, PathPattern: "/system/setup"},
 	{Method: http.MethodGet, PathPattern: "/roles/users/{principal_id}/roles"},
 }

@@ -122,6 +122,31 @@ func TestHumanControlPlaneRemovedSystemSetupEndpointReturns404WithInvalidBearer(
 	}
 }
 
+func TestHumanControlPlaneRemovedRuntimeExecutorsAliasReturns404(t *testing.T) {
+	handler := newSystemHTTPHandler(t, contractDeps{})
+
+	req := httptest.NewRequest(http.MethodGet, "/runtime/executors", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHumanControlPlaneRemovedRuntimeExecutorsAliasReturns404WithInvalidBearer(t *testing.T) {
+	handler := newSystemHTTPHandler(t, contractDeps{})
+
+	req := httptest.NewRequest(http.MethodGet, "/runtime/executors", nil)
+	req.Header.Set("Authorization", "Bearer definitely-invalid")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestHumanControlPlaneSystemSettingsRequireAuth(t *testing.T) {
 	handler := newSystemHTTPHandler(t, contractDeps{})
 

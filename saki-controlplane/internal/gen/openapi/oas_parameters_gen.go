@@ -1073,22 +1073,22 @@ func decodeDeleteRoleParams(args [1]string, argsEscaped bool, r *http.Request) (
 
 // DeleteUserParams is parameters of deleteUser operation.
 type DeleteUserParams struct {
-	UserID string
+	PrincipalID string
 }
 
 func unpackDeleteUserParams(packed middleware.Parameters) (params DeleteUserParams) {
 	{
 		key := middleware.ParameterKey{
-			Name: "user_id",
+			Name: "principal_id",
 			In:   "path",
 		}
-		params.UserID = packed[key].(string)
+		params.PrincipalID = packed[key].(string)
 	}
 	return params
 }
 
 func decodeDeleteUserParams(args [1]string, argsEscaped bool, r *http.Request) (params DeleteUserParams, _ error) {
-	// Decode path: user_id.
+	// Decode path: principal_id.
 	if err := func() error {
 		param := args[0]
 		if argsEscaped {
@@ -1100,7 +1100,7 @@ func decodeDeleteUserParams(args [1]string, argsEscaped bool, r *http.Request) (
 		}
 		if len(param) > 0 {
 			d := uri.NewPathDecoder(uri.PathDecoderConfig{
-				Param:   "user_id",
+				Param:   "principal_id",
 				Value:   param,
 				Style:   uri.PathStyleSimple,
 				Explode: false,
@@ -1117,7 +1117,7 @@ func decodeDeleteUserParams(args [1]string, argsEscaped bool, r *http.Request) (
 					return err
 				}
 
-				params.UserID = c
+				params.PrincipalID = c
 				return nil
 			}(); err != nil {
 				return err
@@ -1128,7 +1128,7 @@ func decodeDeleteUserParams(args [1]string, argsEscaped bool, r *http.Request) (
 		return nil
 	}(); err != nil {
 		return params, &ogenerrors.DecodeParamError{
-			Name: "user_id",
+			Name: "principal_id",
 			In:   "path",
 			Err:  err,
 		}
@@ -1820,22 +1820,22 @@ func decodeGetRoleParams(args [1]string, argsEscaped bool, r *http.Request) (par
 
 // GetUserParams is parameters of getUser operation.
 type GetUserParams struct {
-	UserID string
+	PrincipalID string
 }
 
 func unpackGetUserParams(packed middleware.Parameters) (params GetUserParams) {
 	{
 		key := middleware.ParameterKey{
-			Name: "user_id",
+			Name: "principal_id",
 			In:   "path",
 		}
-		params.UserID = packed[key].(string)
+		params.PrincipalID = packed[key].(string)
 	}
 	return params
 }
 
 func decodeGetUserParams(args [1]string, argsEscaped bool, r *http.Request) (params GetUserParams, _ error) {
-	// Decode path: user_id.
+	// Decode path: principal_id.
 	if err := func() error {
 		param := args[0]
 		if argsEscaped {
@@ -1847,7 +1847,7 @@ func decodeGetUserParams(args [1]string, argsEscaped bool, r *http.Request) (par
 		}
 		if len(param) > 0 {
 			d := uri.NewPathDecoder(uri.PathDecoderConfig{
-				Param:   "user_id",
+				Param:   "principal_id",
 				Value:   param,
 				Style:   uri.PathStyleSimple,
 				Explode: false,
@@ -1864,7 +1864,7 @@ func decodeGetUserParams(args [1]string, argsEscaped bool, r *http.Request) (par
 					return err
 				}
 
-				params.UserID = c
+				params.PrincipalID = c
 				return nil
 			}(); err != nil {
 				return err
@@ -1875,7 +1875,7 @@ func decodeGetUserParams(args [1]string, argsEscaped bool, r *http.Request) (par
 		return nil
 	}(); err != nil {
 		return params, &ogenerrors.DecodeParamError{
-			Name: "user_id",
+			Name: "principal_id",
 			In:   "path",
 			Err:  err,
 		}
@@ -2915,22 +2915,22 @@ func decodeListSampleAnnotationsParams(args [2]string, argsEscaped bool, r *http
 
 // ListUserSystemRolesParams is parameters of listUserSystemRoles operation.
 type ListUserSystemRolesParams struct {
-	UserID string
+	PrincipalID string
 }
 
 func unpackListUserSystemRolesParams(packed middleware.Parameters) (params ListUserSystemRolesParams) {
 	{
 		key := middleware.ParameterKey{
-			Name: "user_id",
+			Name: "principal_id",
 			In:   "path",
 		}
-		params.UserID = packed[key].(string)
+		params.PrincipalID = packed[key].(string)
 	}
 	return params
 }
 
 func decodeListUserSystemRolesParams(args [1]string, argsEscaped bool, r *http.Request) (params ListUserSystemRolesParams, _ error) {
-	// Decode path: user_id.
+	// Decode path: principal_id.
 	if err := func() error {
 		param := args[0]
 		if argsEscaped {
@@ -2942,7 +2942,7 @@ func decodeListUserSystemRolesParams(args [1]string, argsEscaped bool, r *http.R
 		}
 		if len(param) > 0 {
 			d := uri.NewPathDecoder(uri.PathDecoderConfig{
-				Param:   "user_id",
+				Param:   "principal_id",
 				Value:   param,
 				Style:   uri.PathStyleSimple,
 				Explode: false,
@@ -2959,7 +2959,7 @@ func decodeListUserSystemRolesParams(args [1]string, argsEscaped bool, r *http.R
 					return err
 				}
 
-				params.UserID = c
+				params.PrincipalID = c
 				return nil
 			}(); err != nil {
 				return err
@@ -2970,7 +2970,7 @@ func decodeListUserSystemRolesParams(args [1]string, argsEscaped bool, r *http.R
 		return nil
 	}(); err != nil {
 		return params, &ogenerrors.DecodeParamError{
-			Name: "user_id",
+			Name: "principal_id",
 			In:   "path",
 			Err:  err,
 		}
@@ -3263,22 +3263,22 @@ func decodePrepareProjectAnnotationImportParams(args [2]string, argsEscaped bool
 
 // ReplaceUserSystemRolesParams is parameters of replaceUserSystemRoles operation.
 type ReplaceUserSystemRolesParams struct {
-	UserID string
+	PrincipalID string
 }
 
 func unpackReplaceUserSystemRolesParams(packed middleware.Parameters) (params ReplaceUserSystemRolesParams) {
 	{
 		key := middleware.ParameterKey{
-			Name: "user_id",
+			Name: "principal_id",
 			In:   "path",
 		}
-		params.UserID = packed[key].(string)
+		params.PrincipalID = packed[key].(string)
 	}
 	return params
 }
 
 func decodeReplaceUserSystemRolesParams(args [1]string, argsEscaped bool, r *http.Request) (params ReplaceUserSystemRolesParams, _ error) {
-	// Decode path: user_id.
+	// Decode path: principal_id.
 	if err := func() error {
 		param := args[0]
 		if argsEscaped {
@@ -3290,7 +3290,7 @@ func decodeReplaceUserSystemRolesParams(args [1]string, argsEscaped bool, r *htt
 		}
 		if len(param) > 0 {
 			d := uri.NewPathDecoder(uri.PathDecoderConfig{
-				Param:   "user_id",
+				Param:   "principal_id",
 				Value:   param,
 				Style:   uri.PathStyleSimple,
 				Explode: false,
@@ -3307,7 +3307,7 @@ func decodeReplaceUserSystemRolesParams(args [1]string, argsEscaped bool, r *htt
 					return err
 				}
 
-				params.UserID = c
+				params.PrincipalID = c
 				return nil
 			}(); err != nil {
 				return err
@@ -3318,7 +3318,7 @@ func decodeReplaceUserSystemRolesParams(args [1]string, argsEscaped bool, r *htt
 		return nil
 	}(); err != nil {
 		return params, &ogenerrors.DecodeParamError{
-			Name: "user_id",
+			Name: "principal_id",
 			In:   "path",
 			Err:  err,
 		}
@@ -3954,22 +3954,22 @@ func decodeUpdateRoleParams(args [1]string, argsEscaped bool, r *http.Request) (
 
 // UpdateUserParams is parameters of updateUser operation.
 type UpdateUserParams struct {
-	UserID string
+	PrincipalID string
 }
 
 func unpackUpdateUserParams(packed middleware.Parameters) (params UpdateUserParams) {
 	{
 		key := middleware.ParameterKey{
-			Name: "user_id",
+			Name: "principal_id",
 			In:   "path",
 		}
-		params.UserID = packed[key].(string)
+		params.PrincipalID = packed[key].(string)
 	}
 	return params
 }
 
 func decodeUpdateUserParams(args [1]string, argsEscaped bool, r *http.Request) (params UpdateUserParams, _ error) {
-	// Decode path: user_id.
+	// Decode path: principal_id.
 	if err := func() error {
 		param := args[0]
 		if argsEscaped {
@@ -3981,7 +3981,7 @@ func decodeUpdateUserParams(args [1]string, argsEscaped bool, r *http.Request) (
 		}
 		if len(param) > 0 {
 			d := uri.NewPathDecoder(uri.PathDecoderConfig{
-				Param:   "user_id",
+				Param:   "principal_id",
 				Value:   param,
 				Style:   uri.PathStyleSimple,
 				Explode: false,
@@ -3998,7 +3998,7 @@ func decodeUpdateUserParams(args [1]string, argsEscaped bool, r *http.Request) (
 					return err
 				}
 
-				params.UserID = c
+				params.PrincipalID = c
 				return nil
 			}(); err != nil {
 				return err
@@ -4009,7 +4009,7 @@ func decodeUpdateUserParams(args [1]string, argsEscaped bool, r *http.Request) (
 		return nil
 	}(); err != nil {
 		return params, &ogenerrors.DecodeParamError{
-			Name: "user_id",
+			Name: "principal_id",
 			In:   "path",
 			Err:  err,
 		}

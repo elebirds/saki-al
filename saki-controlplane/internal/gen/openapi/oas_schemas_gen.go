@@ -5050,7 +5050,7 @@ func (s *UserRoleInfo) SetIsSupremo(val bool) {
 // Ref: #/components/schemas/UserSystemRoleBinding
 type UserSystemRoleBinding struct {
 	ID              string    `json:"id"`
-	UserID          string    `json:"user_id"`
+	PrincipalID     string    `json:"principal_id"`
 	RoleID          string    `json:"role_id"`
 	RoleName        string    `json:"role_name"`
 	RoleDisplayName string    `json:"role_display_name"`
@@ -5062,9 +5062,9 @@ func (s *UserSystemRoleBinding) GetID() string {
 	return s.ID
 }
 
-// GetUserID returns the value of UserID.
-func (s *UserSystemRoleBinding) GetUserID() string {
-	return s.UserID
+// GetPrincipalID returns the value of PrincipalID.
+func (s *UserSystemRoleBinding) GetPrincipalID() string {
+	return s.PrincipalID
 }
 
 // GetRoleID returns the value of RoleID.
@@ -5092,9 +5092,9 @@ func (s *UserSystemRoleBinding) SetID(val string) {
 	s.ID = val
 }
 
-// SetUserID sets the value of UserID.
-func (s *UserSystemRoleBinding) SetUserID(val string) {
-	s.UserID = val
+// SetPrincipalID sets the value of PrincipalID.
+func (s *UserSystemRoleBinding) SetPrincipalID(val string) {
+	s.PrincipalID = val
 }
 
 // SetRoleID sets the value of RoleID.

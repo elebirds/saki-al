@@ -249,7 +249,7 @@ func TestHumanControlPlaneRemovedPermissionCatalogAliasReturns404(t *testing.T) 
 	}
 }
 
-func TestHumanControlPlaneUserSystemRolesRejectInvalidUserID(t *testing.T) {
+func TestHumanControlPlaneUserSystemRolesRejectInvalidPrincipalID(t *testing.T) {
 	handler := newSystemHTTPHandler(t, contractDeps{})
 	token := issueSystemToken(t, handler, "admin@example.com")
 
@@ -297,10 +297,16 @@ func TestHumanControlPlaneUserSystemRolesContracts(t *testing.T) {
 	if len(body) == 0 {
 		t.Fatalf("expected at least one role binding, got %+v", body)
 	}
+	if _, ok := body[0]["principal_id"].(string); !ok {
+		t.Fatalf("expected principal_id field, got %+v", body[0])
+	}
 	if _, ok := body[0]["role_id"].(string); !ok {
 		t.Fatalf("expected role_id field, got %+v", body[0])
 	}
 	if _, ok := body[0]["role_name"].(string); !ok {
 		t.Fatalf("expected role_name field, got %+v", body[0])
+	}
+	if _, ok := body[0]["user_id"]; ok {
+		t.Fatalf("latest user system role binding should not expose legacy user_id, got %+v", body[0])
 	}
 }

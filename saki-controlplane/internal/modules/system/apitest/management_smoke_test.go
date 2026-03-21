@@ -190,8 +190,14 @@ func TestHumanControlPlaneManagementSmoke(t *testing.T) {
 	if len(userRolesBody) == 0 {
 		t.Fatalf("expected admin to have at least one system role binding, got %+v", userRolesBody)
 	}
+	if userRolesBody[0]["principal_id"] != adminID {
+		t.Fatalf("expected user system role binding to expose principal_id=%s, got %+v", adminID, userRolesBody)
+	}
 	if userRolesBody[0]["role_name"] != "super_admin" {
 		t.Fatalf("expected super_admin system role binding, got %+v", userRolesBody)
+	}
+	if _, ok := userRolesBody[0]["user_id"]; ok {
+		t.Fatalf("latest user system role binding should not expose legacy user_id, got %+v", userRolesBody)
 	}
 
 	removedCatalogResp := doJSONRequest(
@@ -363,6 +369,12 @@ func TestHumanControlPlaneManagementWriteSmoke(t *testing.T) {
 	replacedRolesBody := decodeJSONArrayResponse(t, replaceRolesResp)
 	if len(replacedRolesBody) != 1 || replacedRolesBody[0]["role_id"] != roleID {
 		t.Fatalf("unexpected replaced roles body: %+v", replacedRolesBody)
+	}
+	if replacedRolesBody[0]["principal_id"] != userID {
+		t.Fatalf("expected replaced roles body to expose principal_id=%s, got %+v", userID, replacedRolesBody)
+	}
+	if _, ok := replacedRolesBody[0]["user_id"]; ok {
+		t.Fatalf("latest replaced roles body should not expose legacy user_id, got %+v", replacedRolesBody)
 	}
 
 	updateUserResp := doJSONRequest(

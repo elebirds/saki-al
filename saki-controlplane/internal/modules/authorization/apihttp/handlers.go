@@ -70,55 +70,55 @@ type ResolveEffectiveResourcePermissionsExecutor interface {
 }
 
 type HandlersDeps struct {
-	ListRoles             ListRolesExecutor
-	PermissionCatalog     PermissionCatalogExecutor
-	UserSystemRoles       UserSystemRolesExecutor
-	CreateRole            CreateRoleExecutor
-	GetRole               GetRoleExecutor
-	UpdateRole            UpdateRoleExecutor
-	DeleteRole            DeleteRoleExecutor
-	ReplaceUserRoles      ReplaceUserSystemRolesExecutor
-	ListResourceMembers   ListResourceMembersExecutor
-	UpsertResourceMember  UpsertResourceMemberExecutor
-	DeleteResourceMember  DeleteResourceMemberExecutor
-	ListAssignableRoles   ListAssignableResourceRolesExecutor
+	ListRoles                     ListRolesExecutor
+	PermissionCatalog             PermissionCatalogExecutor
+	UserSystemRoles               UserSystemRolesExecutor
+	CreateRole                    CreateRoleExecutor
+	GetRole                       GetRoleExecutor
+	UpdateRole                    UpdateRoleExecutor
+	DeleteRole                    DeleteRoleExecutor
+	ReplaceUserRoles              ReplaceUserSystemRolesExecutor
+	ListResourceMembers           ListResourceMembersExecutor
+	UpsertResourceMember          UpsertResourceMemberExecutor
+	DeleteResourceMember          DeleteResourceMemberExecutor
+	ListAssignableRoles           ListAssignableResourceRolesExecutor
 	GetCurrentResourcePermissions GetCurrentResourcePermissionsExecutor
-	ResolveResourceAccess ResolveEffectiveResourcePermissionsExecutor
+	ResolveResourceAccess         ResolveEffectiveResourcePermissionsExecutor
 }
 
 type Handlers struct {
-	listRoles             ListRolesExecutor
-	permissionCatalog     PermissionCatalogExecutor
-	userSystemRoles       UserSystemRolesExecutor
-	createRole            CreateRoleExecutor
-	getRole               GetRoleExecutor
-	updateRole            UpdateRoleExecutor
-	deleteRole            DeleteRoleExecutor
-	replaceUserRoles      ReplaceUserSystemRolesExecutor
-	listResourceMembersEx ListResourceMembersExecutor
-	upsertResourceMember  UpsertResourceMemberExecutor
-	deleteResourceMember  DeleteResourceMemberExecutor
-	listAssignableRoles   ListAssignableResourceRolesExecutor
+	listRoles                     ListRolesExecutor
+	permissionCatalog             PermissionCatalogExecutor
+	userSystemRoles               UserSystemRolesExecutor
+	createRole                    CreateRoleExecutor
+	getRole                       GetRoleExecutor
+	updateRole                    UpdateRoleExecutor
+	deleteRole                    DeleteRoleExecutor
+	replaceUserRoles              ReplaceUserSystemRolesExecutor
+	listResourceMembersEx         ListResourceMembersExecutor
+	upsertResourceMember          UpsertResourceMemberExecutor
+	deleteResourceMember          DeleteResourceMemberExecutor
+	listAssignableRoles           ListAssignableResourceRolesExecutor
 	getCurrentResourcePermissions GetCurrentResourcePermissionsExecutor
-	resolveResourceAccess ResolveEffectiveResourcePermissionsExecutor
+	resolveResourceAccess         ResolveEffectiveResourcePermissionsExecutor
 }
 
 func NewHandlers(deps HandlersDeps) *Handlers {
 	return &Handlers{
-		listRoles:             deps.ListRoles,
-		permissionCatalog:     deps.PermissionCatalog,
-		userSystemRoles:       deps.UserSystemRoles,
-		createRole:            deps.CreateRole,
-		getRole:               deps.GetRole,
-		updateRole:            deps.UpdateRole,
-		deleteRole:            deps.DeleteRole,
-		replaceUserRoles:      deps.ReplaceUserRoles,
-		listResourceMembersEx: deps.ListResourceMembers,
-		upsertResourceMember:  deps.UpsertResourceMember,
-		deleteResourceMember:  deps.DeleteResourceMember,
-		listAssignableRoles:   deps.ListAssignableRoles,
+		listRoles:                     deps.ListRoles,
+		permissionCatalog:             deps.PermissionCatalog,
+		userSystemRoles:               deps.UserSystemRoles,
+		createRole:                    deps.CreateRole,
+		getRole:                       deps.GetRole,
+		updateRole:                    deps.UpdateRole,
+		deleteRole:                    deps.DeleteRole,
+		replaceUserRoles:              deps.ReplaceUserRoles,
+		listResourceMembersEx:         deps.ListResourceMembers,
+		upsertResourceMember:          deps.UpsertResourceMember,
+		deleteResourceMember:          deps.DeleteResourceMember,
+		listAssignableRoles:           deps.ListAssignableRoles,
 		getCurrentResourcePermissions: deps.GetCurrentResourcePermissions,
-		resolveResourceAccess: deps.ResolveResourceAccess,
+		resolveResourceAccess:         deps.ResolveResourceAccess,
 	}
 }
 
@@ -295,7 +295,7 @@ func (h *Handlers) GetResourcePermissionCatalog(ctx context.Context) (*openapi.R
 }
 
 func (h *Handlers) ListUserSystemRoles(ctx context.Context, params openapi.ListUserSystemRolesParams) ([]openapi.UserSystemRoleBinding, error) {
-	return h.listUserSystemRoles(ctx, params.UserID)
+	return h.listUserSystemRoles(ctx, params.PrincipalID)
 }
 
 func (h *Handlers) ReplaceUserSystemRoles(ctx context.Context, req *openapi.ReplaceUserSystemRolesRequest, params openapi.ReplaceUserSystemRolesParams) ([]openapi.UserSystemRoleBinding, error) {
@@ -307,7 +307,7 @@ func (h *Handlers) ReplaceUserSystemRoles(ctx context.Context, req *openapi.Repl
 		return nil, err
 	}
 
-	principalID, err := uuid.Parse(params.UserID)
+	principalID, err := uuid.Parse(params.PrincipalID)
 	if err != nil {
 		return nil, authorizationapp.ErrInvalidRoleInput
 	}
@@ -315,8 +315,8 @@ func (h *Handlers) ReplaceUserSystemRoles(ctx context.Context, req *openapi.Repl
 		return nil, accessapp.ErrForbidden
 	}
 	result, err := h.replaceUserRoles.Execute(ctx, authorizationapp.ReplaceUserSystemRolesCommand{
-		UserID:  principalID,
-		RoleIDs: req.GetRoleIds(),
+		PrincipalID: principalID,
+		RoleIDs:     req.GetRoleIds(),
 	})
 	if err != nil {
 		return nil, err
@@ -392,7 +392,7 @@ func (h *Handlers) DeleteProjectMember(ctx context.Context, params openapi.Delet
 	return h.deleteMember(ctx, authorizationdomain.ResourceTypeProject, params.ProjectID, params.PrincipalID)
 }
 
-func (h *Handlers) listUserSystemRoles(ctx context.Context, rawUserID string) ([]openapi.UserSystemRoleBinding, error) {
+func (h *Handlers) listUserSystemRoles(ctx context.Context, rawPrincipalID string) ([]openapi.UserSystemRoleBinding, error) {
 	if h == nil || h.userSystemRoles == nil {
 		return nil, ogenhttp.ErrNotImplemented
 	}
@@ -402,7 +402,7 @@ func (h *Handlers) listUserSystemRoles(ctx context.Context, rawUserID string) ([
 		return nil, err
 	}
 
-	principalID, err := uuid.Parse(rawUserID)
+	principalID, err := uuid.Parse(rawPrincipalID)
 	if err != nil {
 		return nil, accessapp.ErrForbidden
 	}
@@ -529,7 +529,7 @@ func mapUserSystemRoleBindings(items []authorizationapp.UserSystemRoleBindingVie
 	for _, item := range items {
 		result = append(result, openapi.UserSystemRoleBinding{
 			ID:              item.ID,
-			UserID:          item.UserID,
+			PrincipalID:     item.PrincipalID,
 			RoleID:          item.RoleID,
 			RoleName:        item.RoleName,
 			RoleDisplayName: item.RoleDisplayName,

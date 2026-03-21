@@ -360,8 +360,8 @@ func (s *Server) ListUserSystemRoles(ctx context.Context, params openapi.ListUse
 	if s.authorization == nil {
 		return nil, ogenhttp.ErrNotImplemented
 	}
-	if _, err := uuid.Parse(params.UserID); err != nil {
-		return nil, newBadRequest("invalid user_id")
+	if _, err := uuid.Parse(params.PrincipalID); err != nil {
+		return nil, newBadRequest("invalid principal_id")
 	}
 	return s.authorization.ListUserSystemRoles(ctx, params)
 }
@@ -370,8 +370,8 @@ func (s *Server) ReplaceUserSystemRoles(ctx context.Context, req *openapi.Replac
 	if s.authorization == nil {
 		return nil, ogenhttp.ErrNotImplemented
 	}
-	if _, err := uuid.Parse(params.UserID); err != nil {
-		return nil, newBadRequest("invalid user_id")
+	if _, err := uuid.Parse(params.PrincipalID); err != nil {
+		return nil, newBadRequest("invalid principal_id")
 	}
 	return s.authorization.ReplaceUserSystemRoles(ctx, req, params)
 }
@@ -394,8 +394,8 @@ func (s *Server) GetUser(ctx context.Context, params openapi.GetUserParams) (*op
 	if s.identity == nil {
 		return nil, ogenhttp.ErrNotImplemented
 	}
-	if _, err := uuid.Parse(params.UserID); err != nil {
-		return nil, newBadRequest("invalid user_id")
+	if _, err := uuid.Parse(params.PrincipalID); err != nil {
+		return nil, newBadRequest("invalid principal_id")
 	}
 	return s.identity.GetUser(ctx, params)
 }
@@ -404,8 +404,8 @@ func (s *Server) UpdateUser(ctx context.Context, req *openapi.UserUpdateRequest,
 	if s.identity == nil {
 		return nil, ogenhttp.ErrNotImplemented
 	}
-	if _, err := uuid.Parse(params.UserID); err != nil {
-		return nil, newBadRequest("invalid user_id")
+	if _, err := uuid.Parse(params.PrincipalID); err != nil {
+		return nil, newBadRequest("invalid principal_id")
 	}
 	return s.identity.UpdateUser(ctx, req, params)
 }
@@ -414,8 +414,8 @@ func (s *Server) DeleteUser(ctx context.Context, params openapi.DeleteUserParams
 	if s.identity == nil {
 		return ogenhttp.ErrNotImplemented
 	}
-	if _, err := uuid.Parse(params.UserID); err != nil {
-		return newBadRequest("invalid user_id")
+	if _, err := uuid.Parse(params.PrincipalID); err != nil {
+		return newBadRequest("invalid principal_id")
 	}
 	return s.identity.DeleteUser(ctx, params)
 }

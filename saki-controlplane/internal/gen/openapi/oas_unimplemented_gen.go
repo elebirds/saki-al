@@ -141,7 +141,7 @@ func (UnimplementedHandler) DeleteRole(ctx context.Context, params DeleteRolePar
 
 // DeleteUser implements deleteUser operation.
 //
-// DELETE /users/{user_id}
+// DELETE /users/{principal_id}
 func (UnimplementedHandler) DeleteUser(ctx context.Context, params DeleteUserParams) error {
 	return ht.ErrNotImplemented
 }
@@ -260,7 +260,7 @@ func (UnimplementedHandler) GetSystemTypes(ctx context.Context) (r *SystemTypesR
 
 // GetUser implements getUser operation.
 //
-// GET /users/{user_id}
+// GET /users/{principal_id}
 func (UnimplementedHandler) GetUser(ctx context.Context, params GetUserParams) (r *UserListItem, _ error) {
 	return r, ht.ErrNotImplemented
 }
@@ -379,7 +379,7 @@ func (UnimplementedHandler) ListSampleAnnotations(ctx context.Context, params Li
 
 // ListUserSystemRoles implements listUserSystemRoles operation.
 //
-// GET /users/{user_id}/system-roles
+// GET /users/{principal_id}/system-roles
 func (UnimplementedHandler) ListUserSystemRoles(ctx context.Context, params ListUserSystemRolesParams) (r []UserSystemRoleBinding, _ error) {
 	return r, ht.ErrNotImplemented
 }
@@ -435,7 +435,7 @@ func (UnimplementedHandler) RegisterAuthUser(ctx context.Context, req *AuthRegis
 
 // ReplaceUserSystemRoles implements replaceUserSystemRoles operation.
 //
-// PUT /users/{user_id}/system-roles
+// PUT /users/{principal_id}/system-roles
 func (UnimplementedHandler) ReplaceUserSystemRoles(ctx context.Context, req *ReplaceUserSystemRolesRequest, params ReplaceUserSystemRolesParams) (r []UserSystemRoleBinding, _ error) {
 	return r, ht.ErrNotImplemented
 }
@@ -498,7 +498,7 @@ func (UnimplementedHandler) UpdateRole(ctx context.Context, req *RoleUpdateReque
 
 // UpdateUser implements updateUser operation.
 //
-// PATCH /users/{user_id}
+// PATCH /users/{principal_id}
 func (UnimplementedHandler) UpdateUser(ctx context.Context, req *UserUpdateRequest, params UpdateUserParams) (r *UserListItem, _ error) {
 	return r, ht.ErrNotImplemented
 }

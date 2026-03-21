@@ -101,7 +101,7 @@ type Invoker interface {
 	DeleteRole(ctx context.Context, params DeleteRoleParams) error
 	// DeleteUser invokes deleteUser operation.
 	//
-	// DELETE /users/{user_id}
+	// DELETE /users/{principal_id}
 	DeleteUser(ctx context.Context, params DeleteUserParams) error
 	// ExecuteProjectAnnotationImport invokes executeProjectAnnotationImport operation.
 	//
@@ -169,7 +169,7 @@ type Invoker interface {
 	GetSystemTypes(ctx context.Context) (*SystemTypesResponse, error)
 	// GetUser invokes getUser operation.
 	//
-	// GET /users/{user_id}
+	// GET /users/{principal_id}
 	GetUser(ctx context.Context, params GetUserParams) (*UserListItem, error)
 	// Healthz invokes healthz operation.
 	//
@@ -237,7 +237,7 @@ type Invoker interface {
 	ListSampleAnnotations(ctx context.Context, params ListSampleAnnotationsParams) ([]Annotation, error)
 	// ListUserSystemRoles invokes listUserSystemRoles operation.
 	//
-	// GET /users/{user_id}/system-roles
+	// GET /users/{principal_id}/system-roles
 	ListUserSystemRoles(ctx context.Context, params ListUserSystemRolesParams) ([]UserSystemRoleBinding, error)
 	// ListUsers invokes listUsers operation.
 	//
@@ -269,7 +269,7 @@ type Invoker interface {
 	RegisterAuthUser(ctx context.Context, request *AuthRegisterRequest) (*AuthSessionResponse, error)
 	// ReplaceUserSystemRoles invokes replaceUserSystemRoles operation.
 	//
-	// PUT /users/{user_id}/system-roles
+	// PUT /users/{principal_id}/system-roles
 	ReplaceUserSystemRoles(ctx context.Context, request *ReplaceUserSystemRolesRequest, params ReplaceUserSystemRolesParams) ([]UserSystemRoleBinding, error)
 	// RequirePermission invokes requirePermission operation.
 	//
@@ -305,7 +305,7 @@ type Invoker interface {
 	UpdateRole(ctx context.Context, request *RoleUpdateRequest, params UpdateRoleParams) (*RoleListItem, error)
 	// UpdateUser invokes updateUser operation.
 	//
-	// PATCH /users/{user_id}
+	// PATCH /users/{principal_id}
 	UpdateUser(ctx context.Context, request *UserUpdateRequest, params UpdateUserParams) (*UserListItem, error)
 }
 
@@ -1994,7 +1994,7 @@ func (c *Client) sendDeleteRole(ctx context.Context, params DeleteRoleParams) (r
 
 // DeleteUser invokes deleteUser operation.
 //
-// DELETE /users/{user_id}
+// DELETE /users/{principal_id}
 func (c *Client) DeleteUser(ctx context.Context, params DeleteUserParams) error {
 	_, err := c.sendDeleteUser(ctx, params)
 	return err
@@ -2004,7 +2004,7 @@ func (c *Client) sendDeleteUser(ctx context.Context, params DeleteUserParams) (r
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("deleteUser"),
 		semconv.HTTPRequestMethodKey.String("DELETE"),
-		semconv.URLTemplateKey.String("/users/{user_id}"),
+		semconv.URLTemplateKey.String("/users/{principal_id}"),
 	}
 	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
 
@@ -2040,14 +2040,14 @@ func (c *Client) sendDeleteUser(ctx context.Context, params DeleteUserParams) (r
 	var pathParts [2]string
 	pathParts[0] = "/users/"
 	{
-		// Encode "user_id" parameter.
+		// Encode "principal_id" parameter.
 		e := uri.NewPathEncoder(uri.PathEncoderConfig{
-			Param:   "user_id",
+			Param:   "principal_id",
 			Style:   uri.PathStyleSimple,
 			Explode: false,
 		})
 		if err := func() error {
-			return e.EncodeValue(conv.StringToString(params.UserID))
+			return e.EncodeValue(conv.StringToString(params.PrincipalID))
 		}(); err != nil {
 			return res, errors.Wrap(err, "encode path")
 		}
@@ -3436,7 +3436,7 @@ func (c *Client) sendGetSystemTypes(ctx context.Context) (res *SystemTypesRespon
 
 // GetUser invokes getUser operation.
 //
-// GET /users/{user_id}
+// GET /users/{principal_id}
 func (c *Client) GetUser(ctx context.Context, params GetUserParams) (*UserListItem, error) {
 	res, err := c.sendGetUser(ctx, params)
 	return res, err
@@ -3446,7 +3446,7 @@ func (c *Client) sendGetUser(ctx context.Context, params GetUserParams) (res *Us
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("getUser"),
 		semconv.HTTPRequestMethodKey.String("GET"),
-		semconv.URLTemplateKey.String("/users/{user_id}"),
+		semconv.URLTemplateKey.String("/users/{principal_id}"),
 	}
 	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
 
@@ -3482,14 +3482,14 @@ func (c *Client) sendGetUser(ctx context.Context, params GetUserParams) (res *Us
 	var pathParts [2]string
 	pathParts[0] = "/users/"
 	{
-		// Encode "user_id" parameter.
+		// Encode "principal_id" parameter.
 		e := uri.NewPathEncoder(uri.PathEncoderConfig{
-			Param:   "user_id",
+			Param:   "principal_id",
 			Style:   uri.PathStyleSimple,
 			Explode: false,
 		})
 		if err := func() error {
-			return e.EncodeValue(conv.StringToString(params.UserID))
+			return e.EncodeValue(conv.StringToString(params.PrincipalID))
 		}(); err != nil {
 			return res, errors.Wrap(err, "encode path")
 		}
@@ -4971,7 +4971,7 @@ func (c *Client) sendListSampleAnnotations(ctx context.Context, params ListSampl
 
 // ListUserSystemRoles invokes listUserSystemRoles operation.
 //
-// GET /users/{user_id}/system-roles
+// GET /users/{principal_id}/system-roles
 func (c *Client) ListUserSystemRoles(ctx context.Context, params ListUserSystemRolesParams) ([]UserSystemRoleBinding, error) {
 	res, err := c.sendListUserSystemRoles(ctx, params)
 	return res, err
@@ -4981,7 +4981,7 @@ func (c *Client) sendListUserSystemRoles(ctx context.Context, params ListUserSys
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("listUserSystemRoles"),
 		semconv.HTTPRequestMethodKey.String("GET"),
-		semconv.URLTemplateKey.String("/users/{user_id}/system-roles"),
+		semconv.URLTemplateKey.String("/users/{principal_id}/system-roles"),
 	}
 	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
 
@@ -5017,14 +5017,14 @@ func (c *Client) sendListUserSystemRoles(ctx context.Context, params ListUserSys
 	var pathParts [3]string
 	pathParts[0] = "/users/"
 	{
-		// Encode "user_id" parameter.
+		// Encode "principal_id" parameter.
 		e := uri.NewPathEncoder(uri.PathEncoderConfig{
-			Param:   "user_id",
+			Param:   "principal_id",
 			Style:   uri.PathStyleSimple,
 			Explode: false,
 		})
 		if err := func() error {
-			return e.EncodeValue(conv.StringToString(params.UserID))
+			return e.EncodeValue(conv.StringToString(params.PrincipalID))
 		}(); err != nil {
 			return res, errors.Wrap(err, "encode path")
 		}
@@ -5660,7 +5660,7 @@ func (c *Client) sendRegisterAuthUser(ctx context.Context, request *AuthRegister
 
 // ReplaceUserSystemRoles invokes replaceUserSystemRoles operation.
 //
-// PUT /users/{user_id}/system-roles
+// PUT /users/{principal_id}/system-roles
 func (c *Client) ReplaceUserSystemRoles(ctx context.Context, request *ReplaceUserSystemRolesRequest, params ReplaceUserSystemRolesParams) ([]UserSystemRoleBinding, error) {
 	res, err := c.sendReplaceUserSystemRoles(ctx, request, params)
 	return res, err
@@ -5670,7 +5670,7 @@ func (c *Client) sendReplaceUserSystemRoles(ctx context.Context, request *Replac
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("replaceUserSystemRoles"),
 		semconv.HTTPRequestMethodKey.String("PUT"),
-		semconv.URLTemplateKey.String("/users/{user_id}/system-roles"),
+		semconv.URLTemplateKey.String("/users/{principal_id}/system-roles"),
 	}
 	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
 
@@ -5706,14 +5706,14 @@ func (c *Client) sendReplaceUserSystemRoles(ctx context.Context, request *Replac
 	var pathParts [3]string
 	pathParts[0] = "/users/"
 	{
-		// Encode "user_id" parameter.
+		// Encode "principal_id" parameter.
 		e := uri.NewPathEncoder(uri.PathEncoderConfig{
-			Param:   "user_id",
+			Param:   "principal_id",
 			Style:   uri.PathStyleSimple,
 			Explode: false,
 		})
 		if err := func() error {
-			return e.EncodeValue(conv.StringToString(params.UserID))
+			return e.EncodeValue(conv.StringToString(params.PrincipalID))
 		}(); err != nil {
 			return res, errors.Wrap(err, "encode path")
 		}
@@ -6536,7 +6536,7 @@ func (c *Client) sendUpdateRole(ctx context.Context, request *RoleUpdateRequest,
 
 // UpdateUser invokes updateUser operation.
 //
-// PATCH /users/{user_id}
+// PATCH /users/{principal_id}
 func (c *Client) UpdateUser(ctx context.Context, request *UserUpdateRequest, params UpdateUserParams) (*UserListItem, error) {
 	res, err := c.sendUpdateUser(ctx, request, params)
 	return res, err
@@ -6546,7 +6546,7 @@ func (c *Client) sendUpdateUser(ctx context.Context, request *UserUpdateRequest,
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("updateUser"),
 		semconv.HTTPRequestMethodKey.String("PATCH"),
-		semconv.URLTemplateKey.String("/users/{user_id}"),
+		semconv.URLTemplateKey.String("/users/{principal_id}"),
 	}
 	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
 
@@ -6582,14 +6582,14 @@ func (c *Client) sendUpdateUser(ctx context.Context, request *UserUpdateRequest,
 	var pathParts [2]string
 	pathParts[0] = "/users/"
 	{
-		// Encode "user_id" parameter.
+		// Encode "principal_id" parameter.
 		e := uri.NewPathEncoder(uri.PathEncoderConfig{
-			Param:   "user_id",
+			Param:   "principal_id",
 			Style:   uri.PathStyleSimple,
 			Explode: false,
 		})
 		if err := func() error {
-			return e.EncodeValue(conv.StringToString(params.UserID))
+			return e.EncodeValue(conv.StringToString(params.PrincipalID))
 		}(); err != nil {
 			return res, errors.Wrap(err, "encode path")
 		}

@@ -260,7 +260,9 @@ func (h *Handlers) GetUser(ctx context.Context, params openapi.GetUserParams) (*
 		return nil, err
 	}
 
-	principalID, err := uuid.Parse(params.UserID)
+	// 关键设计：/users 资源仍表示“用户”，但路径上的标识已经统一成 principal_id，
+	// 避免 transport 层继续把“用户资源”与“主体标识”混写成模糊的 user_id 语义。
+	principalID, err := uuid.Parse(params.PrincipalID)
 	if err != nil {
 		return nil, identityapp.ErrInvalidUserInput
 	}
@@ -280,7 +282,7 @@ func (h *Handlers) UpdateUser(ctx context.Context, req *openapi.UserUpdateReques
 		return nil, err
 	}
 
-	principalID, err := uuid.Parse(params.UserID)
+	principalID, err := uuid.Parse(params.PrincipalID)
 	if err != nil {
 		return nil, identityapp.ErrInvalidUserInput
 	}
@@ -298,7 +300,7 @@ func (h *Handlers) UpdateUser(ctx context.Context, req *openapi.UserUpdateReques
 	}
 
 	item, err := h.updateUser.Execute(ctx, identityapp.UpdateUserCommand{
-		UserID:         principalID,
+		PrincipalID:    principalID,
 		FullName:       optStringPtr(fullName, hasFullName),
 		ChangeFullName: hasFullName,
 		IsActive:       optBoolPtr(isActive, hasIsActive),
@@ -319,7 +321,7 @@ func (h *Handlers) DeleteUser(ctx context.Context, params openapi.DeleteUserPara
 		return err
 	}
 
-	principalID, err := uuid.Parse(params.UserID)
+	principalID, err := uuid.Parse(params.PrincipalID)
 	if err != nil {
 		return identityapp.ErrInvalidUserInput
 	}

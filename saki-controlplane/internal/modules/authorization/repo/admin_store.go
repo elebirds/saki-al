@@ -248,7 +248,7 @@ func (r *AdminStore) ReplaceUserSystemRoles(ctx context.Context, principalID uui
 			for _, row := range rows {
 				result = append(result, authorizationapp.UserSystemRoleBindingView{
 					ID:              row.ID.String(),
-					UserID:          row.PrincipalID.String(),
+					PrincipalID:     row.PrincipalID.String(),
 					RoleID:          row.RoleID.String(),
 					RoleName:        row.RoleName,
 					RoleDisplayName: row.RoleDisplayName,
@@ -285,7 +285,7 @@ func (r *AdminStore) ReplaceUserSystemRoles(ctx context.Context, principalID uui
 		for _, row := range rows {
 			result = append(result, authorizationapp.UserSystemRoleBindingView{
 				ID:              row.ID.String(),
-				UserID:          row.PrincipalID.String(),
+				PrincipalID:     row.PrincipalID.String(),
 				RoleID:          row.RoleID.String(),
 				RoleName:        row.RoleName,
 				RoleDisplayName: row.RoleDisplayName,

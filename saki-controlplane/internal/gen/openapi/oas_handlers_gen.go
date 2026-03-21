@@ -2862,14 +2862,14 @@ func (s *Server) handleDeleteRoleRequest(args [1]string, argsEscaped bool, w htt
 
 // handleDeleteUserRequest handles deleteUser operation.
 //
-// DELETE /users/{user_id}
+// DELETE /users/{principal_id}
 func (s *Server) handleDeleteUserRequest(args [1]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
 	statusWriter := &codeRecorder{ResponseWriter: w}
 	w = statusWriter
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("deleteUser"),
 		semconv.HTTPRequestMethodKey.String("DELETE"),
-		semconv.HTTPRouteKey.String("/users/{user_id}"),
+		semconv.HTTPRouteKey.String("/users/{principal_id}"),
 	}
 	// Add attributes from config.
 	otelAttrs = append(otelAttrs, s.cfg.Attributes...)
@@ -2958,9 +2958,9 @@ func (s *Server) handleDeleteUserRequest(args [1]string, argsEscaped bool, w htt
 			RawBody:          rawBody,
 			Params: middleware.Parameters{
 				{
-					Name: "user_id",
+					Name: "principal_id",
 					In:   "path",
-				}: params.UserID,
+				}: params.PrincipalID,
 			},
 			Raw: r,
 		}
@@ -5336,14 +5336,14 @@ func (s *Server) handleGetSystemTypesRequest(args [0]string, argsEscaped bool, w
 
 // handleGetUserRequest handles getUser operation.
 //
-// GET /users/{user_id}
+// GET /users/{principal_id}
 func (s *Server) handleGetUserRequest(args [1]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
 	statusWriter := &codeRecorder{ResponseWriter: w}
 	w = statusWriter
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("getUser"),
 		semconv.HTTPRequestMethodKey.String("GET"),
-		semconv.HTTPRouteKey.String("/users/{user_id}"),
+		semconv.HTTPRouteKey.String("/users/{principal_id}"),
 	}
 	// Add attributes from config.
 	otelAttrs = append(otelAttrs, s.cfg.Attributes...)
@@ -5432,9 +5432,9 @@ func (s *Server) handleGetUserRequest(args [1]string, argsEscaped bool, w http.R
 			RawBody:          rawBody,
 			Params: middleware.Parameters{
 				{
-					Name: "user_id",
+					Name: "principal_id",
 					In:   "path",
-				}: params.UserID,
+				}: params.PrincipalID,
 			},
 			Raw: r,
 		}
@@ -7898,14 +7898,14 @@ func (s *Server) handleListSampleAnnotationsRequest(args [2]string, argsEscaped 
 
 // handleListUserSystemRolesRequest handles listUserSystemRoles operation.
 //
-// GET /users/{user_id}/system-roles
+// GET /users/{principal_id}/system-roles
 func (s *Server) handleListUserSystemRolesRequest(args [1]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
 	statusWriter := &codeRecorder{ResponseWriter: w}
 	w = statusWriter
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("listUserSystemRoles"),
 		semconv.HTTPRequestMethodKey.String("GET"),
-		semconv.HTTPRouteKey.String("/users/{user_id}/system-roles"),
+		semconv.HTTPRouteKey.String("/users/{principal_id}/system-roles"),
 	}
 	// Add attributes from config.
 	otelAttrs = append(otelAttrs, s.cfg.Attributes...)
@@ -7994,9 +7994,9 @@ func (s *Server) handleListUserSystemRolesRequest(args [1]string, argsEscaped bo
 			RawBody:          rawBody,
 			Params: middleware.Parameters{
 				{
-					Name: "user_id",
+					Name: "principal_id",
 					In:   "path",
-				}: params.UserID,
+				}: params.PrincipalID,
 			},
 			Raw: r,
 		}
@@ -9137,14 +9137,14 @@ func (s *Server) handleRegisterAuthUserRequest(args [0]string, argsEscaped bool,
 
 // handleReplaceUserSystemRolesRequest handles replaceUserSystemRoles operation.
 //
-// PUT /users/{user_id}/system-roles
+// PUT /users/{principal_id}/system-roles
 func (s *Server) handleReplaceUserSystemRolesRequest(args [1]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
 	statusWriter := &codeRecorder{ResponseWriter: w}
 	w = statusWriter
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("replaceUserSystemRoles"),
 		semconv.HTTPRequestMethodKey.String("PUT"),
-		semconv.HTTPRouteKey.String("/users/{user_id}/system-roles"),
+		semconv.HTTPRouteKey.String("/users/{principal_id}/system-roles"),
 	}
 	// Add attributes from config.
 	otelAttrs = append(otelAttrs, s.cfg.Attributes...)
@@ -9248,9 +9248,9 @@ func (s *Server) handleReplaceUserSystemRolesRequest(args [1]string, argsEscaped
 			RawBody:          rawBody,
 			Params: middleware.Parameters{
 				{
-					Name: "user_id",
+					Name: "principal_id",
 					In:   "path",
-				}: params.UserID,
+				}: params.PrincipalID,
 			},
 			Raw: r,
 		}
@@ -10633,14 +10633,14 @@ func (s *Server) handleUpdateRoleRequest(args [1]string, argsEscaped bool, w htt
 
 // handleUpdateUserRequest handles updateUser operation.
 //
-// PATCH /users/{user_id}
+// PATCH /users/{principal_id}
 func (s *Server) handleUpdateUserRequest(args [1]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
 	statusWriter := &codeRecorder{ResponseWriter: w}
 	w = statusWriter
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("updateUser"),
 		semconv.HTTPRequestMethodKey.String("PATCH"),
-		semconv.HTTPRouteKey.String("/users/{user_id}"),
+		semconv.HTTPRouteKey.String("/users/{principal_id}"),
 	}
 	// Add attributes from config.
 	otelAttrs = append(otelAttrs, s.cfg.Attributes...)
@@ -10744,9 +10744,9 @@ func (s *Server) handleUpdateUserRequest(args [1]string, argsEscaped bool, w htt
 			RawBody:          rawBody,
 			Params: middleware.Parameters{
 				{
-					Name: "user_id",
+					Name: "principal_id",
 					In:   "path",
-				}: params.UserID,
+				}: params.PrincipalID,
 			},
 			Raw: r,
 		}

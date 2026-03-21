@@ -61,8 +61,8 @@ type UpdateRoleCommand struct {
 }
 
 type ReplaceUserSystemRolesCommand struct {
-	UserID  uuid.UUID
-	RoleIDs []uuid.UUID
+	PrincipalID uuid.UUID
+	RoleIDs     []uuid.UUID
 }
 
 type GetRoleUseCase struct {
@@ -172,11 +172,11 @@ func NewReplaceUserSystemRolesUseCase(store RoleMutationStore) *ReplaceUserSyste
 }
 
 func (u *ReplaceUserSystemRolesUseCase) Execute(ctx context.Context, cmd ReplaceUserSystemRolesCommand) ([]UserSystemRoleBindingView, error) {
-	if cmd.UserID == uuid.Nil {
+	if cmd.PrincipalID == uuid.Nil {
 		return nil, ErrInvalidRoleInput
 	}
 	roleIDs := dedupeRoleIDs(cmd.RoleIDs)
-	return u.store.ReplaceUserSystemRoles(ctx, cmd.UserID, roleIDs)
+	return u.store.ReplaceUserSystemRoles(ctx, cmd.PrincipalID, roleIDs)
 }
 
 func normalizePermissionsForScope(scope authorizationdomain.RoleScopeKind, permissions []string) ([]string, error) {

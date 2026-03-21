@@ -1935,7 +1935,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 						break
 					}
 
-					// Param: "user_id"
+					// Param: "principal_id"
 					// Match until "/"
 					idx := strings.IndexByte(elem, '/')
 					if idx < 0 {
@@ -3915,7 +3915,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 						break
 					}
 
-					// Param: "user_id"
+					// Param: "principal_id"
 					// Match until "/"
 					idx := strings.IndexByte(elem, '/')
 					if idx < 0 {
@@ -3931,7 +3931,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 							r.summary = ""
 							r.operationID = "deleteUser"
 							r.operationGroup = ""
-							r.pathPattern = "/users/{user_id}"
+							r.pathPattern = "/users/{principal_id}"
 							r.args = args
 							r.count = 1
 							return r, true
@@ -3940,7 +3940,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 							r.summary = ""
 							r.operationID = "getUser"
 							r.operationGroup = ""
-							r.pathPattern = "/users/{user_id}"
+							r.pathPattern = "/users/{principal_id}"
 							r.args = args
 							r.count = 1
 							return r, true
@@ -3949,7 +3949,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 							r.summary = ""
 							r.operationID = "updateUser"
 							r.operationGroup = ""
-							r.pathPattern = "/users/{user_id}"
+							r.pathPattern = "/users/{principal_id}"
 							r.args = args
 							r.count = 1
 							return r, true
@@ -3974,7 +3974,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 								r.summary = ""
 								r.operationID = "listUserSystemRoles"
 								r.operationGroup = ""
-								r.pathPattern = "/users/{user_id}/system-roles"
+								r.pathPattern = "/users/{principal_id}/system-roles"
 								r.args = args
 								r.count = 1
 								return r, true
@@ -3983,7 +3983,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 								r.summary = ""
 								r.operationID = "replaceUserSystemRoles"
 								r.operationGroup = ""
-								r.pathPattern = "/users/{user_id}/system-roles"
+								r.pathPattern = "/users/{principal_id}/system-roles"
 								r.args = args
 								r.count = 1
 								return r, true

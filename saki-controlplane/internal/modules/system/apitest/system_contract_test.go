@@ -650,7 +650,7 @@ func (f *fakeUserSystemRolesExecutor) Execute(context.Context, uuid.UUID) ([]aut
 		return []authorizationapp.UserSystemRoleBindingView{
 			{
 				ID:              "00000000-0000-0000-0000-000000001601",
-				UserID:          "00000000-0000-0000-0000-000000001499",
+				PrincipalID:     "00000000-0000-0000-0000-000000001499",
 				RoleID:          "00000000-0000-0000-0000-000000001501",
 				RoleName:        "super_admin",
 				RoleDisplayName: "Super Admin",
@@ -670,7 +670,7 @@ func (f *fakeReplaceUserSystemRolesExecutor) Execute(context.Context, authorizat
 		return []authorizationapp.UserSystemRoleBindingView{
 			{
 				ID:              "00000000-0000-0000-0000-000000001701",
-				UserID:          "00000000-0000-0000-0000-000000001500",
+				PrincipalID:     "00000000-0000-0000-0000-000000001500",
 				RoleID:          "00000000-0000-0000-0000-000000001501",
 				RoleName:        "super_admin",
 				RoleDisplayName: "Super Admin",

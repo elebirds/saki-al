@@ -53,7 +53,7 @@ type RoleListResult struct {
 
 type UserSystemRoleBindingView struct {
 	ID              string
-	UserID          string
+	PrincipalID     string
 	RoleID          string
 	RoleName        string
 	RoleDisplayName string

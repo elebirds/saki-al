@@ -82,7 +82,7 @@ type Handler interface {
 	DeleteRole(ctx context.Context, params DeleteRoleParams) error
 	// DeleteUser implements deleteUser operation.
 	//
-	// DELETE /users/{user_id}
+	// DELETE /users/{principal_id}
 	DeleteUser(ctx context.Context, params DeleteUserParams) error
 	// ExecuteProjectAnnotationImport implements executeProjectAnnotationImport operation.
 	//
@@ -150,7 +150,7 @@ type Handler interface {
 	GetSystemTypes(ctx context.Context) (*SystemTypesResponse, error)
 	// GetUser implements getUser operation.
 	//
-	// GET /users/{user_id}
+	// GET /users/{principal_id}
 	GetUser(ctx context.Context, params GetUserParams) (*UserListItem, error)
 	// Healthz implements healthz operation.
 	//
@@ -218,7 +218,7 @@ type Handler interface {
 	ListSampleAnnotations(ctx context.Context, params ListSampleAnnotationsParams) ([]Annotation, error)
 	// ListUserSystemRoles implements listUserSystemRoles operation.
 	//
-	// GET /users/{user_id}/system-roles
+	// GET /users/{principal_id}/system-roles
 	ListUserSystemRoles(ctx context.Context, params ListUserSystemRolesParams) ([]UserSystemRoleBinding, error)
 	// ListUsers implements listUsers operation.
 	//
@@ -250,7 +250,7 @@ type Handler interface {
 	RegisterAuthUser(ctx context.Context, req *AuthRegisterRequest) (*AuthSessionResponse, error)
 	// ReplaceUserSystemRoles implements replaceUserSystemRoles operation.
 	//
-	// PUT /users/{user_id}/system-roles
+	// PUT /users/{principal_id}/system-roles
 	ReplaceUserSystemRoles(ctx context.Context, req *ReplaceUserSystemRolesRequest, params ReplaceUserSystemRolesParams) ([]UserSystemRoleBinding, error)
 	// RequirePermission implements requirePermission operation.
 	//
@@ -286,7 +286,7 @@ type Handler interface {
 	UpdateRole(ctx context.Context, req *RoleUpdateRequest, params UpdateRoleParams) (*RoleListItem, error)
 	// UpdateUser implements updateUser operation.
 	//
-	// PATCH /users/{user_id}
+	// PATCH /users/{principal_id}
 	UpdateUser(ctx context.Context, req *UserUpdateRequest, params UpdateUserParams) (*UserListItem, error)
 	// NewError creates *ErrorResponseStatusCode from error returned by handler.
 	//

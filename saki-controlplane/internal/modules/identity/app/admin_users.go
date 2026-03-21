@@ -51,7 +51,7 @@ type CreateUserCommand struct {
 }
 
 type UpdateUserCommand struct {
-	UserID         uuid.UUID
+	PrincipalID    uuid.UUID
 	FullName       *string
 	ChangeFullName bool
 	IsActive       *bool
@@ -145,11 +145,11 @@ func NewUpdateUserUseCase(store AdminUserMutationStore, bindings AdminUserBindin
 }
 
 func (u *UpdateUserUseCase) Execute(ctx context.Context, cmd UpdateUserCommand) (*UserAdminView, error) {
-	if cmd.UserID == uuid.Nil {
+	if cmd.PrincipalID == uuid.Nil {
 		return nil, ErrInvalidUserInput
 	}
 	params := UpdateAdminUserParams{
-		PrincipalID:        cmd.UserID,
+		PrincipalID:        cmd.PrincipalID,
 		FullName:           normalizeOptionalName(cmd.FullName),
 		ChangeFullName:     cmd.ChangeFullName,
 		MustChangePassword: cmd.Password != nil,

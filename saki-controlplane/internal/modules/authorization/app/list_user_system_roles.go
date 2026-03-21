@@ -46,7 +46,7 @@ func (u *ListUserSystemRolesUseCase) Execute(ctx context.Context, principalID uu
 		}
 		result = append(result, UserSystemRoleBindingView{
 			ID:              row.ID.String(),
-			UserID:          row.PrincipalID.String(),
+			PrincipalID:     row.PrincipalID.String(),
 			RoleID:          row.RoleID.String(),
 			RoleName:        role.Name,
 			RoleDisplayName: role.DisplayName,

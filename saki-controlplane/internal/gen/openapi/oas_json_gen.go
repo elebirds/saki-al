@@ -13728,8 +13728,8 @@ func (s *UserSystemRoleBinding) encodeFields(e *jx.Encoder) {
 		e.Str(s.ID)
 	}
 	{
-		e.FieldStart("user_id")
-		e.Str(s.UserID)
+		e.FieldStart("principal_id")
+		e.Str(s.PrincipalID)
 	}
 	{
 		e.FieldStart("role_id")
@@ -13751,7 +13751,7 @@ func (s *UserSystemRoleBinding) encodeFields(e *jx.Encoder) {
 
 var jsonFieldsNameOfUserSystemRoleBinding = [6]string{
 	0: "id",
-	1: "user_id",
+	1: "principal_id",
 	2: "role_id",
 	3: "role_name",
 	4: "role_display_name",
@@ -13779,17 +13779,17 @@ func (s *UserSystemRoleBinding) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"id\"")
 			}
-		case "user_id":
+		case "principal_id":
 			requiredBitSet[0] |= 1 << 1
 			if err := func() error {
 				v, err := d.Str()
-				s.UserID = string(v)
+				s.PrincipalID = string(v)
 				if err != nil {
 					return err
 				}
 				return nil
 			}(); err != nil {
-				return errors.Wrap(err, "decode field \"user_id\"")
+				return errors.Wrap(err, "decode field \"principal_id\"")
 			}
 		case "role_id":
 			requiredBitSet[0] |= 1 << 2

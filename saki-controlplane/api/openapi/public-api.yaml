@@ -1060,11 +1060,11 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-  /users/{user_id}:
+  /users/{principal_id}:
     get:
       operationId: getUser
       parameters:
-        - name: user_id
+        - name: principal_id
           in: path
           required: true
           schema:
@@ -1085,7 +1085,7 @@ paths:
     patch:
       operationId: updateUser
       parameters:
-        - name: user_id
+        - name: principal_id
           in: path
           required: true
           schema:
@@ -1112,7 +1112,7 @@ paths:
     delete:
       operationId: deleteUser
       parameters:
-        - name: user_id
+        - name: principal_id
           in: path
           required: true
           schema:
@@ -1126,11 +1126,11 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-  /users/{user_id}/system-roles:
+  /users/{principal_id}/system-roles:
     get:
       operationId: listUserSystemRoles
       parameters:
-        - name: user_id
+        - name: principal_id
           in: path
           required: true
           schema:
@@ -1153,7 +1153,7 @@ paths:
     put:
       operationId: replaceUserSystemRoles
       parameters:
-        - name: user_id
+        - name: principal_id
           in: path
           required: true
           schema:
@@ -2438,7 +2438,7 @@ components:
       type: object
       required:
         - id
-        - user_id
+        - principal_id
         - role_id
         - role_name
         - role_display_name
@@ -2446,7 +2446,7 @@ components:
       properties:
         id:
           type: string
-        user_id:
+        principal_id:
           type: string
         role_id:
           type: string

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/elebirds/saki/saki-controlplane/internal/app/pgxtime"
 	sqlcdb "github.com/elebirds/saki/saki-controlplane/internal/gen/sqlc"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -51,7 +52,7 @@ func (r *PreviewRepo) Put(ctx context.Context, params PutPreviewManifestParams) 
 		UploadSessionID: params.UploadSessionID,
 		Manifest:        params.Manifest,
 		ParamsHash:      params.ParamsHash,
-		ExpiresAt:       pgtypeTimestamptz(params.ExpiresAt),
+		ExpiresAt:       pgxtime.Timestamptz(params.ExpiresAt),
 	})
 	if err != nil {
 		return nil, err

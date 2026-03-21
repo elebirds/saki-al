@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/elebirds/saki/saki-controlplane/internal/app/pgxtime"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -203,9 +204,9 @@ func agentCommandFromModel(row sqlcdb.AgentCommand) *AgentCommand {
 		ExpireAt:      row.ExpireAt.Time,
 		AttemptCount:  row.AttemptCount,
 		ClaimToken:    optionalUUID(row.ClaimToken),
-		ClaimUntil:    optionalTime(row.ClaimUntil),
-		AckedAt:       optionalTime(row.AckedAt),
-		FinishedAt:    optionalTime(row.FinishedAt),
+		ClaimUntil:    pgxtime.OptionalTimestamptz(row.ClaimUntil),
+		AckedAt:       pgxtime.OptionalTimestamptz(row.AckedAt),
+		FinishedAt:    pgxtime.OptionalTimestamptz(row.FinishedAt),
 		LastError:     optionalLastError(row.LastError),
 		CreatedAt:     row.CreatedAt.Time,
 		UpdatedAt:     row.UpdatedAt.Time,
@@ -218,14 +219,6 @@ func optionalUUID(value pgtype.UUID) *uuid.UUID {
 	}
 	id := uuid.UUID(value.Bytes)
 	return &id
-}
-
-func optionalTime(value pgtype.Timestamptz) *time.Time {
-	if !value.Valid {
-		return nil
-	}
-	ts := value.Time
-	return &ts
 }
 
 func optionalLastError(value pgtype.Text) *string {

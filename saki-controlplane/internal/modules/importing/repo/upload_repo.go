@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/elebirds/saki/saki-controlplane/internal/app/pgxtime"
 	sqlcdb "github.com/elebirds/saki/saki-controlplane/internal/gen/sqlc"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -91,8 +92,8 @@ func mapUploadSession(row sqlcdb.ImportUploadSession) *UploadSession {
 		ObjectKey:   row.ObjectKey,
 		ContentType: row.ContentType,
 		Status:      string(row.Status),
-		CompletedAt: optionalTime(row.CompletedAt),
-		AbortedAt:   optionalTime(row.AbortedAt),
+		CompletedAt: pgxtime.OptionalTimestamptz(row.CompletedAt),
+		AbortedAt:   pgxtime.OptionalTimestamptz(row.AbortedAt),
 		CreatedAt:   row.CreatedAt.Time,
 		UpdatedAt:   row.UpdatedAt.Time,
 	}

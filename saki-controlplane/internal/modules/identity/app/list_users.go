@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/elebirds/saki/saki-controlplane/internal/app/paging"
 	authorizationdomain "github.com/elebirds/saki/saki-controlplane/internal/modules/authorization/domain"
 	identitydomain "github.com/elebirds/saki/saki-controlplane/internal/modules/identity/domain"
 	"github.com/google/uuid"
@@ -70,7 +71,7 @@ func NewListUsersUseCase(users AdminUserStore, bindings AdminUserBindingStore, r
 }
 
 func (u *ListUsersUseCase) Execute(ctx context.Context, input ListUsersInput) (*ListUsersResult, error) {
-	_, limit, offset := normalizePage(input.Page, input.Limit)
+	_, limit, offset := paging.Normalize(input.Page, input.Limit)
 
 	total, err := u.users.Count(ctx)
 	if err != nil {
@@ -149,17 +150,4 @@ func derefString(value *string) string {
 		return ""
 	}
 	return *value
-}
-
-func normalizePage(page int, limit int) (int, int, int) {
-	if page <= 0 {
-		page = 1
-	}
-	if limit <= 0 {
-		limit = 20
-	}
-	if limit > 200 {
-		limit = 200
-	}
-	return page, limit, (page - 1) * limit
 }

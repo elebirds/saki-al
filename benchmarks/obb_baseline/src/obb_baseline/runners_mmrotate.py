@@ -366,13 +366,30 @@ def _write_raw_outputs(
     raw_metrics: Mapping[str, object],
     artifacts: Mapping[str, object],
 ) -> None:
+    def _to_jsonable(value: object) -> Any:
+        if value is None or isinstance(value, str | int | float | bool):
+            return value
+        if isinstance(value, Path):
+            return value.as_posix()
+        if isinstance(value, Mapping):
+            return {str(key): _to_jsonable(item) for key, item in value.items()}
+        if isinstance(value, list | tuple):
+            return [_to_jsonable(item) for item in value]
+        tolist = getattr(value, "tolist", None)
+        if callable(tolist):
+            return _to_jsonable(tolist())
+        item = getattr(value, "item", None)
+        if callable(item):
+            return _to_jsonable(item())
+        return str(value)
+
     work_dir.mkdir(parents=True, exist_ok=True)
     (work_dir / "raw_metrics.json").write_text(
-        json.dumps(dict(raw_metrics), ensure_ascii=False, indent=2) + "\n",
+        json.dumps(_to_jsonable(raw_metrics), ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
     (work_dir / "artifacts.json").write_text(
-        json.dumps(dict(artifacts), ensure_ascii=False, indent=2) + "\n",
+        json.dumps(_to_jsonable(artifacts), ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
 

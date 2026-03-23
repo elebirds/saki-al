@@ -297,3 +297,93 @@ def test_main_executes_pipeline_and_writes_stable_raw_outputs(
     assert artifacts_path.exists()
     assert json.loads(raw_metrics_path.read_text(encoding="utf-8")) == {"dota/mAP": 0.42, "dota/AP50": 0.66}
     assert json.loads(artifacts_path.read_text(encoding="utf-8")) == {"best_checkpoint": "epoch_12.pth"}
+
+
+def test_main_writes_raw_outputs_with_numpy_like_values(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from obb_baseline import runners_mmrotate as module
+
+    class FakeScalar:
+        def __init__(self, value: object) -> None:
+            self.value = value
+
+        def item(self) -> object:
+            return self.value
+
+    class FakeArray:
+        def __init__(self, values: list[object]) -> None:
+            self.values = values
+
+        def tolist(self) -> list[object]:
+            return list(self.values)
+
+    generated_config = tmp_path / "generated.py"
+    generated_config.write_text(
+        (
+            'preset = "oriented_rcnn"\n'
+            "classes = ('plane', 'ship')\n"
+            "class_names = classes\n"
+            "num_classes = len(classes)\n"
+        ),
+        encoding="utf-8",
+    )
+    work_dir = tmp_path / "work"
+
+    def _fake_execute(
+        *,
+        generated_config: Path,
+        parsed_generated_config: dict[str, object],
+        work_dir: Path,
+        train_seed: int,
+        device: str,
+    ) -> dict[str, dict[str, object]]:
+        _ = (
+            generated_config,
+            parsed_generated_config,
+            work_dir,
+            train_seed,
+            device,
+        )
+        return {
+            "raw_metrics": {
+                "dota/mAP": FakeScalar(0.42),
+                "curve": FakeArray([FakeScalar(1), FakeScalar(2)]),
+                "summary_path": Path("metrics/summary.txt"),
+                "scores": (FakeScalar(0.1), FakeScalar(0.2)),
+            },
+            "artifacts": {
+                "best_checkpoint": Path("epoch_12.pth"),
+                "history": FakeArray([FakeScalar(3), FakeScalar(4)]),
+            },
+        }
+
+    monkeypatch.setattr(module, "_execute_mmrotate_pipeline", _fake_execute)
+
+    exit_code = module.main(
+        [
+            "--config",
+            str(generated_config),
+            "--work-dir",
+            str(work_dir),
+            "--seed",
+            "101",
+            "--device",
+            "cpu",
+        ]
+    )
+
+    assert exit_code == 0
+    raw_metrics_path = work_dir / "raw_metrics.json"
+    artifacts_path = work_dir / "artifacts.json"
+    assert json.loads(raw_metrics_path.read_text(encoding="utf-8")) == {
+        "dota/mAP": 0.42,
+        "curve": [1, 2],
+        "summary_path": "metrics/summary.txt",
+        "scores": [0.1, 0.2],
+    }
+    assert json.loads(artifacts_path.read_text(encoding="utf-8")) == {
+        "best_checkpoint": "epoch_12.pth",
+        "history": [3, 4],
+    }

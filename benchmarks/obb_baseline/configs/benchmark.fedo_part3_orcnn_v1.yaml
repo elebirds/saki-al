@@ -1,2 +1,13 @@
-name: fedo_part3_orcnn_v1
-type: benchmark
+benchmark_name: fedo_part3_orcnn_v1
+# 保留字段：供后续阶段使用；当前 Phase 1 runner 不消费此字段，仍读取 <benchmark-root>/split_manifest.json
+split_manifest_path: ""
+dataset:
+  dota_root: "__SET_ME__/dota_export"
+  yolo_obb_root: "__SET_ME__/yolo_obb_export"
+  classes: [pattern_a, pattern_b, pattern_c]
+models:
+  - oriented_rcnn_r50
+runtime:
+  device: "0"
+  score_thr: 0.05
+  link_mode: symlink

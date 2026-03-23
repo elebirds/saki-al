@@ -1,2 +1,21 @@
-name: fedo_part2_v1
-type: benchmark
+benchmark_name: fedo_part2_v1
+dataset:
+  dota_root: "__SET_ME__/dota_export"
+  yolo_obb_root: "__SET_ME__/yolo_obb_export"
+  classes: [pattern_a, pattern_b, pattern_c]
+splits:
+  holdout_seed: 3407
+  split_seeds: [11, 17, 23]
+  train_seeds: [101, 202, 303]
+  test_ratio: 0.15
+  val_ratio: 0.15
+models:
+  - yolo11m_obb
+  - oriented_rcnn_r50
+  - roi_transformer_r50
+  - r3det_r50
+  - rtmdet_rotated_m
+runtime:
+  device: "0"
+  score_thr: 0.05
+  link_mode: symlink

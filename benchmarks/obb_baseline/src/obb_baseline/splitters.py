@@ -29,6 +29,8 @@ class SplitBundle:
 def scan_dota_export(dota_root: Path, class_names: tuple[str, ...]) -> list[SampleRecord]:
     ann_dir = dota_root / "train" / "labelTxt"
     image_dir = dota_root / "train" / "images"
+    if not ann_dir.exists():
+        raise FileNotFoundError(f"DOTA labelTxt 目录不存在: {ann_dir}")
     records: list[SampleRecord] = []
 
     for ann_path in sorted(ann_dir.glob("*.txt")):
@@ -84,6 +86,7 @@ def generate_split_bundle(
     test_ratio: float,
     val_ratio: float,
 ) -> SplitBundle:
+    _validate_ratios(test_ratio=test_ratio, val_ratio=val_ratio)
     records = sorted(sample_inventory, key=lambda record: record.sample_id)
     test_records, trainval_records = _split_stratified_records(records, holdout_seed, test_ratio)
     test_ids = sorted(record.sample_id for record in test_records)
@@ -130,9 +133,9 @@ def generate_split_bundle(
 
 def _resolve_image_path(image_dir: Path, stem: str) -> Path:
     candidates = sorted(image_dir.glob(f"{stem}.*"))
-    if candidates:
-        return candidates[0]
-    return image_dir / f"{stem}.png"
+    if not candidates:
+        raise FileNotFoundError(f"找不到样本 {stem} 的图片文件: {image_dir}")
+    return candidates[0]
 
 
 def _parse_dota_labels(ann_path: Path) -> list[str]:
@@ -170,6 +173,18 @@ def _normalize_val_ratio(test_ratio: float, val_ratio: float) -> float:
     if trainval_ratio <= 0:
         return 0.0
     return val_ratio / trainval_ratio
+
+
+def _validate_ratios(*, test_ratio: float, val_ratio: float) -> None:
+    if not (0 <= test_ratio < 1):
+        raise ValueError(f"test_ratio 必须在 [0, 1) 内: {test_ratio}")
+    if not (0 <= val_ratio < 1):
+        raise ValueError(f"val_ratio 必须在 [0, 1) 内: {val_ratio}")
+    if test_ratio + val_ratio >= 1:
+        raise ValueError(
+            "test_ratio 与 val_ratio 之和必须小于 1: "
+            f"{test_ratio} + {val_ratio}"
+        )
 
 
 def _split_stratified_records(

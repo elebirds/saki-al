@@ -1,0 +1,17 @@
+[project]
+name = "obb-benchmark-mmrotate-env"
+version = "0.1.0"
+requires-python = "==3.12.*"
+dependencies = [
+  "torch==2.9.1",
+  "torchvision==0.24.1",
+  "onedl-mmengine==0.10.9",
+  "onedl-mmcv==2.3.2.post2",
+  "onedl-mmdetection==3.4.5",
+  "onedl-mmrotate==1.1.0.post1",
+  "pyyaml>=6.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

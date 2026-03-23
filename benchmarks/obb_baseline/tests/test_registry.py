@@ -74,7 +74,7 @@ def test_load_model_registry_rejects_invalid_runner_and_data_view(
     config_runner = tmp_path / "models_invalid_runner.yaml"
     config_runner.write_text(yaml.safe_dump(payload_runner), encoding="utf-8")
 
-    with pytest.raises(ValueError, match="runner"):
+    with pytest.raises(ValueError, match="unsupported runner 'unknown_runner'"):
         load_model_registry(config_runner)
 
     payload_data_view = _valid_models_config()
@@ -82,5 +82,47 @@ def test_load_model_registry_rejects_invalid_runner_and_data_view(
     config_data_view = tmp_path / "models_invalid_data_view.yaml"
     config_data_view.write_text(yaml.safe_dump(payload_data_view), encoding="utf-8")
 
-    with pytest.raises(ValueError, match="data_view"):
+    with pytest.raises(ValueError, match="unsupported data_view 'unknown_view'"):
         load_model_registry(config_data_view)
+
+
+def test_load_model_registry_rejects_mixed_type_model_keys(
+    tmp_path: Path,
+) -> None:
+    payload = _valid_models_config()
+    payload["models"].pop("rtmdet_rotated_m")
+    payload["models"][101] = {
+        "runner": "mmrotate",
+        "env": "mmrotate",
+        "data_view": "dota",
+        "preset": "rtmdet-rotated-m",
+    }
+    config_path = tmp_path / "models_mixed_keys.yaml"
+    config_path.write_text(yaml.safe_dump(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="model names must be strings"):
+        load_model_registry(config_path)
+
+
+def test_load_model_registry_rejects_unknown_model_fields(
+    tmp_path: Path,
+) -> None:
+    payload = _valid_models_config()
+    payload["models"]["yolo11m_obb"]["extra"] = "forbidden"
+    config_path = tmp_path / "models_unknown_field.yaml"
+    config_path.write_text(yaml.safe_dump(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="unknown fields"):
+        load_model_registry(config_path)
+
+
+def test_load_model_registry_rejects_invalid_env(
+    tmp_path: Path,
+) -> None:
+    payload = _valid_models_config()
+    payload["models"]["yolo11m_obb"]["env"] = "invalid_env"
+    config_path = tmp_path / "models_invalid_env.yaml"
+    config_path.write_text(yaml.safe_dump(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="unsupported env 'invalid_env'"):
+        load_model_registry(config_path)

@@ -13,7 +13,9 @@ _ALLOWED_MODEL_NAMES = {
     "rtmdet_rotated_m",
 }
 _ALLOWED_RUNNERS = {"mmrotate", "yolo"}
+_ALLOWED_ENVS = {"mmrotate", "yolo"}
 _ALLOWED_DATA_VIEWS = {"dota", "yolo_obb"}
+_REQUIRED_MODEL_FIELDS = {"runner", "env", "data_view", "preset"}
 
 
 @dataclass(frozen=True)
@@ -31,6 +33,10 @@ def _require_string(value: object, *, field_name: str, model_name: str) -> str:
     return value
 
 
+def _format_values(values: set[object]) -> list[str]:
+    return sorted(repr(value) for value in values)
+
+
 def load_model_registry(path: Path) -> dict[str, ModelSpec]:
     try:
         payload = yaml.safe_load(path.read_text(encoding="utf-8"))
@@ -46,6 +52,13 @@ def load_model_registry(path: Path) -> dict[str, ModelSpec]:
     if not isinstance(models_raw, dict):
         raise ValueError("model registry yaml must contain mapping key 'models'")
 
+    non_string_names = {name for name in models_raw.keys() if not isinstance(name, str)}
+    if non_string_names:
+        raise ValueError(
+            "model names must be strings, got non-string keys: "
+            f"{_format_values(non_string_names)}",
+        )
+
     names = set(models_raw.keys())
     if names != _ALLOWED_MODEL_NAMES:
         raise ValueError(
@@ -58,6 +71,16 @@ def load_model_registry(path: Path) -> dict[str, ModelSpec]:
         item = models_raw.get(model_name)
         if not isinstance(item, dict):
             raise ValueError(f"model '{model_name}' config must be a mapping")
+
+        item_keys = set(item.keys())
+        unknown_fields = item_keys - _REQUIRED_MODEL_FIELDS
+        missing_fields = _REQUIRED_MODEL_FIELDS - item_keys
+        if unknown_fields or missing_fields:
+            raise ValueError(
+                f"model '{model_name}' has invalid fields: "
+                f"unknown fields={_format_values(unknown_fields)}, "
+                f"missing fields={sorted(missing_fields)}",
+            )
 
         runner_name = _require_string(item.get("runner"), field_name="runner", model_name=model_name)
         env_name = _require_string(item.get("env"), field_name="env", model_name=model_name)
@@ -73,6 +96,11 @@ def load_model_registry(path: Path) -> dict[str, ModelSpec]:
             raise ValueError(
                 f"model '{model_name}' has unsupported data_view '{data_view}', "
                 f"allowed: {sorted(_ALLOWED_DATA_VIEWS)}",
+            )
+        if env_name not in _ALLOWED_ENVS:
+            raise ValueError(
+                f"model '{model_name}' has unsupported env '{env_name}', "
+                f"allowed: {sorted(_ALLOWED_ENVS)}",
             )
 
         registry[model_name] = ModelSpec(

@@ -7,6 +7,7 @@ from pathlib import Path
 
 
 _SPLITS: tuple[str, ...] = ("train", "val", "test")
+_IMAGE_SUFFIXES: tuple[str, ...] = (".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff")
 
 
 def materialize_dota_view(
@@ -16,10 +17,12 @@ def materialize_dota_view(
     out_dir: Path,
     link_mode: str = "symlink",
 ) -> Path:
+    _validate_split_ids_disjoint(split_ids)
     src_image_dir = dota_root / "train" / "images"
     src_label_dir = dota_root / "train" / "labelTxt"
     _ensure_dota_dirs(src_image_dir, src_label_dir)
     _prepare_out_dir(out_dir)
+    _clear_dota_layout(out_dir)
     _ensure_dota_layout(out_dir)
 
     for split in _SPLITS:
@@ -43,10 +46,14 @@ def materialize_yolo_view(
     out_dir: Path,
     link_mode: str = "symlink",
 ) -> Path:
+    _validate_split_ids_disjoint(split_ids)
     src_dota_image_dir = dota_root / "train" / "images"
     src_dota_label_dir = dota_root / "train" / "labelTxt"
     _ensure_dota_dirs(src_dota_image_dir, src_dota_label_dir)
-    yolo_images_index = _index_stems(yolo_root / "images")
+    yolo_images_index = _index_stems(
+        yolo_root / "images",
+        allowed_suffixes=_IMAGE_SUFFIXES,
+    )
     yolo_labels_index = _index_stems(yolo_root / "labels", required_suffix=".txt")
     _validate_stem_alignment(
         split_ids=split_ids,
@@ -57,6 +64,7 @@ def materialize_yolo_view(
     )
 
     _prepare_out_dir(out_dir)
+    _clear_yolo_layout(out_dir)
     _ensure_yolo_layout(out_dir)
     for split in _SPLITS:
         for stem in split_ids.get(split, []):
@@ -74,16 +82,47 @@ def materialize_yolo_view(
 def _ensure_dota_dirs(image_dir: Path, label_dir: Path) -> None:
     if not image_dir.exists():
         raise FileNotFoundError(f"DOTA images 目录不存在: {image_dir}")
+    if not image_dir.is_dir():
+        raise NotADirectoryError(f"DOTA images 路径不是目录: {image_dir}")
     if not label_dir.exists():
         raise FileNotFoundError(f"DOTA labelTxt 目录不存在: {label_dir}")
+    if not label_dir.is_dir():
+        raise NotADirectoryError(f"DOTA labelTxt 路径不是目录: {label_dir}")
 
 
 def _prepare_out_dir(out_dir: Path) -> None:
     if out_dir.is_symlink() or out_dir.is_file():
         raise ValueError(f"out_dir 必须是目录路径: {out_dir}")
-    if out_dir.exists():
-        shutil.rmtree(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+
+
+def _clear_dota_layout(out_dir: Path) -> None:
+    for split in _SPLITS:
+        _clear_managed_dir(out_dir / split / "images")
+        _clear_managed_dir(out_dir / split / "labelTxt")
+
+
+def _clear_yolo_layout(out_dir: Path) -> None:
+    for split in _SPLITS:
+        _clear_managed_dir(out_dir / "images" / split)
+        _clear_managed_dir(out_dir / "labels" / split)
+    _clear_managed_file(out_dir / "dataset.yaml")
+
+
+def _clear_managed_dir(path: Path) -> None:
+    if path.is_symlink() or path.is_file():
+        path.unlink()
+        return
+    if path.is_dir():
+        shutil.rmtree(path)
+
+
+def _clear_managed_file(path: Path) -> None:
+    if path.is_symlink() or path.is_file():
+        path.unlink()
+        return
+    if path.is_dir():
+        raise IsADirectoryError(f"目标路径应为文件但实际是目录: {path}")
 
 
 def _ensure_dota_layout(out_dir: Path) -> None:
@@ -99,7 +138,11 @@ def _ensure_yolo_layout(out_dir: Path) -> None:
 
 
 def _resolve_image_by_stem(image_dir: Path, stem: str) -> Path:
-    matches = sorted(image_dir.glob(f"{stem}.*"))
+    matches = sorted(
+        path
+        for path in image_dir.iterdir()
+        if path.is_file() and path.stem == stem and path.suffix.lower() in _IMAGE_SUFFIXES
+    )
     if not matches:
         raise FileNotFoundError(f"找不到样本 {stem} 的图片文件: {image_dir}")
     if len(matches) > 1:
@@ -130,14 +173,28 @@ def _materialize_path(*, src: Path, dst: Path, link_mode: str) -> None:
         shutil.copy2(src, dst)
 
 
-def _index_stems(root: Path, *, required_suffix: str | None = None) -> dict[str, Path]:
+def _index_stems(
+    root: Path,
+    *,
+    required_suffix: str | None = None,
+    allowed_suffixes: tuple[str, ...] | None = None,
+) -> dict[str, Path]:
     if not root.exists():
         return {}
     indexed: dict[str, Path] = {}
+    required_suffix_norm = required_suffix.lower() if required_suffix is not None else None
+    allowed_suffixes_norm = (
+        tuple(suffix.lower() for suffix in allowed_suffixes)
+        if allowed_suffixes is not None
+        else None
+    )
     for path in sorted(root.rglob("*")):
         if not path.is_file():
             continue
-        if required_suffix is not None and path.suffix != required_suffix:
+        suffix = path.suffix.lower()
+        if required_suffix_norm is not None and suffix != required_suffix_norm:
+            continue
+        if allowed_suffixes_norm is not None and suffix not in allowed_suffixes_norm:
             continue
         if path.stem in indexed:
             raise ValueError(
@@ -145,6 +202,18 @@ def _index_stems(root: Path, *, required_suffix: str | None = None) -> dict[str,
             )
         indexed[path.stem] = path
     return indexed
+
+
+def _validate_split_ids_disjoint(split_ids: dict[str, list[str]]) -> None:
+    seen_split_by_stem: dict[str, str] = {}
+    for split in _SPLITS:
+        for stem in split_ids.get(split, []):
+            previous_split = seen_split_by_stem.get(stem)
+            if previous_split is not None:
+                raise ValueError(
+                    f"split overlap: stem {stem} appears in {previous_split} and {split}"
+                )
+            seen_split_by_stem[stem] = split
 
 
 def _validate_stem_alignment(

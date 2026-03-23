@@ -53,6 +53,8 @@ def test_materialize_dota_view_rerun_does_not_keep_stale_files(
         split_ids={"train": ["sample_001"], "val": [], "test": []},
         out_dir=out_dir,
     )
+    keep_file = out_dir / "keep.txt"
+    keep_file.write_text("keep", encoding="utf-8")
 
     materialize_dota_view(
         dota_root=tiny_dota_export,
@@ -64,6 +66,23 @@ def test_materialize_dota_view_rerun_does_not_keep_stale_files(
     train_labels = sorted(path.stem for path in (out_dir / "train" / "labelTxt").glob("*.txt"))
     assert train_images == ["sample_002"]
     assert train_labels == ["sample_002"]
+    assert keep_file.read_text(encoding="utf-8") == "keep"
+
+
+def test_materialize_dota_view_raises_when_split_ids_overlap(
+    tmp_path: Path,
+    tiny_dota_export: Path,
+) -> None:
+    with pytest.raises(ValueError, match="split overlap"):
+        materialize_dota_view(
+            dota_root=tiny_dota_export,
+            split_ids={
+                "train": ["sample_001"],
+                "val": ["sample_001"],
+                "test": [],
+            },
+            out_dir=tmp_path / "dota_view_overlap",
+        )
 
 
 def test_materialize_dota_view_raises_when_multiple_images_match_same_stem(
@@ -114,6 +133,49 @@ def test_materialize_yolo_view_raises_when_duplicate_stem_in_source(
             split_ids={"train": ["sample_001"], "val": [], "test": []},
             class_names=("pattern_a", "pattern_b", "pattern_c"),
             out_dir=tmp_path / "yolo_view_duplicate",
+        )
+
+
+def test_materialize_yolo_view_raises_when_split_ids_overlap(
+    tmp_path: Path,
+    tiny_dota_export: Path,
+    tiny_yolo_export: Path,
+) -> None:
+    with pytest.raises(ValueError, match="split overlap"):
+        materialize_yolo_view(
+            dota_root=tiny_dota_export,
+            yolo_root=tiny_yolo_export,
+            split_ids={
+                "train": ["sample_001"],
+                "val": ["sample_001"],
+                "test": [],
+            },
+            class_names=("pattern_a", "pattern_b", "pattern_c"),
+            out_dir=tmp_path / "yolo_view_overlap",
+        )
+
+
+def test_materialize_yolo_view_ignores_non_image_files_in_image_tree(
+    tmp_path: Path,
+    tiny_dota_export: Path,
+    tiny_yolo_export: Path,
+) -> None:
+    (tiny_yolo_export / "images" / "train" / "sample_006.md").write_text(
+        "not-an-image",
+        encoding="utf-8",
+    )
+    (tiny_yolo_export / "labels" / "train" / "sample_006.txt").write_text(
+        "",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="stem mismatch"):
+        materialize_yolo_view(
+            dota_root=tiny_dota_export,
+            yolo_root=tiny_yolo_export,
+            split_ids={"train": ["sample_006"], "val": [], "test": []},
+            class_names=("pattern_a", "pattern_b", "pattern_c"),
+            out_dir=tmp_path / "yolo_view_non_image",
         )
 
 
@@ -172,6 +234,8 @@ def test_materialize_yolo_view_rerun_does_not_keep_stale_files(
         class_names=("pattern_a", "pattern_b", "pattern_c"),
         out_dir=out_dir,
     )
+    keep_file = out_dir / "keep.txt"
+    keep_file.write_text("keep", encoding="utf-8")
 
     materialize_yolo_view(
         dota_root=tiny_dota_export,
@@ -185,6 +249,7 @@ def test_materialize_yolo_view_rerun_does_not_keep_stale_files(
     train_labels = sorted(path.stem for path in (out_dir / "labels" / "train").glob("*.txt"))
     assert train_images == ["sample_002"]
     assert train_labels == ["sample_002"]
+    assert keep_file.read_text(encoding="utf-8") == "keep"
 
 
 def test_materialize_yolo_view_writes_yaml_safe_scalars(

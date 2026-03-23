@@ -44,6 +44,20 @@ def write_metrics(
     )
 
 
+def write_raw_metrics(
+    *,
+    benchmark_root: Path,
+    relative_path: str,
+    payload: dict[str, object],
+) -> None:
+    metrics_path = benchmark_root / "records" / relative_path
+    metrics_path.parent.mkdir(parents=True, exist_ok=True)
+    metrics_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
 def test_collect_suite_outputs_aggregates_in_two_stages_and_sorts_rows(
     tmp_path: Path,
 ) -> None:
@@ -155,14 +169,36 @@ def test_write_suite_outputs_writes_csv_and_markdown_files(tmp_path: Path) -> No
     assert summary_md.is_file()
 
     with summary_csv.open("r", encoding="utf-8", newline="") as handle:
-        rows = list(csv.DictReader(handle))
+        reader = csv.DictReader(handle)
+        rows = list(reader)
     assert len(rows) == 1
     assert rows[0]["model_name"] == "oriented_rcnn_r50"
+    assert reader.fieldnames == [
+        "model_name",
+        "split_seed",
+        "train_seed",
+        "metrics_path",
+        "mAP50_95",
+        "precision",
+        "recall",
+        "f1",
+        "extra_note",
+    ]
 
     with leaderboard_csv.open("r", encoding="utf-8", newline="") as handle:
-        leaderboard_rows = list(csv.DictReader(handle))
+        leaderboard_reader = csv.DictReader(handle)
+        leaderboard_rows = list(leaderboard_reader)
     assert len(leaderboard_rows) == 1
     assert leaderboard_rows[0]["mAP50_95_mean"] == "0.5"
+    assert leaderboard_reader.fieldnames == [
+        "model_name",
+        "mAP50_95_mean",
+        "precision_mean",
+        "recall_mean",
+        "f1_mean",
+        "split_count",
+        "train_count",
+    ]
 
 
 def test_render_summary_markdown_uses_expected_chinese_phrase(tmp_path: Path) -> None:
@@ -182,5 +218,63 @@ def test_render_summary_markdown_uses_expected_chinese_phrase(tmp_path: Path) ->
     )
 
     markdown = render_summary_markdown(outputs)
-    assert "精度最佳模型" in markdown
+    assert "精度最佳模型（按 mAP50_95）" in markdown
     assert "综合最优模型" not in markdown
+
+
+def test_collect_suite_outputs_raises_on_invalid_metrics_path(tmp_path: Path) -> None:
+    benchmark_root = tmp_path / "obb_baseline"
+    write_raw_metrics(
+        benchmark_root=benchmark_root,
+        relative_path="oriented_rcnn_r50/wrong-0/seed-0/metrics.json",
+        payload={"mAP50_95": 0.5, "precision": 0.8, "recall": 0.5},
+    )
+    with pytest.raises(ValueError, match="metrics.json.*路径"):
+        collect_suite_outputs(
+            benchmark_name="fedo_part2_v1",
+            benchmark_root=benchmark_root,
+        )
+
+
+def test_collect_suite_outputs_raises_when_payload_overrides_reserved_keys(
+    tmp_path: Path,
+) -> None:
+    benchmark_root = tmp_path / "obb_baseline"
+    write_raw_metrics(
+        benchmark_root=benchmark_root,
+        relative_path="oriented_rcnn_r50/split-0/seed-0/metrics.json",
+        payload={
+            "mAP50_95": 0.5,
+            "precision": 0.8,
+            "recall": 0.5,
+            "model_name": "bad_override",
+        },
+    )
+    with pytest.raises(ValueError, match="保留字段"):
+        collect_suite_outputs(
+            benchmark_name="fedo_part2_v1",
+            benchmark_root=benchmark_root,
+        )
+
+
+def test_write_suite_outputs_renders_empty_values_as_blank_in_csv_and_markdown(
+    tmp_path: Path,
+) -> None:
+    benchmark_root = tmp_path / "obb_baseline"
+    write_raw_metrics(
+        benchmark_root=benchmark_root,
+        relative_path="oriented_rcnn_r50/split-0/seed-0/metrics.json",
+        payload={"mAP50_95": 0.5, "precision": None, "recall": 0.2},
+    )
+    outputs = collect_suite_outputs(
+        benchmark_name="fedo_part2_v1",
+        benchmark_root=benchmark_root,
+    )
+    write_suite_outputs(outputs, benchmark_root)
+
+    with (benchmark_root / "summary.csv").open("r", encoding="utf-8", newline="") as handle:
+        summary_rows = list(csv.DictReader(handle))
+    assert summary_rows[0]["f1"] == ""
+
+    markdown = (benchmark_root / "summary.md").read_text(encoding="utf-8")
+    assert "None" not in markdown

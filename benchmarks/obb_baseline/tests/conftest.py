@@ -125,3 +125,20 @@ def tiny_yolo_export_with_mismatch(tmp_path: Path) -> Path:
             (root / "labels" / split / f"{stem}.txt").write_text("", encoding="utf-8")
 
     return root
+
+
+@pytest.fixture()
+def tiny_yolo_export_with_duplicate_stem(tmp_path: Path) -> Path:
+    root = tmp_path / "tiny_yolo_export_with_duplicate_stem"
+    for split in ("train", "val", "test"):
+        (root / "images" / split).mkdir(parents=True, exist_ok=True)
+        (root / "labels" / split).mkdir(parents=True, exist_ok=True)
+
+    (root / "images" / "train" / "sample_001.png").write_bytes(b"")
+    (root / "labels" / "train" / "sample_001.txt").write_text("", encoding="utf-8")
+    (root / "images" / "val" / "sample_001.png").write_bytes(b"")
+    (root / "labels" / "val" / "sample_001.txt").write_text("", encoding="utf-8")
+    (root / "images" / "train" / "sample_002.png").write_bytes(b"")
+    (root / "labels" / "train" / "sample_002.txt").write_text("", encoding="utf-8")
+
+    return root

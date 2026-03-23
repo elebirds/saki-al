@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import shutil
 from pathlib import Path
@@ -18,6 +19,7 @@ def materialize_dota_view(
     src_image_dir = dota_root / "train" / "images"
     src_label_dir = dota_root / "train" / "labelTxt"
     _ensure_dota_dirs(src_image_dir, src_label_dir)
+    _prepare_out_dir(out_dir)
     _ensure_dota_layout(out_dir)
 
     for split in _SPLITS:
@@ -54,6 +56,7 @@ def materialize_yolo_view(
         yolo_labels_index=yolo_labels_index,
     )
 
+    _prepare_out_dir(out_dir)
     _ensure_yolo_layout(out_dir)
     for split in _SPLITS:
         for stem in split_ids.get(split, []):
@@ -75,6 +78,14 @@ def _ensure_dota_dirs(image_dir: Path, label_dir: Path) -> None:
         raise FileNotFoundError(f"DOTA labelTxt 目录不存在: {label_dir}")
 
 
+def _prepare_out_dir(out_dir: Path) -> None:
+    if out_dir.is_symlink() or out_dir.is_file():
+        raise ValueError(f"out_dir 必须是目录路径: {out_dir}")
+    if out_dir.exists():
+        shutil.rmtree(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+
 def _ensure_dota_layout(out_dir: Path) -> None:
     for split in _SPLITS:
         (out_dir / split / "images").mkdir(parents=True, exist_ok=True)
@@ -91,6 +102,8 @@ def _resolve_image_by_stem(image_dir: Path, stem: str) -> Path:
     matches = sorted(image_dir.glob(f"{stem}.*"))
     if not matches:
         raise FileNotFoundError(f"找不到样本 {stem} 的图片文件: {image_dir}")
+    if len(matches) > 1:
+        raise ValueError(f"multiple images matched for stem {stem}: {matches}")
     return matches[0]
 
 
@@ -103,6 +116,8 @@ def _resolve_label_by_stem(label_dir: Path, stem: str) -> Path:
 
 def _materialize_path(*, src: Path, dst: Path, link_mode: str) -> None:
     if dst.exists() or dst.is_symlink():
+        if dst.is_dir() and not dst.is_symlink():
+            raise IsADirectoryError(f"目标路径是目录，无法物化文件: {dst}")
         dst.unlink()
     if link_mode == "copy":
         shutil.copy2(src, dst)
@@ -124,6 +139,10 @@ def _index_stems(root: Path, *, required_suffix: str | None = None) -> dict[str,
             continue
         if required_suffix is not None and path.suffix != required_suffix:
             continue
+        if path.stem in indexed:
+            raise ValueError(
+                f"duplicate stem: {path.stem} ({indexed[path.stem]} vs {path})"
+            )
         indexed[path.stem] = path
     return indexed
 
@@ -145,14 +164,17 @@ def _validate_stem_alignment(
 
 
 def _write_dataset_yaml(*, out_dir: Path, class_names: tuple[str, ...]) -> None:
-    names_block = "\n".join(f"  - {name}" for name in class_names)
+    path_value = json.dumps(str(out_dir), ensure_ascii=False)
+    train_value = json.dumps("images/train", ensure_ascii=False)
+    val_value = json.dumps("images/val", ensure_ascii=False)
+    test_value = json.dumps("images/test", ensure_ascii=False)
+    names_value = json.dumps(list(class_names), ensure_ascii=False)
     content = (
-        f"path: {out_dir}\n"
-        "train: images/train\n"
-        "val: images/val\n"
-        "test: images/test\n"
+        f"path: {path_value}\n"
+        f"train: {train_value}\n"
+        f"val: {val_value}\n"
+        f"test: {test_value}\n"
         f"nc: {len(class_names)}\n"
-        "names:\n"
-        f"{names_block}\n"
+        f"names: {names_value}\n"
     )
     (out_dir / "dataset.yaml").write_text(content, encoding="utf-8")

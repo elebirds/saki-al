@@ -80,7 +80,6 @@ def build_yolo_train_command(
         "ultralytics",
         "train",
         "task=obb",
-        f"preset={preset}",
         f"model={preset}",
         f"data={dataset_yaml}",
         f"project={work_dir.parent}",

@@ -29,7 +29,6 @@ def test_build_yolo_command_uses_yolo_env_and_dataset_yaml(tmp_path: Path) -> No
     assert command[4:8] == ["python", "-m", "ultralytics", "train"]
     assert "train" in command
     assert "task=obb" in command
-    assert "preset=yolo11m-obb" in command
     assert "model=yolo11m-obb" in command
     assert f"data={tmp_path / 'dataset.yaml'}" in command
     assert f"project={tmp_path / 'workdirs' / 'yolo11m_obb' / 'split-11'}" in command

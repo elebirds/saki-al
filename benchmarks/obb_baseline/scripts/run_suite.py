@@ -308,7 +308,6 @@ def should_skip_run(
     run_dir: Path,
     rerun_failed: bool = False,
 ) -> bool:
-    _ = rerun_failed
     metrics_path = run_dir / "metrics.json"
     if not metrics_path.exists():
         return False
@@ -319,6 +318,8 @@ def should_skip_run(
     status = str(payload.get("status", ""))
     if status == "succeeded":
         return True
+    if status == "failed":
+        return not rerun_failed
     return False
 
 

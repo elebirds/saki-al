@@ -4,7 +4,6 @@ import importlib.util
 import json
 import subprocess
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 import yaml
@@ -111,25 +110,26 @@ def test_main_skips_succeeded_run_and_still_writes_suite_outputs(
         status="succeeded",
     )
 
-    monkeypatch.setattr(
-        module,
-        "dispatch_runner",
-        lambda **_: (_ for _ in ()).throw(AssertionError("completed run should be skipped")),
-    )
-    monkeypatch.setattr(
-        module,
-        "execute_launch",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            AssertionError("execute_launch should not be called")
-        ),
-    )
-    monkeypatch.setattr(
-        module,
-        "parse_and_write_outputs",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            AssertionError("parse_and_write_outputs should not be called")
-        ),
-    )
+    calls = {
+        "dispatch_runner": 0,
+        "execute_launch": 0,
+        "parse_and_write_outputs": 0,
+    }
+
+    def _dispatch_runner(**_kwargs):
+        calls["dispatch_runner"] += 1
+        return module.RunnerLaunch(command=["echo", "unexpected"], cwd=str(benchmark_root), extra_env={})
+
+    def _execute_launch(*_args, **_kwargs):
+        calls["execute_launch"] += 1
+        return subprocess.CompletedProcess(args=["echo", "unexpected"], returncode=0, stdout="", stderr="")
+
+    def _parse_and_write_outputs(**_kwargs):
+        calls["parse_and_write_outputs"] += 1
+
+    monkeypatch.setattr(module, "dispatch_runner", _dispatch_runner)
+    monkeypatch.setattr(module, "execute_launch", _execute_launch)
+    monkeypatch.setattr(module, "parse_and_write_outputs", _parse_and_write_outputs)
 
     exit_code = module.main(
         [
@@ -150,6 +150,11 @@ def test_main_skips_succeeded_run_and_still_writes_suite_outputs(
     assert (benchmark_root / "summary.csv").is_file()
     assert (benchmark_root / "leaderboard.csv").is_file()
     assert (benchmark_root / "summary.md").is_file()
+    assert calls == {
+        "dispatch_runner": 0,
+        "execute_launch": 0,
+        "parse_and_write_outputs": 0,
+    }
 
 
 def test_main_reruns_failed_run_when_flag_present(
@@ -221,6 +226,31 @@ def test_main_reruns_failed_run_when_flag_present(
     assert len(dispatch_calls) == 1
     assert len(execute_calls) == 1
     assert len(parse_calls) == 1
+
+
+def test_should_skip_run_respects_rerun_failed_flag(tmp_path: Path) -> None:
+    module = load_run_suite_module()
+    run_dir = tmp_path / "records" / "oriented_rcnn_r50" / "split-11" / "seed-101"
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    assert module.should_skip_run(run_dir=run_dir, rerun_failed=False) is False
+
+    (run_dir / "metrics.json").write_text(
+        json.dumps({"status": "succeeded"}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    assert module.should_skip_run(run_dir=run_dir, rerun_failed=False) is True
+    assert module.should_skip_run(run_dir=run_dir, rerun_failed=True) is True
+
+    (run_dir / "metrics.json").write_text(
+        json.dumps({"status": "failed"}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    assert module.should_skip_run(run_dir=run_dir, rerun_failed=False) is True
+    assert module.should_skip_run(run_dir=run_dir, rerun_failed=True) is False
+
+    (run_dir / "metrics.json").write_text("{bad_json", encoding="utf-8")
+    assert module.should_skip_run(run_dir=run_dir, rerun_failed=False) is False
 
 
 def test_main_writes_standard_run_artifacts(

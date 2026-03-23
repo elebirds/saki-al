@@ -315,6 +315,69 @@ def test_main_writes_standard_run_artifacts(
     assert json.loads((run_dir / "status.json").read_text(encoding="utf-8"))["status"] == "succeeded"
 
 
+def test_main_status_tracks_final_failed_metrics_even_when_returncode_is_zero(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = load_run_suite_module()
+    benchmark_root = tmp_path / "runs" / "obb_baseline" / "fedo_part2_v1"
+    write_split_manifest(benchmark_root / "split_manifest.json", split_seeds=[11], test_ids=["img_004"])
+    config_path = benchmark_root / "config.yaml"
+    write_config(config_path)
+
+    run_dir = benchmark_root / "records" / "yolo11m_obb" / "split-11" / "seed-101"
+
+    monkeypatch.setattr(
+        module,
+        "dispatch_runner",
+        lambda **_: module.RunnerLaunch(command=["echo", "ok"], cwd=str(benchmark_root), extra_env={}),
+    )
+    monkeypatch.setattr(
+        module,
+        "execute_launch",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            args=["echo", "ok"],
+            returncode=0,
+            stdout="train ok\n",
+            stderr="",
+        ),
+    )
+    monkeypatch.setattr(
+        module,
+        "parse_and_write_outputs",
+        lambda **_: write_metrics(
+            run_dir,
+            model_name="yolo11m_obb",
+            split_seed=11,
+            train_seed=101,
+            status="failed",
+        ),
+    )
+
+    exit_code = module.main(
+        [
+            "--config",
+            str(config_path),
+            "--benchmark-root",
+            str(benchmark_root),
+            "--models",
+            "yolo11m_obb",
+            "--split-seeds",
+            "11",
+            "--train-seeds",
+            "101",
+        ]
+    )
+
+    assert exit_code == 0
+    status_payload = json.loads((run_dir / "status.json").read_text(encoding="utf-8"))
+    metrics_payload = json.loads((run_dir / "metrics.json").read_text(encoding="utf-8"))
+    assert status_payload["returncode"] == 0
+    assert status_payload["execution_status"] == "succeeded"
+    assert metrics_payload["status"] == "failed"
+    assert status_payload["status"] == "failed"
+
+
 def test_parse_and_write_outputs_delegates_to_mmrotate_runner_helper(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -403,7 +466,6 @@ def test_parse_and_write_outputs_delegates_to_yolo_runner_helper(
 
     assert captured["work_dir"] == work_dir
     assert captured["metrics_path"] == run_dir / "metrics.json"
-    assert captured["status_path"] == run_dir / "yolo_status.json"
     assert captured["execution_status"] == "succeeded"
     assert captured["run_metadata"].model_name == "yolo11m_obb"
     assert captured["run_metadata"].split_seed == 11

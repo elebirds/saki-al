@@ -238,7 +238,6 @@ def parse_and_write_outputs(
         parse_yolo_outputs(
             work_dir=work_dir,
             metrics_path=run_dir / "metrics.json",
-            status_path=run_dir / "yolo_status.json",
             run_metadata=YoloRunMetadata(
                 benchmark_name=benchmark_name,
                 split_manifest_hash=manifest_hash,
@@ -333,6 +332,39 @@ def write_status_and_logs(
         encoding="utf-8",
     )
     return status
+
+
+def update_status_from_metrics(
+    *,
+    run_dir: Path,
+    execution_status: str,
+    returncode: int,
+) -> str:
+    final_status = execution_status
+    metrics_path = run_dir / "metrics.json"
+    if metrics_path.exists():
+        try:
+            payload = _read_json_mapping(metrics_path)
+        except (OSError, json.JSONDecodeError, ValueError):
+            payload = {}
+        metrics_status = payload.get("status")
+        if metrics_status in {"succeeded", "failed"}:
+            final_status = str(metrics_status)
+
+    (run_dir / "status.json").write_text(
+        json.dumps(
+            {
+                "status": final_status,
+                "execution_status": execution_status,
+                "returncode": int(returncode),
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return final_status
 
 
 def build_child_env(
@@ -527,6 +559,11 @@ def main(argv: list[str] | None = None) -> int:
                     run_dir=run_dir,
                     work_dir=work_dir,
                     execution_status=execution_status,
+                )
+                update_status_from_metrics(
+                    run_dir=run_dir,
+                    execution_status=execution_status,
+                    returncode=result.returncode,
                 )
 
     outputs = collect_suite_outputs(

@@ -26,7 +26,7 @@ def test_build_yolo_command_uses_yolo_env_and_dataset_yaml(tmp_path: Path) -> No
         "--project",
         "benchmarks/obb_baseline/envs/yolo",
     ]
-    assert command[4:8] == ["python", "-m", "ultralytics", "train"]
+    assert command[4:6] == ["yolo", "train"]
     assert "train" in command
     assert "task=obb" in command
     assert "model=yolo11m-obb" in command

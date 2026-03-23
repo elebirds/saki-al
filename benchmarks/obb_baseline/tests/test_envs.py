@@ -112,6 +112,17 @@ def test_mmrotate_uv_source_indexes() -> None:
     assert uv_sources["mmcv"] == {"url": OPENMMLAB_MMCV_CU118_TORCH200_WHEEL}
 
 
+def test_env_hatch_wheel_targets_are_explicit_and_packagable() -> None:
+    mmrotate = _load_pyproject("mmrotate")
+    yolo = _load_pyproject("yolo")
+
+    mmrotate_wheel = mmrotate["tool"]["hatch"]["build"]["targets"]["wheel"]
+    yolo_wheel = yolo["tool"]["hatch"]["build"]["targets"]["wheel"]
+
+    assert mmrotate_wheel["packages"] == ["src/obb_benchmark_mmrotate_env"]
+    assert yolo_wheel["packages"] == ["src/obb_benchmark_yolo_env"]
+
+
 def test_env_lock_files_exist() -> None:
     mmrotate_lock = ROOT / "envs" / "mmrotate" / "uv.lock"
     yolo_lock = ROOT / "envs" / "yolo" / "uv.lock"
@@ -187,9 +198,50 @@ def _run_uv_lock_check(env_name: str) -> None:
     )
 
 
+def _run_uv_build_wheel(env_name: str, out_dir: Path) -> None:
+    env_dir = ROOT / "envs" / env_name
+    cmd = [
+        "uv",
+        "build",
+        "--project",
+        str(env_dir),
+        "--wheel",
+        "--out-dir",
+        str(out_dir),
+    ]
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=ROOT.parent.parent,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError as exc:
+        pytest.fail(
+            f"uv command not found while building {env_name} wheel. "
+            f"command={cmd}, cwd={ROOT.parent.parent}, error={exc}"
+        )
+
+    assert result.returncode == 0, (
+        f"{env_name} wheel build failed:\n"
+        f"stdout:\n{result.stdout}\n"
+        f"stderr:\n{result.stderr}"
+    )
+    wheels = list(out_dir.glob("*.whl"))
+    assert wheels, f"{env_name} wheel not found in {out_dir}"
+
+
 def test_lock_files_in_sync_with_pyproject() -> None:
     for env_name in ("mmrotate", "yolo"):
         _run_uv_lock_check(env_name)
+
+
+def test_env_projects_can_build_wheel_via_uv(tmp_path: Path) -> None:
+    for env_name in ("mmrotate", "yolo"):
+        out_dir = tmp_path / env_name
+        out_dir.mkdir(parents=True, exist_ok=True)
+        _run_uv_build_wheel(env_name, out_dir)
 
 
 def test_dep_match_rejects_prefix_collision() -> None:

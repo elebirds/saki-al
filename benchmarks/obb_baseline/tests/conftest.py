@@ -85,3 +85,43 @@ def sample_inventory(tiny_dota_export: Path):
 @pytest.fixture()
 def sample_inventory_with_small_bucket(sample_inventory):
     return sample_inventory
+
+
+@pytest.fixture()
+def tiny_yolo_export(tmp_path: Path) -> Path:
+    root = tmp_path / "tiny_yolo_export"
+    for split in ("train", "val", "test"):
+        (root / "images" / split).mkdir(parents=True, exist_ok=True)
+        (root / "labels" / split).mkdir(parents=True, exist_ok=True)
+
+    samples_by_split: dict[str, tuple[str, ...]] = {
+        "train": ("sample_001", "sample_002", "sample_003"),
+        "val": ("sample_004",),
+        "test": ("sample_005",),
+    }
+    for split, stems in samples_by_split.items():
+        for stem in stems:
+            (root / "images" / split / f"{stem}.png").write_bytes(b"")
+            (root / "labels" / split / f"{stem}.txt").write_text("", encoding="utf-8")
+
+    return root
+
+
+@pytest.fixture()
+def tiny_yolo_export_with_mismatch(tmp_path: Path) -> Path:
+    root = tmp_path / "tiny_yolo_export_with_mismatch"
+    for split in ("train", "val", "test"):
+        (root / "images" / split).mkdir(parents=True, exist_ok=True)
+        (root / "labels" / split).mkdir(parents=True, exist_ok=True)
+
+    samples_by_split: dict[str, tuple[str, ...]] = {
+        "train": ("sample_001", "sample_002", "mismatch_003"),
+        "val": ("sample_004",),
+        "test": ("sample_005",),
+    }
+    for split, stems in samples_by_split.items():
+        for stem in stems:
+            (root / "images" / split / f"{stem}.png").write_bytes(b"")
+            (root / "labels" / split / f"{stem}.txt").write_text("", encoding="utf-8")
+
+    return root

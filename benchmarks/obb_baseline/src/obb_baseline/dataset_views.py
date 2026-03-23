@@ -21,13 +21,18 @@ def materialize_dota_view(
     src_image_dir = dota_root / "train" / "images"
     src_label_dir = dota_root / "train" / "labelTxt"
     _ensure_dota_dirs(src_image_dir, src_label_dir)
+    image_index = _index_dota_images_by_stem(src_image_dir)
     _prepare_out_dir(out_dir)
     _clear_dota_layout(out_dir)
     _ensure_dota_layout(out_dir)
 
     for split in _SPLITS:
         for stem in split_ids.get(split, []):
-            image_src = _resolve_image_by_stem(src_image_dir, stem)
+            image_src = _resolve_indexed_image_by_stem(
+                image_index=image_index,
+                image_dir=src_image_dir,
+                stem=stem,
+            )
             label_src = _resolve_label_by_stem(src_label_dir, stem)
             image_dst = out_dir / split / "images" / image_src.name
             label_dst = out_dir / split / "labelTxt" / label_src.name
@@ -148,6 +153,32 @@ def _resolve_image_by_stem(image_dir: Path, stem: str) -> Path:
     if len(matches) > 1:
         raise ValueError(f"multiple images matched for stem {stem}: {matches}")
     return matches[0]
+
+
+def _index_dota_images_by_stem(image_dir: Path) -> dict[str, Path]:
+    indexed: dict[str, Path] = {}
+    for path in sorted(image_dir.iterdir()):
+        if not path.is_file() or path.suffix.lower() not in _IMAGE_SUFFIXES:
+            continue
+        previous = indexed.get(path.stem)
+        if previous is not None:
+            raise ValueError(
+                f"multiple images matched for stem {path.stem}: {[previous, path]}"
+            )
+        indexed[path.stem] = path
+    return indexed
+
+
+def _resolve_indexed_image_by_stem(
+    *,
+    image_index: dict[str, Path],
+    image_dir: Path,
+    stem: str,
+) -> Path:
+    image_path = image_index.get(stem)
+    if image_path is None:
+        raise FileNotFoundError(f"找不到样本 {stem} 的图片文件: {image_dir}")
+    return image_path
 
 
 def _resolve_label_by_stem(label_dir: Path, stem: str) -> Path:

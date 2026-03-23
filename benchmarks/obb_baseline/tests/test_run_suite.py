@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -253,6 +254,165 @@ def test_should_skip_run_respects_rerun_failed_flag(tmp_path: Path) -> None:
     assert module.should_skip_run(run_dir=run_dir, rerun_failed=False) is False
 
 
+def test_build_child_env_prefixes_pythonpath_and_clears_virtual_env() -> None:
+    module = load_run_suite_module()
+    env = module.build_child_env(
+        base_env={
+            "PYTHONPATH": "/tmp/existing",
+            "VIRTUAL_ENV": "/tmp/outer-venv",
+            "KEEP_ME": "1",
+        }
+    )
+
+    expected_src = str((Path(module.__file__).resolve().parent.parent / "src").resolve())
+    assert env["PYTHONPATH"] == f"{expected_src}{os.pathsep}/tmp/existing"
+    assert "VIRTUAL_ENV" not in env
+    assert env["KEEP_ME"] == "1"
+
+
+def test_dispatch_runner_for_mmrotate_uses_view_dir_as_data_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = load_run_suite_module()
+    run_dir = tmp_path / "records" / "oriented_rcnn_r50" / "split-11" / "seed-101"
+    work_dir = tmp_path / "workdirs" / "oriented_rcnn_r50" / "split-11" / "seed-101"
+    view_dir = tmp_path / "views" / "dota" / "split-11"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    work_dir.mkdir(parents=True, exist_ok=True)
+    view_dir.mkdir(parents=True, exist_ok=True)
+
+    render_calls: dict[str, object] = {}
+    build_calls: dict[str, object] = {}
+
+    def _fake_render_mmrotate_config(**kwargs):
+        render_calls.update(kwargs)
+        return "# generated config\n"
+
+    def _fake_build_mmrotate_train_command(**kwargs):
+        build_calls.update(kwargs)
+        return [
+            "uv",
+            "run",
+            "--project",
+            "benchmarks/obb_baseline/envs/mmrotate",
+            "python",
+            "-m",
+            "obb_baseline.runners_mmrotate",
+            "--config",
+            str(kwargs["generated_config"]),
+        ]
+
+    monkeypatch.setattr(module, "render_mmrotate_config", _fake_render_mmrotate_config)
+    monkeypatch.setattr(module, "build_mmrotate_train_command", _fake_build_mmrotate_train_command)
+
+    launch = module.dispatch_runner(
+        model_spec=ModelSpec(
+            model_name="oriented_rcnn_r50",
+            runner_name="mmrotate",
+            env_name="mmrotate",
+            data_view="dota",
+            preset="oriented-rcnn-r50-fpn",
+        ),
+        config={
+            "dataset": {"classes": ["pattern_a", "pattern_b", "pattern_c"]},
+            "runtime": {"device": "0", "score_thr": 0.15},
+        },
+        split_seed=11,
+        train_seed=101,
+        run_dir=run_dir,
+        work_dir=work_dir,
+        view_dir=view_dir,
+    )
+
+    generated_config = run_dir / "mmrotate.generated.py"
+    assert render_calls["data_root"] == view_dir
+    assert render_calls["work_dir"] == work_dir
+    assert render_calls["train_seed"] == 101
+    assert render_calls["score_thr"] == 0.15
+    assert render_calls["classes"] == ("pattern_a", "pattern_b", "pattern_c")
+    assert generated_config.read_text(encoding="utf-8") == "# generated config\n"
+    assert build_calls["generated_config"] == generated_config
+    assert build_calls["work_dir"] == work_dir
+    assert build_calls["train_seed"] == 101
+    assert build_calls["device"] == "0"
+    assert "--config" in launch.command
+    assert str(generated_config) in launch.command
+
+
+def test_main_emits_view_progress_logs_before_runner_dispatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    module = load_run_suite_module()
+    benchmark_root = tmp_path / "runs" / "obb_baseline" / "fedo_part2_v1"
+    write_split_manifest(benchmark_root / "split_manifest.json", split_seeds=[11], test_ids=["img_004"])
+    config_path = benchmark_root / "config.yaml"
+    write_config(config_path)
+
+    observed_steps: list[str] = []
+    view_dir = benchmark_root / "views" / "dota" / "split-11"
+    run_dir = benchmark_root / "records" / "oriented_rcnn_r50" / "split-11" / "seed-101"
+
+    def _fake_ensure_view_materialized(**_kwargs):
+        observed_steps.append("view")
+        view_dir.mkdir(parents=True, exist_ok=True)
+        return view_dir
+
+    def _fake_dispatch_runner(**_kwargs):
+        observed_steps.append("dispatch")
+        return module.RunnerLaunch(command=["echo", "ok"], cwd=str(benchmark_root), extra_env={})
+
+    monkeypatch.setattr(module, "ensure_view_materialized", _fake_ensure_view_materialized)
+    monkeypatch.setattr(module, "dispatch_runner", _fake_dispatch_runner)
+    monkeypatch.setattr(
+        module,
+        "execute_launch",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            args=["echo", "ok"],
+            returncode=0,
+            stdout="train ok\n",
+            stderr="",
+        ),
+    )
+    monkeypatch.setattr(
+        module,
+        "parse_and_write_outputs",
+        lambda **_: write_metrics(
+            run_dir,
+            model_name="oriented_rcnn_r50",
+            split_seed=11,
+            train_seed=101,
+            status="succeeded",
+        ),
+    )
+
+    exit_code = module.main(
+        [
+            "--config",
+            str(config_path),
+            "--benchmark-root",
+            str(benchmark_root),
+            "--models",
+            "oriented_rcnn_r50",
+            "--split-seeds",
+            "11",
+            "--train-seeds",
+            "101",
+        ]
+    )
+
+    assert exit_code == 0
+    assert observed_steps == ["view", "dispatch"]
+    out = capsys.readouterr().out
+    assert "[VIEW]" in out
+    assert "model=oriented_rcnn_r50" in out
+    assert "split=11" in out
+    assert "action=materialize" in out
+    assert "action=ready" in out
+
+
 def test_main_writes_standard_run_artifacts(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -313,6 +473,80 @@ def test_main_writes_standard_run_artifacts(
     assert (run_dir / "stdout.log").is_file()
     assert (run_dir / "stderr.log").is_file()
     assert json.loads((run_dir / "status.json").read_text(encoding="utf-8"))["status"] == "succeeded"
+
+
+def test_main_emits_progress_logs_for_skip_and_completion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    module = load_run_suite_module()
+    benchmark_root = tmp_path / "runs" / "obb_baseline" / "fedo_part2_v1"
+    write_split_manifest(benchmark_root / "split_manifest.json", split_seeds=[11], test_ids=["img_004"])
+    config_path = benchmark_root / "config.yaml"
+    write_config(config_path)
+
+    skipped_run_dir = benchmark_root / "records" / "oriented_rcnn_r50" / "split-11" / "seed-101"
+    write_metrics(
+        skipped_run_dir,
+        model_name="oriented_rcnn_r50",
+        split_seed=11,
+        train_seed=101,
+        status="failed",
+    )
+    executed_run_dir = benchmark_root / "records" / "oriented_rcnn_r50" / "split-11" / "seed-202"
+
+    monkeypatch.setattr(
+        module,
+        "dispatch_runner",
+        lambda **_: module.RunnerLaunch(command=["echo", "ok"], cwd=str(benchmark_root), extra_env={}),
+    )
+    monkeypatch.setattr(
+        module,
+        "execute_launch",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            args=["echo", "ok"],
+            returncode=0,
+            stdout="train ok\n",
+            stderr="",
+        ),
+    )
+    monkeypatch.setattr(
+        module,
+        "parse_and_write_outputs",
+        lambda **kwargs: write_metrics(
+            executed_run_dir if kwargs["train_seed"] == 202 else skipped_run_dir,
+            model_name="oriented_rcnn_r50",
+            split_seed=11,
+            train_seed=int(kwargs["train_seed"]),
+            status="succeeded",
+        ),
+    )
+
+    exit_code = module.main(
+        [
+            "--config",
+            str(config_path),
+            "--benchmark-root",
+            str(benchmark_root),
+            "--models",
+            "oriented_rcnn_r50",
+            "--split-seeds",
+            "11",
+            "--train-seeds",
+            "101,202",
+        ]
+    )
+
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "[SKIP]" in out
+    assert "split=11" in out
+    assert "train=101" in out
+    assert "[START]" in out
+    assert "train=202" in out
+    assert "[DONE]" in out
+    assert "[SUITE]" in out
 
 
 def test_main_status_tracks_final_failed_metrics_even_when_returncode_is_zero(

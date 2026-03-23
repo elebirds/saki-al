@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -89,6 +90,14 @@ class RunnerLaunch:
         self.command = command
         self.cwd = cwd
         self.extra_env = extra_env
+
+
+def _emit_progress(tag: str, message: str) -> None:
+    print(f"[{tag}] {message}", flush=True)
+
+
+def _format_command(command: list[str]) -> str:
+    return shlex.join(command)
 
 
 def _repo_root() -> Path:
@@ -372,6 +381,7 @@ def build_child_env(
     base_env: Mapping[str, str] | None = None,
 ) -> dict[str, str]:
     env = dict(os.environ if base_env is None else base_env)
+    env.pop("VIRTUAL_ENV", None)
     src_path = str((Path(__file__).resolve().parent.parent / "src").resolve())
     existing = env.get("PYTHONPATH", "")
     if existing:
@@ -483,6 +493,10 @@ def main(argv: list[str] | None = None) -> int:
     selected_models = _parse_csv_items(args.models)
     selected_split_seeds = _parse_csv_ints(args.split_seeds)
     selected_train_seeds = _parse_csv_ints(args.train_seeds)
+    total_runs = len(selected_models) * len(selected_split_seeds) * len(selected_train_seeds)
+    skipped_runs = 0
+    succeeded_runs = 0
+    failed_runs = 0
 
     write_config_snapshot(benchmark_root / "config.snapshot.yaml", config)
     child_env = build_child_env()
@@ -490,12 +504,27 @@ def main(argv: list[str] | None = None) -> int:
     for model_name in selected_models:
         model_spec = model_registry[model_name]
         for split_seed in selected_split_seeds:
+            view_root = benchmark_root / "views" / model_spec.data_view / f"split-{split_seed}"
+            _emit_progress(
+                "VIEW",
+                (
+                    f"model={model_name} split={split_seed} "
+                    f"view={model_spec.data_view} action=materialize path={view_root}"
+                ),
+            )
             view_dir = ensure_view_materialized(
                 benchmark_root=benchmark_root,
                 model_spec=model_spec,
                 split_seed=split_seed,
                 manifest=manifest,
                 config=config,
+            )
+            _emit_progress(
+                "VIEW",
+                (
+                    f"model={model_name} split={split_seed} "
+                    f"view={model_spec.data_view} action=ready path={view_dir}"
+                ),
             )
             for train_seed in selected_train_seeds:
                 run_dir = resolve_run_dir(
@@ -505,6 +534,14 @@ def main(argv: list[str] | None = None) -> int:
                     train_seed=train_seed,
                 )
                 if should_skip_run(run_dir=run_dir, rerun_failed=args.rerun_failed):
+                    skipped_runs += 1
+                    _emit_progress(
+                        "SKIP",
+                        (
+                            f"model={model_name} split={split_seed} train={train_seed} "
+                            f"reason=existing_metrics rerun_failed={args.rerun_failed}"
+                        ),
+                    )
                     continue
 
                 work_dir = (
@@ -524,6 +561,17 @@ def main(argv: list[str] | None = None) -> int:
                     run_dir=run_dir,
                     work_dir=work_dir,
                     view_dir=view_dir,
+                )
+                _emit_progress(
+                    "START",
+                    (
+                        f"model={model_name} split={split_seed} train={train_seed} "
+                        f"runner={model_spec.runner_name} run_dir={run_dir}"
+                    ),
+                )
+                _emit_progress(
+                    "CMD",
+                    f"cwd={launch.cwd} cmd={_format_command(launch.command)}",
                 )
                 write_run_config(
                     run_dir=run_dir,
@@ -560,10 +608,22 @@ def main(argv: list[str] | None = None) -> int:
                     work_dir=work_dir,
                     execution_status=execution_status,
                 )
-                update_status_from_metrics(
+                final_status = update_status_from_metrics(
                     run_dir=run_dir,
                     execution_status=execution_status,
                     returncode=result.returncode,
+                )
+                if final_status == "succeeded":
+                    succeeded_runs += 1
+                else:
+                    failed_runs += 1
+                _emit_progress(
+                    "DONE",
+                    (
+                        f"model={model_name} split={split_seed} train={train_seed} "
+                        f"status={final_status} returncode={result.returncode} "
+                        f"stdout={run_dir / 'stdout.log'} stderr={run_dir / 'stderr.log'}"
+                    ),
                 )
 
     outputs = collect_suite_outputs(
@@ -571,6 +631,13 @@ def main(argv: list[str] | None = None) -> int:
         benchmark_root=benchmark_root,
     )
     write_suite_outputs(outputs, benchmark_root)
+    _emit_progress(
+        "SUITE",
+        (
+            f"benchmark={benchmark_name} root={benchmark_root} total={total_runs} "
+            f"succeeded={succeeded_runs} failed={failed_runs} skipped={skipped_runs}"
+        ),
+    )
     return 0
 
 

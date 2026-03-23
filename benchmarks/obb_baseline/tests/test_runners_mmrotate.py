@@ -2,9 +2,28 @@ from __future__ import annotations
 
 import inspect
 import json
+from collections import abc as collections_abc
+import collections
 from pathlib import Path
 
 import pytest
+
+
+def test_apply_python_compat_shims_restores_collections_sequence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from obb_baseline.runners_mmrotate import _apply_python_compat_shims
+
+    original_value = getattr(collections, "Sequence", None)
+    if hasattr(collections, "Sequence"):
+        monkeypatch.delattr(collections, "Sequence")
+
+    _apply_python_compat_shims()
+
+    assert collections.Sequence is collections_abc.Sequence
+
+    if original_value is not None:
+        monkeypatch.setattr(collections, "Sequence", original_value)
 
 
 def test_build_mmrotate_command_uses_generated_config_contract(
@@ -95,7 +114,7 @@ def test_render_mmrotate_config_supports_all_presets(
 
     assert f'preset = "{expected_preset}"' in config_text
     assert expected_base_marker in config_text
-    assert f'data_root = r"{(tmp_path / "dataset").as_posix()}"' in config_text
+    assert f'data_root = r"{(tmp_path / "dataset").as_posix()}/"' in config_text
     assert (
         f'work_dir = r"{(tmp_path / "workdirs" / model_name / "split-11" / "seed-101").as_posix()}"'
         in config_text
@@ -105,6 +124,66 @@ def test_render_mmrotate_config_supports_all_presets(
     assert "classes = ('plane', 'ship')" in config_text
     assert "class_names = ('plane', 'ship')" in config_text
     assert "num_classes = 2" in config_text
+
+
+def test_render_mmrotate_config_overrides_materialized_dota_split_layout(
+    tmp_path: Path,
+) -> None:
+    from obb_baseline.runners_mmrotate import render_mmrotate_config
+
+    data_root = tmp_path / "views" / "dota" / "split-11"
+    config_text = render_mmrotate_config(
+        model_name="oriented_rcnn_r50",
+        data_root=data_root,
+        work_dir=tmp_path / "workdirs" / "oriented_rcnn_r50" / "split-11" / "seed-101",
+        train_seed=101,
+        score_thr=0.25,
+        classes=("pattern_a", "pattern_b", "pattern_c"),
+    )
+
+    assert "train_dataloader = dict(" in config_text
+    assert "val_dataloader = dict(" in config_text
+    assert "test_dataloader = dict(" in config_text
+    assert "ann_file='train/labelTxt/'" in config_text
+    assert "ann_file='val/labelTxt/'" in config_text
+    assert "ann_file='test/labelTxt/'" in config_text
+    assert "img_path='train/images/'" in config_text
+    assert "img_path='val/images/'" in config_text
+    assert "img_path='test/images/'" in config_text
+    assert "val_evaluator = dict(ann_file=" not in config_text
+    assert "test_evaluator = dict(ann_file=" not in config_text
+
+
+def test_parse_generated_config_accepts_rendered_mmrotate_contract(
+    tmp_path: Path,
+) -> None:
+    from obb_baseline.runners_mmrotate import _parse_generated_config, render_mmrotate_config
+
+    generated_config = tmp_path / "mmrotate.generated.py"
+    generated_config.write_text(
+        render_mmrotate_config(
+            model_name="oriented_rcnn_r50",
+            data_root=tmp_path / "views" / "dota" / "split-11",
+            work_dir=tmp_path / "workdirs" / "oriented_rcnn_r50" / "split-11" / "seed-101",
+            train_seed=101,
+            score_thr=0.25,
+            classes=("pattern_a", "pattern_b", "pattern_c"),
+        ),
+        encoding="utf-8",
+    )
+
+    parsed = _parse_generated_config(generated_config)
+
+    assert parsed == {
+        "preset": "oriented_rcnn",
+        "classes": ("pattern_a", "pattern_b", "pattern_c"),
+        "class_names": ("pattern_a", "pattern_b", "pattern_c"),
+        "num_classes": 3,
+        "data_root": f'{(tmp_path / "views" / "dota" / "split-11").as_posix()}/',
+        "work_dir": (tmp_path / "workdirs" / "oriented_rcnn_r50" / "split-11" / "seed-101").as_posix(),
+        "train_seed": 101,
+        "score_thr": 0.25,
+    }
 
 
 def test_normalize_mmrotate_metrics_maps_dota_keys_and_computes_f1() -> None:

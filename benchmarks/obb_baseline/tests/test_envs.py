@@ -91,7 +91,7 @@ def test_env_pyproject_constraints() -> None:
     _assert_dep_exact(mmrotate_deps, "mmrotate==1.0.0rc1")
     _assert_dep_exact(mmrotate_deps, "numpy<2")
     _assert_dep_exact(mmrotate_deps, "pyyaml>=6.0")
-    _assert_dep_exact(mmrotate_deps, "setuptools")
+    _assert_dep_exact(mmrotate_deps, "setuptools<81")
     assert all("onedl-" not in dep for dep in mmrotate_deps), mmrotate_deps
 
     _assert_dep_exact(yolo_deps, "torch==2.10.0")
@@ -172,7 +172,7 @@ def test_mmrotate_lock_constraints() -> None:
     assert mmengine_package["version"] == "0.8.5"
     assert mmrotate_package["version"] == "1.0.0rc1"
     assert not str(numpy_package["version"]).startswith("2."), numpy_package["version"]
-    assert str(setuptools_package["version"])
+    assert int(str(setuptools_package["version"]).split(".", 1)[0]) < 81
 
     assert all(
         not package["name"].startswith("onedl-")

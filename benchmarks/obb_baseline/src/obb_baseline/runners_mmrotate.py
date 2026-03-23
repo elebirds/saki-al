@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import collections
+from collections import abc as collections_abc
 import json
 import math
 import os
@@ -54,6 +56,11 @@ _STANDARD_METRIC_KEYS = (
 )
 
 
+def _apply_python_compat_shims() -> None:
+    if not hasattr(collections, "Sequence"):
+        collections.Sequence = collections_abc.Sequence  # type: ignore[attr-defined]
+
+
 def _parse_optional_float(value: object) -> float | None:
     if value is None or value == "":
         return None
@@ -102,14 +109,39 @@ def render_mmrotate_config(
         raise ValueError(f"unsupported mmrotate model_name: {model_name!r}") from exc
 
     normalized_classes = tuple(str(name) for name in classes)
+    normalized_data_root = f"{data_root.as_posix().rstrip('/')}/"
     return (
         "# Auto-generated MMRotate config shim.\n"
         f'_base_ = ["mmrotate::{base_config}"]\n'
         f'preset = "{preset}"\n'
-        f'data_root = r"{data_root.as_posix()}"\n'
+        f'data_root = r"{normalized_data_root}"\n'
         f"classes = {normalized_classes!r}\n"
         f"class_names = {normalized_classes!r}\n"
         f"num_classes = {len(normalized_classes)}\n"
+        "train_dataloader = dict(\n"
+        "    dataset=dict(\n"
+        "        data_root=data_root,\n"
+        "        ann_file='train/labelTxt/',\n"
+        "        data_prefix=dict(img_path='train/images/'),\n"
+        "        metainfo=dict(classes=class_names),\n"
+        "    )\n"
+        ")\n"
+        "val_dataloader = dict(\n"
+        "    dataset=dict(\n"
+        "        data_root=data_root,\n"
+        "        ann_file='val/labelTxt/',\n"
+        "        data_prefix=dict(img_path='val/images/'),\n"
+        "        metainfo=dict(classes=class_names),\n"
+        "    )\n"
+        ")\n"
+        "test_dataloader = dict(\n"
+        "    dataset=dict(\n"
+        "        data_root=data_root,\n"
+        "        ann_file='test/labelTxt/',\n"
+        "        data_prefix=dict(img_path='test/images/'),\n"
+        "        metainfo=dict(classes=class_names),\n"
+        "    )\n"
+        ")\n"
         f'work_dir = r"{work_dir.as_posix()}"\n'
         f"train_seed = {int(train_seed)}\n"
         f"score_thr = {float(score_thr)}\n"
@@ -267,7 +299,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def _parse_generated_config(generated_config: Path) -> dict[str, object]:
     namespace: dict[str, object] = {}
-    safe_builtins = {"len": len, "tuple": tuple, "list": list}
+    safe_builtins = {"len": len, "tuple": tuple, "list": list, "dict": dict}
     exec(
         generated_config.read_text(encoding="utf-8"),
         {"__builtins__": safe_builtins},
@@ -393,6 +425,7 @@ def _execute_mmrotate_pipeline(
     train_seed: int,
     device: str,
 ) -> dict[str, dict[str, object]]:
+    _apply_python_compat_shims()
     try:
         from mmengine.config import Config
         from mmengine.registry import init_default_scope

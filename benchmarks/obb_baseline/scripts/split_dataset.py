@@ -7,14 +7,25 @@ import json
 import sys
 from pathlib import Path
 
-SCRIPT_DIR = Path(__file__).resolve()
-SRC_ROOT = SCRIPT_DIR.parents[3] / "benchmarks" / "obb_baseline" / "src"
-if SRC_ROOT.is_dir():
-    src_root = str(SRC_ROOT)
-    if src_root not in sys.path:
-        sys.path.insert(0, src_root)
+def _load_splitters():
+    try:
+        from obb_baseline.splitters import generate_split_bundle, scan_dota_export
 
-from obb_baseline.splitters import generate_split_bundle, scan_dota_export
+        return generate_split_bundle, scan_dota_export
+    except ModuleNotFoundError as exc:
+        if exc.name and not exc.name.startswith("obb_baseline"):
+            raise
+        script_dir = Path(__file__).resolve().parent
+        fallback_src = script_dir.parent / "src"
+        if fallback_src.is_dir():
+            sys.path.insert(0, str(fallback_src))
+            from obb_baseline.splitters import generate_split_bundle, scan_dota_export
+
+            return generate_split_bundle, scan_dota_export
+        raise
+
+
+generate_split_bundle, scan_dota_export = _load_splitters()
 
 
 def parse_args() -> argparse.Namespace:

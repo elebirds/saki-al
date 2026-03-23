@@ -1,1 +1,26 @@
-models: []
+models:
+  yolo11m_obb:
+    runner: yolo
+    env: yolo
+    data_view: yolo_obb
+    preset: yolo11m-obb
+  oriented_rcnn_r50:
+    runner: mmrotate
+    env: mmrotate
+    data_view: dota
+    preset: oriented-rcnn-r50-fpn
+  roi_transformer_r50:
+    runner: mmrotate
+    env: mmrotate
+    data_view: dota
+    preset: roi-transformer-r50-fpn
+  r3det_r50:
+    runner: mmrotate
+    env: mmrotate
+    data_view: dota
+    preset: r3det-r50-fpn
+  rtmdet_rotated_m:
+    runner: mmrotate
+    env: mmrotate
+    data_view: dota
+    preset: rtmdet-rotated-m

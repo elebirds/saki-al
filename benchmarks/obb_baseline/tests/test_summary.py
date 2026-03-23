@@ -236,7 +236,35 @@ def test_collect_suite_outputs_raises_on_invalid_metrics_path(tmp_path: Path) ->
         )
 
 
-def test_collect_suite_outputs_raises_when_payload_overrides_reserved_keys(
+def test_collect_suite_outputs_allows_consistent_identity_keys_and_ignores_payload_f1(
+    tmp_path: Path,
+) -> None:
+    benchmark_root = tmp_path / "obb_baseline"
+    write_raw_metrics(
+        benchmark_root=benchmark_root,
+        relative_path="oriented_rcnn_r50/split-0/seed-0/metrics.json",
+        payload={
+            "mAP50_95": 0.5,
+            "precision": 0.8,
+            "recall": 0.5,
+            "model_name": "oriented_rcnn_r50",
+            "split_seed": 0,
+            "train_seed": 0,
+            "f1": 0.1234,
+        },
+    )
+    outputs = collect_suite_outputs(
+        benchmark_name="fedo_part2_v1",
+        benchmark_root=benchmark_root,
+    )
+    assert len(outputs.summary_rows) == 1
+    assert outputs.summary_rows[0]["model_name"] == "oriented_rcnn_r50"
+    assert outputs.summary_rows[0]["split_seed"] == 0
+    assert outputs.summary_rows[0]["train_seed"] == 0
+    assert outputs.summary_rows[0]["f1"] == pytest.approx(2 * 0.8 * 0.5 / (0.8 + 0.5))
+
+
+def test_collect_suite_outputs_raises_when_payload_identity_conflicts_path(
     tmp_path: Path,
 ) -> None:
     benchmark_root = tmp_path / "obb_baseline"
@@ -250,12 +278,33 @@ def test_collect_suite_outputs_raises_when_payload_overrides_reserved_keys(
             "model_name": "bad_override",
         },
     )
-    with pytest.raises(ValueError, match="保留字段") as exc_info:
+    with pytest.raises(ValueError, match="path") as exc_info:
         collect_suite_outputs(
             benchmark_name="fedo_part2_v1",
             benchmark_root=benchmark_root,
         )
     assert "split-0/seed-0/metrics.json" in str(exc_info.value)
+
+
+def test_collect_suite_outputs_raises_when_payload_overrides_metrics_path(
+    tmp_path: Path,
+) -> None:
+    benchmark_root = tmp_path / "obb_baseline"
+    write_raw_metrics(
+        benchmark_root=benchmark_root,
+        relative_path="oriented_rcnn_r50/split-0/seed-0/metrics.json",
+        payload={
+            "mAP50_95": 0.5,
+            "precision": 0.8,
+            "recall": 0.5,
+            "metrics_path": "malicious_override",
+        },
+    )
+    with pytest.raises(ValueError, match="metrics_path"):
+        collect_suite_outputs(
+            benchmark_name="fedo_part2_v1",
+            benchmark_root=benchmark_root,
+        )
 
 
 def test_write_suite_outputs_renders_empty_values_as_blank_in_csv_and_markdown(

@@ -15,7 +15,7 @@ class SummaryOutputs:
     leaderboard_rows: list[dict[str, object]]
 
 
-RESERVED_METRIC_KEYS = {"model_name", "split_seed", "train_seed", "metrics_path", "f1"}
+RESERVED_METRIC_KEYS = {"metrics_path"}
 
 
 def _as_float(value: object) -> float | None:
@@ -78,10 +78,36 @@ def load_metrics_rows(records_root: Path) -> list[dict[str, object]]:
 
         with metrics_path.open("r", encoding="utf-8") as handle:
             payload: dict[str, Any] = json.load(handle)
+
         duplicate_reserved = RESERVED_METRIC_KEYS.intersection(payload)
         if duplicate_reserved:
             keys = ", ".join(sorted(duplicate_reserved))
             raise ValueError(f"metrics.json 含保留字段: {keys}; path={metrics_path}")
+
+        if "model_name" in payload:
+            payload_model_name = payload.pop("model_name")
+            if payload_model_name != model_name:
+                raise ValueError(
+                    "metrics.json 字段 model_name 与 path 冲突: "
+                    f"payload={payload_model_name!r}, path={model_name!r}; path={metrics_path}"
+                )
+        if "split_seed" in payload:
+            payload_split_seed = payload.pop("split_seed")
+            if _as_float(payload_split_seed) != float(split_seed):
+                raise ValueError(
+                    "metrics.json 字段 split_seed 与 path 冲突: "
+                    f"payload={payload_split_seed!r}, path={split_seed!r}; path={metrics_path}"
+                )
+        if "train_seed" in payload:
+            payload_train_seed = payload.pop("train_seed")
+            if _as_float(payload_train_seed) != float(train_seed):
+                raise ValueError(
+                    "metrics.json 字段 train_seed 与 path 冲突: "
+                    f"payload={payload_train_seed!r}, path={train_seed!r}; path={metrics_path}"
+                )
+        # f1 由汇总层统一重算，不信任 runner 回传值。
+        payload.pop("f1", None)
+
         row: dict[str, object] = {
             "model_name": model_name,
             "split_seed": split_seed,

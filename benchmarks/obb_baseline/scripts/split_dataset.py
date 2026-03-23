@@ -4,7 +4,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
+
+SCRIPT_DIR = Path(__file__).resolve()
+SRC_ROOT = SCRIPT_DIR.parents[3] / "benchmarks" / "obb_baseline" / "src"
+if SRC_ROOT.is_dir():
+    src_root = str(SRC_ROOT)
+    if src_root not in sys.path:
+        sys.path.insert(0, src_root)
 
 from obb_baseline.splitters import generate_split_bundle, scan_dota_export
 
@@ -25,14 +33,16 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    dota_root = Path(args.dota_root).resolve()
+    dota_root_input = Path(args.dota_root)
+    dataset_name = dota_root_input.name
+    dota_root = dota_root_input.resolve()
     out_dir = Path(args.out_dir).resolve()
     class_names = tuple(name.strip() for name in args.classes.split(",") if name.strip())
     split_seeds = [int(item.strip()) for item in args.split_seeds.split(",") if item.strip()]
     inventory = scan_dota_export(dota_root, class_names)
     bundle = generate_split_bundle(
         inventory,
-        dataset_name=dota_root.name,
+        dataset_name=dataset_name,
         holdout_seed=args.holdout_seed,
         split_seeds=split_seeds,
         test_ratio=args.test_ratio,

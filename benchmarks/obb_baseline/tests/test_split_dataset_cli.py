@@ -120,15 +120,19 @@ def test_split_dataset_cli_keeps_symlink_dataset_name(tmp_path, tiny_dota_export
 def test_split_dataset_cli_falls_back_to_adjacent_src(tmp_path, tiny_dota_export) -> None:
     local_root = tmp_path / "local_app"
     local_scripts = local_root / "scripts"
-    local_pkg_root = local_root / "src" / "obb_baseline"
+    local_src_root = local_root / "src"
+    local_pkg_root = local_src_root / "obb_baseline"
     local_scripts.mkdir(parents=True)
     local_pkg_root.mkdir(parents=True)
 
     local_script = local_scripts / "split_dataset.py"
     local_script.write_text(SCRIPT_PATH.read_text(encoding="utf-8"), encoding="utf-8")
-    for name in ("__init__.py", "splitters.py"):
-        source_path = SCRIPT_PATH.parents[1] / "src" / "obb_baseline" / name
-        (local_pkg_root / name).write_text(source_path.read_text(encoding="utf-8"), encoding="utf-8")
+    source_pkg_root = SCRIPT_PATH.parents[1] / "src" / "obb_baseline"
+    for source_path in source_pkg_root.rglob("*.py"):
+        relative_path = source_path.relative_to(source_pkg_root)
+        dest_path = local_pkg_root / relative_path
+        dest_path.parent.mkdir(parents=True, exist_ok=True)
+        dest_path.write_text(source_path.read_text(encoding="utf-8"), encoding="utf-8")
 
     out_dir = tmp_path / "runs" / "obb_baseline" / "relocated_split"
     env = os.environ.copy()

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 
 def test_scan_dota_export_builds_expected_sample_fields(tiny_dota_export) -> None:
     from obb_baseline.splitters import scan_dota_export
@@ -99,3 +101,91 @@ def test_generate_split_bundle_writes_manifest_and_summary_schema(
     assert "class_mask_distribution" in bundle.summary["splits"]["11"]
     assert "instance_count_bucket_distribution" in bundle.summary["splits"]["11"]
     assert "positive_ratio" in bundle.summary["splits"]["11"]
+
+
+def test_generate_split_bundle_uses_fallback_strata_for_test_holdout() -> None:
+    from obb_baseline.splitters import SampleRecord, generate_split_bundle
+
+    class_names = ("pattern_a", "pattern_b", "pattern_c")
+    image_path = Path("image.png")
+    ann_path = Path("ann.txt")
+    records = [
+        SampleRecord(
+            sample_id="neg_1",
+            stem="neg_1",
+            image_path=image_path,
+            ann_path=ann_path,
+            class_names=class_names,
+            instance_count=0,
+            is_negative=True,
+            class_mask="000",
+            instance_count_bucket="0",
+        ),
+        SampleRecord(
+            sample_id="neg_2",
+            stem="neg_2",
+            image_path=image_path,
+            ann_path=ann_path,
+            class_names=class_names,
+            instance_count=0,
+            is_negative=True,
+            class_mask="000",
+            instance_count_bucket="0",
+        ),
+        SampleRecord(
+            sample_id="neg_3",
+            stem="neg_3",
+            image_path=image_path,
+            ann_path=ann_path,
+            class_names=class_names,
+            instance_count=0,
+            is_negative=True,
+            class_mask="000",
+            instance_count_bucket="0",
+        ),
+        SampleRecord(
+            sample_id="pos_1",
+            stem="pos_1",
+            image_path=image_path,
+            ann_path=ann_path,
+            class_names=class_names,
+            instance_count=1,
+            is_negative=False,
+            class_mask="100",
+            instance_count_bucket="1",
+        ),
+        SampleRecord(
+            sample_id="pos_2",
+            stem="pos_2",
+            image_path=image_path,
+            ann_path=ann_path,
+            class_names=class_names,
+            instance_count=2,
+            is_negative=False,
+            class_mask="100",
+            instance_count_bucket="2-4",
+        ),
+        SampleRecord(
+            sample_id="pos_3",
+            stem="pos_3",
+            image_path=image_path,
+            ann_path=ann_path,
+            class_names=class_names,
+            instance_count=5,
+            is_negative=False,
+            class_mask="100",
+            instance_count_bucket=">=5",
+        ),
+    ]
+
+    bundle = generate_split_bundle(
+        records,
+        dataset_name="synthetic_fallback",
+        holdout_seed=11,
+        split_seeds=[11],
+        test_ratio=1 / 3,
+        val_ratio=0.15,
+    )
+    test_ids = bundle.manifest["splits"]["11"]["test_ids"]
+    assert len([sample_id for sample_id in test_ids if sample_id.startswith("neg_")]) == 1
+    assert len([sample_id for sample_id in test_ids if sample_id.startswith("pos_")]) == 1

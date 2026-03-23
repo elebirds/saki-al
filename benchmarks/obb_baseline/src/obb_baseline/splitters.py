@@ -84,15 +84,22 @@ def generate_split_bundle(
     test_ratio: float,
     val_ratio: float,
 ) -> SplitBundle:
-    sample_ids = [record.sample_id for record in sorted(sample_inventory, key=lambda r: r.sample_id)]
-    test_ids, remaining_ids = _split_holdout(sample_ids, holdout_seed, test_ratio)
+    records = sorted(sample_inventory, key=lambda record: record.sample_id)
+    test_records, trainval_records = _split_stratified_records(records, holdout_seed, test_ratio)
+    test_ids = sorted(record.sample_id for record in test_records)
     split_manifest: dict[str, dict[str, list[str]]] = {}
     split_summary: dict[str, dict[str, object]] = {}
     record_lookup = {record.sample_id: record for record in sample_inventory}
     val_ratio_trainval = _normalize_val_ratio(test_ratio, val_ratio)
 
     for seed in split_seeds:
-        train_ids, val_ids = _split_train_val(remaining_ids, seed, val_ratio_trainval)
+        val_records, train_records = _split_stratified_records(
+            trainval_records,
+            seed,
+            val_ratio_trainval,
+        )
+        train_ids = sorted(record.sample_id for record in train_records)
+        val_ids = sorted(record.sample_id for record in val_records)
         split_manifest[str(seed)] = {
             "train_ids": train_ids,
             "val_ids": val_ids,
@@ -158,40 +165,130 @@ def _bucket_instance_count(instance_count: int) -> str:
         return "2-4"
     return ">=5"
 
-
-def _split_holdout(
-    sample_ids: list[str],
-    holdout_seed: int,
-    test_ratio: float,
-) -> tuple[list[str], list[str]]:
-    rng = random.Random(holdout_seed)
-    shuffled = list(sample_ids)
-    rng.shuffle(shuffled)
-    test_count = round(len(shuffled) * test_ratio)
-    test_ids = sorted(shuffled[:test_count])
-    remaining_ids = sorted(shuffled[test_count:])
-    return test_ids, remaining_ids
-
-
-def _split_train_val(
-    remaining_ids: list[str],
-    split_seed: int,
-    val_ratio_trainval: float,
-) -> tuple[list[str], list[str]]:
-    rng = random.Random(split_seed)
-    shuffled = list(remaining_ids)
-    rng.shuffle(shuffled)
-    val_count = round(len(shuffled) * val_ratio_trainval)
-    val_ids = sorted(shuffled[:val_count])
-    train_ids = sorted(shuffled[val_count:])
-    return train_ids, val_ids
-
-
 def _normalize_val_ratio(test_ratio: float, val_ratio: float) -> float:
     trainval_ratio = 1.0 - test_ratio
     if trainval_ratio <= 0:
         return 0.0
     return val_ratio / trainval_ratio
+
+
+def _split_stratified_records(
+    records: list[SampleRecord],
+    seed: int,
+    ratio: float,
+) -> tuple[list[SampleRecord], list[SampleRecord]]:
+    clamped_ratio = _clamp_ratio(ratio)
+    if not records:
+        return [], []
+    if clamped_ratio <= 0:
+        return [], list(records)
+    if clamped_ratio >= 1:
+        return list(records), []
+
+    target_count = round(len(records) * clamped_ratio)
+    target_count = max(0, min(len(records), target_count))
+    strict_counts, class_counts, neg_counts = _build_strata_counts(records)
+    grouped: dict[str, list[SampleRecord]] = {}
+    for record in records:
+        strict_key, class_key, neg_key = _build_strata_keys(record)
+        level = resolve_fallback_level(
+            strict_key=strict_key,
+            class_key=class_key,
+            neg_key=neg_key,
+            strict_counts=strict_counts,
+            class_counts=class_counts,
+            neg_counts=neg_counts,
+        )
+        if level == 0:
+            group_key = strict_key
+        elif level == 1:
+            group_key = class_key
+        else:
+            group_key = neg_key
+        grouped.setdefault(group_key, []).append(record)
+
+    rng = random.Random(seed)
+    for key in sorted(grouped):
+        rng.shuffle(grouped[key])
+
+    allocations = _allocate_group_counts(
+        {key: len(items) for key, items in grouped.items()},
+        target_count,
+        clamped_ratio,
+    )
+    selected: list[SampleRecord] = []
+    remaining: list[SampleRecord] = []
+    for key in sorted(grouped):
+        group = grouped[key]
+        take = min(allocations.get(key, 0), len(group))
+        selected.extend(group[:take])
+        remaining.extend(group[take:])
+
+    return selected, remaining
+
+
+def _clamp_ratio(value: float) -> float:
+    if value <= 0:
+        return 0.0
+    if value >= 1:
+        return 1.0
+    return value
+
+
+def _build_strata_counts(
+    records: Iterable[SampleRecord],
+) -> tuple[dict[str, int], dict[str, int], dict[str, int]]:
+    strict_counts: dict[str, int] = {}
+    class_counts: dict[str, int] = {}
+    neg_counts: dict[str, int] = {}
+    for record in records:
+        strict_key, class_key, neg_key = _build_strata_keys(record)
+        strict_counts[strict_key] = strict_counts.get(strict_key, 0) + 1
+        class_counts[class_key] = class_counts.get(class_key, 0) + 1
+        neg_counts[neg_key] = neg_counts.get(neg_key, 0) + 1
+    return strict_counts, class_counts, neg_counts
+
+
+def _build_strata_keys(record: SampleRecord) -> tuple[str, str, str]:
+    neg_key = "neg" if record.is_negative else "pos"
+    class_key = f"{neg_key}|{record.class_mask}"
+    strict_key = f"{class_key}|{record.instance_count_bucket}"
+    return strict_key, class_key, neg_key
+
+
+def _allocate_group_counts(
+    group_sizes: dict[str, int],
+    target_count: int,
+    ratio: float,
+) -> dict[str, int]:
+    allocations: dict[str, int] = {}
+    remainders: list[tuple[float, str]] = []
+    for key, size in group_sizes.items():
+        ideal = size * ratio
+        base = int(ideal)
+        allocations[key] = min(base, size)
+        remainders.append((ideal - base, key))
+
+    allocated = sum(allocations.values())
+    remaining = target_count - allocated
+    if remaining > 0:
+        remainders.sort(key=lambda item: (-item[0], item[1]))
+        for _, key in remainders:
+            if remaining <= 0:
+                break
+            if allocations[key] < group_sizes[key]:
+                allocations[key] += 1
+                remaining -= 1
+    elif remaining < 0:
+        remainders.sort(key=lambda item: (item[0], item[1]))
+        for _, key in remainders:
+            if remaining >= 0:
+                break
+            if allocations[key] > 0:
+                allocations[key] -= 1
+                remaining += 1
+
+    return allocations
 
 
 def _build_split_summary(

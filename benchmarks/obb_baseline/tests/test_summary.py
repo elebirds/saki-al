@@ -250,11 +250,12 @@ def test_collect_suite_outputs_raises_when_payload_overrides_reserved_keys(
             "model_name": "bad_override",
         },
     )
-    with pytest.raises(ValueError, match="保留字段"):
+    with pytest.raises(ValueError, match="保留字段") as exc_info:
         collect_suite_outputs(
             benchmark_name="fedo_part2_v1",
             benchmark_root=benchmark_root,
         )
+    assert "split-0/seed-0/metrics.json" in str(exc_info.value)
 
 
 def test_write_suite_outputs_renders_empty_values_as_blank_in_csv_and_markdown(
@@ -278,3 +279,31 @@ def test_write_suite_outputs_renders_empty_values_as_blank_in_csv_and_markdown(
 
     markdown = (benchmark_root / "summary.md").read_text(encoding="utf-8")
     assert "None" not in markdown
+
+
+def test_collect_suite_outputs_treats_nan_and_inf_as_invalid_metrics(
+    tmp_path: Path,
+) -> None:
+    benchmark_root = tmp_path / "obb_baseline"
+    write_raw_metrics(
+        benchmark_root=benchmark_root,
+        relative_path="bad_model/split-0/seed-0/metrics.json",
+        payload={"mAP50_95": "inf", "precision": "nan", "recall": 0.4},
+    )
+    write_raw_metrics(
+        benchmark_root=benchmark_root,
+        relative_path="good_model/split-0/seed-0/metrics.json",
+        payload={"mAP50_95": 0.4, "precision": 0.5, "recall": 0.5},
+    )
+
+    outputs = collect_suite_outputs(
+        benchmark_name="fedo_part2_v1",
+        benchmark_root=benchmark_root,
+    )
+
+    summary_by_model = {str(row["model_name"]): row for row in outputs.summary_rows}
+    assert summary_by_model["bad_model"]["mAP50_95"] is None
+    assert summary_by_model["bad_model"]["precision"] is None
+    assert summary_by_model["bad_model"]["f1"] is None
+
+    assert outputs.leaderboard_rows[0]["model_name"] == "good_model"

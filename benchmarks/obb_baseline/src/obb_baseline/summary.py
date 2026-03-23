@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -23,12 +24,18 @@ def _as_float(value: object) -> float | None:
     if isinstance(value, bool):
         return None
     if isinstance(value, (int, float)):
-        return float(value)
+        number = float(value)
+        if math.isfinite(number):
+            return number
+        return None
     if isinstance(value, str):
         try:
-            return float(value)
+            number = float(value)
         except ValueError:
             return None
+        if math.isfinite(number):
+            return number
+        return None
     return None
 
 
@@ -74,7 +81,7 @@ def load_metrics_rows(records_root: Path) -> list[dict[str, object]]:
         duplicate_reserved = RESERVED_METRIC_KEYS.intersection(payload)
         if duplicate_reserved:
             keys = ", ".join(sorted(duplicate_reserved))
-            raise ValueError(f"metrics.json 含保留字段: {keys}")
+            raise ValueError(f"metrics.json 含保留字段: {keys}; path={metrics_path}")
         row: dict[str, object] = {
             "model_name": model_name,
             "split_seed": split_seed,

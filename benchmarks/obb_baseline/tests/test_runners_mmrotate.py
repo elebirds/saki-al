@@ -226,6 +226,104 @@ def test_write_mmrotate_metrics_json_writes_full_metric_contract(
     }
 
 
+def test_parse_mmrotate_outputs_reads_raw_files_and_writes_metrics(
+    tmp_path: Path,
+) -> None:
+    from obb_baseline.runners_mmrotate import RunMetadata, parse_mmrotate_outputs
+
+    work_dir = tmp_path / "work"
+    work_dir.mkdir(parents=True, exist_ok=True)
+    (work_dir / "raw_metrics.json").write_text(
+        json.dumps(
+            {
+                "dota/mAP": 0.42,
+                "dota/AP50": 0.66,
+                "precision": 0.8,
+                "recall": 0.5,
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    (work_dir / "artifacts.json").write_text(
+        json.dumps({"best_checkpoint": "epoch_12.pth"}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    metrics_path = tmp_path / "records" / "metrics.json"
+
+    parse_mmrotate_outputs(
+        work_dir=work_dir,
+        metrics_path=metrics_path,
+        run_metadata=RunMetadata(
+            benchmark_name="fedo_part2_v1",
+            split_manifest_hash="abc123",
+            model_name="oriented_rcnn_r50",
+            preset="oriented-rcnn-r50-fpn",
+            holdout_seed=3407,
+            split_seed=11,
+            train_seed=101,
+            artifact_paths={},
+            train_time_sec=None,
+            infer_time_ms=None,
+            peak_mem_mb=None,
+            param_count=None,
+            checkpoint_size_mb=None,
+        ),
+        execution_status="succeeded",
+    )
+
+    payload = json.loads(metrics_path.read_text(encoding="utf-8"))
+    assert payload["status"] == "succeeded"
+    assert payload["mAP50_95"] == 0.42
+    assert payload["mAP50"] == 0.66
+    assert payload["artifact_paths"]["best_checkpoint"] == "epoch_12.pth"
+    assert payload["artifact_paths"]["raw_metrics"] == str(work_dir / "raw_metrics.json")
+    assert payload["artifact_paths"]["artifacts_json"] == str(work_dir / "artifacts.json")
+
+
+def test_parse_mmrotate_outputs_writes_failed_metrics_when_execution_failed(
+    tmp_path: Path,
+) -> None:
+    from obb_baseline.runners_mmrotate import RunMetadata, parse_mmrotate_outputs
+
+    work_dir = tmp_path / "work"
+    work_dir.mkdir(parents=True, exist_ok=True)
+    (work_dir / "raw_metrics.json").write_text(
+        json.dumps({"dota/mAP": 0.99}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    metrics_path = tmp_path / "records" / "metrics.json"
+
+    parse_mmrotate_outputs(
+        work_dir=work_dir,
+        metrics_path=metrics_path,
+        run_metadata=RunMetadata(
+            benchmark_name="fedo_part2_v1",
+            split_manifest_hash="abc123",
+            model_name="oriented_rcnn_r50",
+            preset="oriented-rcnn-r50-fpn",
+            holdout_seed=3407,
+            split_seed=11,
+            train_seed=101,
+            artifact_paths={},
+            train_time_sec=None,
+            infer_time_ms=None,
+            peak_mem_mb=None,
+            param_count=None,
+            checkpoint_size_mb=None,
+        ),
+        execution_status="failed",
+    )
+
+    payload = json.loads(metrics_path.read_text(encoding="utf-8"))
+    assert payload["status"] == "failed"
+    assert payload["mAP50_95"] is None
+    assert payload["mAP50"] is None
+    assert payload["precision"] is None
+    assert payload["recall"] is None
+    assert payload["f1"] is None
+
+
 def test_main_executes_pipeline_and_writes_stable_raw_outputs(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

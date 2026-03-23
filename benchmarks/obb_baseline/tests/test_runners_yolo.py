@@ -170,3 +170,92 @@ def test_write_yolo_metrics_json_marks_failed_when_results_missing(tmp_path: Pat
     assert payload["precision"] is None
     assert payload["recall"] is None
     assert payload["f1"] is None
+
+
+def test_parse_yolo_outputs_reads_results_csv_and_writes_metrics(tmp_path: Path) -> None:
+    from obb_baseline.runners_yolo import RunMetadata, parse_yolo_outputs
+
+    work_dir = tmp_path / "work"
+    work_dir.mkdir(parents=True, exist_ok=True)
+    (work_dir / "results.csv").write_text(
+        "metrics/mAP50(B),metrics/mAP50-95(B),metrics/precision(B),metrics/recall(B)\n"
+        "0.7,0.4,0.8,0.6\n",
+        encoding="utf-8",
+    )
+    metrics_path = tmp_path / "records" / "metrics.json"
+    status_path = tmp_path / "records" / "yolo_status.json"
+
+    parse_yolo_outputs(
+        work_dir=work_dir,
+        metrics_path=metrics_path,
+        status_path=status_path,
+        run_metadata=RunMetadata(
+            benchmark_name="fedo_part2_v1",
+            split_manifest_hash="abc123",
+            model_name="yolo11m_obb",
+            preset="yolo11m-obb",
+            holdout_seed=3407,
+            split_seed=11,
+            train_seed=101,
+            artifact_paths={},
+            train_time_sec=None,
+            infer_time_ms=None,
+            peak_mem_mb=None,
+            param_count=None,
+            checkpoint_size_mb=None,
+        ),
+        execution_status="succeeded",
+    )
+    payload = json.loads(metrics_path.read_text(encoding="utf-8"))
+    status_payload = json.loads(status_path.read_text(encoding="utf-8"))
+    assert payload["status"] == "succeeded"
+    assert payload["mAP50"] == 0.7
+    assert payload["mAP50_95"] == 0.4
+    assert payload["precision"] == 0.8
+    assert payload["recall"] == 0.6
+    assert status_payload["status"] == "succeeded"
+
+
+def test_parse_yolo_outputs_marks_failed_when_execution_failed(tmp_path: Path) -> None:
+    from obb_baseline.runners_yolo import RunMetadata, parse_yolo_outputs
+
+    work_dir = tmp_path / "work"
+    work_dir.mkdir(parents=True, exist_ok=True)
+    (work_dir / "results.csv").write_text(
+        "metrics/mAP50(B),metrics/mAP50-95(B),metrics/precision(B),metrics/recall(B)\n"
+        "0.7,0.4,0.8,0.6\n",
+        encoding="utf-8",
+    )
+    metrics_path = tmp_path / "records" / "metrics.json"
+    status_path = tmp_path / "records" / "yolo_status.json"
+
+    parse_yolo_outputs(
+        work_dir=work_dir,
+        metrics_path=metrics_path,
+        status_path=status_path,
+        run_metadata=RunMetadata(
+            benchmark_name="fedo_part2_v1",
+            split_manifest_hash="abc123",
+            model_name="yolo11m_obb",
+            preset="yolo11m-obb",
+            holdout_seed=3407,
+            split_seed=11,
+            train_seed=101,
+            artifact_paths={},
+            train_time_sec=None,
+            infer_time_ms=None,
+            peak_mem_mb=None,
+            param_count=None,
+            checkpoint_size_mb=None,
+        ),
+        execution_status="failed",
+    )
+    payload = json.loads(metrics_path.read_text(encoding="utf-8"))
+    status_payload = json.loads(status_path.read_text(encoding="utf-8"))
+    assert payload["status"] == "failed"
+    assert payload["mAP50"] is None
+    assert payload["mAP50_95"] is None
+    assert payload["precision"] is None
+    assert payload["recall"] is None
+    assert payload["f1"] is None
+    assert status_payload["status"] == "failed"

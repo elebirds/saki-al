@@ -3,7 +3,7 @@ from __future__ import annotations
 import csv
 import json
 import math
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -162,6 +162,44 @@ def write_yolo_metrics_json(
         "status": status,
         "results_csv": str(results_csv),
         "run_metadata": asdict(run_metadata),
+    }
+    status_path.write_text(
+        json.dumps(status_payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
+def parse_yolo_outputs(
+    *,
+    work_dir: Path,
+    metrics_path: Path,
+    status_path: Path,
+    run_metadata: RunMetadata,
+    execution_status: str,
+) -> None:
+    results_csv = work_dir / "results.csv"
+    artifact_paths = dict(run_metadata.artifact_paths)
+    artifact_paths.setdefault("work_dir", str(work_dir))
+    artifact_paths.setdefault("results_csv", str(results_csv))
+    metadata = replace(run_metadata, artifact_paths=artifact_paths)
+
+    status = "succeeded" if execution_status == "succeeded" and results_csv.exists() else "failed"
+    metrics = parse_yolo_results_csv(results_csv) if status == "succeeded" else _empty_metrics()
+    metrics_payload = _build_metrics_payload(
+        run_metadata=metadata,
+        status=status,
+        metrics=metrics,
+    )
+    metrics_path.parent.mkdir(parents=True, exist_ok=True)
+    status_path.parent.mkdir(parents=True, exist_ok=True)
+    metrics_path.write_text(
+        json.dumps(metrics_payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    status_payload = {
+        "status": status,
+        "results_csv": str(results_csv),
+        "run_metadata": asdict(metadata),
     }
     status_path.write_text(
         json.dumps(status_payload, ensure_ascii=False, indent=2) + "\n",

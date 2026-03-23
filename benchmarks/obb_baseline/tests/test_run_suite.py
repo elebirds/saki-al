@@ -315,28 +315,26 @@ def test_main_writes_standard_run_artifacts(
     assert json.loads((run_dir / "status.json").read_text(encoding="utf-8"))["status"] == "succeeded"
 
 
-def test_parse_and_write_outputs_consumes_mmrotate_raw_files(tmp_path: Path) -> None:
+def test_parse_and_write_outputs_delegates_to_mmrotate_runner_helper(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     module = load_run_suite_module()
     run_dir = tmp_path / "records" / "oriented_rcnn_r50" / "split-11" / "seed-101"
     work_dir = tmp_path / "workdirs" / "oriented_rcnn_r50" / "split-11" / "seed-101"
     run_dir.mkdir(parents=True, exist_ok=True)
     work_dir.mkdir(parents=True, exist_ok=True)
-    (work_dir / "raw_metrics.json").write_text(
-        json.dumps(
-            {
-                "dota/mAP": 0.42,
-                "dota/AP50": 0.66,
-                "precision": 0.8,
-                "recall": 0.5,
-            }
-        ),
-        encoding="utf-8",
-    )
-    (work_dir / "artifacts.json").write_text(
-        json.dumps({"best_checkpoint": "epoch_12.pth"}),
-        encoding="utf-8",
-    )
     manifest = {"holdout_seed": 3407}
+    captured: dict[str, object] = {}
+
+    def _fake_parse_mmrotate_outputs(**kwargs):
+        captured.update(kwargs)
+        (run_dir / "metrics.json").write_text(
+            json.dumps({"status": "succeeded"}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(module, "parse_mmrotate_outputs", _fake_parse_mmrotate_outputs)
 
     module.parse_and_write_outputs(
         model_spec=ModelSpec(
@@ -356,25 +354,34 @@ def test_parse_and_write_outputs_consumes_mmrotate_raw_files(tmp_path: Path) -> 
         execution_status="succeeded",
     )
 
-    payload = json.loads((run_dir / "metrics.json").read_text(encoding="utf-8"))
-    assert payload["status"] == "succeeded"
-    assert payload["mAP50_95"] == 0.42
-    assert payload["mAP50"] == 0.66
-    assert payload["artifact_paths"]["best_checkpoint"] == "epoch_12.pth"
+    assert captured["work_dir"] == work_dir
+    assert captured["metrics_path"] == run_dir / "metrics.json"
+    assert captured["execution_status"] == "succeeded"
+    assert captured["run_metadata"].model_name == "oriented_rcnn_r50"
+    assert captured["run_metadata"].split_seed == 11
+    assert captured["run_metadata"].train_seed == 101
 
 
-def test_parse_and_write_outputs_yolo_writes_runner_alias_status(tmp_path: Path) -> None:
+def test_parse_and_write_outputs_delegates_to_yolo_runner_helper(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     module = load_run_suite_module()
     run_dir = tmp_path / "records" / "yolo11m_obb" / "split-11" / "seed-101"
     work_dir = tmp_path / "workdirs" / "yolo11m_obb" / "split-11" / "seed-101"
     run_dir.mkdir(parents=True, exist_ok=True)
     work_dir.mkdir(parents=True, exist_ok=True)
-    (work_dir / "results.csv").write_text(
-        "metrics/mAP50(B),metrics/mAP50-95(B),metrics/precision(B),metrics/recall(B)\n"
-        "0.7,0.4,0.8,0.6\n",
-        encoding="utf-8",
-    )
     manifest = {"holdout_seed": 3407}
+    captured: dict[str, object] = {}
+
+    def _fake_parse_yolo_outputs(**kwargs):
+        captured.update(kwargs)
+        (run_dir / "metrics.json").write_text(
+            json.dumps({"status": "succeeded"}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(module, "parse_yolo_outputs", _fake_parse_yolo_outputs)
 
     module.parse_and_write_outputs(
         model_spec=ModelSpec(
@@ -394,6 +401,10 @@ def test_parse_and_write_outputs_yolo_writes_runner_alias_status(tmp_path: Path)
         execution_status="succeeded",
     )
 
-    assert (run_dir / "metrics.json").is_file()
-    assert (run_dir / "yolo_status.json").is_file()
-    assert not (run_dir / "status.json").exists()
+    assert captured["work_dir"] == work_dir
+    assert captured["metrics_path"] == run_dir / "metrics.json"
+    assert captured["status_path"] == run_dir / "yolo_status.json"
+    assert captured["execution_status"] == "succeeded"
+    assert captured["run_metadata"].model_name == "yolo11m_obb"
+    assert captured["run_metadata"].split_seed == 11
+    assert captured["run_metadata"].train_seed == 101

@@ -21,14 +21,13 @@ def _load_obb_modules():
         from obb_baseline.runners_mmrotate import (
             RunMetadata as MMRotateRunMetadata,
             build_mmrotate_train_command,
-            normalize_mmrotate_metrics,
+            parse_mmrotate_outputs,
             render_mmrotate_config,
-            write_mmrotate_metrics_json,
         )
         from obb_baseline.runners_yolo import (
             RunMetadata as YoloRunMetadata,
             build_yolo_train_command,
-            write_yolo_metrics_json,
+            parse_yolo_outputs,
         )
         from obb_baseline.summary import collect_suite_outputs, write_suite_outputs
 
@@ -39,12 +38,11 @@ def _load_obb_modules():
             "materialize_yolo_view": materialize_yolo_view,
             "MMRotateRunMetadata": MMRotateRunMetadata,
             "build_mmrotate_train_command": build_mmrotate_train_command,
-            "normalize_mmrotate_metrics": normalize_mmrotate_metrics,
+            "parse_mmrotate_outputs": parse_mmrotate_outputs,
             "render_mmrotate_config": render_mmrotate_config,
-            "write_mmrotate_metrics_json": write_mmrotate_metrics_json,
             "YoloRunMetadata": YoloRunMetadata,
             "build_yolo_train_command": build_yolo_train_command,
-            "write_yolo_metrics_json": write_yolo_metrics_json,
+            "parse_yolo_outputs": parse_yolo_outputs,
             "collect_suite_outputs": collect_suite_outputs,
             "write_suite_outputs": write_suite_outputs,
         }
@@ -66,12 +64,11 @@ materialize_dota_view = _MOD["materialize_dota_view"]
 materialize_yolo_view = _MOD["materialize_yolo_view"]
 MMRotateRunMetadata = _MOD["MMRotateRunMetadata"]
 build_mmrotate_train_command = _MOD["build_mmrotate_train_command"]
-normalize_mmrotate_metrics = _MOD["normalize_mmrotate_metrics"]
+parse_mmrotate_outputs = _MOD["parse_mmrotate_outputs"]
 render_mmrotate_config = _MOD["render_mmrotate_config"]
-write_mmrotate_metrics_json = _MOD["write_mmrotate_metrics_json"]
 YoloRunMetadata = _MOD["YoloRunMetadata"]
 build_yolo_train_command = _MOD["build_yolo_train_command"]
-write_yolo_metrics_json = _MOD["write_yolo_metrics_json"]
+parse_yolo_outputs = _MOD["parse_yolo_outputs"]
 collect_suite_outputs = _MOD["collect_suite_outputs"]
 write_suite_outputs = _MOD["write_suite_outputs"]
 
@@ -200,30 +197,6 @@ def execute_launch(
     )
 
 
-def _load_json_if_mapping(path: Path) -> dict[str, Any]:
-    if not path.exists():
-        return {}
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    if isinstance(payload, dict):
-        return payload
-    return {}
-
-
-def _extract_artifact_paths(work_dir: Path, artifacts: Mapping[str, object]) -> dict[str, str]:
-    result: dict[str, str] = {"work_dir": str(work_dir)}
-    for key, value in artifacts.items():
-        if value is None:
-            continue
-        result[str(key)] = str(value)
-    if (work_dir / "results.csv").exists():
-        result["results_csv"] = str(work_dir / "results.csv")
-    if (run := work_dir / "raw_metrics.json").exists():
-        result["raw_metrics"] = str(run)
-    if (artifacts_path := work_dir / "artifacts.json").exists():
-        result["artifacts_json"] = str(artifacts_path)
-    return result
-
-
 def parse_and_write_outputs(
     *,
     model_spec: ModelSpec,
@@ -239,18 +212,8 @@ def parse_and_write_outputs(
     holdout_seed = int(manifest.get("holdout_seed", 0))
 
     if model_spec.runner_name == "mmrotate":
-        raw_metrics = _load_json_if_mapping(work_dir / "raw_metrics.json")
-        artifacts = _load_json_if_mapping(work_dir / "artifacts.json")
-        normalized_metrics = normalize_mmrotate_metrics(raw_metrics)
-        if execution_status != "succeeded":
-            normalized_metrics = {
-                "mAP50_95": None,
-                "mAP50": None,
-                "precision": None,
-                "recall": None,
-                "f1": None,
-            }
-        write_mmrotate_metrics_json(
+        parse_mmrotate_outputs(
+            work_dir=work_dir,
             metrics_path=run_dir / "metrics.json",
             run_metadata=MMRotateRunMetadata(
                 benchmark_name=benchmark_name,
@@ -260,26 +223,20 @@ def parse_and_write_outputs(
                 holdout_seed=holdout_seed,
                 split_seed=split_seed,
                 train_seed=train_seed,
-                artifact_paths=_extract_artifact_paths(work_dir, artifacts),
+                artifact_paths={},
                 train_time_sec=None,
                 infer_time_ms=None,
                 peak_mem_mb=None,
                 param_count=None,
                 checkpoint_size_mb=None,
             ),
-            status=execution_status,
-            normalized_metrics=normalized_metrics,
+            execution_status=execution_status,
         )
         return
 
     if model_spec.runner_name == "yolo":
-        artifacts: dict[str, object] = {}
-        results_csv = work_dir / "results.csv"
-        writer_results_csv = results_csv
-        if execution_status != "succeeded":
-            writer_results_csv = work_dir / "__missing_results__.csv"
-        write_yolo_metrics_json(
-            results_csv=writer_results_csv,
+        parse_yolo_outputs(
+            work_dir=work_dir,
             metrics_path=run_dir / "metrics.json",
             status_path=run_dir / "yolo_status.json",
             run_metadata=YoloRunMetadata(
@@ -290,13 +247,14 @@ def parse_and_write_outputs(
                 holdout_seed=holdout_seed,
                 split_seed=split_seed,
                 train_seed=train_seed,
-                artifact_paths=_extract_artifact_paths(work_dir, artifacts),
+                artifact_paths={},
                 train_time_sec=None,
                 infer_time_ms=None,
                 peak_mem_mb=None,
                 param_count=None,
                 checkpoint_size_mb=None,
             ),
+            execution_status=execution_status,
         )
         return
 

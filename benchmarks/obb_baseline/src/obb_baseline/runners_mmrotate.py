@@ -4,7 +4,7 @@ import argparse
 import json
 import math
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Mapping, MutableMapping
 
@@ -189,6 +189,70 @@ def write_mmrotate_metrics_json(
     metrics_path.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
+    )
+
+
+def _load_json_mapping(path: Path) -> dict[str, object]:
+    if not path.exists():
+        return {}
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if isinstance(payload, dict):
+        return payload
+    return {}
+
+
+def _merge_artifact_paths(
+    *,
+    work_dir: Path,
+    base_paths: Mapping[str, str],
+    parsed_artifacts: Mapping[str, object],
+) -> dict[str, str]:
+    merged = dict(base_paths)
+    merged.setdefault("work_dir", str(work_dir))
+    raw_metrics_path = work_dir / "raw_metrics.json"
+    artifacts_path = work_dir / "artifacts.json"
+    if raw_metrics_path.exists():
+        merged["raw_metrics"] = str(raw_metrics_path)
+    if artifacts_path.exists():
+        merged["artifacts_json"] = str(artifacts_path)
+    for key, value in parsed_artifacts.items():
+        if value is None:
+            continue
+        merged[str(key)] = str(value)
+    return merged
+
+
+def parse_mmrotate_outputs(
+    *,
+    work_dir: Path,
+    metrics_path: Path,
+    run_metadata: RunMetadata,
+    execution_status: str,
+) -> None:
+    raw_metrics = _load_json_mapping(work_dir / "raw_metrics.json")
+    parsed_artifacts = _load_json_mapping(work_dir / "artifacts.json")
+    merged_artifact_paths = _merge_artifact_paths(
+        work_dir=work_dir,
+        base_paths=run_metadata.artifact_paths,
+        parsed_artifacts=parsed_artifacts,
+    )
+    metadata = replace(run_metadata, artifact_paths=merged_artifact_paths)
+
+    if execution_status == "succeeded":
+        normalized_metrics = normalize_mmrotate_metrics(raw_metrics)
+    else:
+        normalized_metrics = {
+            "mAP50_95": None,
+            "mAP50": None,
+            "precision": None,
+            "recall": None,
+            "f1": None,
+        }
+    write_mmrotate_metrics_json(
+        metrics_path=metrics_path,
+        run_metadata=metadata,
+        status=execution_status,
+        normalized_metrics=normalized_metrics,
     )
 
 

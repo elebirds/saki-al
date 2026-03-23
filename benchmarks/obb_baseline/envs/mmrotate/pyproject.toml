@@ -1,16 +1,26 @@
 [project]
 name = "obb-benchmark-mmrotate-env"
 version = "0.1.0"
-requires-python = "==3.12.*"
+requires-python = "==3.10.*"
 dependencies = [
-  "torch==2.9.1",
-  "torchvision==0.24.1",
-  "onedl-mmengine==0.10.9",
-  "onedl-mmcv==2.3.2.post2",
-  "onedl-mmdetection==3.4.5",
-  "onedl-mmrotate==1.1.0.post1",
+  "torch==2.0.0",
+  "torchvision==0.15.1",
+  "mmengine==0.8.5",
+  "mmcv==2.0.1",
+  "mmdet==3.0.0",
+  "mmrotate==1.0.0rc1",
   "pyyaml>=6.0",
 ]
+
+[[tool.uv.index]]
+name = "pytorch-cu118"
+url = "https://download.pytorch.org/whl/cu118"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu118" }]
+torchvision = [{ index = "pytorch-cu118" }]
+mmcv = { url = "https://download.openmmlab.com/mmcv/dist/cu118/torch2.0.0/mmcv-2.0.1-cp310-cp310-manylinux1_x86_64.whl" }
 
 [build-system]
 requires = ["hatchling"]

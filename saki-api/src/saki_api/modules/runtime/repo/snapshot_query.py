@@ -21,6 +21,14 @@ class SnapshotQueryRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
+    async def list_samples_by_ids(self, *, sample_ids: list[uuid.UUID]) -> list[Sample]:
+        unique_sample_ids = list(dict.fromkeys(sample_ids))
+        if not unique_sample_ids:
+            return []
+        stmt = select(Sample).where(Sample.id.in_(unique_sample_ids)).order_by(Sample.id.asc())
+        rows = await self.session.exec(stmt)
+        return list(rows.all())
+
     async def list_selected_sample_ids_by_round(self, *, round_id: uuid.UUID) -> list[uuid.UUID]:
         min_rank = func.min(TaskCandidateItem.rank).label("min_rank")
         stmt = (

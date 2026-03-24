@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import random
+import re
 import uuid
 from dataclasses import dataclass
 from enum import Enum
@@ -59,6 +60,8 @@ class _RoundSelectionContext:
 
 
 class SnapshotPolicyMixin:
+    _PATCH_GROUP_PATTERN = re.compile(r"^(?P<origin>.+?)__-?\d+__-?\d+___-?\d+(?:\.[^.]+)?$")
+
     @staticmethod
     def _effective_round_min_required(*, selected_count: int, configured_min_required: int) -> int:
         del configured_min_required
@@ -352,28 +355,153 @@ class SnapshotPolicyMixin:
         return test_count, val_count, train_seed_count
 
     @staticmethod
+    def _normalize_sample_records(
+        *,
+        sample_ids: list[uuid.UUID],
+        sample_records: list[dict[str, Any]] | None,
+    ) -> list[dict[str, Any]]:
+        normalized: list[dict[str, Any]] = []
+        seen: set[uuid.UUID] = set()
+        if sample_records:
+            for record in sample_records:
+                sample_id = SnapshotPolicyMixin._safe_uuid(record.get("sample_id") or record.get("id"))
+                if sample_id is None or sample_id in seen:
+                    continue
+                seen.add(sample_id)
+                meta_info = record.get("meta_info") if isinstance(record.get("meta_info"), dict) else {}
+                normalized.append(
+                    {
+                        "sample_id": sample_id,
+                        "name": str(record.get("name") or "").strip(),
+                        "meta_info": dict(meta_info),
+                    }
+                )
+            return normalized
+
+        for sample_id in SnapshotPolicyMixin._dedupe_uuid_list(sample_ids):
+            if sample_id in seen:
+                continue
+            seen.add(sample_id)
+            normalized.append(
+                {
+                    "sample_id": sample_id,
+                    "name": "",
+                    "meta_info": {},
+                }
+            )
+        return normalized
+
+    @staticmethod
+    def _extract_patch_origin(raw: Any) -> str | None:
+        text = str(raw or "").strip().replace("\\", "/")
+        if not text:
+            return None
+        filename = text.rsplit("/", 1)[-1]
+        match = SnapshotPolicyMixin._PATCH_GROUP_PATTERN.match(filename)
+        if not match:
+            return None
+        origin = str(match.group("origin") or "").strip()
+        return origin or None
+
+    @staticmethod
+    def _sample_group_key(record: dict[str, Any]) -> str:
+        meta_info = record.get("meta_info") if isinstance(record.get("meta_info"), dict) else {}
+        original_relative_path = meta_info.get("original_relative_path")
+        origin = SnapshotPolicyMixin._extract_patch_origin(original_relative_path)
+        if origin:
+            return origin
+        origin = SnapshotPolicyMixin._extract_patch_origin(record.get("name"))
+        if origin:
+            return origin
+        return str(record["sample_id"])
+
+    @staticmethod
+    def _group_sample_records(
+        *,
+        sample_ids: list[uuid.UUID],
+        sample_records: list[dict[str, Any]] | None,
+    ) -> list[tuple[str, list[uuid.UUID]]]:
+        records = SnapshotPolicyMixin._normalize_sample_records(
+            sample_ids=sample_ids,
+            sample_records=sample_records,
+        )
+        grouped: dict[str, list[uuid.UUID]] = {}
+        for record in records:
+            grouped.setdefault(SnapshotPolicyMixin._sample_group_key(record), []).append(record["sample_id"])
+        return [
+            (group_key, sorted(group_sample_ids, key=lambda item: str(item)))
+            for group_key, group_sample_ids in sorted(grouped.items(), key=lambda item: item[0])
+        ]
+
+    @staticmethod
+    def _shuffle_grouped_sample_ids(
+        *,
+        sample_ids: list[uuid.UUID],
+        sample_records: list[dict[str, Any]] | None,
+        seed: str,
+    ) -> list[list[uuid.UUID]]:
+        grouped = SnapshotPolicyMixin._group_sample_records(
+            sample_ids=sample_ids,
+            sample_records=sample_records,
+        )
+        randomizer = random.Random(seed)
+        randomizer.shuffle(grouped)
+        return [group_sample_ids for _group_key, group_sample_ids in grouped]
+
+    @staticmethod
+    def _take_group_slice(
+        *,
+        grouped_sample_ids: list[list[uuid.UUID]],
+        target_count: int,
+    ) -> tuple[list[uuid.UUID], list[list[uuid.UUID]]]:
+        if target_count <= 0 or not grouped_sample_ids:
+            return [], list(grouped_sample_ids)
+
+        selected: list[uuid.UUID] = []
+        selected_count = 0
+        index = 0
+        while index < len(grouped_sample_ids) and selected_count < target_count:
+            group_sample_ids = grouped_sample_ids[index]
+            selected.extend(group_sample_ids)
+            selected_count += len(group_sample_ids)
+            index += 1
+        return selected, list(grouped_sample_ids[index:])
+
+    @staticmethod
     def _assign_init_partitions(
         *,
         sample_ids: list[uuid.UUID],
+        sample_records: list[dict[str, Any]] | None = None,
         seed: str,
         test_ratio: float,
         val_ratio: float,
         train_seed_ratio: float,
     ) -> list[dict[str, Any]]:
-        ordered = sorted(sample_ids, key=lambda item: str(item))
-        randomizer = random.Random(seed)
-        randomizer.shuffle(ordered)
-        total = len(ordered)
+        grouped_sample_ids = SnapshotPolicyMixin._shuffle_grouped_sample_ids(
+            sample_ids=sample_ids,
+            sample_records=sample_records,
+            seed=seed,
+        )
+        total = sum(len(group_sample_ids) for group_sample_ids in grouped_sample_ids)
         test_count, val_count, train_seed_count = SnapshotPolicyMixin._allocate_counts(
             total=total,
             test_ratio=test_ratio,
             val_ratio=val_ratio,
             train_seed_ratio=train_seed_ratio,
         )
-        test_ids = ordered[:test_count]
-        val_ids = ordered[test_count:test_count + val_count]
-        seed_ids = ordered[test_count + val_count:test_count + val_count + train_seed_count]
-        pool_ids = ordered[test_count + val_count + train_seed_count:]
+        test_ids, grouped_sample_ids = SnapshotPolicyMixin._take_group_slice(
+            grouped_sample_ids=grouped_sample_ids,
+            target_count=test_count,
+        )
+        val_ids, grouped_sample_ids = SnapshotPolicyMixin._take_group_slice(
+            grouped_sample_ids=grouped_sample_ids,
+            target_count=val_count,
+        )
+        seed_ids, grouped_sample_ids = SnapshotPolicyMixin._take_group_slice(
+            grouped_sample_ids=grouped_sample_ids,
+            target_count=train_seed_count,
+        )
+        pool_ids = [sample_id for group_sample_ids in grouped_sample_ids for sample_id in group_sample_ids]
 
         rows: list[dict[str, Any]] = []
         for sample_id in test_ids:
@@ -418,16 +546,19 @@ class SnapshotPolicyMixin:
     def _assign_append_split_partitions(
         *,
         sample_ids: list[uuid.UUID],
+        sample_records: list[dict[str, Any]] | None = None,
         seed: str,
         cohort_index: int,
         test_ratio: float,
         val_ratio: float,
         val_policy: SnapshotValPolicy,
     ) -> list[dict[str, Any]]:
-        ordered = sorted(sample_ids, key=lambda item: str(item))
-        randomizer = random.Random(seed)
-        randomizer.shuffle(ordered)
-        total = len(ordered)
+        grouped_sample_ids = SnapshotPolicyMixin._shuffle_grouped_sample_ids(
+            sample_ids=sample_ids,
+            sample_records=sample_records,
+            seed=seed,
+        )
+        total = sum(len(group_sample_ids) for group_sample_ids in grouped_sample_ids)
         test_count = max(0, min(total, int(round(total * test_ratio))))
         val_count = 0
         if val_policy == SnapshotValPolicy.EXPAND_WITH_BATCH_VAL:
@@ -437,9 +568,15 @@ class SnapshotPolicyMixin:
                 val_count -= 1
             else:
                 test_count -= 1
-        test_ids = ordered[:test_count]
-        val_ids = ordered[test_count:test_count + val_count]
-        pool_ids = ordered[test_count + val_count:]
+        test_ids, grouped_sample_ids = SnapshotPolicyMixin._take_group_slice(
+            grouped_sample_ids=grouped_sample_ids,
+            target_count=test_count,
+        )
+        val_ids, grouped_sample_ids = SnapshotPolicyMixin._take_group_slice(
+            grouped_sample_ids=grouped_sample_ids,
+            target_count=val_count,
+        )
+        pool_ids = [sample_id for group_sample_ids in grouped_sample_ids for sample_id in group_sample_ids]
 
         rows: list[dict[str, Any]] = []
         for sample_id in test_ids:

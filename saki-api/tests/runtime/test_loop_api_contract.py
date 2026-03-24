@@ -184,6 +184,75 @@ async def _seed_project_samples(session: AsyncSession, *, project: Project, coun
     return sample_ids
 
 
+async def _seed_project_samples_with_specs(
+    session: AsyncSession,
+    *,
+    project: Project,
+    sample_specs: list[dict],
+) -> list[uuid.UUID]:
+    user = User(
+        email=f"seed-{uuid.uuid4().hex[:8]}@example.com",
+        full_name="seed-user",
+        hashed_password="hashed",
+    )
+    session.add(user)
+    await session.flush()
+
+    dataset = Dataset(
+        owner_id=user.id,
+        name=f"dataset-{uuid.uuid4().hex[:6]}",
+    )
+    session.add(dataset)
+    await session.flush()
+
+    session.add(ProjectDataset(project_id=project.id, dataset_id=dataset.id))
+    await session.flush()
+
+    sample_ids: list[uuid.UUID] = []
+    for idx, spec in enumerate(sample_specs):
+        sample = Sample(
+            id=spec.get("sample_id") or uuid.uuid5(uuid.NAMESPACE_DNS, f"sample-spec-{idx}"),
+            dataset_id=dataset.id,
+            name=str(spec.get("name") or f"sample-{idx}"),
+            asset_group={},
+            meta_info=dict(spec.get("meta_info") or {}),
+        )
+        session.add(sample)
+        await session.flush()
+        sample_ids.append(sample.id)
+    await session.commit()
+    return sample_ids
+
+
+def _patch_sample_specs(*, group_count: int, patches_per_group: int) -> list[dict]:
+    specs: list[dict] = []
+    for group_idx in range(group_count):
+        origin = f"P{group_idx:04d}"
+        for patch_idx in range(patches_per_group):
+            name = f"{origin}__{patch_idx * 512}__0___1024.png"
+            specs.append(
+                {
+                    "sample_id": uuid.uuid5(uuid.NAMESPACE_DNS, f"{origin}-patch-{patch_idx}"),
+                    "name": name,
+                    "meta_info": {"original_relative_path": f"images/train/{name}"},
+                }
+            )
+    return specs
+
+
+def _group_partitions_by_origin(
+    *,
+    rows: list[ALSnapshotSample],
+    sample_names: dict[uuid.UUID, str],
+) -> dict[str, set[SnapshotPartition]]:
+    grouped: dict[str, set[SnapshotPartition]] = {}
+    for row in rows:
+        origin = SnapshotPolicyMixin._extract_patch_origin(sample_names[row.sample_id])
+        assert origin is not None
+        grouped.setdefault(origin, set()).add(row.partition)
+    return grouped
+
+
 async def _seed_project_labels(
     session: AsyncSession,
     *,
@@ -2229,6 +2298,141 @@ async def test_snapshot_update_uses_loop_global_seed_when_seed_missing(loop_api_
             assert len(rows) == 2
             assert rows[0].seed == "seed-loop-main-2"
             assert rows[1].seed == "seed-loop-main-2"
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_snapshot_init_keeps_patch_group_in_single_partition(loop_api_env):
+    session_local = loop_api_env
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        sample_specs = _patch_sample_specs(group_count=4, patches_per_group=3)
+        sample_ids = await _seed_project_samples_with_specs(session, project=project, sample_specs=sample_specs)
+        sample_names = {spec["sample_id"]: spec["name"] for spec in sample_specs}
+        service = RuntimeService(session)
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-snapshot-grouped-init",
+                    branch_id=branch.id,
+                    mode=LoopMode.ACTIVE_LEARNING,
+                    model_arch="yolo_det_v1",
+                    config={
+                        "sampling": {"strategy": "random_baseline", "topk": 200},
+                        "reproducibility": {"global_seed": "seed-grouped-init"},
+                    },
+                    lifecycle=LoopLifecycle.DRAFT,
+                ),
+            )
+            await service.init_loop_snapshot(
+                loop_id=loop.id,
+                payload={
+                    "sample_ids": [str(item) for item in sample_ids],
+                    "train_seed_ratio": 0.25,
+                    "val_ratio": 0.25,
+                    "test_ratio": 0.25,
+                },
+                actor_user_id=None,
+            )
+            snapshot = (
+                await session.exec(
+                    select(ALSnapshotVersion)
+                    .where(ALSnapshotVersion.loop_id == loop.id)
+                    .order_by(ALSnapshotVersion.version_index.desc())
+                )
+            ).first()
+            assert snapshot is not None
+            rows = list(
+                (
+                    await session.exec(
+                        select(ALSnapshotSample).where(ALSnapshotSample.snapshot_version_id == snapshot.id)
+                    )
+                ).all()
+            )
+            grouped_partitions = _group_partitions_by_origin(rows=rows, sample_names=sample_names)
+            assert all(len(partitions) == 1 for partitions in grouped_partitions.values())
+            assert {next(iter(partitions)) for partitions in grouped_partitions.values()} == {
+                SnapshotPartition.TEST_ANCHOR,
+                SnapshotPartition.VAL_ANCHOR,
+                SnapshotPartition.TRAIN_SEED,
+                SnapshotPartition.TRAIN_POOL,
+            }
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_snapshot_update_append_split_keeps_patch_group_in_single_partition(loop_api_env):
+    session_local = loop_api_env
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        sample_specs = _patch_sample_specs(group_count=4, patches_per_group=2)
+        sample_ids = await _seed_project_samples_with_specs(session, project=project, sample_specs=sample_specs)
+        sample_names = {spec["sample_id"]: spec["name"] for spec in sample_specs}
+        service = RuntimeService(session)
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-snapshot-grouped-update",
+                    branch_id=branch.id,
+                    mode=LoopMode.ACTIVE_LEARNING,
+                    model_arch="yolo_det_v1",
+                    config={
+                        "sampling": {"strategy": "random_baseline", "topk": 200},
+                        "reproducibility": {"global_seed": "seed-grouped-update"},
+                    },
+                    lifecycle=LoopLifecycle.DRAFT,
+                ),
+            )
+            await service.init_loop_snapshot(
+                loop_id=loop.id,
+                payload={"sample_ids": [str(item) for item in sample_ids[:2]]},
+                actor_user_id=None,
+            )
+            appended_ids = sample_ids[2:]
+            await service.update_loop_snapshot(
+                loop_id=loop.id,
+                payload={
+                    "mode": "append_split",
+                    "sample_ids": [str(item) for item in appended_ids],
+                    "batch_test_ratio": 1 / 3,
+                    "batch_val_ratio": 1 / 3,
+                    "val_policy": "expand_with_batch_val",
+                },
+                actor_user_id=None,
+            )
+            snapshot = (
+                await session.exec(
+                    select(ALSnapshotVersion)
+                    .where(ALSnapshotVersion.loop_id == loop.id)
+                    .order_by(ALSnapshotVersion.version_index.desc())
+                )
+            ).first()
+            assert snapshot is not None
+            rows = list(
+                (
+                    await session.exec(
+                        select(ALSnapshotSample).where(ALSnapshotSample.snapshot_version_id == snapshot.id)
+                    )
+                ).all()
+            )
+            appended_rows = [row for row in rows if row.sample_id in set(appended_ids)]
+            grouped_partitions = _group_partitions_by_origin(rows=appended_rows, sample_names=sample_names)
+            assert all(len(partitions) == 1 for partitions in grouped_partitions.values())
+            assert {next(iter(partitions)) for partitions in grouped_partitions.values()} == {
+                SnapshotPartition.TEST_BATCH,
+                SnapshotPartition.VAL_BATCH,
+                SnapshotPartition.TRAIN_POOL,
+            }
         finally:
             _session_ctx.reset(token)
 

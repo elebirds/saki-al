@@ -25,6 +25,27 @@ class SnapshotLifecycleMixin:
     async def _list_project_sample_ids(self, project_id: uuid.UUID) -> list[uuid.UUID]:
         return await self.project_gateway.list_project_sample_ids(project_id)
 
+    async def _list_snapshot_sample_records(self, *, sample_ids: list[uuid.UUID]) -> list[dict[str, Any]]:
+        unique_sample_ids = self._dedupe_uuid_list(sample_ids)
+        if not unique_sample_ids:
+            return []
+        samples = await self.snapshot_query_repo.list_samples_by_ids(sample_ids=unique_sample_ids)
+        sample_map = {sample.id: sample for sample in samples}
+        records: list[dict[str, Any]] = []
+        for sample_id in unique_sample_ids:
+            sample = sample_map.get(sample_id)
+            if sample is None:
+                records.append({"sample_id": sample_id, "name": "", "meta_info": {}})
+                continue
+            records.append(
+                {
+                    "sample_id": sample.id,
+                    "name": str(sample.name or ""),
+                    "meta_info": dict(sample.meta_info or {}),
+                }
+            )
+        return records
+
     async def _resolve_simulation_oracle_commit_id(self, *, loop: Any) -> uuid.UUID:
         if loop.mode != LoopMode.SIMULATION:
             raise BadRequestAppException("oracle commit is only available for simulation loop")
@@ -111,8 +132,10 @@ class SnapshotLifecycleMixin:
             default=SnapshotValPolicy.ANCHOR_ONLY,
         )
 
+        sample_records = await self._list_snapshot_sample_records(sample_ids=sample_ids)
         assignment_rows = self._assign_init_partitions(
             sample_ids=sample_ids,
+            sample_records=sample_records,
             seed=seed,
             test_ratio=test_ratio,
             val_ratio=val_ratio,
@@ -270,8 +293,10 @@ class SnapshotLifecycleMixin:
         else:
             batch_test_ratio = float(payload.get("batch_test_ratio", 0.1))
             batch_val_ratio = float(payload.get("batch_val_ratio", 0.1))
+            new_sample_records = await self._list_snapshot_sample_records(sample_ids=new_sample_ids)
             append_rows = self._assign_append_split_partitions(
                 sample_ids=new_sample_ids,
+                sample_records=new_sample_records,
                 seed=seed,
                 cohort_index=version_index,
                 test_ratio=batch_test_ratio,

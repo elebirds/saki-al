@@ -14,6 +14,35 @@ def _sample_ids(n: int) -> list[uuid.UUID]:
     return [uuid.uuid5(uuid.NAMESPACE_DNS, f"sample-{idx}") for idx in range(n)]
 
 
+def _sample_record(
+    key: str,
+    *,
+    name: str,
+    original_relative_path: str | None = None,
+) -> dict:
+    meta_info = {}
+    if original_relative_path is not None:
+        meta_info["original_relative_path"] = original_relative_path
+    return {
+        "sample_id": uuid.uuid5(uuid.NAMESPACE_DNS, key),
+        "name": name,
+        "meta_info": meta_info,
+    }
+
+
+def _partition_by_group(rows: list[dict], samples: list[dict]) -> dict[str, set[SnapshotPartition]]:
+    sample_to_group: dict[uuid.UUID, str] = {}
+    for sample in samples:
+        group = str(sample.get("group_key") or "")
+        assert group
+        sample_to_group[sample["sample_id"]] = group
+    result: dict[str, set[SnapshotPartition]] = {}
+    for row in rows:
+        group = sample_to_group[row["sample_id"]]
+        result.setdefault(group, set()).add(row["partition"])
+    return result
+
+
 def test_init_assignment_is_deterministic_for_same_seed() -> None:
     sample_ids = _sample_ids(64)
     rows_a = SnapshotPolicyMixin._assign_init_partitions(
@@ -32,6 +61,78 @@ def test_init_assignment_is_deterministic_for_same_seed() -> None:
     )
     assert rows_a == rows_b
     assert SnapshotPolicyMixin._manifest_hash(rows_a) == SnapshotPolicyMixin._manifest_hash(rows_b)
+
+
+def test_init_assignment_keeps_patch_group_in_single_partition() -> None:
+    samples = [
+        _sample_record(
+            f"group-{group_idx}-patch-{patch_idx}",
+            name=f"P{group_idx:04d}__{patch_idx * 512}__0___1024.png",
+        )
+        | {"group_key": f"P{group_idx:04d}"}
+        for group_idx in range(4)
+        for patch_idx in range(3)
+    ]
+    rows = SnapshotPolicyMixin._assign_init_partitions(
+        sample_ids=[],
+        sample_records=samples,
+        seed="seed-grouped-init",
+        test_ratio=0.25,
+        val_ratio=0.25,
+        train_seed_ratio=0.25,
+    )
+    grouped_partitions = _partition_by_group(rows, samples)
+    assert all(len(partitions) == 1 for partitions in grouped_partitions.values())
+    assert {next(iter(partitions)) for partitions in grouped_partitions.values()} == {
+        SnapshotPartition.TEST_ANCHOR,
+        SnapshotPartition.VAL_ANCHOR,
+        SnapshotPartition.TRAIN_SEED,
+        SnapshotPartition.TRAIN_POOL,
+    }
+
+
+def test_init_assignment_groups_by_original_relative_path_before_name() -> None:
+    samples = [
+        _sample_record(
+            "origin-a-0",
+            name="tile-a-0.png",
+            original_relative_path="images/train/P1739__1024__0___1024.png",
+        )
+        | {"group_key": "P1739"},
+        _sample_record(
+            "origin-a-1",
+            name="tile-a-1.png",
+            original_relative_path="images/train/P1739__1536__0___1024.png",
+        )
+        | {"group_key": "P1739"},
+        _sample_record(
+            "origin-b-0",
+            name="tile-b-0.png",
+            original_relative_path="images/train/P1740__0__0___1024.png",
+        )
+        | {"group_key": "P1740"},
+        _sample_record(
+            "origin-b-1",
+            name="tile-b-1.png",
+            original_relative_path="images/train/P1741__0__0___1024.png",
+        )
+        | {"group_key": "P1741"},
+    ]
+    rows = SnapshotPolicyMixin._assign_init_partitions(
+        sample_ids=[],
+        sample_records=samples,
+        seed="seed-grouped-meta",
+        test_ratio=0.25,
+        val_ratio=0.25,
+        train_seed_ratio=0.25,
+    )
+    grouped_partitions = _partition_by_group(rows, samples)
+    assert grouped_partitions["P1739"] in (
+        {SnapshotPartition.TEST_ANCHOR},
+        {SnapshotPartition.VAL_ANCHOR},
+        {SnapshotPartition.TRAIN_SEED},
+        {SnapshotPartition.TRAIN_POOL},
+    )
 
 
 def test_append_split_anchor_only_produces_no_val_batch() -> None:
@@ -56,6 +157,34 @@ def test_append_split_expand_with_batch_val_produces_val_batch() -> None:
         val_policy=SnapshotValPolicy.EXPAND_WITH_BATCH_VAL,
     )
     assert any(row["partition"] == SnapshotPartition.VAL_BATCH for row in rows)
+
+
+def test_append_split_keeps_patch_group_in_single_partition() -> None:
+    samples = [
+        _sample_record(
+            f"append-group-{group_idx}-patch-{patch_idx}",
+            name=f"P{group_idx:04d}__{patch_idx * 512}__0___1024.png",
+        )
+        | {"group_key": f"P{group_idx:04d}"}
+        for group_idx in range(3)
+        for patch_idx in range(2)
+    ]
+    rows = SnapshotPolicyMixin._assign_append_split_partitions(
+        sample_ids=[],
+        sample_records=samples,
+        seed="seed-grouped-append",
+        cohort_index=7,
+        test_ratio=1 / 3,
+        val_ratio=1 / 3,
+        val_policy=SnapshotValPolicy.EXPAND_WITH_BATCH_VAL,
+    )
+    grouped_partitions = _partition_by_group(rows, samples)
+    assert all(len(partitions) == 1 for partitions in grouped_partitions.values())
+    assert {next(iter(partitions)) for partitions in grouped_partitions.values()} == {
+        SnapshotPartition.TEST_BATCH,
+        SnapshotPartition.VAL_BATCH,
+        SnapshotPartition.TRAIN_POOL,
+    }
 
 
 def test_resolve_snapshot_seed_uses_loop_global_seed() -> None:

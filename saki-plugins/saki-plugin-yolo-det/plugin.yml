@@ -259,6 +259,30 @@ config_schema:
         step: 1
       visible: "ctx.sampling_strategy === 'aug_iou_disagreement' && form.aug_iou_iou_mode === 'boundary'"
 
+    - key: aug_iou_sample_batch_size
+      label: aug_iou 样本批大小
+      type: integer
+      required: true
+      default: 8
+      description: score 阶段每轮送入增强流水线的样本数；总增强视图数约为 sample_batch_size * enabled_augs
+      props:
+        min: 1
+        max: 64
+        step: 1
+      visible: "ctx.sampling_strategy === 'aug_iou_disagreement'"
+
+    - key: aug_iou_pipeline_workers
+      label: aug_iou CPU 流水线线程数
+      type: integer
+      required: true
+      default: 4
+      description: score 阶段用于读图、增强、逆变换与打分的线程数
+      props:
+        min: 1
+        max: 32
+        step: 1
+      visible: "ctx.sampling_strategy === 'aug_iou_disagreement'"
+
     - key: val_split_ratio
       label: 验证集比例
       type: number

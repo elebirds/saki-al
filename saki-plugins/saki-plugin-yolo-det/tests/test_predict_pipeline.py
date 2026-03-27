@@ -8,7 +8,12 @@ import pytest
 
 from saki_plugin_sdk.strategies.builtin import normalize_strategy_name, score_by_strategy
 from saki_plugin_yolo_det import predict_pipeline
-from saki_plugin_yolo_det.predict_pipeline import predict_with_augmentations, score_unlabeled_samples
+from saki_plugin_yolo_det.predict_pipeline import (
+    PreparedAugmentedSample,
+    predict_with_augmentations,
+    score_augmented_samples_with_pipeline,
+    score_unlabeled_samples,
+)
 
 
 def test_random_baseline_candidates_are_round_invariant(tmp_path: Path) -> None:
@@ -291,3 +296,113 @@ def test_aug_iou_strategy_reports_progress_per_sample(tmp_path: Path) -> None:
         (1, 2, "sample-a"),
         (2, 2, "sample-b"),
     ]
+
+
+def test_score_augmented_samples_with_pipeline_batches_multiple_samples(tmp_path: Path) -> None:
+    samples: list[dict[str, str]] = []
+    for name in ("a", "b", "c"):
+        path = tmp_path / f"{name}.jpg"
+        path.write_bytes(b"\x00")
+        samples.append({"id": f"sample-{name}", "local_path": str(path)})
+
+    predict_calls: list[tuple[list[str], int]] = []
+    batch_reports: list[dict[str, object]] = []
+    progress_messages: list[tuple[int, int, str]] = []
+
+    def _prepare_sample(*, sample_id: str, image_path: Path, enabled_aug_names):
+        del image_path, enabled_aug_names
+        return PreparedAugmentedSample(
+            sample_id=sample_id,
+            image_path=Path(f"/prepared/{sample_id}.jpg"),
+            sources=(f"{sample_id}:identity", f"{sample_id}:rot90"),
+            views=(f"{sample_id}:identity", f"{sample_id}:rot90"),
+            width=1024,
+            height=768,
+            prepare_sec=0.25,
+        )
+
+    def _predict_batch(*, model, sources, conf, imgsz, device, batch):
+        del model, conf, imgsz, device
+        serialized = [str(item) for item in sources]
+        predict_calls.append((serialized, batch))
+        return [{"token": token} for token in serialized]
+
+    def _finalize_sample(
+        *,
+        prepared_sample: PreparedAugmentedSample,
+        predictions,
+        random_seed: int,
+        round_index: int,
+        aug_iou_mode: str,
+        aug_iou_boundary_d: int,
+    ):
+        del random_seed, round_index, aug_iou_mode, aug_iou_boundary_d
+        candidate = {
+            "sample_id": prepared_sample.sample_id,
+            "score": float(len(predictions)),
+            "reason": {"score": float(len(predictions))},
+            "prediction_snapshot": {
+                "strategy": "aug_iou_disagreement",
+                "aug_count": len(predictions),
+                "pred_per_aug": [1 for _ in predictions],
+                "base_predictions": [{"token": item["token"]} for item in predictions[:1]],
+            },
+        }
+        diag = {
+            "sample_id": prepared_sample.sample_id,
+            "prepare_sec": prepared_sample.prepare_sec,
+            "inverse_sec": 0.1,
+            "score_sec": 0.05,
+            "total_sec": 0.4,
+            "total_pred_boxes": len(predictions),
+            "pred_per_aug": [1 for _ in predictions],
+        }
+        return candidate, diag
+
+    rows = score_augmented_samples_with_pipeline(
+        unlabeled_samples=samples,
+        stop_flag=Event(),
+        model=object(),
+        conf=0.25,
+        imgsz=1024,
+        device="cuda:0",
+        random_seed=7,
+        round_index=1,
+        enabled_aug_names=("identity", "rot90"),
+        aug_iou_mode="obb",
+        aug_iou_boundary_d=3,
+        predict_batch_size=16,
+        sample_batch_size=2,
+        pipeline_workers=1,
+        prepare_sample=_prepare_sample,
+        predict_batch=_predict_batch,
+        finalize_sample=_finalize_sample,
+        progress_callback=lambda processed, total, sample_id: progress_messages.append(
+            (processed, total, sample_id)
+        ),
+        batch_callback=batch_reports.append,
+    )
+
+    assert sorted(str(row["sample_id"]) for row in rows) == ["sample-a", "sample-b", "sample-c"]
+    assert predict_calls == [
+        (
+            [
+                "sample-a:identity",
+                "sample-a:rot90",
+                "sample-b:identity",
+                "sample-b:rot90",
+            ],
+            16,
+        ),
+        (
+            [
+                "sample-c:identity",
+                "sample-c:rot90",
+            ],
+            16,
+        ),
+    ]
+    assert [item[0] for item in progress_messages] == [1, 2, 3]
+    assert {item[2] for item in progress_messages} == {"sample-a", "sample-b", "sample-c"}
+    assert [report["sample_count"] for report in batch_reports] == [2, 1]
+    assert [report["source_count"] for report in batch_reports] == [4, 2]

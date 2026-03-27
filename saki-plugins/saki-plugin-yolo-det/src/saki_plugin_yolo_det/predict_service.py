@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import gc
 import threading
+import time
 from itertools import zip_longest
 from pathlib import Path
 from typing import Any, Callable
@@ -23,8 +24,10 @@ from saki_ir import normalize_quad8, quad8_to_aabb_rect, quad8_to_obb_payload
 from saki_plugin_yolo_det.common import to_float, to_int, to_yolo_device
 from saki_plugin_yolo_det.config_service import YoloConfigService
 from saki_plugin_yolo_det.predict_pipeline import (
+    PreparedAugmentedSample,
     export_prediction_entry,
     predict_with_augmentations,
+    score_augmented_samples_with_pipeline,
     score_unlabeled_samples,
 )
 
@@ -80,6 +83,7 @@ class YoloPredictService:
         topk = max(1, to_int(getattr(cfg, "topk", getattr(cfg, "sampling_topk", 200)), 200))
         conf = to_float(cfg.predict_conf, 0.1)
         imgsz = to_int(cfg.imgsz, 640)
+        batch = max(1, to_int(getattr(cfg, "batch", 16), 16))
         task_context = context.task_context
         random_seed = max(
             0,
@@ -96,6 +100,8 @@ class YoloPredictService:
         strategy_key = normalize_strategy_name(strategy)
         aug_enabled_names = tuple(getattr(cfg, "aug_iou_enabled_augs", ()) or ())
         aug_view_count = len(aug_enabled_names) if aug_enabled_names else 0
+        aug_iou_sample_batch_size = max(1, to_int(getattr(cfg, "aug_iou_sample_batch_size", 8), 8))
+        aug_iou_pipeline_workers = max(1, to_int(getattr(cfg, "aug_iou_pipeline_workers", 4), 4))
 
         best_path = workspace.artifacts_dir / "best.pt"
         fallback_model = await self._config_service.resolve_model_ref(workspace=workspace, params=cfg)
@@ -104,7 +110,9 @@ class YoloPredictService:
             self._log_info(
                 "YOLO aug_iou 采样开始 "
                 f"samples={len(unlabeled_samples)} aug_views={aug_view_count} "
-                f"imgsz={imgsz} device={device}"
+                f"imgsz={imgsz} device={device} "
+                f"predict_batch={batch} sample_batch_size={aug_iou_sample_batch_size} "
+                f"pipeline_workers={aug_iou_pipeline_workers}"
             )
 
         def _progress_callback(processed: int, total: int, sample_id: str) -> None:
@@ -117,6 +125,36 @@ class YoloPredictService:
                     f"aug_views={aug_view_count} device={device}"
                 )
 
+        def _batch_callback(meta: dict[str, Any]) -> None:
+            if self._log_info is None or strategy_key != "aug_iou_disagreement":
+                return
+            self._log_info(
+                "YOLO aug_iou 批次完成 "
+                f"batch_index={meta.get('batch_index')} sample_count={meta.get('sample_count')} "
+                f"source_count={meta.get('source_count')} infer_sec={float(meta.get('infer_sec') or 0.0):.3f} "
+                f"predict_batch={meta.get('predict_batch_size')} "
+                f"sample_batch_size={meta.get('sample_batch_size')} "
+                f"pipeline_workers={meta.get('pipeline_workers')}"
+            )
+
+        def _sample_callback(meta: dict[str, Any]) -> None:
+            if self._log_info is None or strategy_key != "aug_iou_disagreement":
+                return
+            total_sec = float(meta.get("total_sec") or 0.0)
+            inverse_sec = float(meta.get("inverse_sec") or 0.0)
+            score_sec = float(meta.get("score_sec") or 0.0)
+            total_pred_boxes = int(meta.get("total_pred_boxes") or 0)
+            if total_sec < 10.0 and max(inverse_sec, score_sec) < 5.0 and total_pred_boxes < 200:
+                return
+            self._log_info(
+                "YOLO aug_iou 慢样本 "
+                f"sample_id={meta.get('sample_id')} size={meta.get('width')}x{meta.get('height')} "
+                f"prepare_sec={float(meta.get('prepare_sec') or 0.0):.3f} "
+                f"inverse_sec={inverse_sec:.3f} score_sec={score_sec:.3f} "
+                f"total_sec={total_sec:.3f} total_pred_boxes={total_pred_boxes} "
+                f"pred_per_aug={meta.get('pred_per_aug')}"
+            )
+
         candidates = await asyncio.to_thread(
             self._score_unlabeled_sync,
             model_path=model_path,
@@ -124,13 +162,18 @@ class YoloPredictService:
             strategy=strategy,
             conf=conf,
             imgsz=imgsz,
+            batch=batch,
             device=device,
             random_seed=random_seed,
             round_index=round_index,
             aug_enabled_names=aug_enabled_names,
             aug_iou_mode=str(getattr(cfg, "aug_iou_iou_mode", "obb") or "obb"),
             aug_iou_boundary_d=int(getattr(cfg, "aug_iou_boundary_d", 3) or 3),
+            aug_iou_sample_batch_size=aug_iou_sample_batch_size,
+            aug_iou_pipeline_workers=aug_iou_pipeline_workers,
             progress_callback=_progress_callback if strategy_key == "aug_iou_disagreement" else None,
+            batch_callback=_batch_callback if strategy_key == "aug_iou_disagreement" else None,
+            sample_callback=_sample_callback if strategy_key == "aug_iou_disagreement" else None,
         )
         candidates.sort(key=lambda item: float(item.get("score") or 0.0), reverse=True)
         return candidates[:topk]
@@ -174,14 +217,44 @@ class YoloPredictService:
         strategy: str,
         conf: float,
         imgsz: int,
+        batch: int,
         device: Any,
         random_seed: int,
         round_index: int,
         aug_enabled_names: tuple[str, ...] | None = None,
         aug_iou_mode: str = "obb",
         aug_iou_boundary_d: int = 3,
+        aug_iou_sample_batch_size: int = 8,
+        aug_iou_pipeline_workers: int = 4,
         progress_callback: Callable[[int, int, str], None] | None = None,
+        batch_callback: Callable[[dict[str, Any]], None] | None = None,
+        sample_callback: Callable[[dict[str, Any]], None] | None = None,
     ) -> list[dict[str, Any]]:
+        strategy_key = normalize_strategy_name(strategy)
+        if strategy_key == "aug_iou_disagreement":
+            model = self._get_or_load_model(model_path=model_path, device=device)
+            return score_augmented_samples_with_pipeline(
+                unlabeled_samples=unlabeled_samples,
+                stop_flag=self._stop_flag,
+                model=model,
+                conf=conf,
+                imgsz=imgsz,
+                device=device,
+                random_seed=random_seed,
+                round_index=round_index,
+                enabled_aug_names=aug_enabled_names,
+                aug_iou_mode=aug_iou_mode,
+                aug_iou_boundary_d=aug_iou_boundary_d,
+                predict_batch_size=batch,
+                sample_batch_size=aug_iou_sample_batch_size,
+                pipeline_workers=aug_iou_pipeline_workers,
+                prepare_sample=self._prepare_aug_iou_sample,
+                predict_batch=self._predict_aug_iou_batch,
+                finalize_sample=self._finalize_aug_iou_sample,
+                progress_callback=progress_callback,
+                batch_callback=batch_callback,
+                sample_callback=sample_callback,
+            )
         return score_unlabeled_samples(
             unlabeled_samples=unlabeled_samples,
             strategy=strategy,
@@ -329,6 +402,31 @@ class YoloPredictService:
             predicts = model.predict(**kwargs)
         return list(predicts or [])
 
+    def _run_model_predict_sources(
+        self,
+        *,
+        model: Any,
+        sources: list[Any],
+        conf: float,
+        imgsz: int,
+        batch: int,
+        device: Any,
+    ) -> list[Any]:
+        kwargs = {
+            "source": sources,
+            "conf": conf,
+            "imgsz": imgsz,
+            "device": device,
+            "verbose": False,
+            "batch": max(1, min(int(batch), len(sources))),
+        }
+        try:
+            predicts = model.predict(**kwargs)
+        except TypeError:
+            kwargs.pop("batch", None)
+            predicts = model.predict(**kwargs)
+        return list(predicts or [])
+
     def _predict_image_chunk_with_backoff(
         self,
         *,
@@ -380,6 +478,62 @@ class YoloPredictService:
                     self._log_warning(
                         "YOLO 直接推理触发显存回退 "
                         f"images={len(image_paths)} imgsz={imgsz} device={device} "
+                        f"requested_batch={requested_batch} current_batch={current_batch} "
+                        f"next_batch={next_batch} error={exc}"
+                    )
+                current_batch = next_batch
+
+    def _predict_source_chunk_with_backoff(
+        self,
+        *,
+        model: Any,
+        sources: list[Any],
+        conf: float,
+        imgsz: int,
+        batch: int,
+        device: Any,
+    ) -> list[Any]:
+        if not sources:
+            return []
+
+        requested_batch = max(1, min(int(batch), len(sources)))
+        current_batch = requested_batch
+        attempted_batches: list[int] = []
+
+        while True:
+            attempted_batches.append(current_batch)
+            try:
+                predicts = self._run_model_predict_sources(
+                    model=model,
+                    sources=sources,
+                    conf=conf,
+                    imgsz=imgsz,
+                    batch=current_batch,
+                    device=device,
+                )
+                if len(attempted_batches) > 1 and self._log_info is not None:
+                    self._log_info(
+                        "YOLO aug_iou 内存源降批成功 "
+                        f"sources={len(sources)} imgsz={imgsz} device={device} "
+                        f"requested_batch={requested_batch} final_batch={current_batch} "
+                        f"attempts={attempted_batches}"
+                    )
+                return predicts
+            except Exception as exc:
+                if not self._is_oom_error(exc):
+                    raise
+                self._clear_accelerator_cache()
+                if current_batch <= 1:
+                    attempts_text = "->".join(str(item) for item in attempted_batches)
+                    raise RuntimeError(
+                        "YOLO aug_iou 内存源推理显存不足，自动降批后仍失败 "
+                        f"sources={len(sources)} imgsz={imgsz} device={device} attempts={attempts_text}: {exc}"
+                    ) from exc
+                next_batch = max(1, current_batch // 2)
+                if self._log_warning is not None:
+                    self._log_warning(
+                        "YOLO aug_iou 内存源触发显存回退 "
+                        f"sources={len(sources)} imgsz={imgsz} device={device} "
                         f"requested_batch={requested_batch} current_batch={current_batch} "
                         f"next_batch={next_batch} error={exc}"
                     )
@@ -442,6 +596,122 @@ class YoloPredictService:
         )
         first = predicts[0] if predicts else None
         return self._extract_predictions(first)
+
+    def _prepare_aug_iou_sample(
+        self,
+        *,
+        sample_id: str,
+        image_path: Path,
+        enabled_aug_names: tuple[str, ...] | None = None,
+    ) -> PreparedAugmentedSample:
+        if Image is None or np is None:
+            raise RuntimeError("numpy and pillow are required for yolo_det_v1 plugin")
+        started_at = time.perf_counter()
+        with Image.open(image_path) as img:
+            rgb = img.convert("RGB")
+            image = np.array(rgb)
+        views = build_augmented_views(
+            image,
+            np_mod=np,
+            image_cls=Image,
+            enabled_names=enabled_aug_names,
+        )
+        prepare_sec = time.perf_counter() - started_at
+        height = int(image.shape[0]) if getattr(image, "ndim", 0) >= 2 else 0
+        width = int(image.shape[1]) if getattr(image, "ndim", 0) >= 2 else 0
+        return PreparedAugmentedSample(
+            sample_id=sample_id,
+            image_path=image_path,
+            sources=tuple(view.image for view in views),
+            views=tuple(views),
+            width=width,
+            height=height,
+            prepare_sec=prepare_sec,
+        )
+
+    def _predict_aug_iou_batch(
+        self,
+        *,
+        model: Any,
+        sources: list[Any],
+        conf: float,
+        imgsz: int,
+        device: Any,
+        batch: int,
+    ) -> list[Any]:
+        return self._predict_source_chunk_with_backoff(
+            model=model,
+            sources=sources,
+            conf=conf,
+            imgsz=imgsz,
+            batch=batch,
+            device=device,
+        )
+
+    def _finalize_aug_iou_sample(
+        self,
+        *,
+        prepared_sample: PreparedAugmentedSample,
+        predictions: list[Any],
+        random_seed: int,
+        round_index: int,
+        aug_iou_mode: str,
+        aug_iou_boundary_d: int,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        inverse_started_at = time.perf_counter()
+        preds_by_aug: list[list[dict[str, Any]]] = []
+        pred_per_aug: list[int] = []
+        total_pred_boxes = 0
+        for view, pred in zip_longest(prepared_sample.views, predictions):
+            if view is None:
+                break
+            rows = self._extract_predictions(pred) if pred is not None else []
+            restored_rows = [
+                self._rebuild_prediction_geometry(inverse_augmented_prediction_row(item, view=view))
+                for item in rows
+            ]
+            preds_by_aug.append(restored_rows)
+            pred_per_aug.append(len(restored_rows))
+            total_pred_boxes += len(restored_rows)
+        inverse_sec = time.perf_counter() - inverse_started_at
+
+        score_started_at = time.perf_counter()
+        score, reason = score_by_strategy(
+            "aug_iou_disagreement",
+            prepared_sample.sample_id,
+            random_seed=random_seed,
+            round_index=round_index,
+            predictions_by_aug=preds_by_aug,
+            aug_iou_mode=aug_iou_mode,
+            aug_iou_boundary_d=aug_iou_boundary_d,
+        )
+        score_sec = time.perf_counter() - score_started_at
+        candidate = {
+            "sample_id": prepared_sample.sample_id,
+            "score": score,
+            "reason": reason,
+            "prediction_snapshot": {
+                "strategy": "aug_iou_disagreement",
+                "aug_count": len(preds_by_aug),
+                "pred_per_aug": pred_per_aug,
+                "base_predictions": [
+                    export_prediction_entry(item) for item in (preds_by_aug[0] if preds_by_aug else [])[:30]
+                ],
+            },
+        }
+        diag = {
+            "sample_id": prepared_sample.sample_id,
+            "image_path": str(prepared_sample.image_path),
+            "width": prepared_sample.width,
+            "height": prepared_sample.height,
+            "prepare_sec": prepared_sample.prepare_sec,
+            "inverse_sec": inverse_sec,
+            "score_sec": score_sec,
+            "total_sec": prepared_sample.prepare_sec + inverse_sec + score_sec,
+            "total_pred_boxes": total_pred_boxes,
+            "pred_per_aug": pred_per_aug,
+        }
+        return candidate, diag
 
     def _predict_with_aug(
         self,

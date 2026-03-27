@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import math
 import threading
+from pathlib import Path
 
 import pytest
 
 from saki_ir import quad8_to_obb_payload
+from saki_plugin_yolo_det import predict_service as predict_service_module
 from saki_plugin_yolo_det.config_service import YoloConfigService
 from saki_plugin_yolo_det.predict_service import YoloPredictService
 
@@ -128,6 +130,65 @@ def test_inverse_aug_box_restores_affine_qbox_and_obb() -> None:
     restored = service._inverse_aug_box(name="affine_rot_p12", row=row, width=10, height=8)
     assert restored["qbox"] == pytest.approx(original, abs=1e-6)
     _assert_geometry_matches_qbox(restored, original)
+
+
+def test_score_unlabeled_sync_aug_iou_uses_bounded_pipeline(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    image_path = tmp_path / "sample.jpg"
+    image_path.write_bytes(b"\x00")
+    service = _build_service()
+    monkeypatch.setattr(service, "_get_or_load_model", lambda **_kwargs: object())
+    captured: dict[str, object] = {}
+
+    def _pipeline(**kwargs):
+        captured["predict_batch_size"] = kwargs.get("predict_batch_size")
+        captured["sample_batch_size"] = kwargs.get("sample_batch_size")
+        captured["pipeline_workers"] = kwargs.get("pipeline_workers")
+        captured["enabled_aug_names"] = kwargs.get("enabled_aug_names")
+        return [
+            {
+                "sample_id": "sample-a",
+                "score": 0.7,
+                "reason": {"score": 0.7},
+                "prediction_snapshot": {
+                    "strategy": "aug_iou_disagreement",
+                    "aug_count": 2,
+                    "pred_per_aug": [1, 1],
+                    "base_predictions": [],
+                },
+            }
+        ]
+
+    monkeypatch.setattr(
+        predict_service_module,
+        "score_augmented_samples_with_pipeline",
+        _pipeline,
+    )
+
+    rows = service._score_unlabeled_sync(
+        model_path="/tmp/fake.pt",
+        unlabeled_samples=[{"id": "sample-a", "local_path": str(image_path)}],
+        strategy="aug_iou_disagreement",
+        conf=0.25,
+        imgsz=1024,
+        batch=16,
+        device="cuda:0",
+        random_seed=7,
+        round_index=1,
+        aug_enabled_names=("identity", "rot90"),
+        aug_iou_mode="obb",
+        aug_iou_boundary_d=3,
+        aug_iou_sample_batch_size=2,
+        aug_iou_pipeline_workers=3,
+    )
+
+    assert len(rows) == 1
+    assert captured["predict_batch_size"] == 16
+    assert captured["sample_batch_size"] == 2
+    assert captured["pipeline_workers"] == 3
+    assert captured["enabled_aug_names"] == ("identity", "rot90")
 
 
 def _rotate_quad8(quad8: tuple[float, ...], *, angle_deg: float, cx: float, cy: float) -> tuple[float, ...]:

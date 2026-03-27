@@ -27,6 +27,12 @@ class YoloConfigService:
     _WORKERS_MIN = 0
     _WORKERS_MAX = 32
     _WORKERS_DEFAULT = 2
+    _AUG_IOU_SAMPLE_BATCH_MIN = 1
+    _AUG_IOU_SAMPLE_BATCH_MAX = 64
+    _AUG_IOU_SAMPLE_BATCH_DEFAULT = 8
+    _AUG_IOU_PIPELINE_WORKERS_MIN = 1
+    _AUG_IOU_PIPELINE_WORKERS_MAX = 32
+    _AUG_IOU_PIPELINE_WORKERS_DEFAULT = 4
     _MIN_EPOCHS_DEFAULT = 1
     _MAX_EPOCHS_DEFAULT = 1000
 
@@ -279,6 +285,34 @@ class YoloConfigService:
         except Exception:
             workers = self._WORKERS_DEFAULT
         workers = max(self._WORKERS_MIN, min(self._WORKERS_MAX, workers))
+        try:
+            aug_iou_sample_batch_size = int(
+                self._read_param(
+                    config,
+                    "aug_iou_sample_batch_size",
+                    self._AUG_IOU_SAMPLE_BATCH_DEFAULT,
+                )
+            )
+        except Exception:
+            aug_iou_sample_batch_size = self._AUG_IOU_SAMPLE_BATCH_DEFAULT
+        aug_iou_sample_batch_size = max(
+            self._AUG_IOU_SAMPLE_BATCH_MIN,
+            min(self._AUG_IOU_SAMPLE_BATCH_MAX, aug_iou_sample_batch_size),
+        )
+        try:
+            aug_iou_pipeline_workers = int(
+                self._read_param(
+                    config,
+                    "aug_iou_pipeline_workers",
+                    self._AUG_IOU_PIPELINE_WORKERS_DEFAULT,
+                )
+            )
+        except Exception:
+            aug_iou_pipeline_workers = self._AUG_IOU_PIPELINE_WORKERS_DEFAULT
+        aug_iou_pipeline_workers = max(
+            self._AUG_IOU_PIPELINE_WORKERS_MIN,
+            min(self._AUG_IOU_PIPELINE_WORKERS_MAX, aug_iou_pipeline_workers),
+        )
         train_budget_mode = str(
             self._read_param(config, "train_budget_mode", "fixed_epochs") or "fixed_epochs"
         ).strip().lower()
@@ -336,6 +370,8 @@ class YoloConfigService:
                 "aug_iou_enabled_augs": list(aug_enabled),
                 "aug_iou_iou_mode": aug_iou_mode,
                 "aug_iou_boundary_d": aug_iou_boundary_d,
+                "aug_iou_sample_batch_size": aug_iou_sample_batch_size,
+                "aug_iou_pipeline_workers": aug_iou_pipeline_workers,
                 "workers": workers,
                 "train_budget_mode": train_budget_mode,
                 "target_updates": target_updates,

@@ -281,6 +281,43 @@ def test_config_service_aug_iou_mode_and_boundary_d_validation():
     assert int(getattr(cfg, "aug_iou_boundary_d", 0)) == 128
 
 
+def test_config_service_aug_iou_pipeline_defaults_and_clamp():
+    service = YoloConfigService()
+    default_cfg = service.resolve_config(
+        {
+            "yolo_task": "detect",
+            "model_source": "preset",
+        },
+        strategy="aug_iou_disagreement",
+    )
+    assert int(getattr(default_cfg, "aug_iou_sample_batch_size", -1)) == 8
+    assert int(getattr(default_cfg, "aug_iou_pipeline_workers", -1)) == 4
+
+    low_cfg = service.resolve_config(
+        {
+            "yolo_task": "detect",
+            "model_source": "preset",
+            "aug_iou_sample_batch_size": -5,
+            "aug_iou_pipeline_workers": -9,
+        },
+        strategy="aug_iou_disagreement",
+    )
+    assert int(getattr(low_cfg, "aug_iou_sample_batch_size", -1)) == 1
+    assert int(getattr(low_cfg, "aug_iou_pipeline_workers", -1)) == 1
+
+    high_cfg = service.resolve_config(
+        {
+            "yolo_task": "detect",
+            "model_source": "preset",
+            "aug_iou_sample_batch_size": 999,
+            "aug_iou_pipeline_workers": 999,
+        },
+        strategy="aug_iou_disagreement",
+    )
+    assert int(getattr(high_cfg, "aug_iou_sample_batch_size", -1)) == 64
+    assert int(getattr(high_cfg, "aug_iou_pipeline_workers", -1)) == 32
+
+
 def test_config_service_workers_default_and_clamp():
     service = YoloConfigService()
     default_cfg = service.resolve_config(

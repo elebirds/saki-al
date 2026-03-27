@@ -68,6 +68,8 @@ class YoloDetectionPlugin(ExecutorPlugin):
         mode_field = by_key.get("aug_iou_iou_mode", {})
         d_field = by_key.get("aug_iou_boundary_d", {})
         augs_field = by_key.get("aug_iou_enabled_augs", {})
+        sample_batch_field = by_key.get("aug_iou_sample_batch_size", {})
+        pipeline_workers_field = by_key.get("aug_iou_pipeline_workers", {})
 
         mode_default = str(mode_field.get("default") or "obb")
         mode_options_raw = mode_field.get("options")
@@ -85,12 +87,16 @@ class YoloDetectionPlugin(ExecutorPlugin):
 
         aug_default_raw = augs_field.get("default")
         aug_default_count = len(aug_default_raw) if isinstance(aug_default_raw, list) else 0
+        sample_batch_default = int(sample_batch_field.get("default") or 8)
+        pipeline_workers_default = int(pipeline_workers_field.get("default") or 4)
 
         return (
             "插件初始化配置摘要："
             f"aug_iou_iou_mode 默认={mode_default} 可选={mode_options_text}；"
             f"aug_iou_boundary_d 默认={d_default} 范围=[{d_min},{d_max}]；"
-            f"aug_iou_enabled_augs 默认项数={aug_default_count}。"
+            f"aug_iou_enabled_augs 默认项数={aug_default_count}；"
+            f"aug_iou_sample_batch_size 默认={sample_batch_default}；"
+            f"aug_iou_pipeline_workers 默认={pipeline_workers_default}。"
         )
 
     @staticmethod

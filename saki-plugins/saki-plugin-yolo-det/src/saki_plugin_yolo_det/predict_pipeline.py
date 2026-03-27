@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import time
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from collections.abc import Mapping
+from dataclasses import dataclass
 from itertools import zip_longest
 from pathlib import Path
 from threading import Event
@@ -11,6 +14,188 @@ from saki_plugin_sdk.augmentations import (
     build_augmented_views,
     inverse_augmented_prediction_row,
 )
+
+
+@dataclass(frozen=True)
+class PreparedAugmentedSample:
+    sample_id: str
+    image_path: Path
+    sources: tuple[Any, ...]
+    views: tuple[Any, ...]
+    width: int
+    height: int
+    prepare_sec: float
+
+
+def score_augmented_samples_with_pipeline(
+    *,
+    unlabeled_samples: list[dict[str, Any]],
+    stop_flag: Event,
+    model: Any,
+    conf: float,
+    imgsz: int,
+    device: Any,
+    random_seed: int,
+    round_index: int,
+    enabled_aug_names: tuple[str, ...] | list[str] | None,
+    aug_iou_mode: str,
+    aug_iou_boundary_d: int,
+    predict_batch_size: int,
+    sample_batch_size: int,
+    pipeline_workers: int,
+    prepare_sample: Callable[..., PreparedAugmentedSample],
+    predict_batch: Callable[..., list[Any]],
+    finalize_sample: Callable[..., tuple[dict[str, Any], dict[str, Any]]],
+    progress_callback: Callable[[int, int, str], None] | None = None,
+    batch_callback: Callable[[dict[str, Any]], None] | None = None,
+    sample_callback: Callable[[dict[str, Any]], None] | None = None,
+) -> list[dict[str, Any]]:
+    valid_samples = [
+        (str(sample.get("id") or ""), Path(str(sample.get("local_path") or "")))
+        for sample in unlabeled_samples
+        if str(sample.get("id") or "").strip() and Path(str(sample.get("local_path") or "")).exists()
+    ]
+    if not valid_samples:
+        return []
+
+    normalized_sample_batch_size = max(1, int(sample_batch_size or 1))
+    normalized_predict_batch_size = max(1, int(predict_batch_size or 1))
+    normalized_pipeline_workers = max(1, int(pipeline_workers or 1))
+    preprocess_inflight_limit = max(normalized_sample_batch_size, normalized_pipeline_workers * 2)
+    postprocess_inflight_limit = max(normalized_sample_batch_size, normalized_pipeline_workers * 2)
+    sample_iter = iter(valid_samples)
+    prepared_buffer: list[PreparedAugmentedSample] = []
+    pending_preprocess: dict[Future[PreparedAugmentedSample], tuple[str, Path]] = {}
+    pending_postprocess: dict[Future[tuple[dict[str, Any], dict[str, Any]]], str] = {}
+    candidates: list[dict[str, Any]] = []
+    processed = 0
+    batch_index = 0
+
+    def _submit_preprocess_jobs(executor: ThreadPoolExecutor) -> None:
+        while len(pending_preprocess) < preprocess_inflight_limit:
+            try:
+                sample_id, image_path = next(sample_iter)
+            except StopIteration:
+                return
+            future = executor.submit(
+                prepare_sample,
+                sample_id=sample_id,
+                image_path=image_path,
+                enabled_aug_names=enabled_aug_names,
+            )
+            pending_preprocess[future] = (sample_id, image_path)
+
+    def _drain_postprocess_results(*, wait_for_result: bool) -> bool:
+        nonlocal processed
+        if not pending_postprocess:
+            return False
+        timeout = None if wait_for_result else 0
+        done, _ = wait(set(pending_postprocess), timeout=timeout, return_when=FIRST_COMPLETED)
+        if not done:
+            return False
+        for future in done:
+            pending_postprocess.pop(future, None)
+            candidate, diag = future.result()
+            candidates.append(candidate)
+            processed += 1
+            sample_id = str(candidate.get("sample_id") or diag.get("sample_id") or "")
+            if progress_callback is not None:
+                progress_callback(processed, len(valid_samples), sample_id)
+            if sample_callback is not None:
+                sample_callback(dict(diag))
+        return True
+
+    with (
+        ThreadPoolExecutor(max_workers=normalized_pipeline_workers) as preprocess_executor,
+        ThreadPoolExecutor(max_workers=normalized_pipeline_workers) as postprocess_executor,
+    ):
+        _submit_preprocess_jobs(preprocess_executor)
+        while pending_preprocess or prepared_buffer or pending_postprocess:
+            if stop_flag.is_set():
+                raise RuntimeError("sampling stopped")
+
+            if prepared_buffer and (
+                len(prepared_buffer) >= normalized_sample_batch_size or not pending_preprocess
+            ):
+                batch_index += 1
+                batch_samples = prepared_buffer[:normalized_sample_batch_size]
+                del prepared_buffer[:normalized_sample_batch_size]
+                sources: list[Any] = []
+                sample_ranges: list[tuple[PreparedAugmentedSample, int, int]] = []
+                for prepared in batch_samples:
+                    start = len(sources)
+                    sources.extend(prepared.sources)
+                    sample_ranges.append((prepared, start, len(sources)))
+
+                infer_started_at = time.perf_counter()
+                predicts = list(
+                    predict_batch(
+                        model=model,
+                        sources=sources,
+                        conf=conf,
+                        imgsz=imgsz,
+                        device=device,
+                        batch=normalized_predict_batch_size,
+                    )
+                    or []
+                )
+                infer_sec = time.perf_counter() - infer_started_at
+                if batch_callback is not None:
+                    batch_callback(
+                        {
+                            "batch_index": batch_index,
+                            "sample_count": len(batch_samples),
+                            "source_count": len(sources),
+                            "predict_batch_size": normalized_predict_batch_size,
+                            "sample_batch_size": normalized_sample_batch_size,
+                            "pipeline_workers": normalized_pipeline_workers,
+                            "infer_sec": infer_sec,
+                        }
+                    )
+                for prepared, start, end in sample_ranges:
+                    future = postprocess_executor.submit(
+                        finalize_sample,
+                        prepared_sample=prepared,
+                        predictions=predicts[start:end],
+                        random_seed=random_seed,
+                        round_index=round_index,
+                        aug_iou_mode=aug_iou_mode,
+                        aug_iou_boundary_d=aug_iou_boundary_d,
+                    )
+                    pending_postprocess[future] = prepared.sample_id
+                _submit_preprocess_jobs(preprocess_executor)
+                if len(pending_postprocess) >= postprocess_inflight_limit:
+                    _drain_postprocess_results(wait_for_result=True)
+                else:
+                    _drain_postprocess_results(wait_for_result=False)
+                continue
+
+            if pending_preprocess:
+                wait_timeout = 0 if pending_postprocess else None
+                done, _ = wait(
+                    set(pending_preprocess),
+                    timeout=wait_timeout,
+                    return_when=FIRST_COMPLETED,
+                )
+                if not done and not prepared_buffer:
+                    done, _ = wait(set(pending_preprocess), return_when=FIRST_COMPLETED)
+                for future in done:
+                    pending_preprocess.pop(future, None)
+                    prepared_buffer.append(future.result())
+                _submit_preprocess_jobs(preprocess_executor)
+                if done:
+                    _drain_postprocess_results(wait_for_result=False)
+                    continue
+
+            if _drain_postprocess_results(wait_for_result=not pending_preprocess and not prepared_buffer):
+                continue
+
+            if pending_preprocess:
+                continue
+            if not prepared_buffer and not pending_postprocess:
+                break
+
+    return candidates
 
 
 def score_unlabeled_samples(

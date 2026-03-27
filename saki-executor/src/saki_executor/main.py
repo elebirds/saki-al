@@ -6,6 +6,7 @@ from loguru import logger
 
 from saki_executor.agent.client import AgentClient
 from saki_executor.cache.asset_cache import AssetCache
+from saki_executor.cache.prepared_data_cache import PreparedDataCache
 from saki_executor.commands.server import CommandServer
 from saki_executor.core.config import settings
 from saki_executor.core.logging import setup_logging
@@ -40,6 +41,15 @@ async def run() -> None:
         download_concurrency=settings.ASSET_DOWNLOAD_CONCURRENCY,
         http_timeout_sec=settings.HTTP_TIMEOUT_SEC,
     )
+    if settings.PREPARED_DATA_CACHE_STARTUP_PRUNE_ENABLED:
+        try:
+            PreparedDataCache(
+                cache.root / "prepared_data_v2",
+                max_bytes=settings.PREPARED_DATA_CACHE_MAX_BYTES,
+                max_age_hours=settings.PREPARED_DATA_CACHE_MAX_AGE_HOURS,
+            ).prune()
+        except Exception as exc:
+            logger.warning("prepared data cache 启动清理失败 error={}", exc)
     manager = TaskManager(
         runs_dir=settings.RUNS_DIR,
         cache=cache,

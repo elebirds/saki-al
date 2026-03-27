@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from saki_executor.steps.workspace import Workspace
@@ -53,3 +54,35 @@ def test_workspace_store_and_restore_prepared_data_cache(tmp_path: Path) -> None
     assert (reader.data_dir / "images" / "sample-1.jpg").read_bytes() == b"image"
     assert (reader.data_dir / "dataset.yaml").read_text(encoding="utf-8") == "train: images/train\n"
     assert not (reader.data_dir / "stale.txt").exists()
+
+
+def test_workspace_restore_prepared_data_cache_updates_index_access_time(tmp_path: Path) -> None:
+    cache_root = tmp_path / "executor-cache" / "prepared_data_v2"
+    writer = Workspace(
+        str(tmp_path / "runs"),
+        "task-writer",
+        round_id="round-1",
+        attempt=1,
+        prepared_data_cache_root=cache_root,
+    )
+    writer.ensure()
+    (writer.data_dir / "dataset_manifest.json").write_text("{}", encoding="utf-8")
+    writer.store_prepared_data_cache("fp-1", "task-writer")
+
+    index_path = cache_root / "cache_index.json"
+    before = json.loads(index_path.read_text(encoding="utf-8"))
+    before_access = before["fp-1"]["last_access_at"]
+
+    reader = Workspace(
+        str(tmp_path / "runs"),
+        "task-reader",
+        round_id="round-2",
+        attempt=1,
+        prepared_data_cache_root=cache_root,
+    )
+    reader.ensure()
+
+    assert reader.restore_prepared_data_cache("fp-1") is True
+
+    after = json.loads(index_path.read_text(encoding="utf-8"))
+    assert after["fp-1"]["last_access_at"] >= before_access

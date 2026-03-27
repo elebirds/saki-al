@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     RUNS_DIR: str = "runs"
     CACHE_DIR: str = "cache"
     CACHE_MAX_BYTES: int = 500 * 1024 * 1024 * 1024  # 500 GB
+    PREPARED_DATA_CACHE_MAX_BYTES: int = 10 * 1024 * 1024 * 1024  # 10 GB
+    PREPARED_DATA_CACHE_MAX_AGE_HOURS: int = 24
+    PREPARED_DATA_CACHE_STARTUP_PRUNE_ENABLED: bool = True
     MANAGED_RUNTIME_ENABLED: bool = False
     MANAGED_RUNTIME_ROOT: str = "managed-runtime"
     LAUNCHER_ACTIVATION_TIMEOUT_SEC: int = 120

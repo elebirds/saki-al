@@ -8,6 +8,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from saki_executor.cache.prepared_data_cache import PreparedDataCache
+from saki_executor.core.config import settings
+
 
 def _normalize_root_path(path: str) -> Path:
     root = Path(str(path or "")).expanduser()
@@ -118,6 +121,15 @@ class Workspace:
     def prepared_data_cache_dir(self) -> Path | None:
         return self._prepared_data_cache_root
 
+    def _prepared_data_cache(self) -> PreparedDataCache | None:
+        if self.prepared_data_cache_dir is None:
+            return None
+        return PreparedDataCache(
+            self.prepared_data_cache_dir,
+            max_bytes=settings.PREPARED_DATA_CACHE_MAX_BYTES,
+            max_age_hours=settings.PREPARED_DATA_CACHE_MAX_AGE_HOURS,
+        )
+
     def ensure(self) -> None:
         self.root.mkdir(parents=True, exist_ok=True)
         self.artifacts_dir.mkdir(parents=True, exist_ok=True)
@@ -227,6 +239,9 @@ class Workspace:
         if not cache_path.exists() or not cache_path.is_dir():
             return False
         _link_or_copy_tree(cache_path, self.data_dir)
+        prepared_cache = self._prepared_data_cache()
+        if prepared_cache is not None:
+            prepared_cache.touch(str(fingerprint or "").strip())
         return True
 
     def store_prepared_data_cache(self, fingerprint: str, source_task_id: str) -> Path:
@@ -241,7 +256,11 @@ class Workspace:
 
         cache_root.mkdir(parents=True, exist_ok=True)
         target = cache_root / key
+        prepared_cache = self._prepared_data_cache()
         if target.exists() and target.is_dir():
+            if prepared_cache is not None:
+                prepared_cache.register(key, source_task_id=str(source_task_id or self.task_id))
+                prepared_cache.prune(protected={key})
             return target
 
         tmp = cache_root / f".{key}.tmp-{uuid.uuid4().hex}"
@@ -255,6 +274,9 @@ class Workspace:
         except Exception:
             shutil.rmtree(tmp, ignore_errors=True)
             raise
+        if prepared_cache is not None:
+            prepared_cache.register(key, source_task_id=str(source_task_id or self.task_id))
+            prepared_cache.prune(protected={key})
         return target
 
     def read_round_manifest(self) -> dict[str, Any]:

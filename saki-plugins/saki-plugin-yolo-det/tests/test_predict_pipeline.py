@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 from threading import Event
+from types import SimpleNamespace
 
 import pytest
 
 from saki_plugin_sdk.strategies.builtin import normalize_strategy_name, score_by_strategy
-from saki_plugin_yolo_det.predict_pipeline import score_unlabeled_samples
+from saki_plugin_yolo_det import predict_pipeline
+from saki_plugin_yolo_det.predict_pipeline import predict_with_augmentations, score_unlabeled_samples
 
 
 def test_random_baseline_candidates_are_round_invariant(tmp_path: Path) -> None:
@@ -163,3 +165,129 @@ def test_aug_iou_strategy_forwards_iou_mode_and_boundary_d(tmp_path: Path) -> No
     assert len(rows) == 1
     assert captured["aug_iou_mode"] == "boundary"
     assert captured["aug_iou_boundary_d"] == 11
+
+
+def test_predict_with_augmentations_batches_views_into_single_predict_call(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _NpStub:
+        @staticmethod
+        def ascontiguousarray(value):
+            return value
+
+        @staticmethod
+        def array(value):
+            return value
+
+    class _ImageHandle:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> bool:
+            del exc_type, exc, tb
+            return False
+
+        def convert(self, mode: str):
+            assert mode == "RGB"
+            return [[1, 2], [3, 4]]
+
+    class _ImageStub:
+        @staticmethod
+        def open(_path: Path):
+            return _ImageHandle()
+
+    monkeypatch.setattr(
+        predict_pipeline,
+        "build_augmented_views",
+        lambda *_args, **_kwargs: [
+            SimpleNamespace(
+                name="identity",
+                image="img-identity",
+                orig_width=16,
+                orig_height=16,
+                inverse_point=lambda x, y, _view: (x, y),
+            ),
+            SimpleNamespace(
+                name="hflip",
+                image="img-hflip",
+                orig_width=16,
+                orig_height=16,
+                inverse_point=lambda x, y, _view: (x, y),
+            ),
+            SimpleNamespace(
+                name="vflip",
+                image="img-vflip",
+                orig_width=16,
+                orig_height=16,
+                inverse_point=lambda x, y, _view: (x, y),
+            ),
+        ],
+    )
+
+    class _Model:
+        def __init__(self) -> None:
+            self.sources: list[object] = []
+            self.batches: list[int] = []
+
+        def predict(self, *, source, conf, imgsz, device, verbose, batch):
+            del conf, imgsz, device, verbose
+            self.sources.append(source)
+            self.batches.append(batch)
+            return [{"rows": [0.1 * (index + 1)]} for index, _ in enumerate(source)]
+
+    model = _Model()
+    rows_by_aug = predict_with_augmentations(
+        model=model,
+        image_path=Path("/tmp/fake-image"),
+        conf=0.1,
+        imgsz=640,
+        device="cuda:0",
+        ensure_image_deps=lambda: None,
+        image_cls=_ImageStub,
+        np_mod=_NpStub,
+        extract_predictions=lambda payload: [{"confidence": payload["rows"][0]}],
+        enabled_aug_names=("identity", "hflip", "vflip"),
+    )
+
+    assert len(model.sources) == 1
+    assert isinstance(model.sources[0], list)
+    assert len(model.sources[0]) == 3
+    assert model.batches == [3]
+    assert len(rows_by_aug) == 3
+    assert [rows[0]["confidence"] for rows in rows_by_aug] == pytest.approx([0.1, 0.2, 0.3])
+
+
+def test_aug_iou_strategy_reports_progress_per_sample(tmp_path: Path) -> None:
+    sample_a = tmp_path / "a.jpg"
+    sample_b = tmp_path / "b.jpg"
+    sample_a.write_bytes(b"\x00")
+    sample_b.write_bytes(b"\x00")
+    unlabeled_samples = [
+        {"id": "sample-a", "local_path": str(sample_a)},
+        {"id": "sample-b", "local_path": str(sample_b)},
+    ]
+    progress_messages: list[tuple[int, int, str]] = []
+
+    rows = score_unlabeled_samples(
+        unlabeled_samples=unlabeled_samples,
+        strategy="aug_iou_disagreement",
+        conf=0.25,
+        imgsz=640,
+        device="cuda:0",
+        stop_flag=Event(),
+        get_model=lambda: object(),
+        predict_single_image=lambda **_kw: [],
+        predict_with_aug=lambda **_kw: [[], []],
+        extract_predictions=lambda _pred: [],
+        score_by_strategy=lambda _strategy, sample_id, **_kwargs: (0.3, {"sample_id": sample_id}),
+        normalize_strategy_name=normalize_strategy_name,
+        random_seed=7,
+        round_index=1,
+        progress_callback=lambda processed, total, sample_id: progress_messages.append(
+            (processed, total, sample_id)
+        ),
+    )
+
+    assert len(rows) == 2
+    assert progress_messages == [
+        (1, 2, "sample-a"),
+        (2, 2, "sample-b"),
+    ]

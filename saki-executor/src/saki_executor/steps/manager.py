@@ -257,6 +257,7 @@ class TaskManager:
         query_type: str,
         topk: int,
         context: ExecutionBindingContext,
+        emit_log=None,
     ) -> list[dict[str, Any]]:
         return await self._collect_topk_candidates_streaming(
             plugin=plugin,
@@ -270,6 +271,7 @@ class TaskManager:
             query_type=query_type,
             topk=topk,
             context=context,
+            emit_log=emit_log,
         )
 
     async def collect_prediction_candidates_streaming(
@@ -661,6 +663,7 @@ class TaskManager:
         query_type: str,
         topk: int,
         context: ExecutionBindingContext,
+        emit_log=None,
     ) -> list[dict[str, Any]]:
         return await self._sampling_service.collect_topk_candidates_streaming(
             plugin=plugin,
@@ -674,6 +677,7 @@ class TaskManager:
             query_type=query_type,
             topk=topk,
             context=context,
+            emit_log=emit_log,
         )
 
     async def _collect_prediction_candidates_streaming(

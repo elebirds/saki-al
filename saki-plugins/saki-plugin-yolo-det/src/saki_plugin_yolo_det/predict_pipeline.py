@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from itertools import zip_longest
 from pathlib import Path
 from threading import Event
 from typing import Any, Callable
@@ -31,6 +32,7 @@ def score_unlabeled_samples(
     aug_enabled_names: tuple[str, ...] | list[str] | None = None,
     aug_iou_mode: str = "obb",
     aug_iou_boundary_d: int = 3,
+    progress_callback: Callable[[int, int, str], None] | None = None,
 ) -> list[dict[str, Any]]:
     strategy_key = normalize_strategy_name(strategy)
     need_model = strategy_key in {"aug_iou_disagreement", "uncertainty_1_minus_max_conf"}
@@ -38,6 +40,12 @@ def score_unlabeled_samples(
     if need_model and model is None:
         raise RuntimeError(f"model is required for strategy={strategy_key}")
     candidates: list[dict[str, Any]] = []
+    valid_total = sum(
+        1
+        for sample in unlabeled_samples
+        if str(sample.get("id") or "").strip() and Path(str(sample.get("local_path") or "")).exists()
+    )
+    processed = 0
 
     for sample in unlabeled_samples:
         if stop_flag.is_set():
@@ -83,6 +91,9 @@ def score_unlabeled_samples(
                     },
                 }
             )
+            processed += 1
+            if progress_callback is not None:
+                progress_callback(processed, valid_total, sample_id)
             continue
         if strategy_key == "uncertainty_1_minus_max_conf":
             rows = predict_single_image(
@@ -111,6 +122,9 @@ def score_unlabeled_samples(
                     },
                 }
             )
+            processed += 1
+            if progress_callback is not None:
+                progress_callback(processed, valid_total, sample_id)
             continue
 
         if strategy_key == "random_baseline":
@@ -127,6 +141,9 @@ def score_unlabeled_samples(
                     "reason": reason,
                 }
             )
+            processed += 1
+            if progress_callback is not None:
+                progress_callback(processed, valid_total, sample_id)
             continue
 
         score, reason = score_by_strategy(
@@ -136,6 +153,9 @@ def score_unlabeled_samples(
             round_index=round_index,
         )
         candidates.append({"sample_id": sample_id, "score": score, "reason": reason})
+        processed += 1
+        if progress_callback is not None:
+            progress_callback(processed, valid_total, sample_id)
 
     return candidates
 
@@ -166,18 +186,29 @@ def predict_with_augmentations(
         extra_specs=extra_aug_specs,
         enabled_names=enabled_aug_names,
     )
+    if not views:
+        return []
 
+    sources = [view.image for view in views]
+    predict_kwargs = {
+        "source": sources,
+        "conf": conf,
+        "imgsz": imgsz,
+        "device": device,
+        "verbose": False,
+        "batch": max(1, len(sources)),
+    }
+    try:
+        predicts = model.predict(**predict_kwargs)
+    except TypeError:
+        predict_kwargs.pop("batch", None)
+        predicts = model.predict(**predict_kwargs)
+    predict_list = list(predicts or [])
     results_by_aug: list[list[dict[str, Any]]] = []
-    for view in views:
-        predicts = model.predict(
-            source=view.image,
-            conf=conf,
-            imgsz=imgsz,
-            device=device,
-            verbose=False,
-        )
-        first = predicts[0] if predicts else None
-        rows = extract_predictions(first)
+    for view, pred in zip_longest(views, predict_list):
+        if view is None:
+            break
+        rows = extract_predictions(pred) if pred is not None else []
         rows = [inverse_augmented_prediction_row(item, view=view) for item in rows]
         results_by_aug.append(rows)
     return results_by_aug

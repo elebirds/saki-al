@@ -112,6 +112,34 @@ class _PluginStub:
         return rows
 
 
+class _TopkPluginStub:
+    def __init__(self) -> None:
+        self.calls: list[list[str]] = []
+
+    async def predict_unlabeled_batch(
+        self,
+        *,
+        workspace,
+        unlabeled_samples: list[dict[str, Any]],
+        strategy: str,
+        params: dict[str, Any],
+        context,
+    ) -> list[dict[str, Any]]:
+        del workspace, strategy, params, context
+        self.calls.append([str(item.get("id") or "") for item in unlabeled_samples])
+        rows: list[dict[str, Any]] = []
+        for index, item in enumerate(unlabeled_samples, start=1):
+            sample_id = str(item.get("id") or "")
+            rows.append(
+                {
+                    "sample_id": sample_id,
+                    "score": float(index),
+                    "reason": {"rank_hint": index},
+                }
+            )
+        return rows
+
+
 class _BatchOnlyCacheStub:
     def __init__(self, root: Path) -> None:
         self._root = root
@@ -285,3 +313,95 @@ async def test_collect_prediction_candidates_streaming_yields_control_on_large_p
 
     assert len(rows) == 260
     assert len(yield_calls) >= 4
+
+
+@pytest.mark.anyio
+async def test_collect_topk_candidates_streaming_emits_perf_logs(tmp_path: Path) -> None:
+    pages = [
+        FetchedPage(
+            request_id="r1",
+            reply_to="reply",
+            task_id="task-score",
+            query_type="unlabeled_samples",
+            items=[
+                {"id": "sample-a", "asset_hash": "hash-a", "download_url": "https://example/a"},
+                {"id": "sample-b", "asset_hash": "hash-b", "download_url": "https://example/b"},
+            ],
+            next_cursor="cursor-2",
+        ),
+        FetchedPage(
+            request_id="r2",
+            reply_to="reply",
+            task_id="task-score",
+            query_type="unlabeled_samples",
+            items=[
+                {"id": "sample-c", "asset_hash": "hash-c", "download_url": "https://example/c"},
+            ],
+            next_cursor=None,
+        ),
+    ]
+
+    async def _fetch_page(**kwargs) -> FetchedPage:
+        del kwargs
+        if not pages:
+            return FetchedPage(
+                request_id="r3",
+                reply_to="reply",
+                task_id="task-score",
+                query_type="unlabeled_samples",
+                items=[],
+                next_cursor=None,
+            )
+        return pages.pop(0)
+
+    emitted_logs: list[dict[str, Any]] = []
+
+    async def _emit_log(payload: dict[str, Any]) -> None:
+        emitted_logs.append(dict(payload))
+
+    service = SamplingService(
+        fetch_page=_fetch_page,
+        cache=_CacheStub(cached_hashes={"hash-a"}, root=tmp_path / "cache"),
+        stop_event=asyncio.Event(),
+    )
+    plugin = _TopkPluginStub()
+
+    rows = await service.collect_topk_candidates_streaming(
+        plugin=plugin,
+        workspace=object(),
+        task_id="task-score",
+        project_id="project-1",
+        commit_id="commit-1",
+        strategy="aug_iou_disagreement",
+        params={"unlabeled_page_size": 2, "sampling_topk": 2, "imgsz": 640, "batch": 8},
+        protected=set(),
+        query_type="unlabeled_samples",
+        topk=2,
+        context=object(),
+        emit_log=_emit_log,
+    )
+
+    assert [row["sample_id"] for row in rows] == ["sample-b", "sample-a"]
+    assert plugin.calls == [["sample-a", "sample-b"], ["sample-c"]]
+
+    phases = [str((payload.get("meta") or {}).get("phase") or "") for payload in emitted_logs]
+    assert phases == ["start", "page", "page", "done"]
+
+    start_meta = emitted_logs[0]["meta"]
+    assert start_meta["strategy"] == "aug_iou_disagreement"
+    assert start_meta["page_size"] == 2
+    assert start_meta["target_topk"] == 2
+
+    first_page_meta = emitted_logs[1]["meta"]
+    assert first_page_meta["samples"] == 2
+    assert first_page_meta["cache_hits"] == 1
+    assert first_page_meta["cache_misses"] == 1
+    assert "cache_lookup_sec" in first_page_meta
+    assert "cache_flush_sec" in first_page_meta
+    assert "infer_sec" in first_page_meta
+    assert first_page_meta["returned_rows"] == 2
+
+    done_meta = emitted_logs[-1]["meta"]
+    assert done_meta["pages"] == 2
+    assert done_meta["samples"] == 3
+    assert done_meta["returned_rows"] == 3

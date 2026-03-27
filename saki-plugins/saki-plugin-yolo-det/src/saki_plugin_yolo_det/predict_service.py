@@ -93,10 +93,29 @@ class YoloPredictService:
             str(context.device_binding.backend or ""),
             str(context.device_binding.device_spec or ""),
         )
+        strategy_key = normalize_strategy_name(strategy)
+        aug_enabled_names = tuple(getattr(cfg, "aug_iou_enabled_augs", ()) or ())
+        aug_view_count = len(aug_enabled_names) if aug_enabled_names else 0
 
         best_path = workspace.artifacts_dir / "best.pt"
         fallback_model = await self._config_service.resolve_model_ref(workspace=workspace, params=cfg)
         model_path = str(best_path if best_path.exists() else fallback_model)
+        if strategy_key == "aug_iou_disagreement" and self._log_info is not None:
+            self._log_info(
+                "YOLO aug_iou 采样开始 "
+                f"samples={len(unlabeled_samples)} aug_views={aug_view_count} "
+                f"imgsz={imgsz} device={device}"
+            )
+
+        def _progress_callback(processed: int, total: int, sample_id: str) -> None:
+            if self._log_info is None or strategy_key != "aug_iou_disagreement" or total <= 0:
+                return
+            if total <= 10 or processed in {1, total} or processed % 10 == 0:
+                self._log_info(
+                    "YOLO aug_iou 采样进度 "
+                    f"processed={processed}/{total} sample_id={sample_id} "
+                    f"aug_views={aug_view_count} device={device}"
+                )
 
         candidates = await asyncio.to_thread(
             self._score_unlabeled_sync,
@@ -108,9 +127,10 @@ class YoloPredictService:
             device=device,
             random_seed=random_seed,
             round_index=round_index,
-            aug_enabled_names=tuple(getattr(cfg, "aug_iou_enabled_augs", ()) or ()),
+            aug_enabled_names=aug_enabled_names,
             aug_iou_mode=str(getattr(cfg, "aug_iou_iou_mode", "obb") or "obb"),
             aug_iou_boundary_d=int(getattr(cfg, "aug_iou_boundary_d", 3) or 3),
+            progress_callback=_progress_callback if strategy_key == "aug_iou_disagreement" else None,
         )
         candidates.sort(key=lambda item: float(item.get("score") or 0.0), reverse=True)
         return candidates[:topk]
@@ -160,6 +180,7 @@ class YoloPredictService:
         aug_enabled_names: tuple[str, ...] | None = None,
         aug_iou_mode: str = "obb",
         aug_iou_boundary_d: int = 3,
+        progress_callback: Callable[[int, int, str], None] | None = None,
     ) -> list[dict[str, Any]]:
         return score_unlabeled_samples(
             unlabeled_samples=unlabeled_samples,
@@ -179,6 +200,7 @@ class YoloPredictService:
             aug_enabled_names=aug_enabled_names,
             aug_iou_mode=aug_iou_mode,
             aug_iou_boundary_d=aug_iou_boundary_d,
+            progress_callback=progress_callback,
         )
 
     def _predict_samples_sync(

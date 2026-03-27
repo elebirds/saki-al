@@ -40,36 +40,61 @@ class SamplingService:
         query_type: str,
         topk: int,
         context: ExecutionBindingContext,
+        emit_log: EmitLogFn | None = None,
     ) -> list[dict[str, Any]]:
         page_size = max(1, min(5000, int(params.get("unlabeled_page_size", 1000))))
         target_topk = int(topk)
         keep_all = target_topk <= 0
-        cursor: str | None = None
         heap: list[tuple[float, int, dict[str, Any]]] = []
         rows: list[dict[str, Any]] = []
         counter = 0
+        total_started_at = time.perf_counter()
+        total_samples = 0
+        total_batch_rows = 0
+        total_fetch_sec = 0.0
+        total_cache_sec = 0.0
+        total_infer_sec = 0.0
 
-        while True:
-            if self._stop_event.is_set():
-                raise asyncio.CancelledError("step stop requested")
+        await self._emit_collection_log(
+            emit_log,
+            level="INFO",
+            message=(
+                "Score 分页采集开始 "
+                f"strategy={strategy} page_size={page_size} target_topk={target_topk} "
+                f"imgsz={params.get('imgsz')} batch={params.get('batch')}"
+            ),
+            message_key="score.perf",
+            meta={
+                "phase": "start",
+                "strategy": strategy,
+                "page_size": page_size,
+                "target_topk": target_topk,
+                "keep_all": keep_all,
+                "imgsz": params.get("imgsz"),
+                "batch": params.get("batch"),
+                "query_type": query_type,
+            },
+        )
 
-            response = await self._fetch_page(
-                task_id=task_id,
-                query_type=query_type,
-                project_id=project_id,
-                commit_id=commit_id,
-                cursor=cursor,
-                limit=page_size,
-            )
-            chunk = response.items
-            if not chunk and not response.next_cursor:
-                break
-
-            await self._cache_page_assets(
-                chunk=chunk,
-                protected=protected,
-                pin_task_id=task_id,
-            )
+        page_index = 0
+        async for page in self._iter_cached_pages(
+            task_id=task_id,
+            project_id=project_id,
+            commit_id=commit_id,
+            query_type=query_type,
+            page_size=page_size,
+            protected=protected,
+            emit_log=emit_log,
+            collection_label="Score",
+            message_key="score.perf",
+        ):
+            page_index = int(page["page_index"])
+            chunk = list(page["chunk"])
+            fetch_sec = float(page["fetch_sec"])
+            cache_sec = float(page["cache_sec"])
+            cache_result = page["cache_result"]
+            total_fetch_sec += fetch_sec
+            total_cache_sec += cache_sec
 
             call_params = params
             if keep_all:
@@ -81,13 +106,27 @@ class SamplingService:
                     call_params["topk"] = page_topk
                     call_params["sampling_topk"] = page_topk
 
-            batch = await plugin.predict_unlabeled_batch(
-                workspace=workspace,
-                unlabeled_samples=chunk,
-                strategy=strategy,
-                params=call_params,
-                context=context,
+            batch, infer_sec = await self._await_stage_with_keepalive(
+                stage_name="infer",
+                operation=lambda: plugin.predict_unlabeled_batch(
+                    workspace=workspace,
+                    unlabeled_samples=chunk,
+                    strategy=strategy,
+                    params=call_params,
+                    context=context,
+                ),
+                emit_log=emit_log,
+                collection_label="Score",
+                message_key="score.perf",
+                meta={
+                    "phase": "keepalive",
+                    "page_index": page_index,
+                    "strategy": strategy,
+                    "stage": "infer",
+                },
             )
+            total_infer_sec += infer_sec
+
             if keep_all:
                 rows.extend(self._normalize_batch(batch or []))
             else:
@@ -98,13 +137,77 @@ class SamplingService:
                     counter_start=counter,
                 )
             counter += len(batch or [])
-            cursor = response.next_cursor
-            if not cursor:
-                break
+            total_samples += len(chunk)
+            total_batch_rows += len(batch or [])
 
+            await self._emit_collection_log(
+                emit_log,
+                level="WARN" if infer_sec > float(settings.HEARTBEAT_INTERVAL_SEC) else "INFO",
+                message=(
+                    f"Score 分页[{page_index}] samples={len(chunk)} "
+                    f"fetch={fetch_sec:.3f}s cache={cache_sec:.3f}s "
+                    f"(lookup={cache_result.lookup_sec:.3f}s flush={cache_result.flush_sec:.3f}s "
+                    f"hit={cache_result.cache_hits} miss={cache_result.cache_misses} "
+                    f"mode={'all_hit' if cache_result.all_hit else 'mixed'} "
+                    f"dirty={cache_result.dirty_entries} flushes={cache_result.flush_count}) "
+                    f"infer={infer_sec:.3f}s returned={len(batch or [])} "
+                    f"heap={len(heap) if not keep_all else len(rows)}"
+                ),
+                message_key="score.perf",
+                meta={
+                    "phase": "page",
+                    "page_index": page_index,
+                    "strategy": strategy,
+                    "samples": len(chunk),
+                    "fetch_sec": round(fetch_sec, 6),
+                    "cache_sec": round(cache_sec, 6),
+                    "cache_lookup_sec": round(cache_result.lookup_sec, 6),
+                    "cache_flush_sec": round(cache_result.flush_sec, 6),
+                    "cache_hits": cache_result.cache_hits,
+                    "cache_misses": cache_result.cache_misses,
+                    "cache_all_hit": bool(cache_result.all_hit),
+                    "cache_dirty_entries": cache_result.dirty_entries,
+                    "cache_flush_count": cache_result.flush_count,
+                    "infer_sec": round(infer_sec, 6),
+                    "returned_rows": len(batch or []),
+                    "heap_size": len(heap) if not keep_all else len(rows),
+                    "cumulative_samples": total_samples,
+                    "cumulative_returned_rows": total_batch_rows,
+                },
+            )
+
+        rank_started_at = time.perf_counter()
         if keep_all:
-            return self._build_ranked_output_from_rows(rows)
-        return self._build_ranked_output(heap)
+            ranked_rows = self._build_ranked_output_from_rows(rows)
+        else:
+            ranked_rows = self._build_ranked_output(heap)
+        rank_sec = time.perf_counter() - rank_started_at
+        total_sec = time.perf_counter() - total_started_at
+        await self._emit_collection_log(
+            emit_log,
+            level="INFO",
+            message=(
+                f"Score 分页采集完成 pages={page_index} samples={total_samples} "
+                f"fetch={total_fetch_sec:.3f}s cache={total_cache_sec:.3f}s "
+                f"infer={total_infer_sec:.3f}s rank={rank_sec:.3f}s total={total_sec:.3f}s "
+                f"returned={total_batch_rows} final={len(ranked_rows)}"
+            ),
+            message_key="score.perf",
+            meta={
+                "phase": "done",
+                "pages": page_index,
+                "strategy": strategy,
+                "samples": total_samples,
+                "fetch_sec": round(total_fetch_sec, 6),
+                "cache_sec": round(total_cache_sec, 6),
+                "infer_sec": round(total_infer_sec, 6),
+                "rank_sec": round(rank_sec, 6),
+                "total_sec": round(total_sec, 6),
+                "returned_rows": total_batch_rows,
+                "final_rows": len(ranked_rows),
+            },
+        )
+        return ranked_rows
 
     async def collect_prediction_candidates_streaming(
         self,
@@ -121,10 +224,8 @@ class SamplingService:
         emit_log: EmitLogFn | None = None,
     ) -> list[dict[str, Any]]:
         page_size = max(1, min(5000, int(params.get("predict_page_size", params.get("unlabeled_page_size", 1000)))))
-        cursor: str | None = None
         rows: list[dict[str, Any]] = []
         total_started_at = time.perf_counter()
-        page_index = 0
         total_samples = 0
         total_batch_rows = 0
         total_nonempty_rows = 0
@@ -152,43 +253,43 @@ class SamplingService:
             },
         )
 
-        while True:
-            if self._stop_event.is_set():
-                raise asyncio.CancelledError("step stop requested")
-
-            page_index += 1
-            fetch_started_at = time.perf_counter()
-            response = await self._fetch_page(
-                task_id=task_id,
-                query_type=query_type,
-                project_id=project_id,
-                commit_id=commit_id,
-                cursor=cursor,
-                limit=page_size,
-            )
-            fetch_sec = time.perf_counter() - fetch_started_at
+        page_index = 0
+        async for page in self._iter_cached_pages(
+            task_id=task_id,
+            project_id=project_id,
+            commit_id=commit_id,
+            query_type=query_type,
+            page_size=page_size,
+            protected=protected,
+            emit_log=emit_log,
+            collection_label="Prediction",
+            message_key="prediction.perf",
+        ):
+            page_index = int(page["page_index"])
+            chunk = list(page["chunk"])
+            fetch_sec = float(page["fetch_sec"])
+            cache_sec = float(page["cache_sec"])
+            cache_result = page["cache_result"]
             total_fetch_sec += fetch_sec
-            chunk = response.items
-            if not chunk and not response.next_cursor:
-                break
-
-            cache_started_at = time.perf_counter()
-            cache_result = await self._cache_page_assets(
-                chunk=chunk,
-                protected=protected,
-                pin_task_id=task_id,
-            )
-            cache_sec = time.perf_counter() - cache_started_at
             total_cache_sec += cache_sec
 
-            predict_started_at = time.perf_counter()
-            batch = await plugin.predict_samples_batch(
-                workspace=workspace,
-                samples=chunk,
-                params=params,
-                context=context,
+            batch, predict_sec = await self._await_stage_with_keepalive(
+                stage_name="predict",
+                operation=lambda: plugin.predict_samples_batch(
+                    workspace=workspace,
+                    samples=chunk,
+                    params=params,
+                    context=context,
+                ),
+                emit_log=emit_log,
+                collection_label="Prediction",
+                message_key="prediction.perf",
+                meta={
+                    "phase": "keepalive",
+                    "page_index": page_index,
+                    "stage": "predict",
+                },
             )
-            predict_sec = time.perf_counter() - predict_started_at
             total_predict_sec += predict_sec
 
             normalize_started_at = time.perf_counter()
@@ -241,10 +342,6 @@ class SamplingService:
                     "cumulative_pred_boxes": total_pred_boxes,
                 },
             )
-            cursor = response.next_cursor
-            if not cursor:
-                break
-
         rank_started_at = time.perf_counter()
         ranked_rows = self._build_ranked_output_from_rows(rows)
         rank_sec = time.perf_counter() - rank_started_at
@@ -393,17 +490,139 @@ class SamplingService:
         message: str,
         meta: dict[str, Any],
     ) -> None:
+        await SamplingService._emit_collection_log(
+            emit_log,
+            level=level,
+            message=message,
+            message_key="prediction.perf",
+            meta=meta,
+        )
+
+    @staticmethod
+    async def _emit_collection_log(
+        emit_log: EmitLogFn | None,
+        *,
+        level: str,
+        message: str,
+        message_key: str,
+        meta: dict[str, Any],
+    ) -> None:
         if emit_log is None:
             return
         await emit_log(
             {
                 "level": level,
                 "message": message,
-                "message_key": "prediction.perf",
+                "message_key": message_key,
                 "message_args": dict(meta),
                 "meta": dict(meta),
             }
         )
+
+    async def _await_stage_with_keepalive(
+        self,
+        *,
+        stage_name: str,
+        operation: Callable[[], Awaitable[Any]],
+        emit_log: EmitLogFn | None,
+        collection_label: str,
+        message_key: str,
+        meta: dict[str, Any],
+    ) -> tuple[Any, float]:
+        started_at = time.perf_counter()
+        task = asyncio.create_task(operation())
+        interval_sec = max(1.0, float(settings.HEARTBEAT_INTERVAL_SEC))
+        while True:
+            done, _ = await asyncio.wait({task}, timeout=interval_sec, return_when=asyncio.FIRST_COMPLETED)
+            if task in done:
+                return await task, time.perf_counter() - started_at
+            await self._emit_collection_log(
+                emit_log,
+                level="INFO",
+                message=(
+                    f"{collection_label} 分页[{meta.get('page_index')}] {stage_name} 进行中 "
+                    f"elapsed={time.perf_counter() - started_at:.3f}s"
+                ),
+                message_key=message_key,
+                meta={
+                    **meta,
+                    "phase": "keepalive",
+                    "stage": stage_name,
+                    "elapsed_sec": round(time.perf_counter() - started_at, 6),
+                },
+            )
+
+    async def _iter_cached_pages(
+        self,
+        *,
+        task_id: str,
+        project_id: str,
+        commit_id: str,
+        query_type: str,
+        page_size: int,
+        protected: set[str],
+        emit_log: EmitLogFn | None,
+        collection_label: str,
+        message_key: str,
+    ):
+        cursor: str | None = None
+        page_index = 0
+        while True:
+            if self._stop_event.is_set():
+                raise asyncio.CancelledError("step stop requested")
+
+            response, fetch_sec = await self._await_stage_with_keepalive(
+                stage_name="fetch",
+                operation=lambda: self._fetch_page(
+                    task_id=task_id,
+                    query_type=query_type,
+                    project_id=project_id,
+                    commit_id=commit_id,
+                    cursor=cursor,
+                    limit=page_size,
+                ),
+                emit_log=emit_log,
+                collection_label=collection_label,
+                message_key=message_key,
+                meta={
+                    "phase": "keepalive",
+                    "page_index": page_index + 1,
+                    "query_type": query_type,
+                    "stage": "fetch",
+                },
+            )
+            chunk = response.items
+            if not chunk and not response.next_cursor:
+                break
+
+            page_index += 1
+            cache_result, cache_sec = await self._await_stage_with_keepalive(
+                stage_name="cache",
+                operation=lambda: self._cache_page_assets(
+                    chunk=chunk,
+                    protected=protected,
+                    pin_task_id=task_id,
+                ),
+                emit_log=emit_log,
+                collection_label=collection_label,
+                message_key=message_key,
+                meta={
+                    "phase": "keepalive",
+                    "page_index": page_index,
+                    "query_type": query_type,
+                    "stage": "cache",
+                },
+            )
+            yield {
+                "page_index": page_index,
+                "chunk": chunk,
+                "cache_result": cache_result,
+                "fetch_sec": fetch_sec,
+                "cache_sec": cache_sec,
+            }
+            cursor = response.next_cursor
+            if not cursor:
+                break
 
     @staticmethod
     def _summarize_prediction_batch(batch: list[dict[str, Any]]) -> tuple[int, int]:

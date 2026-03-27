@@ -891,6 +891,7 @@ class PipelineStageService:
             query_type="unlabeled_samples",
             topk=candidate_limit,
             context=bound_plan.execution_context,
+            emit_log=lambda payload: emitter.emit("log", payload),
         )
 
     async def _collect_predict_candidates(

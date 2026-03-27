@@ -55,6 +55,10 @@ _STANDARD_METRIC_KEYS = (
     "f1",
 )
 
+_AMP_UNSAFE_PRESETS = {
+    "r3det",
+}
+
 
 def _apply_python_compat_shims() -> None:
     if not hasattr(collections, "Sequence"):
@@ -101,6 +105,10 @@ def render_mmrotate_config(
     train_seed: int,
     score_thr: float,
     classes: tuple[str, ...] | list[str],
+    mmrotate_batch_size: int = 2,
+    mmrotate_workers: int = 2,
+    mmrotate_amp: bool = False,
+    mmrotate_epochs: int = 36,
 ) -> str:
     try:
         preset = _MODEL_TO_PRESET[model_name]["preset"]
@@ -113,11 +121,20 @@ def render_mmrotate_config(
     return (
         "# Auto-generated MMRotate config shim.\n"
         f'_base_ = ["mmrotate::{base_config}"]\n'
+        "custom_imports = dict(\n"
+        "    imports=['obb_baseline.metrics_mmrotate'],\n"
+        "    allow_failed_imports=False,\n"
+        ")\n"
         f'preset = "{preset}"\n'
         f'data_root = r"{normalized_data_root}"\n'
         f"classes = {normalized_classes!r}\n"
         f"class_names = {normalized_classes!r}\n"
         f"num_classes = {len(normalized_classes)}\n"
+        f"mmrotate_batch_size = {int(mmrotate_batch_size)}\n"
+        f"mmrotate_workers = {int(mmrotate_workers)}\n"
+        f"mmrotate_amp = {bool(mmrotate_amp)}\n"
+        f"mmrotate_epochs = {int(mmrotate_epochs)}\n"
+        f"score_thr = {float(score_thr)}\n"
         "train_dataloader = dict(\n"
         "    dataset=dict(\n"
         "        data_root=data_root,\n"
@@ -142,9 +159,25 @@ def render_mmrotate_config(
         "        metainfo=dict(classes=class_names),\n"
         "    )\n"
         ")\n"
+        "val_evaluator = dict(\n"
+        "    type='BenchmarkDOTAMetric',\n"
+        "    metric='mAP',\n"
+        "    score_thr=score_thr,\n"
+        "    iou_thrs=[0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95],\n"
+        ")\n"
+        "test_evaluator = val_evaluator\n"
+        "default_hooks = dict(\n"
+        "    checkpoint=dict(\n"
+        "        type='CheckpointHook',\n"
+        "        interval=-1,\n"
+        "        save_last=True,\n"
+        "        save_best='dota/mAP',\n"
+        "        rule='greater',\n"
+        "        max_keep_ckpts=1,\n"
+        "    )\n"
+        ")\n"
         f'work_dir = r"{work_dir.as_posix()}"\n'
         f"train_seed = {int(train_seed)}\n"
-        f"score_thr = {float(score_thr)}\n"
     )
 
 
@@ -181,8 +214,8 @@ def normalize_mmrotate_metrics(raw_metrics: Mapping[str, object]) -> dict[str, f
     metrics = {
         "mAP50_95": _find_metric_value(raw_metrics, "mAP50_95", "dota/mAP", "mAP", "bbox_mAP"),
         "mAP50": _find_metric_value(raw_metrics, "mAP50", "dota/AP50", "AP50", "bbox_mAP_50"),
-        "precision": _find_metric_value(raw_metrics, "precision"),
-        "recall": _find_metric_value(raw_metrics, "recall"),
+        "precision": _find_metric_value(raw_metrics, "precision", "dota/precision"),
+        "recall": _find_metric_value(raw_metrics, "recall", "dota/recall"),
     }
     metrics["f1"] = _compute_f1(metrics["precision"], metrics["recall"])
     return metrics
@@ -307,7 +340,20 @@ def _parse_generated_config(generated_config: Path) -> dict[str, object]:
     )
 
     parsed: dict[str, object] = {}
-    for key in ("preset", "classes", "class_names", "num_classes", "data_root", "work_dir", "train_seed", "score_thr"):
+    for key in (
+        "preset",
+        "classes",
+        "class_names",
+        "num_classes",
+        "data_root",
+        "work_dir",
+        "train_seed",
+        "score_thr",
+        "mmrotate_batch_size",
+        "mmrotate_workers",
+        "mmrotate_amp",
+        "mmrotate_epochs",
+    ):
         if key in namespace:
             parsed[key] = namespace[key]
 
@@ -325,6 +371,13 @@ def _parse_generated_config(generated_config: Path) -> dict[str, object]:
         parsed["num_classes"] = len(parsed["class_names"])
     elif "num_classes" in parsed:
         parsed["num_classes"] = int(parsed["num_classes"])  # type: ignore[arg-type]
+    for key in ("mmrotate_batch_size", "mmrotate_workers"):
+        if key in parsed and parsed[key] is not None:
+            parsed[key] = int(parsed[key])  # type: ignore[arg-type]
+    if "mmrotate_amp" in parsed:
+        parsed["mmrotate_amp"] = bool(parsed["mmrotate_amp"])
+    if "mmrotate_epochs" in parsed:
+        parsed["mmrotate_epochs"] = int(parsed["mmrotate_epochs"])  # type: ignore[arg-type]
     return parsed
 
 
@@ -341,6 +394,22 @@ def _set_key_recursively(node: object, *, key: str, value: object) -> None:
 
 def _set_num_classes(node: object, *, num_classes: int) -> None:
     _set_key_recursively(node, key="num_classes", value=num_classes)
+
+
+def _set_dataloader_runtime(
+    *,
+    loader: object,
+    batch_size: int | None = None,
+    num_workers: int | None = None,
+) -> None:
+    if not isinstance(loader, MutableMapping):
+        return
+    if batch_size is not None:
+        loader["batch_size"] = batch_size
+    if num_workers is not None:
+        loader["num_workers"] = num_workers
+        loader["persistent_workers"] = num_workers > 0
+        loader["pin_memory"] = num_workers > 0
 
 
 def _patch_dataset_cfg(node: object, *, data_root: str | None, classes: tuple[str, ...] | None) -> None:
@@ -361,6 +430,65 @@ def _patch_dataset_cfg(node: object, *, data_root: str | None, classes: tuple[st
             _patch_dataset_cfg(child, data_root=data_root, classes=classes)
 
 
+def _scale_epoch_value(value: object, scale: float, *, minimum: int = 1) -> object:
+    if not isinstance(value, (int, float)):
+        return value
+    scaled = value * scale
+    if not math.isfinite(scaled):
+        return value
+    scaled_int = int(round(scaled))
+    return max(minimum, scaled_int)
+
+
+def _scale_scheduler_milestones(milestones: object, scale: float) -> object:
+    def _scale(item: object) -> object:
+        if isinstance(item, (int, float)):
+            return _scale_epoch_value(item, scale)
+        return item
+
+    if isinstance(milestones, list):
+        return [_scale(item) for item in milestones]
+    if isinstance(milestones, tuple):
+        return tuple(_scale(item) for item in milestones)
+    return milestones
+
+
+def _scale_param_scheduler(node: object | None, *, scale: float) -> None:
+    entries: list[object] = []
+    if isinstance(node, list):
+        entries = node
+    elif isinstance(node, MutableMapping):
+        entries = [node]
+    else:
+        return
+
+    for scheduler in entries:
+        if not isinstance(scheduler, MutableMapping):
+            continue
+        if "begin" in scheduler:
+            scheduler["begin"] = _scale_epoch_value(
+                scheduler.get("begin"),
+                scale,
+                minimum=0,
+            )
+        if "end" in scheduler:
+            scheduler["end"] = _scale_epoch_value(scheduler.get("end"), scale)
+        if "T_max" in scheduler:
+            scheduler["T_max"] = _scale_epoch_value(scheduler.get("T_max"), scale)
+        if "T_0" in scheduler:
+            scheduler["T_0"] = _scale_epoch_value(scheduler.get("T_0"), scale)
+        if "milestones" in scheduler:
+            scheduler["milestones"] = _scale_scheduler_milestones(
+                scheduler.get("milestones"),
+                scale,
+            )
+        begin = scheduler.get("begin")
+        end = scheduler.get("end")
+        if isinstance(begin, (int, float)) and isinstance(end, (int, float)) and end <= begin:
+            scheduler["end"] = max(1, int(end))
+            scheduler["begin"] = max(0, int(scheduler["end"]) - 1)
+
+
 def _apply_runtime_overrides(
     cfg: MutableMapping[str, object],
     *,
@@ -370,7 +498,7 @@ def _apply_runtime_overrides(
     device: str,
 ) -> None:
     cfg["work_dir"] = str(work_dir)
-    cfg["train_cfg"] = cfg.get("train_cfg", {})
+    train_cfg = cfg.setdefault("train_cfg", {})
     cfg["randomness"] = {"seed": train_seed}
 
     data_root = parsed_generated_config.get("data_root")
@@ -395,6 +523,45 @@ def _apply_runtime_overrides(
     if isinstance(score_thr, float | int):
         _set_key_recursively(cfg.get("model"), key="score_thr", value=float(score_thr))
 
+    mmrotate_batch_size = parsed_generated_config.get("mmrotate_batch_size")
+    if isinstance(mmrotate_batch_size, int):
+        _set_dataloader_runtime(
+            loader=cfg.get("train_dataloader"),
+            batch_size=mmrotate_batch_size,
+        )
+
+    mmrotate_workers = parsed_generated_config.get("mmrotate_workers")
+    if isinstance(mmrotate_workers, int):
+        for loader_key in ("train_dataloader", "val_dataloader", "test_dataloader"):
+            _set_dataloader_runtime(
+                loader=cfg.get(loader_key),
+                num_workers=mmrotate_workers,
+            )
+
+    mmrotate_amp = parsed_generated_config.get("mmrotate_amp")
+    preset = parsed_generated_config.get("preset")
+    amp_enabled = mmrotate_amp is True and preset not in _AMP_UNSAFE_PRESETS
+    if amp_enabled:
+        optim_wrapper = cfg.get("optim_wrapper")
+        if isinstance(optim_wrapper, MutableMapping):
+            optim_wrapper["type"] = "AmpOptimWrapper"
+            optim_wrapper.setdefault("loss_scale", "dynamic")
+
+    target_epochs = parsed_generated_config.get("mmrotate_epochs")
+    if target_epochs is None:
+        target_epochs = 36
+    try:
+        target_epochs = int(target_epochs)
+    except (TypeError, ValueError):
+        target_epochs = 36
+
+    original_epochs = train_cfg.get("max_epochs")
+    scale = 1.0
+    if isinstance(original_epochs, (int, float)) and original_epochs > 0:
+        scale = target_epochs / float(original_epochs)
+    train_cfg["max_epochs"] = target_epochs
+    _scale_param_scheduler(cfg.get("param_scheduler"), scale=scale)
+
     if device == "cpu":
         cfg["device"] = "cpu"
     elif device.startswith("cuda:"):
@@ -417,6 +584,31 @@ def _collect_artifacts(work_dir: Path) -> dict[str, object]:
     return artifacts
 
 
+def _resolve_checkpoint_path(checkpoint: str, work_dir: Path) -> Path | None:
+    candidate = Path(checkpoint)
+    if not candidate.is_absolute():
+        candidate = work_dir / candidate
+    candidate = candidate.resolve()
+    if not candidate.exists():
+        return None
+    return candidate
+
+
+def _select_mmrotate_test_checkpoint(work_dir: Path) -> Path | None:
+    best_ckpts = sorted(work_dir.glob("best*.pth"))
+    if best_ckpts:
+        return best_ckpts[-1].resolve()
+
+    last_checkpoint_file = work_dir / "last_checkpoint"
+    if not last_checkpoint_file.exists():
+        return None
+
+    checkpoint = last_checkpoint_file.read_text(encoding="utf-8").strip()
+    if not checkpoint:
+        return None
+    return _resolve_checkpoint_path(checkpoint, work_dir)
+
+
 def _execute_mmrotate_pipeline(
     *,
     generated_config: Path,
@@ -430,6 +622,7 @@ def _execute_mmrotate_pipeline(
         from mmengine.config import Config
         from mmengine.registry import init_default_scope
         from mmengine.runner import Runner
+        from mmengine.runner.checkpoint import load_checkpoint
     except ModuleNotFoundError as exc:
         raise RuntimeError(
             "MMRotate runtime dependencies are unavailable. "
@@ -448,6 +641,9 @@ def _execute_mmrotate_pipeline(
     init_default_scope("mmrotate")
     runner = Runner.from_cfg(cfg)
     runner.train()
+    test_checkpoint = _select_mmrotate_test_checkpoint(work_dir)
+    if test_checkpoint is not None:
+        load_checkpoint(runner.model, str(test_checkpoint), map_location="cpu")
     raw_metrics = runner.test()
     if not isinstance(raw_metrics, Mapping):
         raw_metrics = {}

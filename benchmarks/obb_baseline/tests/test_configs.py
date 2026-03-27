@@ -17,6 +17,18 @@ def test_benchmark_configs_contain_required_keys() -> None:
     assert payload["runtime"]["device"] == "0"
     assert payload["runtime"]["score_thr"] == 0.05
     assert payload["runtime"]["link_mode"] == "symlink"
+    assert payload["runtime"]["stream_logs"] is False
+    assert payload["runtime"]["mmrotate_batch_size"] == 4
+    assert payload["runtime"]["mmrotate_workers"] == 8
+    assert payload["runtime"]["mmrotate_amp"] is True
+    assert payload["runtime"]["mmrotate_epochs"] == 36
+    assert payload["runtime"]["yolo_imgsz"] == 960
+    assert payload["runtime"]["yolo_batch_size"] == 16
+    assert payload["runtime"]["yolo_workers"] == 16
+    assert payload["runtime"]["yolo_amp"] is True
+    assert payload["runtime"]["yolo_mosaic"] == 0.0
+    assert payload["runtime"]["yolo_close_mosaic"] == 0
+    assert payload["runtime"]["yolo_epochs"] == 200
     assert payload["models"] == [
         "yolo11m_obb",
         "oriented_rcnn_r50",
@@ -37,6 +49,39 @@ def test_part3_config_uses_independent_benchmark_name_and_split_manifest_pointer
     assert payload["runtime"]["device"] == "0"
     assert payload["runtime"]["score_thr"] == 0.05
     assert payload["runtime"]["link_mode"] == "symlink"
+    assert payload["runtime"]["stream_logs"] is False
+    assert payload["runtime"]["mmrotate_batch_size"] == 4
+    assert payload["runtime"]["mmrotate_workers"] == 8
+    assert payload["runtime"]["mmrotate_amp"] is True
+    assert payload["runtime"]["mmrotate_epochs"] == 36
+    assert payload["runtime"]["yolo_imgsz"] == 960
+    assert payload["runtime"]["yolo_batch_size"] == 16
+    assert payload["runtime"]["yolo_workers"] == 16
+    assert payload["runtime"]["yolo_amp"] is True
+    assert payload["runtime"]["yolo_mosaic"] == 0.0
+    assert payload["runtime"]["yolo_close_mosaic"] == 0
+    assert payload["runtime"]["yolo_epochs"] == 200
+
+
+def test_quickcheck_config_limits_runs_and_epochs_for_script_smoke() -> None:
+    payload = yaml.safe_load(
+        Path("benchmarks/obb_baseline/configs/benchmark.fedo_part2_quickcheck_v1.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert payload["benchmark_name"] == "fedo_part2_quickcheck_v1"
+    assert payload["dataset"]["dota_root"] == "__SET_ME__/dota_export"
+    assert payload["dataset"]["yolo_obb_root"] == "__SET_ME__/yolo_obb_export"
+    assert payload["dataset"]["classes"] == ["pattern_a", "pattern_b", "pattern_c"]
+    assert payload["splits"]["split_seeds"] == [11]
+    assert payload["splits"]["train_seeds"] == [101]
+    assert payload["models"] == ["yolo11m_obb", "oriented_rcnn_r50"]
+    assert payload["runtime"]["stream_logs"] is True
+    assert payload["runtime"]["mmrotate_epochs"] == 2
+    assert payload["runtime"]["yolo_imgsz"] == 960
+    assert payload["runtime"]["yolo_mosaic"] == 0.0
+    assert payload["runtime"]["yolo_close_mosaic"] == 0
+    assert payload["runtime"]["yolo_epochs"] == 2
 
 
 def test_readme_mentions_required_commands_and_artifacts() -> None:
@@ -66,5 +111,20 @@ def test_readme_mentions_required_commands_and_artifacts() -> None:
     assert "runs/obb_baseline/<benchmark_name>/" in text
     assert "runs/obb_baseline/<benchmark_name>/benchmark.local.yaml" in text
     assert "benchmarks/obb_baseline/configs/benchmark.fedo_part2_v1.yaml" in text
+    assert "benchmarks/obb_baseline/configs/benchmark.fedo_part2_quickcheck_v1.yaml" in text
     assert "默认配置是模板" in text
     assert "benchmark.smoke.local.yaml" in text
+    assert "stream_logs" in text
+    assert "mmrotate_batch_size" in text
+    assert "mmrotate_workers" in text
+    assert "mmrotate_amp" in text
+    assert "mmrotate_epochs" in text
+    assert "yolo_imgsz" in text
+    assert "yolo_batch_size" in text
+    assert "yolo_workers" in text
+    assert "yolo_amp" in text
+    assert "yolo_mosaic" in text
+    assert "yolo_close_mosaic" in text
+    assert "yolo_epochs" in text
+    assert "stdout.log" in text
+    assert "stderr.log" in text

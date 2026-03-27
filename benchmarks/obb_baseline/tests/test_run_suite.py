@@ -4,6 +4,8 @@ import importlib.util
 import json
 import os
 import subprocess
+import sys
+from types import SimpleNamespace
 from pathlib import Path
 
 import pytest
@@ -189,8 +191,9 @@ def test_main_reruns_failed_run_when_flag_present(
         dispatch_calls.append(kwargs)
         return module.RunnerLaunch(command=["echo", "ok"], cwd=str(benchmark_root), extra_env={})
 
-    def _execute_launch(launch, env):
+    def _execute_launch(launch, env, stream_logs=False):
         execute_calls.append((launch, env))
+        assert stream_logs is False
         return subprocess.CompletedProcess(args=launch.command, returncode=0, stdout="ok\n", stderr="")
 
     def _parse_and_write_outputs(**kwargs):
@@ -316,7 +319,14 @@ def test_dispatch_runner_for_mmrotate_uses_view_dir_as_data_root(
         ),
         config={
             "dataset": {"classes": ["pattern_a", "pattern_b", "pattern_c"]},
-            "runtime": {"device": "0", "score_thr": 0.15},
+            "runtime": {
+                "device": "0",
+                "score_thr": 0.15,
+                "mmrotate_batch_size": 4,
+                "mmrotate_workers": 8,
+                "mmrotate_amp": True,
+                "mmrotate_epochs": 48,
+            },
         },
         split_seed=11,
         train_seed=101,
@@ -330,6 +340,10 @@ def test_dispatch_runner_for_mmrotate_uses_view_dir_as_data_root(
     assert render_calls["work_dir"] == work_dir
     assert render_calls["train_seed"] == 101
     assert render_calls["score_thr"] == 0.15
+    assert render_calls["mmrotate_batch_size"] == 4
+    assert render_calls["mmrotate_workers"] == 8
+    assert render_calls["mmrotate_amp"] is True
+    assert render_calls["mmrotate_epochs"] == 48
     assert render_calls["classes"] == ("pattern_a", "pattern_b", "pattern_c")
     assert generated_config.read_text(encoding="utf-8") == "# generated config\n"
     assert build_calls["generated_config"] == generated_config
@@ -338,6 +352,221 @@ def test_dispatch_runner_for_mmrotate_uses_view_dir_as_data_root(
     assert build_calls["device"] == "0"
     assert "--config" in launch.command
     assert str(generated_config) in launch.command
+
+
+def test_dispatch_runner_for_yolo_prefers_yolo_specific_runtime_fields_and_new_defaults(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = load_run_suite_module()
+    run_dir = tmp_path / "records" / "yolo11m_obb" / "split-11" / "seed-101"
+    work_dir = tmp_path / "workdirs" / "yolo11m_obb" / "split-11" / "seed-101"
+    view_dir = tmp_path / "views" / "yolo_obb" / "split-11"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    work_dir.mkdir(parents=True, exist_ok=True)
+    view_dir.mkdir(parents=True, exist_ok=True)
+    (view_dir / "dataset.yaml").write_text("path: .\n", encoding="utf-8")
+
+    build_calls: dict[str, object] = {}
+
+    def _fake_build_yolo_train_command(**kwargs):
+        build_calls.update(kwargs)
+        return ["yolo"]
+
+    monkeypatch.setattr(module, "build_yolo_train_command", _fake_build_yolo_train_command)
+
+    module.dispatch_runner(
+        model_spec=ModelSpec(
+            model_name="yolo11m_obb",
+            runner_name="yolo",
+            env_name="yolo",
+            data_view="yolo_obb",
+            preset="yolo11m-obb",
+        ),
+        config={
+            "runtime": {
+                "device": "0",
+                "yolo_epochs": 200,
+                "batch_size": 4,
+                "yolo_batch_size": 16,
+                "yolo_workers": 12,
+                "yolo_amp": False,
+                "imgsz": 1024,
+                "yolo_imgsz": 960,
+                "yolo_mosaic": 0.0,
+                "yolo_close_mosaic": 0,
+            },
+        },
+        split_seed=11,
+        train_seed=101,
+        run_dir=run_dir,
+        work_dir=work_dir,
+        view_dir=view_dir,
+    )
+
+    assert build_calls["epochs"] == 200
+    assert build_calls["batch_size"] == 16
+    assert build_calls["workers"] == 12
+    assert build_calls["amp"] is False
+    assert build_calls["imgsz"] == 960
+    assert build_calls["mosaic"] == 0.0
+    assert build_calls["close_mosaic"] == 0
+
+    build_calls.clear()
+    module.dispatch_runner(
+        model_spec=ModelSpec(
+            model_name="yolo11m_obb",
+            runner_name="yolo",
+            env_name="yolo",
+            data_view="yolo_obb",
+            preset="yolo11m-obb",
+        ),
+        config={"runtime": {"device": "0"}},
+        split_seed=11,
+        train_seed=101,
+        run_dir=run_dir,
+        work_dir=work_dir,
+        view_dir=view_dir,
+    )
+
+    assert build_calls["epochs"] == 200
+    assert build_calls["batch_size"] == 16
+    assert build_calls["workers"] == 16
+    assert build_calls["amp"] is True
+    assert build_calls["imgsz"] == 960
+    assert build_calls["mosaic"] == 0.0
+    assert build_calls["close_mosaic"] == 0
+
+
+def test_execute_launch_streams_child_output_when_enabled(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    module = load_run_suite_module()
+    launch = module.RunnerLaunch(
+        command=[
+            sys.executable,
+            "-c",
+            (
+                "import sys;"
+                "print('stdout-line', flush=True);"
+                "print('stderr-line', file=sys.stderr, flush=True)"
+            ),
+        ],
+        cwd=str(tmp_path),
+        extra_env={},
+    )
+
+    result = module.execute_launch(
+        launch,
+        env={},
+        stream_logs=True,
+    )
+
+    captured = capsys.readouterr()
+    assert result.returncode == 0
+    assert result.stdout == "stdout-line\n"
+    assert result.stderr == "stderr-line\n"
+    assert "stdout-line" in captured.out
+    assert "stderr-line" in captured.err
+
+
+def test_execute_launch_keeps_child_output_silent_when_streaming_disabled(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    module = load_run_suite_module()
+    launch = module.RunnerLaunch(
+        command=[
+            sys.executable,
+            "-c",
+            (
+                "import sys;"
+                "print('stdout-line', flush=True);"
+                "print('stderr-line', file=sys.stderr, flush=True)"
+            ),
+        ],
+        cwd=str(tmp_path),
+        extra_env={},
+    )
+
+    result = module.execute_launch(
+        launch,
+        env={},
+        stream_logs=False,
+    )
+
+    captured = capsys.readouterr()
+    assert result.returncode == 0
+    assert result.stdout == "stdout-line\n"
+    assert result.stderr == "stderr-line\n"
+    assert captured.out == ""
+    assert captured.err == ""
+
+
+def test_execute_launch_preserves_utf8_across_chunk_boundaries_when_streaming_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    module = load_run_suite_module()
+
+    class FakeStream:
+        def __init__(self, chunks: list[bytes]) -> None:
+            self._chunks = list(chunks)
+            self.closed = False
+
+        def read1(self, _size: int) -> bytes:
+            if self._chunks:
+                return self._chunks.pop(0)
+            return b""
+
+        def close(self) -> None:
+            self.closed = True
+
+    class FakeSelector:
+        def __init__(self) -> None:
+            self._streams: list[tuple[FakeStream, tuple[str, list[str]]]] = []
+
+        def register(self, stream, _events, data=None) -> None:
+            self._streams.append((stream, data))
+
+        def unregister(self, stream) -> None:
+            self._streams = [(item_stream, data) for item_stream, data in self._streams if item_stream is not stream]
+
+        def get_map(self):
+            return {id(stream): (stream, data) for stream, data in self._streams}
+
+        def select(self):
+            if not self._streams:
+                return []
+            stream, data = self._streams[0]
+            return [(SimpleNamespace(fileobj=stream, data=data), None)]
+
+    class FakePopen:
+        def __init__(self, *args, **kwargs) -> None:
+            _ = (args, kwargs)
+            self.stdout = FakeStream([b"\xe4\xbd", b"\xa0\xe5\xa5\xbd\n"])
+            self.stderr = FakeStream([b"\xe4", b"\xbd\xa0\n"])
+            self.returncode = 0
+
+        def wait(self) -> int:
+            return self.returncode
+
+    monkeypatch.setattr(module.subprocess, "Popen", FakePopen)
+    monkeypatch.setattr(module.selectors, "DefaultSelector", FakeSelector)
+
+    result = module.execute_launch(
+        module.RunnerLaunch(command=["fake"], cwd=str(tmp_path), extra_env={}),
+        env={},
+        stream_logs=True,
+    )
+
+    captured = capsys.readouterr()
+    assert result.stdout == "你好\n"
+    assert result.stderr == "你\n"
+    assert "你好" in captured.out
+    assert "你" in captured.err
 
 
 def test_main_emits_view_progress_logs_before_runner_dispatch(
@@ -549,6 +778,80 @@ def test_main_emits_progress_logs_for_skip_and_completion(
     assert "[SUITE]" in out
 
 
+def test_main_passes_stream_logs_runtime_flag_to_execute_launch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = load_run_suite_module()
+    benchmark_root = tmp_path / "runs" / "obb_baseline" / "fedo_part2_v1"
+    write_split_manifest(benchmark_root / "split_manifest.json", split_seeds=[11], test_ids=["img_004"])
+    config_path = benchmark_root / "config.yaml"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(
+        yaml.safe_dump(
+            {
+                "benchmark_name": "fedo_part2_v1",
+                "models": ["oriented_rcnn_r50"],
+                "runtime": {"device": "0", "stream_logs": True},
+            },
+            sort_keys=False,
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+
+    observed: dict[str, object] = {}
+    run_dir = benchmark_root / "records" / "oriented_rcnn_r50" / "split-11" / "seed-101"
+
+    monkeypatch.setattr(
+        module,
+        "dispatch_runner",
+        lambda **_: module.RunnerLaunch(command=["echo", "ok"], cwd=str(benchmark_root), extra_env={}),
+    )
+
+    def _fake_execute_launch(launch, env, stream_logs):
+        observed["launch"] = launch
+        observed["env"] = env
+        observed["stream_logs"] = stream_logs
+        return subprocess.CompletedProcess(
+            args=launch.command,
+            returncode=0,
+            stdout="train ok\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(module, "execute_launch", _fake_execute_launch)
+    monkeypatch.setattr(
+        module,
+        "parse_and_write_outputs",
+        lambda **_: write_metrics(
+            run_dir,
+            model_name="oriented_rcnn_r50",
+            split_seed=11,
+            train_seed=101,
+            status="succeeded",
+        ),
+    )
+
+    exit_code = module.main(
+        [
+            "--config",
+            str(config_path),
+            "--benchmark-root",
+            str(benchmark_root),
+            "--models",
+            "oriented_rcnn_r50",
+            "--split-seeds",
+            "11",
+            "--train-seeds",
+            "101",
+        ]
+    )
+
+    assert exit_code == 0
+    assert observed["stream_logs"] is True
+
+
 def test_main_status_tracks_final_failed_metrics_even_when_returncode_is_zero(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -704,3 +1007,90 @@ def test_parse_and_write_outputs_delegates_to_yolo_runner_helper(
     assert captured["run_metadata"].model_name == "yolo11m_obb"
     assert captured["run_metadata"].split_seed == 11
     assert captured["run_metadata"].train_seed == 101
+
+
+def test_main_runs_yolo_test_evaluation_after_successful_train(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = load_run_suite_module()
+    benchmark_root = tmp_path / "runs" / "obb_baseline" / "fedo_part2_v1"
+    write_split_manifest(benchmark_root / "split_manifest.json", split_seeds=[11], test_ids=["img_004"])
+    config_path = benchmark_root / "config.yaml"
+    write_config(config_path)
+    run_dir = benchmark_root / "records" / "yolo11m_obb" / "split-11" / "seed-101"
+    work_dir = benchmark_root / "workdirs" / "yolo11m_obb" / "split-11" / "seed-101"
+    view_dir = benchmark_root / "views" / "yolo_obb" / "split-11"
+
+    monkeypatch.setattr(
+        module,
+        "dispatch_runner",
+        lambda **_: module.RunnerLaunch(command=["yolo-train"], cwd=str(benchmark_root), extra_env={}),
+    )
+    monkeypatch.setattr(
+        module,
+        "ensure_view_materialized",
+        lambda **_: view_dir,
+    )
+
+    observed: dict[str, object] = {}
+
+    def _fake_build_yolo_test_command(**kwargs):
+        observed["build_yolo_test_command"] = kwargs
+        return ["yolo-val"]
+
+    launches: list[list[str]] = []
+
+    def _fake_execute_launch(launch, env, stream_logs=False):
+        _ = (env, stream_logs)
+        launches.append(list(launch.command))
+        return subprocess.CompletedProcess(
+            args=launch.command,
+            returncode=0,
+            stdout=f"{launch.command[0]} ok\n",
+            stderr="",
+        )
+
+    def _fake_parse_and_write_outputs(**kwargs):
+        observed["parse_and_write_outputs"] = kwargs
+        write_metrics(
+            run_dir,
+            model_name="yolo11m_obb",
+            split_seed=11,
+            train_seed=101,
+            status="succeeded",
+        )
+
+    monkeypatch.setattr(module, "build_yolo_test_command", _fake_build_yolo_test_command)
+    monkeypatch.setattr(module, "execute_launch", _fake_execute_launch)
+    monkeypatch.setattr(module, "parse_and_write_outputs", _fake_parse_and_write_outputs)
+
+    exit_code = module.main(
+        [
+            "--config",
+            str(config_path),
+            "--benchmark-root",
+            str(benchmark_root),
+            "--models",
+            "yolo11m_obb",
+            "--split-seeds",
+            "11",
+            "--train-seeds",
+            "101",
+        ]
+    )
+
+    assert exit_code == 0
+    assert launches == [["yolo-train"], ["yolo-val"]]
+    assert observed["build_yolo_test_command"] == {
+        "checkpoint_path": work_dir / "weights" / "best.pt",
+        "dataset_yaml": view_dir / "dataset.yaml",
+        "work_dir": work_dir,
+        "device": "0",
+        "imgsz": 960,
+        "batch_size": 16,
+        "workers": 16,
+    }
+    status_payload = json.loads((run_dir / "status.json").read_text(encoding="utf-8"))
+    assert status_payload["status"] == "succeeded"
+    assert status_payload["execution_status"] == "succeeded"

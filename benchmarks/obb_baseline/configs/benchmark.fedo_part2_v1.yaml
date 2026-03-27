@@ -19,3 +19,15 @@ runtime:
   device: "0"
   score_thr: 0.05
   link_mode: symlink
+  stream_logs: false
+  mmrotate_batch_size: 4
+  mmrotate_workers: 8
+  mmrotate_amp: true
+  mmrotate_epochs: 36
+  yolo_imgsz: 960
+  yolo_batch_size: 16
+  yolo_workers: 16
+  yolo_amp: true
+  yolo_mosaic: 0.0
+  yolo_close_mosaic: 0
+  yolo_epochs: 200

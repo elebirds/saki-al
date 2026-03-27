@@ -1,25 +1,30 @@
-benchmark_name: fedo_part3_orcnn_v1
-# 保留字段：供后续阶段使用；当前 Phase 1 runner 不消费此字段，仍读取 <benchmark-root>/split_manifest.json
-split_manifest_path: ""
+benchmark_name: fedo_part2_quickcheck_v1
 dataset:
   dota_root: "__SET_ME__/dota_export"
   yolo_obb_root: "__SET_ME__/yolo_obb_export"
   classes: [pattern_a, pattern_b, pattern_c]
+splits:
+  holdout_seed: 3407
+  split_seeds: [11]
+  train_seeds: [101]
+  test_ratio: 0.15
+  val_ratio: 0.15
 models:
+  - yolo11m_obb
   - oriented_rcnn_r50
 runtime:
   device: "0"
   score_thr: 0.05
   link_mode: symlink
-  stream_logs: false
+  stream_logs: true
   mmrotate_batch_size: 4
   mmrotate_workers: 8
   mmrotate_amp: true
-  mmrotate_epochs: 36
+  mmrotate_epochs: 2
   yolo_imgsz: 960
   yolo_batch_size: 16
   yolo_workers: 16
   yolo_amp: true
   yolo_mosaic: 0.0
   yolo_close_mosaic: 0
-  yolo_epochs: 200
+  yolo_epochs: 2

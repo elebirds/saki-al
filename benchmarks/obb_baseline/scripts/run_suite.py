@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import codecs
 import hashlib
 import json
 import os
+import selectors
 import shlex
 import subprocess
 import sys
@@ -27,6 +29,7 @@ def _load_obb_modules():
         )
         from obb_baseline.runners_yolo import (
             RunMetadata as YoloRunMetadata,
+            build_yolo_test_command,
             build_yolo_train_command,
             parse_yolo_outputs,
         )
@@ -42,6 +45,7 @@ def _load_obb_modules():
             "parse_mmrotate_outputs": parse_mmrotate_outputs,
             "render_mmrotate_config": render_mmrotate_config,
             "YoloRunMetadata": YoloRunMetadata,
+            "build_yolo_test_command": build_yolo_test_command,
             "build_yolo_train_command": build_yolo_train_command,
             "parse_yolo_outputs": parse_yolo_outputs,
             "collect_suite_outputs": collect_suite_outputs,
@@ -68,6 +72,7 @@ build_mmrotate_train_command = _MOD["build_mmrotate_train_command"]
 parse_mmrotate_outputs = _MOD["parse_mmrotate_outputs"]
 render_mmrotate_config = _MOD["render_mmrotate_config"]
 YoloRunMetadata = _MOD["YoloRunMetadata"]
+build_yolo_test_command = _MOD["build_yolo_test_command"]
 build_yolo_train_command = _MOD["build_yolo_train_command"]
 parse_yolo_outputs = _MOD["parse_yolo_outputs"]
 collect_suite_outputs = _MOD["collect_suite_outputs"]
@@ -90,6 +95,18 @@ class RunnerLaunch:
         self.command = command
         self.cwd = cwd
         self.extra_env = extra_env
+
+
+def _combine_process_results(
+    first: subprocess.CompletedProcess[str],
+    second: subprocess.CompletedProcess[str],
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.CompletedProcess(
+        args=[first.args, second.args],
+        returncode=second.returncode,
+        stdout=(first.stdout or "") + (second.stdout or ""),
+        stderr=(first.stderr or "") + (second.stderr or ""),
+    )
 
 
 def _emit_progress(tag: str, message: str) -> None:
@@ -132,6 +149,32 @@ def _parse_csv_ints(raw: str) -> list[int]:
     return values
 
 
+def _parse_runtime_bool(value: object, *, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off"}:
+            return False
+    raise ValueError(f"无效的布尔运行时配置: {value!r}")
+
+
+def _parse_runtime_int(value: object, *, default: int) -> int:
+    if value is None or value == "":
+        return default
+    return int(value)
+
+
+def _parse_runtime_float(value: object, *, default: float) -> float:
+    if value is None or value == "":
+        return default
+    return float(value)
+
+
 def dispatch_runner(
     *,
     model_spec: ModelSpec,
@@ -147,6 +190,15 @@ def dispatch_runner(
     device = str(runtime_mapping.get("device", "0"))
 
     if model_spec.runner_name == "yolo":
+        yolo_epochs_raw = runtime_mapping.get("yolo_epochs")
+        if yolo_epochs_raw is None:
+            yolo_epochs_raw = runtime_mapping.get("epochs")
+        yolo_batch_size_raw = runtime_mapping.get("yolo_batch_size")
+        if yolo_batch_size_raw is None:
+            yolo_batch_size_raw = runtime_mapping.get("batch_size")
+        yolo_imgsz_raw = runtime_mapping.get("yolo_imgsz")
+        if yolo_imgsz_raw is None:
+            yolo_imgsz_raw = runtime_mapping.get("imgsz")
         command = build_yolo_train_command(
             preset=model_spec.preset,
             dataset_yaml=view_dir / "dataset.yaml",
@@ -154,9 +206,13 @@ def dispatch_runner(
             work_dir=work_dir,
             train_seed=train_seed,
             device=device,
-            imgsz=int(runtime_mapping.get("imgsz", 1024)),
-            epochs=int(runtime_mapping.get("epochs", 36)),
-            batch_size=int(runtime_mapping.get("batch_size", 2)),
+            imgsz=_parse_runtime_int(yolo_imgsz_raw, default=960),
+            epochs=_parse_runtime_int(yolo_epochs_raw, default=200),
+            batch_size=_parse_runtime_int(yolo_batch_size_raw, default=16),
+            workers=_parse_runtime_int(runtime_mapping.get("yolo_workers"), default=16),
+            amp=_parse_runtime_bool(runtime_mapping.get("yolo_amp"), default=True),
+            mosaic=_parse_runtime_float(runtime_mapping.get("yolo_mosaic"), default=0.0),
+            close_mosaic=_parse_runtime_int(runtime_mapping.get("yolo_close_mosaic"), default=0),
         )
         return RunnerLaunch(command=command, cwd=str(_repo_root()), extra_env={})
 
@@ -165,6 +221,22 @@ def dispatch_runner(
         dataset_mapping = dataset if isinstance(dataset, Mapping) else {}
         classes = tuple(str(item) for item in dataset_mapping.get("classes", ()))
         score_thr = float(runtime_mapping.get("score_thr", 0.05))
+        mmrotate_batch_size = _parse_runtime_int(
+            runtime_mapping.get("mmrotate_batch_size"),
+            default=4,
+        )
+        mmrotate_workers = _parse_runtime_int(
+            runtime_mapping.get("mmrotate_workers"),
+            default=8,
+        )
+        mmrotate_amp = _parse_runtime_bool(
+            runtime_mapping.get("mmrotate_amp"),
+            default=True,
+        )
+        mmrotate_epochs = _parse_runtime_int(
+            runtime_mapping.get("mmrotate_epochs"),
+            default=36,
+        )
         generated_config = run_dir / "mmrotate.generated.py"
         generated_config.write_text(
             render_mmrotate_config(
@@ -174,6 +246,10 @@ def dispatch_runner(
                 train_seed=train_seed,
                 score_thr=score_thr,
                 classes=classes,
+                mmrotate_batch_size=mmrotate_batch_size,
+                mmrotate_workers=mmrotate_workers,
+                mmrotate_amp=mmrotate_amp,
+                mmrotate_epochs=mmrotate_epochs,
             ),
             encoding="utf-8",
         )
@@ -193,17 +269,101 @@ def dispatch_runner(
 def execute_launch(
     launch: RunnerLaunch,
     env: Mapping[str, str],
+    stream_logs: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     merged_env = dict(env)
     merged_env.update(launch.extra_env)
-    return subprocess.run(
+    process = subprocess.Popen(
         launch.command,
         cwd=launch.cwd,
         env=merged_env,
-        text=True,
-        capture_output=True,
-        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=False,
     )
+    stdout_chunks: list[str] = []
+    stderr_chunks: list[str] = []
+    decoders = {
+        "stdout": codecs.getincrementaldecoder("utf-8")(errors="replace"),
+        "stderr": codecs.getincrementaldecoder("utf-8")(errors="replace"),
+    }
+    selector = selectors.DefaultSelector()
+    if process.stdout is not None:
+        selector.register(process.stdout, selectors.EVENT_READ, data=("stdout", stdout_chunks))
+    if process.stderr is not None:
+        selector.register(process.stderr, selectors.EVENT_READ, data=("stderr", stderr_chunks))
+
+    while selector.get_map():
+        for key, _ in selector.select():
+            stream = key.fileobj
+            stream_name, chunks = key.data
+            chunk = stream.read1(4096) if hasattr(stream, "read1") else stream.read(4096)
+            if not chunk:
+                tail = decoders[stream_name].decode(b"", final=True)
+                if tail:
+                    chunks.append(tail)
+                    if stream_logs:
+                        sink = sys.stdout if stream_name == "stdout" else sys.stderr
+                        sink.write(tail)
+                        sink.flush()
+                selector.unregister(stream)
+                stream.close()
+                continue
+            text = decoders[stream_name].decode(chunk, final=False)
+            chunks.append(text)
+            if stream_logs:
+                sink = sys.stdout if stream_name == "stdout" else sys.stderr
+                sink.write(text)
+                sink.flush()
+
+    return subprocess.CompletedProcess(
+        args=launch.command,
+        returncode=process.wait(),
+        stdout="".join(stdout_chunks),
+        stderr="".join(stderr_chunks),
+    )
+
+
+def maybe_run_yolo_test_evaluation(
+    *,
+    model_spec: ModelSpec,
+    config: Mapping[str, object],
+    view_dir: Path,
+    work_dir: Path,
+    train_result: subprocess.CompletedProcess[str],
+    child_env: Mapping[str, str],
+    stream_logs: bool,
+) -> subprocess.CompletedProcess[str]:
+    if model_spec.runner_name != "yolo" or train_result.returncode != 0:
+        return train_result
+
+    runtime = config.get("runtime")
+    runtime_mapping = runtime if isinstance(runtime, Mapping) else {}
+    yolo_batch_size_raw = runtime_mapping.get("yolo_batch_size")
+    if yolo_batch_size_raw is None:
+        yolo_batch_size_raw = runtime_mapping.get("batch_size")
+    yolo_imgsz_raw = runtime_mapping.get("yolo_imgsz")
+    if yolo_imgsz_raw is None:
+        yolo_imgsz_raw = runtime_mapping.get("imgsz")
+    test_launch = RunnerLaunch(
+        command=build_yolo_test_command(
+            checkpoint_path=work_dir / "weights" / "best.pt",
+            dataset_yaml=view_dir / "dataset.yaml",
+            work_dir=work_dir,
+            device=str(runtime_mapping.get("device", "0")),
+            imgsz=_parse_runtime_int(yolo_imgsz_raw, default=960),
+            batch_size=_parse_runtime_int(yolo_batch_size_raw, default=16),
+            workers=_parse_runtime_int(runtime_mapping.get("yolo_workers"), default=16),
+        ),
+        cwd=str(_repo_root()),
+        extra_env={},
+    )
+    _emit_progress(
+        "CMD",
+        f"cwd={test_launch.cwd} cmd={_format_command(test_launch.command)}",
+    )
+    test_result = execute_launch(test_launch, env=child_env, stream_logs=stream_logs)
+    return _combine_process_results(train_result, test_result)
 
 
 def parse_and_write_outputs(
@@ -500,6 +660,9 @@ def main(argv: list[str] | None = None) -> int:
 
     write_config_snapshot(benchmark_root / "config.snapshot.yaml", config)
     child_env = build_child_env()
+    runtime = config.get("runtime")
+    runtime_mapping = runtime if isinstance(runtime, Mapping) else {}
+    stream_logs = _parse_runtime_bool(runtime_mapping.get("stream_logs"), default=False)
 
     for model_name in selected_models:
         model_spec = model_registry[model_name]
@@ -595,7 +758,16 @@ def main(argv: list[str] | None = None) -> int:
                         "extra_env": launch.extra_env,
                     },
                 )
-                result = execute_launch(launch, env=child_env)
+                train_result = execute_launch(launch, env=child_env, stream_logs=stream_logs)
+                result = maybe_run_yolo_test_evaluation(
+                    model_spec=model_spec,
+                    config=config,
+                    view_dir=view_dir,
+                    work_dir=work_dir,
+                    train_result=train_result,
+                    child_env=child_env,
+                    stream_logs=stream_logs,
+                )
                 execution_status = write_status_and_logs(run_dir=run_dir, result=result)
                 parse_and_write_outputs(
                     model_spec=model_spec,

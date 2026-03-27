@@ -35,13 +35,15 @@ def test_models_config_includes_model_skeletons() -> None:
 
     expected_models = {
         "yolo11m_obb",
+        "yolov8m_obb",
+        "yolo26m_obb",
         "oriented_rcnn_r50",
         "roi_transformer_r50",
         "r3det_r50",
         "rtmdet_rotated_m",
     }
     missing_models = expected_models - set(models)
-    assert not missing_models, "models.yaml 需要声明 5 个模型"
+    assert not missing_models, "models.yaml 需要声明全部基准模型"
 
     required_fields = {"runner", "env", "data_view", "preset"}
     for name, entry in models.items():

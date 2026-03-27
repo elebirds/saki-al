@@ -17,6 +17,18 @@ def _valid_models_config() -> dict[str, object]:
                 "data_view": "yolo_obb",
                 "preset": "yolo11m-obb",
             },
+            "yolov8m_obb": {
+                "runner": "yolo",
+                "env": "yolo",
+                "data_view": "yolo_obb",
+                "preset": "yolov8m-obb",
+            },
+            "yolo26m_obb": {
+                "runner": "yolo",
+                "env": "yolo",
+                "data_view": "yolo_obb",
+                "preset": "yolo26m-obb",
+            },
             "oriented_rcnn_r50": {
                 "runner": "mmrotate",
                 "env": "mmrotate",
@@ -45,23 +57,27 @@ def _valid_models_config() -> dict[str, object]:
     }
 
 
-def test_load_model_registry_reads_5_models_from_models_yaml() -> None:
+def test_load_model_registry_reads_all_models_from_models_yaml() -> None:
     config_path = Path(__file__).resolve().parents[1] / "configs" / "models.yaml"
 
     registry = load_model_registry(config_path)
 
     assert set(registry) == {
         "yolo11m_obb",
+        "yolov8m_obb",
+        "yolo26m_obb",
         "oriented_rcnn_r50",
         "roi_transformer_r50",
         "r3det_r50",
         "rtmdet_rotated_m",
     }
-    assert len(registry) == 5
+    assert len(registry) == 7
     assert registry["yolo11m_obb"].runner_name == "yolo"
     assert registry["yolo11m_obb"].env_name == "yolo"
     assert registry["yolo11m_obb"].data_view == "yolo_obb"
     assert registry["yolo11m_obb"].preset == "yolo11m-obb"
+    assert registry["yolov8m_obb"].preset == "yolov8m-obb"
+    assert registry["yolo26m_obb"].preset == "yolo26m-obb"
     assert registry["oriented_rcnn_r50"].runner_name == "mmrotate"
     assert registry["oriented_rcnn_r50"].data_view == "dota"
 

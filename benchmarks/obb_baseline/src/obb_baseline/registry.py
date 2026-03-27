@@ -7,6 +7,8 @@ import yaml
 
 _ALLOWED_MODEL_NAMES = {
     "yolo11m_obb",
+    "yolov8m_obb",
+    "yolo26m_obb",
     "oriented_rcnn_r50",
     "roi_transformer_r50",
     "r3det_r50",

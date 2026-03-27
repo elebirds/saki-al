@@ -133,6 +133,25 @@ def _mean(values: list[float | None]) -> float | None:
     return sum(valid) / len(valid)
 
 
+def _std(values: list[float | None]) -> float | None:
+    valid = [v for v in values if v is not None]
+    if not valid:
+        return None
+    center = sum(valid) / len(valid)
+    variance = sum((value - center) ** 2 for value in valid) / len(valid)
+    return math.sqrt(variance)
+
+
+def _format_mean_std(mean_value: object, std_value: object) -> str:
+    mean_number = _as_float(mean_value)
+    if mean_number is None:
+        return ""
+    std_number = _as_float(std_value)
+    if std_number is None:
+        return str(mean_number)
+    return f"{mean_number} ± {std_number}"
+
+
 def collect_suite_outputs(*, benchmark_name: str, benchmark_root: Path) -> SummaryOutputs:
     records_root = benchmark_root / "records"
     summary_rows = load_metrics_rows(records_root)
@@ -155,11 +174,14 @@ def collect_suite_outputs(*, benchmark_name: str, benchmark_root: Path) -> Summa
         split_level_stats: list[dict[str, float | None]] = []
         for split_seed in sorted(split_groups):
             split_rows = split_groups[split_seed]
+            split_precision_mean = _mean([_as_float(row.get("precision")) for row in split_rows])
+            split_recall_mean = _mean([_as_float(row.get("recall")) for row in split_rows])
             split_level_stats.append(
                 {
                     "mAP50_95_mean": _mean([_as_float(row.get("mAP50_95")) for row in split_rows]),
-                    "precision_mean": _mean([_as_float(row.get("precision")) for row in split_rows]),
-                    "recall_mean": _mean([_as_float(row.get("recall")) for row in split_rows]),
+                    "precision_mean": split_precision_mean,
+                    "recall_mean": split_recall_mean,
+                    "f1_mean": _compute_f1(split_precision_mean, split_recall_mean),
                 }
             )
 
@@ -170,9 +192,13 @@ def collect_suite_outputs(*, benchmark_name: str, benchmark_root: Path) -> Summa
             {
                 "model_name": model_name,
                 "mAP50_95_mean": m_ap50_95_mean,
+                "mAP50_95_std": _std([item["mAP50_95_mean"] for item in split_level_stats]),
                 "precision_mean": precision_mean,
+                "precision_std": _std([item["precision_mean"] for item in split_level_stats]),
                 "recall_mean": recall_mean,
-                "f1_mean": _compute_f1(precision_mean, recall_mean),
+                "recall_std": _std([item["recall_mean"] for item in split_level_stats]),
+                "f1_mean": _mean([item["f1_mean"] for item in split_level_stats]),
+                "f1_std": _std([item["f1_mean"] for item in split_level_stats]),
                 "split_count": len(split_level_stats),
                 "train_count": sum(len(v) for v in split_groups.values()),
             }
@@ -206,17 +232,23 @@ def render_summary_markdown(outputs: SummaryOutputs) -> str:
         "",
         "## Leaderboard",
         "",
-        "| model_name | mAP50_95_mean | precision_mean | recall_mean | f1_mean |",
+        "| model_name | mAP50_95(mean±std) | precision(mean±std) | recall(mean±std) | f1(mean±std) |",
         "| --- | ---: | ---: | ---: | ---: |",
     ]
     for row in outputs.leaderboard_rows:
         lines.append(
             "| {model_name} | {mAP} | {p} | {r} | {f1} |".format(
                 model_name=_sanitize_cell(row.get("model_name", "")),
-                mAP=_sanitize_cell(row.get("mAP50_95_mean", "")),
-                p=_sanitize_cell(row.get("precision_mean", "")),
-                r=_sanitize_cell(row.get("recall_mean", "")),
-                f1=_sanitize_cell(row.get("f1_mean", "")),
+                mAP=_sanitize_cell(
+                    _format_mean_std(row.get("mAP50_95_mean"), row.get("mAP50_95_std"))
+                ),
+                p=_sanitize_cell(
+                    _format_mean_std(row.get("precision_mean"), row.get("precision_std"))
+                ),
+                r=_sanitize_cell(
+                    _format_mean_std(row.get("recall_mean"), row.get("recall_std"))
+                ),
+                f1=_sanitize_cell(_format_mean_std(row.get("f1_mean"), row.get("f1_std"))),
             )
         )
     return "\n".join(lines) + "\n"
@@ -264,9 +296,13 @@ def write_suite_outputs(outputs: SummaryOutputs, benchmark_root: Path) -> None:
         core_fields=[
             "model_name",
             "mAP50_95_mean",
+            "mAP50_95_std",
             "precision_mean",
+            "precision_std",
             "recall_mean",
+            "recall_std",
             "f1_mean",
+            "f1_std",
             "split_count",
             "train_count",
         ],

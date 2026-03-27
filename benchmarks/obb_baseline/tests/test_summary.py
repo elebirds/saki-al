@@ -140,7 +140,11 @@ def test_collect_suite_outputs_aggregates_in_two_stages_and_sorts_rows(
         "yolo11m_obb",
     ]
     assert outputs.leaderboard_rows[0]["mAP50_95_mean"] == pytest.approx(0.4375)
+    assert outputs.leaderboard_rows[0]["mAP50_95_std"] == pytest.approx(0.0375)
+    assert outputs.leaderboard_rows[0]["precision_std"] == pytest.approx(0.075)
+    assert outputs.leaderboard_rows[0]["recall_std"] == pytest.approx(0.125)
     assert outputs.leaderboard_rows[1]["mAP50_95_mean"] == pytest.approx(0.405)
+    assert outputs.leaderboard_rows[1]["mAP50_95_std"] == pytest.approx(0.005)
 
 
 def test_write_suite_outputs_writes_csv_and_markdown_files(tmp_path: Path) -> None:
@@ -190,12 +194,17 @@ def test_write_suite_outputs_writes_csv_and_markdown_files(tmp_path: Path) -> No
         leaderboard_rows = list(leaderboard_reader)
     assert len(leaderboard_rows) == 1
     assert leaderboard_rows[0]["mAP50_95_mean"] == "0.5"
+    assert leaderboard_rows[0]["mAP50_95_std"] == "0.0"
     assert leaderboard_reader.fieldnames == [
         "model_name",
         "mAP50_95_mean",
+        "mAP50_95_std",
         "precision_mean",
+        "precision_std",
         "recall_mean",
+        "recall_std",
         "f1_mean",
+        "f1_std",
         "split_count",
         "train_count",
     ]
@@ -220,6 +229,8 @@ def test_render_summary_markdown_uses_expected_chinese_phrase(tmp_path: Path) ->
     markdown = render_summary_markdown(outputs)
     assert "精度最佳模型（按 mAP50_95）" in markdown
     assert "综合最优模型" not in markdown
+    assert "| model_name | mAP50_95(mean±std) | precision(mean±std) | recall(mean±std) | f1(mean±std) |" in markdown
+    assert "0.5 ± 0.0" in markdown
 
 
 def test_collect_suite_outputs_raises_on_invalid_metrics_path(tmp_path: Path) -> None:

@@ -4,6 +4,16 @@ models:
     env: yolo
     data_view: yolo_obb
     preset: yolo11m-obb
+  yolov8m_obb:
+    runner: yolo
+    env: yolo
+    data_view: yolo_obb
+    preset: yolov8m-obb
+  yolo26m_obb:
+    runner: yolo
+    env: yolo
+    data_view: yolo_obb
+    preset: yolo26m-obb
   oriented_rcnn_r50:
     runner: mmrotate
     env: mmrotate

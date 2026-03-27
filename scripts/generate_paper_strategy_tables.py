@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-SELECTED_GROUPS = [
+DEFAULT_SELECTED_GROUPS = [
     "sim-random-yolov8l",
     "sim-uncertainty-yolov8l",
     "sim-aug-rect-yolov8l",
@@ -15,7 +15,7 @@ SELECTED_GROUPS = [
     "sim-aug-boundary-yolov8l",
 ]
 
-DISPLAY_NAME = {
+DEFAULT_DISPLAY_NAME = {
     "sim-random-yolov8l": "Random",
     "sim-uncertainty-yolov8l": "Uncertainty",
     "sim-aug-rect-yolov8l": "Aug-Rect",
@@ -46,7 +46,31 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--stats-csv", required=True)
     parser.add_argument("--output-md", required=True)
     parser.add_argument("--output-tex", required=True)
+    parser.add_argument("--groups", default=",".join(DEFAULT_SELECTED_GROUPS))
+    parser.add_argument("--display-names", default="")
     return parser.parse_args()
+
+
+def parse_csv_arg(value: str) -> list[str]:
+    return [item.strip() for item in (value or "").split(",") if item.strip()]
+
+
+def resolve_group_config(args: argparse.Namespace) -> tuple[list[str], dict[str, str]]:
+    selected_groups = parse_csv_arg(args.groups)
+    if not selected_groups:
+        raise SystemExit("至少需要通过 --groups 指定一个实验组。")
+
+    custom_display_names = parse_csv_arg(args.display_names)
+    if custom_display_names and len(custom_display_names) != len(selected_groups):
+        raise SystemExit("--display-names 的数量必须与 --groups 一致。")
+
+    display_name: dict[str, str] = {}
+    for index, group in enumerate(selected_groups):
+        if custom_display_names:
+            display_name[group] = custom_display_names[index]
+        else:
+            display_name[group] = DEFAULT_DISPLAY_NAME.get(group, group)
+    return selected_groups, display_name
 
 
 def parse_float(value: str) -> float | None:
@@ -56,8 +80,8 @@ def parse_float(value: str) -> float | None:
     return float(text)
 
 
-def load_rows(path: Path) -> dict[str, list[StatRow]]:
-    rows_by_group: dict[str, list[StatRow]] = {group: [] for group in SELECTED_GROUPS}
+def load_rows(path: Path, selected_groups: list[str]) -> dict[str, list[StatRow]]:
+    rows_by_group: dict[str, list[StatRow]] = {group: [] for group in selected_groups}
     with path.open(encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle)
         for row in reader:
@@ -148,10 +172,15 @@ def latex_escape(text: str) -> str:
     return out
 
 
-def build_final_rows(rows_by_group: dict[str, list[StatRow]]) -> list[dict[str, str]]:
+def build_final_rows(
+    rows_by_group: dict[str, list[StatRow]],
+    *,
+    selected_groups: list[str],
+    display_name: dict[str, str],
+) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
     ranking = sorted(
-        SELECTED_GROUPS,
+        selected_groups,
         key=lambda group: rows_by_group[group][-1].map50_95_avg if rows_by_group[group][-1].map50_95_avg is not None else -1.0,
         reverse=True,
     )
@@ -160,7 +189,7 @@ def build_final_rows(rows_by_group: dict[str, list[StatRow]]) -> list[dict[str, 
         row = rows_by_group[group][-1]
         rows.append(
             {
-                "strategy": DISPLAY_NAME[group],
+                "strategy": display_name[group],
                 "final_round": str(row.round_index),
                 "map50_95": fmt_pm(row.map50_95_avg, row.map50_95_std),
                 "map50": fmt_pm(row.map50_avg, row.map50_std),
@@ -173,9 +202,14 @@ def build_final_rows(rows_by_group: dict[str, list[StatRow]]) -> list[dict[str, 
     return rows
 
 
-def build_process_rows(rows_by_group: dict[str, list[StatRow]]) -> list[dict[str, str]]:
+def build_process_rows(
+    rows_by_group: dict[str, list[StatRow]],
+    *,
+    selected_groups: list[str],
+    display_name: dict[str, str],
+) -> list[dict[str, str]]:
     ranking = sorted(
-        SELECTED_GROUPS,
+        selected_groups,
         key=lambda group: mean([row.map50_95_avg for row in rows_by_group[group]]) or -1.0,
         reverse=True,
     )
@@ -184,7 +218,7 @@ def build_process_rows(rows_by_group: dict[str, list[StatRow]]) -> list[dict[str
         rows_for_group = rows_by_group[group]
         rows.append(
             {
-                "strategy": DISPLAY_NAME[group],
+                "strategy": display_name[group],
                 "mean_map50_95": fmt(mean([row.map50_95_avg for row in rows_for_group])),
                 "mean_map50": fmt(mean([row.map50_avg for row in rows_for_group])),
                 "auc_map50_95": fmt(sum(row.map50_95_avg or 0.0 for row in rows_for_group)),
@@ -196,9 +230,14 @@ def build_process_rows(rows_by_group: dict[str, list[StatRow]]) -> list[dict[str
     return rows
 
 
-def build_convergence_rows(rows_by_group: dict[str, list[StatRow]]) -> list[dict[str, str]]:
+def build_convergence_rows(
+    rows_by_group: dict[str, list[StatRow]],
+    *,
+    selected_groups: list[str],
+    display_name: dict[str, str],
+) -> list[dict[str, str]]:
     ranking = sorted(
-        SELECTED_GROUPS,
+        selected_groups,
         key=lambda group: (
             first_ge(rows_by_group[group], "map50_95_avg", 0.40) is None,
             first_ge(rows_by_group[group], "map50_95_avg", 0.40) or 10**9,
@@ -210,7 +249,7 @@ def build_convergence_rows(rows_by_group: dict[str, list[StatRow]]) -> list[dict
         best = best_row(rows_by_group[group])
         rows.append(
             {
-                "strategy": DISPLAY_NAME[group],
+                "strategy": display_name[group],
                 "first_038": str(first_ge(rows_by_group[group], "map50_95_avg", 0.38) or "--"),
                 "first_040": str(first_ge(rows_by_group[group], "map50_95_avg", 0.40) or "--"),
                 "peak_round": str(best.round_index),
@@ -268,11 +307,12 @@ def latex_table(
 
 def main() -> None:
     args = parse_args()
-    rows_by_group = load_rows(Path(args.stats_csv))
+    selected_groups, display_name = resolve_group_config(args)
+    rows_by_group = load_rows(Path(args.stats_csv), selected_groups)
 
-    final_rows = build_final_rows(rows_by_group)
-    process_rows = build_process_rows(rows_by_group)
-    convergence_rows = build_convergence_rows(rows_by_group)
+    final_rows = build_final_rows(rows_by_group, selected_groups=selected_groups, display_name=display_name)
+    process_rows = build_process_rows(rows_by_group, selected_groups=selected_groups, display_name=display_name)
+    convergence_rows = build_convergence_rows(rows_by_group, selected_groups=selected_groups, display_name=display_name)
 
     final_headers = ["策略", "最终轮次", "mAP50_95", "mAP50", "Precision", "Recall", "F1", "排名"]
     final_body = [

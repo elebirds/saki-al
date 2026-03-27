@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import json
 import math
+import re
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -31,6 +32,11 @@ _RAW_METRIC_KEYS = {
     "precision": "metrics/precision(B)",
     "recall": "metrics/recall(B)",
 }
+
+_YOLO_SUMMARY_LINE_RE = re.compile(
+    r"^\s*all\s+\d+\s+\d+\s+([0-9]*\.?[0-9]+)\s+([0-9]*\.?[0-9]+)\s+([0-9]*\.?[0-9]+)\s+([0-9]*\.?[0-9]+)\s*$",
+    re.MULTILINE,
+)
 
 
 def _parse_optional_float(value: object) -> float | None:
@@ -68,9 +74,13 @@ def build_yolo_train_command(
     imgsz: int,
     epochs: int,
     batch_size: int,
+    workers: int | None = None,
+    amp: bool | None = None,
+    mosaic: float | None = None,
+    close_mosaic: int | None = None,
 ) -> list[str]:
     _ = run_dir
-    return [
+    command = [
         "uv",
         "run",
         "--project",
@@ -82,12 +92,55 @@ def build_yolo_train_command(
         f"data={dataset_yaml}",
         f"project={work_dir.parent}",
         f"name={work_dir.name}",
+        "exist_ok=True",
         f"seed={train_seed}",
         f"device={device}",
         f"imgsz={imgsz}",
         f"epochs={epochs}",
         f"batch={batch_size}",
     ]
+    if workers is not None:
+        command.append(f"workers={workers}")
+    if amp is not None:
+        command.append(f"amp={amp}")
+    if mosaic is not None:
+        command.append(f"mosaic={mosaic}")
+    if close_mosaic is not None:
+        command.append(f"close_mosaic={close_mosaic}")
+    return command
+
+
+def build_yolo_test_command(
+    *,
+    checkpoint_path: Path,
+    dataset_yaml: Path,
+    work_dir: Path,
+    device: str,
+    imgsz: int,
+    batch_size: int,
+    workers: int | None = None,
+) -> list[str]:
+    command = [
+        "uv",
+        "run",
+        "--project",
+        "benchmarks/obb_baseline/envs/yolo",
+        "yolo",
+        "val",
+        "task=obb",
+        f"model={checkpoint_path}",
+        f"data={dataset_yaml}",
+        "split=test",
+        f"project={work_dir}",
+        "name=test_eval",
+        "exist_ok=True",
+        f"device={device}",
+        f"imgsz={imgsz}",
+        f"batch={batch_size}",
+    ]
+    if workers is not None:
+        command.append(f"workers={workers}")
+    return command
 
 
 def parse_yolo_results_csv(results_csv: Path) -> dict[str, float | None]:
@@ -101,6 +154,24 @@ def parse_yolo_results_csv(results_csv: Path) -> dict[str, float | None]:
                 metric_name: _parse_optional_float(row.get(raw_key))
                 for metric_name, raw_key in _RAW_METRIC_KEYS.items()
             }
+    return metrics
+
+
+def _parse_yolo_test_metrics_from_stdout(stdout_text: str) -> dict[str, float | None] | None:
+    if not any(marker in stdout_text for marker in ("split=test", "labels/test", "/test_eval")):
+        return None
+    matches = list(_YOLO_SUMMARY_LINE_RE.finditer(stdout_text))
+    if not matches:
+        return None
+    match = matches[-1]
+    metrics = {
+        "precision": _parse_optional_float(match.group(1)),
+        "recall": _parse_optional_float(match.group(2)),
+        "mAP50": _parse_optional_float(match.group(3)),
+        "mAP50_95": _parse_optional_float(match.group(4)),
+    }
+    if all(value is None for value in metrics.values()):
+        return None
     return metrics
 
 
@@ -134,6 +205,13 @@ def _build_metrics_payload(
     return payload
 
 
+def _resolve_yolo_results_csv(work_dir: Path) -> Path:
+    test_results_csv = work_dir / "test_eval" / "results.csv"
+    if test_results_csv.exists():
+        return test_results_csv
+    return work_dir / "results.csv"
+
+
 def write_yolo_metrics_json(
     *,
     results_csv: Path,
@@ -162,14 +240,37 @@ def parse_yolo_outputs(
     run_metadata: RunMetadata,
     execution_status: str,
 ) -> None:
-    results_csv = work_dir / "results.csv"
     artifact_paths = dict(run_metadata.artifact_paths)
     artifact_paths.setdefault("work_dir", str(work_dir))
-    artifact_paths.setdefault("results_csv", str(results_csv))
-    metadata = replace(run_metadata, artifact_paths=artifact_paths)
+    root_results_csv = work_dir / "results.csv"
+    test_results_csv = work_dir / "test_eval" / "results.csv"
+    stdout_log = metrics_path.parent / "stdout.log"
 
-    status = "succeeded" if execution_status == "succeeded" and results_csv.exists() else "failed"
-    metrics = parse_yolo_results_csv(results_csv) if status == "succeeded" else _empty_metrics()
+    status = "failed"
+    metrics = _empty_metrics()
+    if execution_status == "succeeded":
+        if test_results_csv.exists():
+            status = "succeeded"
+            metrics = parse_yolo_results_csv(test_results_csv)
+            artifact_paths.setdefault("results_csv", str(test_results_csv))
+            artifact_paths.setdefault("test_results_csv", str(test_results_csv))
+        else:
+            stdout_text = ""
+            if stdout_log.exists():
+                stdout_text = stdout_log.read_text(encoding="utf-8")
+            stdout_metrics = _parse_yolo_test_metrics_from_stdout(stdout_text)
+            if stdout_metrics is not None:
+                status = "succeeded"
+                metrics = stdout_metrics
+                artifact_paths.setdefault("test_results_stdout", str(stdout_log))
+                if root_results_csv.exists():
+                    artifact_paths.setdefault("train_val_results_csv", str(root_results_csv))
+            elif root_results_csv.exists():
+                status = "succeeded"
+                metrics = parse_yolo_results_csv(root_results_csv)
+                artifact_paths.setdefault("results_csv", str(root_results_csv))
+
+    metadata = replace(run_metadata, artifact_paths=artifact_paths)
     metrics_payload = _build_metrics_payload(
         run_metadata=metadata,
         status=status,

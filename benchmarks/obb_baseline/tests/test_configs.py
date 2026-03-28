@@ -54,6 +54,11 @@ def test_part3_config_uses_independent_benchmark_name_and_split_manifest_pointer
     assert payload["runtime"]["mmrotate_workers"] == 8
     assert payload["runtime"]["mmrotate_amp"] is True
     assert payload["runtime"]["mmrotate_epochs"] == 36
+    assert payload["runtime"]["mmrotate_train_aug_preset"] == "spectrogram_v1"
+    assert payload["runtime"]["mmrotate_anchor_ratio_preset"] == "slender_v1"
+    assert payload["runtime"]["mmrotate_roi_bbox_loss_preset"] == "gwd"
+    assert payload["runtime"]["mmrotate_boundary_aux_preset"] == "none"
+    assert payload["runtime"]["mmrotate_topology_aux_preset"] == "none"
     assert payload["runtime"]["yolo_imgsz"] == 960
     assert payload["runtime"]["yolo_batch_size"] == 16
     assert payload["runtime"]["yolo_workers"] == 16
@@ -61,6 +66,27 @@ def test_part3_config_uses_independent_benchmark_name_and_split_manifest_pointer
     assert payload["runtime"]["yolo_mosaic"] == 0.0
     assert payload["runtime"]["yolo_close_mosaic"] == 0
     assert payload["runtime"]["yolo_epochs"] == 200
+
+
+def test_part3_ablation_configs_form_progressive_stage3_ladder() -> None:
+    expected = [
+        ("benchmark.fedo_part3_orcnn_a0_baseline_v1.yaml", "fedo_part3_orcnn_a0_baseline_v1", "default", "default", "smooth_l1", "none", "none"),
+        ("benchmark.fedo_part3_orcnn_a1_domain_v1.yaml", "fedo_part3_orcnn_a1_domain_v1", "spectrogram_v1", "default", "smooth_l1", "none", "none"),
+        ("benchmark.fedo_part3_orcnn_a2_slender_v1.yaml", "fedo_part3_orcnn_a2_slender_v1", "spectrogram_v1", "slender_v1", "smooth_l1", "none", "none"),
+        ("benchmark.fedo_part3_orcnn_a3_gwd_v1.yaml", "fedo_part3_orcnn_a3_gwd_v1", "spectrogram_v1", "slender_v1", "gwd", "none", "none"),
+        ("benchmark.fedo_part3_orcnn_a4_boundary_v1.yaml", "fedo_part3_orcnn_a4_boundary_v1", "spectrogram_v1", "slender_v1", "gwd", "boundary_v1", "none"),
+        ("benchmark.fedo_part3_orcnn_a5_topology_v1.yaml", "fedo_part3_orcnn_a5_topology_v1", "spectrogram_v1", "slender_v1", "gwd", "boundary_v1", "topology_v1"),
+    ]
+    for filename, benchmark_name, aug, anchor, loss, boundary, topology in expected:
+        payload = yaml.safe_load(Path("benchmarks/obb_baseline/configs", filename).read_text(encoding="utf-8"))
+        assert payload["benchmark_name"] == benchmark_name
+        assert payload["models"] == ["oriented_rcnn_r50"]
+        assert payload["split_manifest_path"] == ""
+        assert payload["runtime"]["mmrotate_train_aug_preset"] == aug
+        assert payload["runtime"]["mmrotate_anchor_ratio_preset"] == anchor
+        assert payload["runtime"]["mmrotate_roi_bbox_loss_preset"] == loss
+        assert payload["runtime"]["mmrotate_boundary_aux_preset"] == boundary
+        assert payload["runtime"]["mmrotate_topology_aux_preset"] == topology
 
 
 def test_quickcheck_config_limits_runs_and_epochs_for_script_smoke() -> None:

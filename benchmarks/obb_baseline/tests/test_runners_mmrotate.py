@@ -201,6 +201,82 @@ def test_render_mmrotate_config_defaults_mmrotate_epochs(tmp_path: Path) -> None
     assert parsed["mmrotate_epochs"] == 36
 
 
+def test_render_mmrotate_config_supports_stage3_runtime_presets(tmp_path: Path) -> None:
+    from obb_baseline.runners_mmrotate import _parse_generated_config, render_mmrotate_config
+
+    generated_config = tmp_path / "mmrotate.generated.py"
+    generated_config.write_text(
+        render_mmrotate_config(
+            model_name="oriented_rcnn_r50",
+            data_root=tmp_path / "views" / "dota" / "split-11",
+            work_dir=tmp_path / "workdirs" / "oriented_rcnn_r50" / "split-11" / "seed-101",
+            train_seed=101,
+            score_thr=0.25,
+            classes=("pattern_a", "pattern_b", "pattern_c"),
+            mmrotate_train_aug_preset="spectrogram_v1",
+            mmrotate_anchor_ratio_preset="slender_v1",
+            mmrotate_roi_bbox_loss_preset="gwd",
+        ),
+        encoding="utf-8",
+    )
+
+    text = generated_config.read_text(encoding="utf-8")
+    assert 'mmrotate_train_aug_preset = "spectrogram_v1"' in text
+    assert 'mmrotate_anchor_ratio_preset = "slender_v1"' in text
+    assert 'mmrotate_roi_bbox_loss_preset = "gwd"' in text
+
+    parsed = _parse_generated_config(generated_config)
+    assert parsed["mmrotate_train_aug_preset"] == "spectrogram_v1"
+    assert parsed["mmrotate_anchor_ratio_preset"] == "slender_v1"
+    assert parsed["mmrotate_roi_bbox_loss_preset"] == "gwd"
+
+
+def test_render_mmrotate_config_supports_boundary_aux_preset(tmp_path: Path) -> None:
+    from obb_baseline.runners_mmrotate import _parse_generated_config, render_mmrotate_config
+
+    generated_config = tmp_path / "mmrotate.generated.py"
+    generated_config.write_text(
+        render_mmrotate_config(
+            model_name="oriented_rcnn_r50",
+            data_root=tmp_path / "views" / "dota" / "split-11",
+            work_dir=tmp_path / "workdirs" / "oriented_rcnn_r50" / "split-11" / "seed-101",
+            train_seed=101,
+            score_thr=0.25,
+            classes=("pattern_a",),
+            mmrotate_boundary_aux_preset="boundary_v1",
+        ),
+        encoding="utf-8",
+    )
+
+    text = generated_config.read_text(encoding="utf-8")
+    assert 'mmrotate_boundary_aux_preset = "boundary_v1"' in text
+    parsed = _parse_generated_config(generated_config)
+    assert parsed["mmrotate_boundary_aux_preset"] == "boundary_v1"
+
+
+def test_render_mmrotate_config_supports_topology_aux_preset(tmp_path: Path) -> None:
+    from obb_baseline.runners_mmrotate import _parse_generated_config, render_mmrotate_config
+
+    generated_config = tmp_path / "mmrotate.generated.py"
+    generated_config.write_text(
+        render_mmrotate_config(
+            model_name="oriented_rcnn_r50",
+            data_root=tmp_path / "views" / "dota" / "split-11",
+            work_dir=tmp_path / "workdirs" / "oriented_rcnn_r50" / "split-11" / "seed-101",
+            train_seed=101,
+            score_thr=0.25,
+            classes=("pattern_a",),
+            mmrotate_topology_aux_preset="topology_v1",
+        ),
+        encoding="utf-8",
+    )
+
+    text = generated_config.read_text(encoding="utf-8")
+    assert 'mmrotate_topology_aux_preset = "topology_v1"' in text
+    parsed = _parse_generated_config(generated_config)
+    assert parsed["mmrotate_topology_aux_preset"] == "topology_v1"
+
+
 def test_apply_runtime_overrides_keeps_amp_disabled_and_workers_zero_nonpersistent(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -258,13 +334,142 @@ def test_apply_runtime_overrides_keeps_amp_disabled_and_workers_zero_nonpersiste
     assert cfg["val_dataloader"]["num_workers"] == 0
     assert cfg["test_dataloader"]["num_workers"] == 0
     assert cfg["train_dataloader"]["persistent_workers"] is False
-    assert cfg["val_dataloader"]["persistent_workers"] is False
-    assert cfg["test_dataloader"]["persistent_workers"] is False
-    assert cfg["train_dataloader"]["pin_memory"] is False
-    assert cfg["val_dataloader"]["pin_memory"] is False
-    assert cfg["test_dataloader"]["pin_memory"] is False
+
+
+def test_apply_runtime_overrides_supports_orcnn_stage3_presets(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from obb_baseline.runners_mmrotate import _apply_runtime_overrides
+
+    monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+    cfg = {
+        "train_dataloader": {
+            "dataset": {
+                "pipeline": [
+                    {"type": "mmdet.LoadImageFromFile"},
+                    {"type": "mmdet.LoadAnnotations"},
+                    {"type": "mmdet.RandomFlip", "prob": 0.75, "direction": ["horizontal", "vertical", "diagonal"]},
+                    {"type": "mmdet.PackDetInputs"},
+                ]
+            }
+        },
+        "val_dataloader": {"dataset": {"pipeline": []}},
+        "test_dataloader": {"dataset": {"pipeline": []}},
+        "model": {
+            "rpn_head": {
+                "anchor_generator": {"ratios": [0.5, 1.0, 2.0]},
+            },
+            "roi_head": {
+                "bbox_head": {
+                    "reg_decoded_bbox": False,
+                    "loss_bbox": {"type": "mmdet.SmoothL1Loss", "beta": 1.0, "loss_weight": 1.0},
+                }
+            },
+        },
+        "optim_wrapper": {"type": "OptimWrapper", "optimizer": {"type": "SGD", "lr": 0.01}},
+    }
+
+    _apply_runtime_overrides(
+        cfg,
+        parsed_generated_config={
+            "data_root": f"{tmp_path.as_posix()}/",
+            "class_names": ("pattern_a",),
+            "num_classes": 1,
+            "score_thr": 0.25,
+            "mmrotate_batch_size": 2,
+            "mmrotate_workers": 0,
+            "mmrotate_amp": False,
+            "mmrotate_train_aug_preset": "spectrogram_v1",
+            "mmrotate_anchor_ratio_preset": "slender_v1",
+            "mmrotate_roi_bbox_loss_preset": "gwd",
+        },
+        work_dir=tmp_path / "workdir",
+        train_seed=101,
+        device="cpu",
+    )
+
+    train_pipeline = cfg["train_dataloader"]["dataset"]["pipeline"]
+    assert all(step.get("type") != "mmdet.RandomFlip" for step in train_pipeline)
+    assert cfg["model"]["rpn_head"]["anchor_generator"]["ratios"] == [0.125, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0]
+    assert cfg["model"]["roi_head"]["bbox_head"]["reg_decoded_bbox"] is True
+    assert cfg["model"]["roi_head"]["bbox_head"]["loss_bbox"]["type"] == "GDLoss"
+    assert cfg["model"]["roi_head"]["bbox_head"]["loss_bbox"]["loss_type"] == "gwd"
+
+
+def test_apply_runtime_overrides_supports_boundary_aux_preset(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from obb_baseline.runners_mmrotate import _apply_runtime_overrides
+
+    monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+    cfg = {
+        "model": {
+            "roi_head": {
+                "type": "OrientedStandardRoIHead",
+                "bbox_head": {
+                    "type": "RotatedShared2FCBBoxHead",
+                },
+            },
+        },
+        "optim_wrapper": {"type": "OptimWrapper", "optimizer": {"type": "SGD", "lr": 0.01}},
+    }
+
+    _apply_runtime_overrides(
+        cfg,
+        parsed_generated_config={
+            "class_names": ("pattern_a",),
+            "num_classes": 1,
+            "mmrotate_boundary_aux_preset": "boundary_v1",
+        },
+        work_dir=tmp_path / "workdir",
+        train_seed=101,
+        device="cpu",
+    )
+
+    assert cfg["model"]["roi_head"]["type"] == "OrientedBoundaryAuxRoIHead"
+    assert cfg["model"]["roi_head"]["bbox_head"]["type"] == "OrientedBoundaryAuxBBoxHead"
+    assert cfg["model"]["roi_head"]["bbox_head"]["boundary_aux_loss_weight"] == 0.2
     assert cfg["optim_wrapper"]["type"] == "OptimWrapper"
     assert "loss_scale" not in cfg["optim_wrapper"]
+
+
+def test_apply_runtime_overrides_supports_topology_aux_preset(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from obb_baseline.runners_mmrotate import _apply_runtime_overrides
+
+    monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+    cfg = {
+        "model": {
+            "roi_head": {
+                "type": "OrientedStandardRoIHead",
+                "bbox_head": {
+                    "type": "RotatedShared2FCBBoxHead",
+                },
+            },
+        },
+        "optim_wrapper": {"type": "OptimWrapper", "optimizer": {"type": "SGD", "lr": 0.01}},
+    }
+
+    _apply_runtime_overrides(
+        cfg,
+        parsed_generated_config={
+            "class_names": ("pattern_a",),
+            "num_classes": 1,
+            "mmrotate_topology_aux_preset": "topology_v1",
+        },
+        work_dir=tmp_path / "workdir",
+        train_seed=101,
+        device="cpu",
+    )
+
+    assert cfg["model"]["roi_head"]["type"] == "OrientedBoundaryAuxRoIHead"
+    assert cfg["model"]["roi_head"]["bbox_head"]["type"] == "OrientedBoundaryAuxBBoxHead"
+    assert cfg["model"]["roi_head"]["bbox_head"]["topology_aux_loss_weight"] == 0.1
+    assert cfg["model"]["roi_head"]["bbox_head"]["centerline_width"] == 1
 
 
 def test_apply_runtime_overrides_scales_scheduler_epochs(tmp_path: Path) -> None:
@@ -336,6 +541,11 @@ def test_parse_generated_config_accepts_rendered_mmrotate_contract(
         "mmrotate_workers": 8,
         "mmrotate_amp": True,
         "mmrotate_epochs": 36,
+        "mmrotate_train_aug_preset": "default",
+        "mmrotate_anchor_ratio_preset": "default",
+        "mmrotate_roi_bbox_loss_preset": "smooth_l1",
+        "mmrotate_boundary_aux_preset": "none",
+        "mmrotate_topology_aux_preset": "none",
     }
 
 

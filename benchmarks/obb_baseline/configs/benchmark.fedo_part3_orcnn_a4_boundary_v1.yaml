@@ -1,5 +1,4 @@
-benchmark_name: fedo_part3_orcnn_v1
-# 保留字段：供后续阶段使用；当前 Phase 1 runner 不消费此字段，仍读取 <benchmark-root>/split_manifest.json
+benchmark_name: fedo_part3_orcnn_a4_boundary_v1
 split_manifest_path: ""
 dataset:
   dota_root: "__SET_ME__/dota_export"
@@ -19,7 +18,7 @@ runtime:
   mmrotate_train_aug_preset: spectrogram_v1
   mmrotate_anchor_ratio_preset: slender_v1
   mmrotate_roi_bbox_loss_preset: gwd
-  mmrotate_boundary_aux_preset: none
+  mmrotate_boundary_aux_preset: boundary_v1
   mmrotate_topology_aux_preset: none
   yolo_imgsz: 960
   yolo_batch_size: 16

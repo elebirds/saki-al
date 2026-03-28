@@ -237,6 +237,11 @@ def dispatch_runner(
             runtime_mapping.get("mmrotate_epochs"),
             default=36,
         )
+        mmrotate_train_aug_preset = str(runtime_mapping.get("mmrotate_train_aug_preset", "default"))
+        mmrotate_anchor_ratio_preset = str(runtime_mapping.get("mmrotate_anchor_ratio_preset", "default"))
+        mmrotate_roi_bbox_loss_preset = str(runtime_mapping.get("mmrotate_roi_bbox_loss_preset", "smooth_l1"))
+        mmrotate_boundary_aux_preset = str(runtime_mapping.get("mmrotate_boundary_aux_preset", "none"))
+        mmrotate_topology_aux_preset = str(runtime_mapping.get("mmrotate_topology_aux_preset", "none"))
         generated_config = run_dir / "mmrotate.generated.py"
         generated_config.write_text(
             render_mmrotate_config(
@@ -250,6 +255,11 @@ def dispatch_runner(
                 mmrotate_workers=mmrotate_workers,
                 mmrotate_amp=mmrotate_amp,
                 mmrotate_epochs=mmrotate_epochs,
+                mmrotate_train_aug_preset=mmrotate_train_aug_preset,
+                mmrotate_anchor_ratio_preset=mmrotate_anchor_ratio_preset,
+                mmrotate_roi_bbox_loss_preset=mmrotate_roi_bbox_loss_preset,
+                mmrotate_boundary_aux_preset=mmrotate_boundary_aux_preset,
+                mmrotate_topology_aux_preset=mmrotate_topology_aux_preset,
             ),
             encoding="utf-8",
         )

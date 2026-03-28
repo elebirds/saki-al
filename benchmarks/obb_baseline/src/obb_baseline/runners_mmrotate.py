@@ -109,6 +109,11 @@ def render_mmrotate_config(
     mmrotate_workers: int = 2,
     mmrotate_amp: bool = False,
     mmrotate_epochs: int = 36,
+    mmrotate_train_aug_preset: str = "default",
+    mmrotate_anchor_ratio_preset: str = "default",
+    mmrotate_roi_bbox_loss_preset: str = "smooth_l1",
+    mmrotate_boundary_aux_preset: str = "none",
+    mmrotate_topology_aux_preset: str = "none",
 ) -> str:
     try:
         preset = _MODEL_TO_PRESET[model_name]["preset"]
@@ -122,7 +127,7 @@ def render_mmrotate_config(
         "# Auto-generated MMRotate config shim.\n"
         f'_base_ = ["mmrotate::{base_config}"]\n'
         "custom_imports = dict(\n"
-        "    imports=['obb_baseline.metrics_mmrotate'],\n"
+        "    imports=['obb_baseline.metrics_mmrotate', 'obb_baseline.mmrotate_stage3'],\n"
         "    allow_failed_imports=False,\n"
         ")\n"
         f'preset = "{preset}"\n'
@@ -134,6 +139,11 @@ def render_mmrotate_config(
         f"mmrotate_workers = {int(mmrotate_workers)}\n"
         f"mmrotate_amp = {bool(mmrotate_amp)}\n"
         f"mmrotate_epochs = {int(mmrotate_epochs)}\n"
+        f'mmrotate_train_aug_preset = "{str(mmrotate_train_aug_preset)}"\n'
+        f'mmrotate_anchor_ratio_preset = "{str(mmrotate_anchor_ratio_preset)}"\n'
+        f'mmrotate_roi_bbox_loss_preset = "{str(mmrotate_roi_bbox_loss_preset)}"\n'
+        f'mmrotate_boundary_aux_preset = "{str(mmrotate_boundary_aux_preset)}"\n'
+        f'mmrotate_topology_aux_preset = "{str(mmrotate_topology_aux_preset)}"\n'
         f"score_thr = {float(score_thr)}\n"
         "train_dataloader = dict(\n"
         "    dataset=dict(\n"
@@ -353,6 +363,11 @@ def _parse_generated_config(generated_config: Path) -> dict[str, object]:
         "mmrotate_workers",
         "mmrotate_amp",
         "mmrotate_epochs",
+        "mmrotate_train_aug_preset",
+        "mmrotate_anchor_ratio_preset",
+        "mmrotate_roi_bbox_loss_preset",
+        "mmrotate_boundary_aux_preset",
+        "mmrotate_topology_aux_preset",
     ):
         if key in namespace:
             parsed[key] = namespace[key]
@@ -378,7 +393,82 @@ def _parse_generated_config(generated_config: Path) -> dict[str, object]:
         parsed["mmrotate_amp"] = bool(parsed["mmrotate_amp"])
     if "mmrotate_epochs" in parsed:
         parsed["mmrotate_epochs"] = int(parsed["mmrotate_epochs"])  # type: ignore[arg-type]
+    for key in (
+        "mmrotate_train_aug_preset",
+        "mmrotate_anchor_ratio_preset",
+        "mmrotate_roi_bbox_loss_preset",
+        "mmrotate_boundary_aux_preset",
+        "mmrotate_topology_aux_preset",
+    ):
+        if key in parsed and parsed[key] is not None:
+            parsed[key] = str(parsed[key])
     return parsed
+
+
+def _resolve_orcnn_anchor_ratios(preset: str) -> list[float]:
+    if preset == "slender_v1":
+        return [0.125, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0]
+    return [0.5, 1.0, 2.0]
+
+
+def _remove_random_flip_from_pipeline(node: object) -> None:
+    if isinstance(node, MutableMapping):
+        pipeline = node.get("pipeline")
+        if isinstance(pipeline, list):
+            node["pipeline"] = [
+                step for step in pipeline
+                if not (isinstance(step, MutableMapping) and str(step.get("type")) == "mmdet.RandomFlip")
+            ]
+        for child in node.values():
+            _remove_random_flip_from_pipeline(child)
+    elif isinstance(node, list):
+        for child in node:
+            _remove_random_flip_from_pipeline(child)
+
+
+def _apply_orcnn_stage3_overrides(
+    cfg: MutableMapping[str, object],
+    *,
+    train_aug_preset: str,
+    anchor_ratio_preset: str,
+    roi_bbox_loss_preset: str,
+    boundary_aux_preset: str,
+    topology_aux_preset: str,
+) -> None:
+    if train_aug_preset == "spectrogram_v1":
+        _remove_random_flip_from_pipeline(cfg.get("train_dataloader"))
+
+    rpn_head = cfg.get("model", {}).get("rpn_head") if isinstance(cfg.get("model"), MutableMapping) else None
+    if isinstance(rpn_head, MutableMapping):
+        anchor_generator = rpn_head.get("anchor_generator")
+        if isinstance(anchor_generator, MutableMapping):
+            anchor_generator["ratios"] = _resolve_orcnn_anchor_ratios(anchor_ratio_preset)
+
+    roi_head = cfg.get("model", {}).get("roi_head") if isinstance(cfg.get("model"), MutableMapping) else None
+    if not isinstance(roi_head, MutableMapping):
+        return
+
+    bbox_head = roi_head.get("bbox_head")
+    bbox_heads = bbox_head if isinstance(bbox_head, list) else [bbox_head]
+    for head in bbox_heads:
+        if not isinstance(head, MutableMapping):
+            continue
+        if roi_bbox_loss_preset == "gwd":
+            head["reg_decoded_bbox"] = True
+            head["loss_bbox"] = {
+                "type": "GDLoss",
+                "loss_type": "gwd",
+                "loss_weight": 2.0,
+            }
+        if boundary_aux_preset == "boundary_v1" or topology_aux_preset == "topology_v1":
+            head["type"] = "OrientedBoundaryAuxBBoxHead"
+            head["boundary_aux_loss_weight"] = 0.2 if boundary_aux_preset == "boundary_v1" else 0.0
+            head["boundary_aux_target_size"] = 7
+            head["boundary_band_width"] = 1
+            head["topology_aux_loss_weight"] = 0.1 if topology_aux_preset == "topology_v1" else 0.0
+            head["centerline_width"] = 1
+    if boundary_aux_preset == "boundary_v1" or topology_aux_preset == "topology_v1":
+        roi_head["type"] = "OrientedBoundaryAuxRoIHead"
 
 
 def _set_key_recursively(node: object, *, key: str, value: object) -> None:
@@ -546,6 +636,20 @@ def _apply_runtime_overrides(
         if isinstance(optim_wrapper, MutableMapping):
             optim_wrapper["type"] = "AmpOptimWrapper"
             optim_wrapper.setdefault("loss_scale", "dynamic")
+
+    train_aug_preset = str(parsed_generated_config.get("mmrotate_train_aug_preset") or "default")
+    anchor_ratio_preset = str(parsed_generated_config.get("mmrotate_anchor_ratio_preset") or "default")
+    roi_bbox_loss_preset = str(parsed_generated_config.get("mmrotate_roi_bbox_loss_preset") or "smooth_l1")
+    boundary_aux_preset = str(parsed_generated_config.get("mmrotate_boundary_aux_preset") or "none")
+    topology_aux_preset = str(parsed_generated_config.get("mmrotate_topology_aux_preset") or "none")
+    _apply_orcnn_stage3_overrides(
+        cfg,
+        train_aug_preset=train_aug_preset,
+        anchor_ratio_preset=anchor_ratio_preset,
+        roi_bbox_loss_preset=roi_bbox_loss_preset,
+        boundary_aux_preset=boundary_aux_preset,
+        topology_aux_preset=topology_aux_preset,
+    )
 
     target_epochs = parsed_generated_config.get("mmrotate_epochs")
     if target_epochs is None:

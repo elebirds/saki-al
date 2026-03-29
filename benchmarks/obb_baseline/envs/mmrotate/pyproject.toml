@@ -5,10 +5,9 @@ requires-python = "==3.10.*"
 dependencies = [
   "torch==2.0.0",
   "torchvision==0.15.1",
-  "mmengine==0.8.5",
-  "mmcv==2.0.1",
-  "mmdet==3.0.0",
-  "mmrotate==1.0.0rc1",
+  "mmcv-full==1.7.2",
+  "mmdet==2.28.2",
+  "mmrotate==0.3.4",
   "numpy<2",
   "pyyaml>=6.0",
   "setuptools<81",
@@ -22,7 +21,7 @@ explicit = true
 [tool.uv.sources]
 torch = [{ index = "pytorch-cu118" }]
 torchvision = [{ index = "pytorch-cu118" }]
-mmcv = { url = "https://download.openmmlab.com/mmcv/dist/cu118/torch2.0.0/mmcv-2.0.1-cp310-cp310-manylinux1_x86_64.whl" }
+mmcv-full = { url = "https://download.openmmlab.com/mmcv/dist/cu118/torch2.0.0/mmcv_full-1.7.2-cp310-cp310-manylinux1_x86_64.whl" }
 
 [build-system]
 requires = ["hatchling"]

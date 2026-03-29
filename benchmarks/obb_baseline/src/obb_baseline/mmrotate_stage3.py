@@ -14,25 +14,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-try:
-    from mmcv.runner import force_fp32
-except Exception:  # pragma: no cover - runtime compatibility
-    def force_fp32(*args, **kwargs):  # type: ignore
-        def _decorator(func):
-            return func
-
-        return _decorator
-
-try:
-    from mmrotate.core import rbbox2roi
-    from mmrotate.models.builder import ROTATED_HEADS
-    from mmrotate.models.roi_heads.bbox_heads.convfc_rbbox_head import RotatedShared2FCBBoxHead
-    from mmrotate.models.roi_heads.oriented_standard_roi_head import OrientedStandardRoIHead
-except Exception:  # pragma: no cover - runtime compatibility
-    from mmrotate.core import rbbox2roi  # type: ignore
-    from mmdet.registry import MODELS as ROTATED_HEADS  # type: ignore
-    from mmrotate.models.roi_heads.bbox_heads.convfc_rbbox_head import RotatedShared2FCBBoxHead  # type: ignore
-    from mmrotate.models.roi_heads.oriented_standard_roi_head import OrientedStandardRoIHead  # type: ignore
+from mmcv.runner import force_fp32
+from mmrotate.core import rbbox2roi
+from mmrotate.models.builder import ROTATED_HEADS
+from mmrotate.models.roi_heads.bbox_heads.convfc_rbbox_head import RotatedShared2FCBBoxHead
+from mmrotate.models.roi_heads.oriented_standard_roi_head import OrientedStandardRoIHead
 
 
 def _obb_to_corners(box: torch.Tensor) -> torch.Tensor:
@@ -143,8 +129,8 @@ def build_boundary_aux_targets(
     weight_chunks: list[torch.Tensor] = []
 
     for result in sampling_results:
-        pos_bboxes = getattr(result, "pos_bboxes")
-        neg_bboxes = getattr(result, "neg_bboxes")
+        pos_bboxes = result.pos_bboxes
+        neg_bboxes = result.neg_bboxes
         pos_gt_bboxes = getattr(result, "pos_gt_bboxes")
         current_device = device or pos_bboxes.device
         num_pos = int(pos_bboxes.size(0))
@@ -186,8 +172,8 @@ def build_topology_aux_targets(
     weight_chunks: list[torch.Tensor] = []
 
     for result in sampling_results:
-        pos_bboxes = getattr(result, "pos_bboxes")
-        neg_bboxes = getattr(result, "neg_bboxes")
+        pos_bboxes = result.pos_bboxes
+        neg_bboxes = result.neg_bboxes
         pos_gt_bboxes = getattr(result, "pos_gt_bboxes")
         current_device = device or pos_bboxes.device
         num_pos = int(pos_bboxes.size(0))
@@ -339,6 +325,7 @@ class OrientedBoundaryAuxBBoxHead(RotatedShared2FCBBoxHead):
 
 @ROTATED_HEADS.register_module()
 class OrientedBoundaryAuxRoIHead(OrientedStandardRoIHead):
+
     def _bbox_forward(self, x, rois):
         bbox_feats = self.bbox_roi_extractor(x[: self.bbox_roi_extractor.num_inputs], rois)
         if self.with_shared_head:
@@ -357,6 +344,7 @@ class OrientedBoundaryAuxRoIHead(OrientedStandardRoIHead):
         rois = rbbox2roi([res.bboxes for res in sampling_results])
         bbox_results = self._bbox_forward(x, rois)
         bbox_targets = self.bbox_head.get_targets(sampling_results, gt_bboxes, gt_labels, self.train_cfg)
+
         boundary_targets, boundary_weights = build_boundary_aux_targets(
             sampling_results=sampling_results,
             target_size=int(getattr(self.bbox_head, "boundary_aux_target_size", 7)),
@@ -369,6 +357,7 @@ class OrientedBoundaryAuxRoIHead(OrientedStandardRoIHead):
             centerline_width=int(getattr(self.bbox_head, "centerline_width", 1)),
             device=rois.device,
         )
+
         loss_bbox = self.bbox_head.loss(
             bbox_results["cls_score"],
             bbox_results["bbox_pred"],

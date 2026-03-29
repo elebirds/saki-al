@@ -31,19 +31,19 @@ class RunMetadata:
 _MODEL_TO_PRESET = {
     "oriented_rcnn_r50": {
         "preset": "oriented_rcnn",
-        "base_config": "oriented_rcnn/oriented-rcnn-le90_r50_fpn_1x_dota.py",
+        "base_config": "oriented_rcnn/oriented_rcnn_r50_fpn_1x_dota_le90.py",
     },
     "roi_transformer_r50": {
         "preset": "roi_transformer",
-        "base_config": "roi_trans/roi-trans-le90_r50_fpn_1x_dota.py",
+        "base_config": "roi_trans/roi_trans_r50_fpn_1x_dota_le90.py",
     },
     "r3det_r50": {
         "preset": "r3det",
-        "base_config": "r3det/r3det-oc_r50_fpn_1x_dota.py",
+        "base_config": "r3det/r3det_r50_fpn_1x_dota_oc.py",
     },
     "rtmdet_rotated_m": {
         "preset": "rtmdet_rotated",
-        "base_config": "rotated_rtmdet/rotated_rtmdet_m-3x-dota.py",
+        "base_config": "",
     },
 }
 
@@ -123,13 +123,12 @@ def render_mmrotate_config(
 
     normalized_classes = tuple(str(name) for name in classes)
     normalized_data_root = f"{data_root.as_posix().rstrip('/')}/"
+    if not base_config:
+        raise ValueError(f"legacy mmrotate stack does not support model_name: {model_name!r}")
     return (
-        "# Auto-generated MMRotate config shim.\n"
-        f'_base_ = ["mmrotate::{base_config}"]\n'
-        "custom_imports = dict(\n"
-        "    imports=['obb_baseline.metrics_mmrotate', 'obb_baseline.mmrotate_stage3'],\n"
-        "    allow_failed_imports=False,\n"
-        ")\n"
+        "# Auto-generated MMRotate (legacy stack) config shim.\n"
+        f'model_name = "{model_name}"\n'
+        f'base_config = "{base_config}"\n'
         f'preset = "{preset}"\n'
         f'data_root = r"{normalized_data_root}"\n'
         f"classes = {normalized_classes!r}\n"
@@ -351,6 +350,8 @@ def _parse_generated_config(generated_config: Path) -> dict[str, object]:
 
     parsed: dict[str, object] = {}
     for key in (
+        "model_name",
+        "base_config",
         "preset",
         "classes",
         "class_names",
@@ -437,6 +438,9 @@ def _apply_orcnn_stage3_overrides(
 ) -> None:
     if train_aug_preset == "spectrogram_v1":
         _remove_random_flip_from_pipeline(cfg.get("train_dataloader"))
+        data_cfg = cfg.get("data") if isinstance(cfg.get("data"), MutableMapping) else None
+        if isinstance(data_cfg, MutableMapping):
+            _remove_random_flip_from_pipeline(data_cfg.get("train"))
 
     rpn_head = cfg.get("model", {}).get("rpn_head") if isinstance(cfg.get("model"), MutableMapping) else None
     if isinstance(rpn_head, MutableMapping):
@@ -722,35 +726,194 @@ def _execute_mmrotate_pipeline(
     device: str,
 ) -> dict[str, dict[str, object]]:
     _apply_python_compat_shims()
+
     try:
-        from mmengine.config import Config
-        from mmengine.registry import init_default_scope
-        from mmengine.runner import Runner
-        from mmengine.runner.checkpoint import load_checkpoint
+        from mmcv import Config
+        from mmcv.parallel import MMDataParallel
+        from mmcv.runner import load_checkpoint
+        from mmdet.apis import single_gpu_test
+        from mmdet.datasets import build_dataloader, build_dataset
+        from mmdet.models import build_detector
+        from mmrotate.apis import train_detector
     except ModuleNotFoundError as exc:
         raise RuntimeError(
-            "MMRotate runtime dependencies are unavailable. "
-            "Install mmengine/mmrotate in benchmarks/obb_baseline/envs/mmrotate."
+            "MMRotate legacy runtime dependencies are unavailable. "
+            "Install mmcv-full/mmdet2/mmrotate0.3 in benchmarks/obb_baseline/envs/mmrotate."
         ) from exc
 
-    cfg = Config.fromfile(str(generated_config))
-    _apply_runtime_overrides(
+    import obb_baseline.metrics_mmrotate as metrics_mmrotate
+    import obb_baseline.mmrotate_stage3  # noqa: F401
+    import mmrotate
+
+    model_name = parsed_generated_config.get("model_name")
+    base_config = parsed_generated_config.get("base_config")
+    if not isinstance(model_name, str) or not model_name:
+        raise RuntimeError("generated config missing model_name")
+    if not isinstance(base_config, str) or not base_config:
+        try:
+            base_config = str(_MODEL_TO_PRESET[model_name]["base_config"])
+        except KeyError as exc:
+            raise RuntimeError(f"unsupported model_name for legacy stack: {model_name!r}") from exc
+
+    mmrotate_root = Path(mmrotate.__file__).resolve().parent
+    candidates = [
+        mmrotate_root / ".mim" / "configs" / base_config,
+        Path.cwd() / "benchmarks" / "obb_baseline" / "envs" / "mmrotate" / "src" / "configs" / base_config,
+    ]
+    base_config_path = next((path for path in candidates if path.exists()), None)
+    if base_config_path is None:
+        raise RuntimeError(f"legacy base config not found: {base_config}")
+
+    cfg = Config.fromfile(str(base_config_path))
+    cfg.work_dir = str(work_dir)
+    cfg.seed = train_seed
+    cfg.gpu_ids = [0]
+
+    data_root = parsed_generated_config.get("data_root")
+    classes = parsed_generated_config.get("class_names")
+    classes_tuple = classes if isinstance(classes, tuple) else None
+    if not isinstance(cfg.get("data"), MutableMapping):
+        raise RuntimeError("legacy config missing data section")
+    data_cfg = cfg["data"]
+    for split in ("train", "val", "test"):
+        split_cfg = data_cfg.get(split)
+        if not isinstance(split_cfg, MutableMapping):
+            continue
+        if isinstance(split_cfg.get("dataset"), MutableMapping):
+            split_cfg = split_cfg["dataset"]
+        if data_root is not None:
+            split_cfg["data_root"] = str(data_root)
+        split_cfg["ann_file"] = f"{split}/labelTxt/"
+        split_cfg["img_prefix"] = f"{split}/images/"
+        if classes_tuple is not None:
+            split_cfg["classes"] = classes_tuple
+
+    mmrotate_batch_size = parsed_generated_config.get("mmrotate_batch_size")
+    mmrotate_workers = parsed_generated_config.get("mmrotate_workers")
+    if isinstance(mmrotate_batch_size, int):
+        data_cfg["samples_per_gpu"] = mmrotate_batch_size
+    if isinstance(mmrotate_workers, int):
+        data_cfg["workers_per_gpu"] = mmrotate_workers
+
+    score_thr = parsed_generated_config.get("score_thr")
+    if isinstance(score_thr, float | int):
+        _set_key_recursively(cfg.get("model"), key="score_thr", value=float(score_thr))
+
+    mmrotate_amp = parsed_generated_config.get("mmrotate_amp")
+    preset = parsed_generated_config.get("preset")
+    amp_enabled = mmrotate_amp is True and preset not in _AMP_UNSAFE_PRESETS
+    if amp_enabled:
+        cfg.fp16 = {"loss_scale": "dynamic"}
+
+    train_aug_preset = str(parsed_generated_config.get("mmrotate_train_aug_preset") or "default")
+    anchor_ratio_preset = str(parsed_generated_config.get("mmrotate_anchor_ratio_preset") or "default")
+    roi_bbox_loss_preset = str(parsed_generated_config.get("mmrotate_roi_bbox_loss_preset") or "smooth_l1")
+    boundary_aux_preset = str(parsed_generated_config.get("mmrotate_boundary_aux_preset") or "none")
+    topology_aux_preset = str(parsed_generated_config.get("mmrotate_topology_aux_preset") or "none")
+    _apply_orcnn_stage3_overrides(
         cfg,
-        parsed_generated_config=parsed_generated_config,
-        work_dir=work_dir,
-        train_seed=train_seed,
-        device=device,
+        train_aug_preset=train_aug_preset,
+        anchor_ratio_preset=anchor_ratio_preset,
+        roi_bbox_loss_preset=roi_bbox_loss_preset,
+        boundary_aux_preset=boundary_aux_preset,
+        topology_aux_preset=topology_aux_preset,
     )
 
-    init_default_scope("mmrotate")
-    runner = Runner.from_cfg(cfg)
-    runner.train()
+    target_epochs = parsed_generated_config.get("mmrotate_epochs")
+    if target_epochs is None:
+        target_epochs = 36
+    try:
+        target_epochs = int(target_epochs)
+    except (TypeError, ValueError):
+        target_epochs = 36
+    if isinstance(cfg.get("runner"), MutableMapping):
+        cfg["runner"]["max_epochs"] = target_epochs
+    else:
+        cfg["runner"] = {"type": "EpochBasedRunner", "max_epochs": target_epochs}
+
+    train_dataset = build_dataset(cfg.data.train)
+    model = build_detector(
+        cfg.model,
+        train_cfg=cfg.get("train_cfg"),
+        test_cfg=cfg.get("test_cfg"),
+    )
+    if hasattr(train_dataset, "CLASSES"):
+        model.CLASSES = train_dataset.CLASSES
+    train_detector(
+        model,
+        train_dataset,
+        cfg,
+        distributed=False,
+        validate=False,
+        meta={},
+    )
+
     test_checkpoint = _select_mmrotate_test_checkpoint(work_dir)
     if test_checkpoint is not None:
-        load_checkpoint(runner.model, str(test_checkpoint), map_location="cpu")
-    raw_metrics = runner.test()
-    if not isinstance(raw_metrics, Mapping):
-        raw_metrics = {}
+        load_checkpoint(model, str(test_checkpoint), map_location="cpu")
+
+    if isinstance(cfg.data.test, MutableMapping):
+        cfg.data.test["test_mode"] = True
+    test_dataset = build_dataset(cfg.data.test)
+    test_loader = build_dataloader(
+        test_dataset,
+        samples_per_gpu=1,
+        workers_per_gpu=int(cfg.data.get("workers_per_gpu", 2)),
+        dist=False,
+        shuffle=False,
+    )
+
+    if device == "cpu":
+        test_model = model
+    else:
+        test_model = MMDataParallel(model.cuda(), device_ids=[0])
+
+    outputs = single_gpu_test(test_model, test_loader, show=False)
+    eval_metrics = test_dataset.evaluate(outputs, metric="mAP")
+    raw_metrics: dict[str, object] = dict(eval_metrics) if isinstance(eval_metrics, Mapping) else {}
+    if "mAP" in raw_metrics and "mAP50_95" not in raw_metrics:
+        raw_metrics["mAP50_95"] = raw_metrics.get("mAP")
+    if "mAP" in raw_metrics and "mAP50" not in raw_metrics:
+        raw_metrics["mAP50"] = raw_metrics.get("mAP")
+
+    dota_pairs: list[tuple[dict[str, object], dict[str, object]]] = []
+    for index, result in enumerate(outputs):
+        ann = test_dataset.get_ann_info(index)
+        gt_payload = {
+            "bboxes": ann.get("bboxes", []),
+            "labels": ann.get("labels", []),
+        }
+        pred_boxes: list[object] = []
+        pred_labels: list[int] = []
+        pred_scores: list[float] = []
+        if isinstance(result, list):
+            for class_index, class_result in enumerate(result):
+                for row in class_result:
+                    values = list(row)
+                    if len(values) < 6:
+                        continue
+                    pred_boxes.append(values[:5])
+                    pred_scores.append(float(values[5]))
+                    pred_labels.append(class_index)
+        pred_payload = {
+            "bboxes": pred_boxes,
+            "labels": pred_labels,
+            "scores": pred_scores,
+        }
+        dota_pairs.append((gt_payload, pred_payload))
+
+    prf = metrics_mmrotate.compute_precision_recall_f1_from_dota_results(
+        dota_pairs,
+        score_thr=float(score_thr) if isinstance(score_thr, (int, float)) else 0.5,
+        iou_thr=0.5,
+    )
+    raw_metrics.update(prf)
+
+    try:
+        from mmcv.ops import get_compiling_cuda_version  # noqa: F401
+    except ModuleNotFoundError as exc:
+        raise RuntimeError("legacy mmcv-full ops are unavailable") from exc
+
     return {
         "raw_metrics": dict(raw_metrics),
         "artifacts": _collect_artifacts(work_dir),

@@ -85,6 +85,7 @@ env PYTHONPATH=benchmarks/obb_baseline/src uv run --with pyyaml \
 - `mmrotate_workers`: MMRotate `train/val/test_dataloader.num_workers`
 - `mmrotate_amp`: 是否将 MMRotate `optim_wrapper` 切到 `AmpOptimWrapper`
 - `mmrotate_epochs`: MMRotate 专用训练轮数，默认 `36`
+- `mmrotate_best_metric`: MMRotate best checkpoint 选择指标，可选 `mAP` / `precision` / `recall` / `f1`，默认 `mAP`
 - `yolo_imgsz`: YOLO 专用输入尺寸，默认 `960`，与当前 `960x540` 原图尺寸更匹配
 - `yolo_batch_size`: YOLO 专用 batch size，优先级高于通用 `batch_size`
 - `yolo_workers`: YOLO dataloader worker 数
@@ -97,6 +98,7 @@ env PYTHONPATH=benchmarks/obb_baseline/src uv run --with pyyaml \
 
 - YOLO：先训练，再自动执行一次 `test` 集评测；最终写入汇总的 `mAP50_95 / mAP50 / precision / recall / f1` 来自 `test_eval/results.csv`
 - MMRotate：`mAP50_95 / mAP50` 来自 `runner.test()` 的 `DOTA` 指标；`precision / recall / f1` 由自定义 `BenchmarkDOTAMetric` 在 `test` 阶段按 `score_thr` 与 `IoU=0.5` 统计
+- MMRotate checkpoint：训练阶段仅保留 `last` 与 `best`，不再按每个 epoch 保留 `epoch_*.pth`
 
 在 4090 上建议先从以下本地配置起步：
 
@@ -110,6 +112,7 @@ runtime:
   mmrotate_workers: 8
   mmrotate_amp: true
   mmrotate_epochs: 36
+  mmrotate_best_metric: mAP
   yolo_imgsz: 960
   yolo_batch_size: 16
   yolo_workers: 16

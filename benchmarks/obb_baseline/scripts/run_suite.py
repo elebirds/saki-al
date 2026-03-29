@@ -242,6 +242,7 @@ def dispatch_runner(
         mmrotate_roi_bbox_loss_preset = str(runtime_mapping.get("mmrotate_roi_bbox_loss_preset", "smooth_l1"))
         mmrotate_boundary_aux_preset = str(runtime_mapping.get("mmrotate_boundary_aux_preset", "none"))
         mmrotate_topology_aux_preset = str(runtime_mapping.get("mmrotate_topology_aux_preset", "none"))
+        mmrotate_best_metric = str(runtime_mapping.get("mmrotate_best_metric", "mAP"))
         generated_config = run_dir / "mmrotate.generated.py"
         generated_config.write_text(
             render_mmrotate_config(
@@ -260,6 +261,7 @@ def dispatch_runner(
                 mmrotate_roi_bbox_loss_preset=mmrotate_roi_bbox_loss_preset,
                 mmrotate_boundary_aux_preset=mmrotate_boundary_aux_preset,
                 mmrotate_topology_aux_preset=mmrotate_topology_aux_preset,
+                mmrotate_best_metric=mmrotate_best_metric,
             ),
             encoding="utf-8",
         )

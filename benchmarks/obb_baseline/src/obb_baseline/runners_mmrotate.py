@@ -114,6 +114,7 @@ def render_mmrotate_config(
     mmrotate_roi_bbox_loss_preset: str = "smooth_l1",
     mmrotate_boundary_aux_preset: str = "none",
     mmrotate_topology_aux_preset: str = "none",
+    mmrotate_best_metric: str = "mAP",
 ) -> str:
     try:
         preset = _MODEL_TO_PRESET[model_name]["preset"]
@@ -143,6 +144,7 @@ def render_mmrotate_config(
         f'mmrotate_roi_bbox_loss_preset = "{str(mmrotate_roi_bbox_loss_preset)}"\n'
         f'mmrotate_boundary_aux_preset = "{str(mmrotate_boundary_aux_preset)}"\n'
         f'mmrotate_topology_aux_preset = "{str(mmrotate_topology_aux_preset)}"\n'
+        f'mmrotate_best_metric = "{str(mmrotate_best_metric)}"\n'
         f"score_thr = {float(score_thr)}\n"
         "train_dataloader = dict(\n"
         "    dataset=dict(\n"
@@ -369,6 +371,7 @@ def _parse_generated_config(generated_config: Path) -> dict[str, object]:
         "mmrotate_roi_bbox_loss_preset",
         "mmrotate_boundary_aux_preset",
         "mmrotate_topology_aux_preset",
+        "mmrotate_best_metric",
     ):
         if key in namespace:
             parsed[key] = namespace[key]
@@ -400,10 +403,25 @@ def _parse_generated_config(generated_config: Path) -> dict[str, object]:
         "mmrotate_roi_bbox_loss_preset",
         "mmrotate_boundary_aux_preset",
         "mmrotate_topology_aux_preset",
+        "mmrotate_best_metric",
     ):
         if key in parsed and parsed[key] is not None:
             parsed[key] = str(parsed[key])
     return parsed
+
+
+def _normalize_best_metric(metric: object) -> str:
+    value = str(metric or "mAP").strip().lower()
+    mapping = {
+        "map": "mAP",
+        "map50_95": "mAP",
+        "precision": "precision",
+        "p": "precision",
+        "recall": "recall",
+        "r": "recall",
+        "f1": "f1",
+    }
+    return mapping.get(value, "mAP")
 
 
 def _resolve_orcnn_anchor_ratios(preset: str) -> list[float]:
@@ -692,6 +710,143 @@ def _collect_artifacts(work_dir: Path) -> dict[str, object]:
     return artifacts
 
 
+def _patch_legacy_nms_device_mismatch() -> None:
+    try:
+        import torch
+        from mmcv.ops import nms_rotated
+        import mmrotate.core.post_processing.bbox_nms_rotated as bbox_nms_rotated
+    except Exception:
+        return
+
+    current = getattr(bbox_nms_rotated, "multiclass_nms_rotated", None)
+    if current is None:
+        return
+    if getattr(current, "_saki_device_patch", False):
+        return
+
+    def _patched_multiclass_nms_rotated(
+        multi_bboxes,
+        multi_scores,
+        score_thr,
+        nms,
+        max_num=-1,
+        score_factors=None,
+        return_inds=False,
+    ):
+        num_classes = multi_scores.size(1) - 1
+        if multi_bboxes.shape[1] > 5:
+            bboxes = multi_bboxes.view(multi_scores.size(0), -1, 5)
+        else:
+            bboxes = multi_bboxes[:, None].expand(multi_scores.size(0), num_classes, 5)
+        scores = multi_scores[:, :-1]
+
+        labels = torch.arange(num_classes, dtype=torch.long, device=scores.device)
+        labels = labels.view(1, -1).expand_as(scores)
+        bboxes = bboxes.reshape(-1, 5)
+        scores = scores.reshape(-1)
+        labels = labels.reshape(-1)
+
+        valid_mask = scores > score_thr
+        if score_factors is not None:
+            score_factors = score_factors.view(-1, 1).expand(multi_scores.size(0), num_classes)
+            score_factors = score_factors.reshape(-1)
+            scores = scores * score_factors
+
+        inds = valid_mask.nonzero(as_tuple=False).squeeze(1)
+        if inds.device != bboxes.device:
+            inds = inds.to(bboxes.device)
+        bboxes, scores, labels = bboxes[inds], scores[inds], labels[inds]
+
+        if bboxes.numel() == 0:
+            dets = torch.cat([bboxes, scores[:, None]], -1)
+            if return_inds:
+                return dets, labels, inds
+            return dets, labels
+
+        max_coordinate = bboxes[:, :2].max() + bboxes[:, 2:4].max()
+        offsets = labels.to(bboxes) * (max_coordinate + 1)
+        if bboxes.size(-1) == 5:
+            bboxes_for_nms = bboxes.clone()
+            bboxes_for_nms[:, :2] = bboxes_for_nms[:, :2] + offsets[:, None]
+        else:
+            bboxes_for_nms = bboxes + offsets[:, None]
+
+        _, keep = nms_rotated(bboxes_for_nms, scores, nms.iou_thr)
+        if max_num > 0:
+            keep = keep[:max_num]
+        if keep.device != bboxes.device:
+            keep = keep.to(bboxes.device)
+
+        bboxes = bboxes[keep]
+        scores = scores[keep]
+        labels = labels[keep]
+
+        if return_inds:
+            return torch.cat([bboxes, scores[:, None]], 1), labels, keep
+        return torch.cat([bboxes, scores[:, None]], 1), labels
+
+    _patched_multiclass_nms_rotated._saki_device_patch = True  # type: ignore[attr-defined]
+    bbox_nms_rotated.multiclass_nms_rotated = _patched_multiclass_nms_rotated
+
+
+def _patch_legacy_dota_evaluate_for_prf(score_thr: float) -> None:
+    from mmrotate.datasets.dota import DOTADataset
+    import obb_baseline.metrics_mmrotate as metrics_mmrotate
+
+    current = getattr(DOTADataset, "evaluate", None)
+    if current is None:
+        return
+
+    setattr(DOTADataset, "_saki_score_thr", float(score_thr))
+    if getattr(current, "_saki_prf_patch", False):
+        return
+
+    original_evaluate = current
+
+    def _patched_evaluate(self, results, metric="mAP", logger=None, **kwargs):
+        eval_results = original_evaluate(self, results, metric=metric, logger=logger, **kwargs)
+        try:
+            dota_pairs: list[tuple[dict[str, object], dict[str, object]]] = []
+            for index, result in enumerate(results):
+                ann = self.get_ann_info(index)
+                gt_payload = {
+                    "bboxes": ann.get("bboxes", []),
+                    "labels": ann.get("labels", []),
+                }
+                pred_boxes: list[object] = []
+                pred_labels: list[int] = []
+                pred_scores: list[float] = []
+                if isinstance(result, list):
+                    for class_index, class_result in enumerate(result):
+                        for row in class_result:
+                            values = list(row)
+                            if len(values) < 6:
+                                continue
+                            pred_boxes.append(values[:5])
+                            pred_scores.append(float(values[5]))
+                            pred_labels.append(class_index)
+                pred_payload = {
+                    "bboxes": pred_boxes,
+                    "labels": pred_labels,
+                    "scores": pred_scores,
+                }
+                dota_pairs.append((gt_payload, pred_payload))
+
+            prf = metrics_mmrotate.compute_precision_recall_f1_from_dota_results(
+                dota_pairs,
+                score_thr=float(getattr(self, "_saki_score_thr", 0.5)),
+                iou_thr=0.5,
+            )
+            if isinstance(eval_results, MutableMapping):
+                eval_results.update(prf)
+        except Exception:
+            pass
+        return eval_results
+
+    _patched_evaluate._saki_prf_patch = True  # type: ignore[attr-defined]
+    DOTADataset.evaluate = _patched_evaluate
+
+
 def _resolve_checkpoint_path(checkpoint: str, work_dir: Path) -> Path | None:
     candidate = Path(checkpoint)
     if not candidate.is_absolute():
@@ -745,6 +900,8 @@ def _execute_mmrotate_pipeline(
     import obb_baseline.mmrotate_stage3  # noqa: F401
     import mmrotate
 
+    _patch_legacy_nms_device_mismatch()
+
     model_name = parsed_generated_config.get("model_name")
     base_config = parsed_generated_config.get("base_config")
     if not isinstance(model_name, str) or not model_name:
@@ -772,6 +929,15 @@ def _execute_mmrotate_pipeline(
     data_root = parsed_generated_config.get("data_root")
     classes = parsed_generated_config.get("class_names")
     classes_tuple = classes if isinstance(classes, tuple) else None
+
+    if classes_tuple is not None:
+        try:
+            from mmrotate.datasets.dota import DOTADataset
+
+            DOTADataset.CLASSES = classes_tuple  # type: ignore[assignment]
+        except Exception:
+            pass
+
     if not isinstance(cfg.get("data"), MutableMapping):
         raise RuntimeError("legacy config missing data section")
     data_cfg = cfg["data"]
@@ -796,8 +962,13 @@ def _execute_mmrotate_pipeline(
         data_cfg["workers_per_gpu"] = mmrotate_workers
 
     score_thr = parsed_generated_config.get("score_thr")
+    normalized_best_metric = _normalize_best_metric(parsed_generated_config.get("mmrotate_best_metric"))
     if isinstance(score_thr, float | int):
         _set_key_recursively(cfg.get("model"), key="score_thr", value=float(score_thr))
+
+    _patch_legacy_dota_evaluate_for_prf(
+        float(score_thr) if isinstance(score_thr, (int, float)) else 0.5,
+    )
 
     mmrotate_amp = parsed_generated_config.get("mmrotate_amp")
     preset = parsed_generated_config.get("preset")
@@ -831,6 +1002,19 @@ def _execute_mmrotate_pipeline(
     else:
         cfg["runner"] = {"type": "EpochBasedRunner", "max_epochs": target_epochs}
 
+    cfg["evaluation"] = {
+        "interval": 1,
+        "metric": "mAP",
+    }
+    cfg["checkpoint_config"] = {
+        "by_epoch": True,
+        "interval": max(1, int(target_epochs) + 1),
+        "save_last": True,
+        "max_keep_ckpts": 1,
+        "save_best": normalized_best_metric,
+        "rule": "greater",
+    }
+
     train_dataset = build_dataset(cfg.data.train)
     model = build_detector(
         cfg.model,
@@ -844,7 +1028,7 @@ def _execute_mmrotate_pipeline(
         train_dataset,
         cfg,
         distributed=False,
-        validate=False,
+        validate=True,
         meta={},
     )
 
